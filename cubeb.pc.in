@@ -1,0 +1,13 @@
+# cubeb installed pkg-config file
+
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+includedir=@includedir@
+
+Name: cubeb 
+Description: Portable audio API
+Version: @VERSION@
+Conflicts:
+Libs: -L${libdir} -lcubeb
+Cflags: -I${includedir}
