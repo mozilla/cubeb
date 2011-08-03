@@ -229,6 +229,9 @@ test_stream_position(void)
   r = cubeb_stream_start(stream);
   assert(r == 0);
 
+  /* XXX let start happen */
+  sleep(1);
+
   /* stream should have prefilled */
   assert(total_frames_written > 0);
 
@@ -252,6 +255,8 @@ test_stream_position(void)
     last_position = position;
     sleep(1);
   }
+
+  assert(last_position != 0);
 
   /* stream position should not advance after stopping playback */
   r = cubeb_stream_stop(stream);
