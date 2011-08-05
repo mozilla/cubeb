@@ -99,6 +99,7 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   OSStatus r;
   int i;
 
+  memset(&ss, 0, sizeof(ss));
   ss.mFormatFlags = kAudioFormatFlagsAreAllClear;
 
   switch (stream_params.format) {
@@ -165,6 +166,9 @@ void
 cubeb_stream_destroy(cubeb_stream * stm)
 {
   OSStatus r;
+
+  r = AudioQueueStop(stm->queue, true);
+  assert(r == 0);
 
   r = AudioQueueRemovePropertyListener(stm->queue, kAudioQueueProperty_IsRunning,
                                        audio_queue_listener_callback, stm);
