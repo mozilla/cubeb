@@ -21,8 +21,8 @@ struct cubeb_stream {
   cubeb_data_callback data_callback;
   cubeb_state_callback state_callback;
   void * user_ptr;
-  pa_sample_spec sample_spec;
   pa_operation * draining;
+  pa_sample_spec sample_spec;
   int shutdown;
 };
 
