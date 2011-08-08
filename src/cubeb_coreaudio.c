@@ -10,6 +10,12 @@
 #include <AudioToolbox/AudioToolbox.h>
 #include "cubeb/cubeb.h"
 
+#if !defined(MAC_OS_X_VERSION_10_6) || MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_6
+enum {
+  kAudioQueueErr_EnqueueDuringReset = -66632
+};
+#endif
+
 #define NBUFS 4
 
 struct cubeb_stream {
@@ -65,7 +71,7 @@ audio_queue_output_callback(void * userptr, AudioQueueRef queue, AudioQueueBuffe
   buffer->mAudioDataByteSize = got * stm->sample_spec.mBytesPerFrame;
   if (got > 0) {
     rv = AudioQueueEnqueueBuffer(queue, buffer, 0, NULL);
-    assert(rv == 0);
+    assert(rv == kAudioQueueErr_EnqueueDuringReset || rv == 0);
   }
 
   if (got < buffer->mAudioDataBytesCapacity / stm->sample_spec.mBytesPerFrame) {
@@ -167,11 +173,11 @@ cubeb_stream_destroy(cubeb_stream * stm)
 {
   OSStatus r;
 
-  r = AudioQueueStop(stm->queue, true);
-  assert(r == 0);
-
   r = AudioQueueRemovePropertyListener(stm->queue, kAudioQueueProperty_IsRunning,
                                        audio_queue_listener_callback, stm);
+  assert(r == 0);
+
+  r = AudioQueueStop(stm->queue, true);
   assert(r == 0);
 
   r = AudioQueueDispose(stm->queue, true);
