@@ -427,9 +427,6 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   int dir;
 
   switch (stream_params.format) {
-  case CUBEB_SAMPLE_U8:
-    format = SND_PCM_FORMAT_U8;
-    break;
   case CUBEB_SAMPLE_S16LE:
     format = SND_PCM_FORMAT_S16_LE;
     break;
@@ -639,8 +636,3 @@ cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
   return CUBEB_OK;
 }
 
-int
-cubeb_stream_set_volume(cubeb_stream * stm, float volume)
-{
-  return CUBEB_OK;
-}

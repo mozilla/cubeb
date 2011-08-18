@@ -81,7 +81,6 @@ typedef struct cubeb_stream cubeb_stream; /**< Opaque handle referencing the str
 
 /** Sample format enumeration. */
 typedef enum {
-  CUBEB_SAMPLE_U8,       /**< 8-bit unsigned PCM. */
   CUBEB_SAMPLE_S16LE,    /**< Little endian 16-bit signed PCM. */
   CUBEB_SAMPLE_FLOAT32LE /**< Little endian 32-bit IEEE floating point PCM. */
 } cubeb_sample_format;
@@ -89,7 +88,7 @@ typedef enum {
 /** Stream format initialization parameters. */
 typedef struct {
   cubeb_sample_format format; /**< Requested sample format.  One of
-                                   #CUBEB_SAMPLE_U8, #CUBEB_SAMPLE_S16LE, or
+                                   #CUBEB_SAMPLE_S16LE, or
                                    #CUBEB_SAMPLE_FLOAT32LE. */
   unsigned int rate;          /**< Requested sample rate.  Valid range is [X, Y] (XXX: fix). */
   unsigned int channels;      /**< Requested channel count.  Valid range is
@@ -187,13 +186,6 @@ int cubeb_stream_stop(cubeb_stream * stream);
     @retval CUBEB_OK
     @retval CUBEB_ERROR */
 int cubeb_stream_get_position(cubeb_stream * stream, uint64_t * position);
-
-/** Set the stream volume.
-    @param stream
-    @param volume Range [0.0, 1.0].
-    @retval CUBEB_OK
-    @retval CUBEB_ERROR */
-int cubeb_stream_set_volume(cubeb_stream * stream, float volume);
 
 #ifdef __cplusplus
 }

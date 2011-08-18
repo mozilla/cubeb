@@ -121,9 +121,6 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   ss.mFormatFlags = kAudioFormatFlagsAreAllClear;
 
   switch (stream_params.format) {
-  case CUBEB_SAMPLE_U8:
-    ss.mBitsPerChannel = 8;
-    break;
   case CUBEB_SAMPLE_S16LE:
     ss.mBitsPerChannel = 16;
     ss.mFormatFlags |= kAudioFormatFlagIsSignedInteger;
@@ -248,10 +245,3 @@ cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
   return CUBEB_OK;
 }
 
-int
-cubeb_stream_set_volume(cubeb_stream * stm, float volume)
-{
-  OSStatus r = AudioQueueSetParameter(stm->queue, kAudioQueueParam_Volume, volume);
-  assert(r == 0);
-  return CUBEB_OK;
-}

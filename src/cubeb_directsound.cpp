@@ -55,9 +55,6 @@ bytes_per_frame(cubeb_stream_params params)
   size_t bytes;
 
   switch (params.format) {
-  case CUBEB_SAMPLE_U8:
-    bytes = sizeof(unsigned char);
-    break;
   case CUBEB_SAMPLE_S16LE:
     bytes = sizeof(signed int);
     break;
@@ -378,10 +375,6 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   wfx.dwChannelMask = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT;
 
   switch (stream_params.format) {
-  case CUBEB_SAMPLE_U8:
-    wfx.Format.wBitsPerSample = 8;
-    wfx.SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
-    break;
   case CUBEB_SAMPLE_S16LE:
     wfx.Format.wBitsPerSample = 16;
     wfx.SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
@@ -578,11 +571,3 @@ cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
   return CUBEB_OK;
 }
 
-int
-cubeb_stream_set_volume(cubeb_stream * stm, float volume)
-{
-  if (stm->buffer->SetVolume((LONG) (volume * DSBVOLUME_MAX)) != DS_OK) {
-    return CUBEB_ERROR;
-  }
-  return CUBEB_OK;
-}

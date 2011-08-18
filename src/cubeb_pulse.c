@@ -248,9 +248,6 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   pa_channel_map map;
 
   switch (stream_params.format) {
-  case CUBEB_SAMPLE_U8:
-    ss.format = PA_SAMPLE_U8;
-    break;
   case CUBEB_SAMPLE_S16LE:
     ss.format = PA_SAMPLE_S16LE;
     break;
@@ -367,25 +364,3 @@ cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
   return CUBEB_OK;
 }
 
-int
-cubeb_stream_set_volume(cubeb_stream * stm, float volume)
-{
-  pa_volume_t v;
-  pa_cvolume cv;
-  pa_operation * o;
-
-  assert(volume >= 0.0 && volume <= 1.0);
-  v = volume * PA_VOLUME_NORM;
-
-  pa_cvolume_init(&cv);
-  pa_cvolume_set(&cv, stm->sample_spec.channels, v);
-
-  pa_threaded_mainloop_lock(stm->context->mainloop);
-  o = pa_context_set_sink_input_volume(stm->context->context, pa_stream_get_index(stm->stream),
-                                       &cv, context_success_callback, stm->context->mainloop);
-  operation_wait(stm->context, o);
-  pa_operation_unref(o);
-  pa_threaded_mainloop_unlock(stm->context->mainloop);
-
-  return CUBEB_OK;
-}
