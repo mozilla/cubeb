@@ -277,7 +277,7 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   stm->sample_spec = ss;
 
   battr.maxlength = -1;
-  battr.tlength = latency * pa_frame_size(&stm->sample_spec);
+  battr.tlength = pa_usec_to_bytes(latency * 1000, &stm->sample_spec);
   battr.prebuf = -1;
   battr.minreq = battr.tlength / 2;
   battr.fragsize = -1;

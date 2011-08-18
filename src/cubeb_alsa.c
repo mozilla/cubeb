@@ -418,6 +418,7 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   cubeb_stream * stm;
   int r;
   snd_pcm_format_t format;
+  ssize_t bytes_per_frame;
 
   snd_pcm_hw_params_t * hwparams;
   snd_pcm_uframes_t period_size;
@@ -458,19 +459,25 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   r = snd_pcm_nonblock(stm->pcm, 1);
   assert(r == 0);
 
-  /* XXX fix latency */
-  stm->buffer_size = latency;
-  buffer_time = latency;
-  period_time = buffer_time / 4;
-
   r = snd_pcm_set_params(stm->pcm, format, SND_PCM_ACCESS_RW_INTERLEAVED,
                          stm->params.channels, stm->params.rate, 1,
-                         (double) latency / (double) stm->params.rate * 1e6);
+                         latency * 1000);
   if (r < 0) {
     /* XXX: return format error if necessary */
     cubeb_stream_destroy(stm);
     return CUBEB_ERROR;
   }
+
+  bytes_per_frame = snd_pcm_frames_to_bytes(stm->pcm, 1);
+  /* XXX fix latency */
+  stm->buffer_size = stm->params.rate / 1000.0 * latency * bytes_per_frame;
+  if (stm->buffer_size % bytes_per_frame != 0) {
+    stm->buffer_size += bytes_per_frame - (stm->buffer_size % bytes_per_frame);
+  }
+  buffer_time = stm->buffer_size;
+  period_time = buffer_time / 4;
+  assert(stm->buffer_size % bytes_per_frame == 0);
+  assert(period_time % bytes_per_frame == 0);
 
 #if 0
   /* set buffer sizes */

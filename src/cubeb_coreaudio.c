@@ -160,7 +160,7 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
                                     audio_queue_listener_callback, stm);
   assert(r == 0);
 
-  buffer_size = latency * ss.mBytesPerFrame / NBUFS;
+  buffer_size = ss.mSampleRate / 1000.0 * latency * ss.mBytesPerFrame / NBUFS;
   if (buffer_size % ss.mBytesPerFrame != 0) {
     buffer_size += ss.mBytesPerFrame - (buffer_size % ss.mBytesPerFrame);
   }

@@ -413,16 +413,14 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
 
   InitializeCriticalSection(&stm->lock);
 
-  if (latency == 0) {
-    latency = 250;
-  }
-
   /*
     create secondary buffer
   */
   bd.dwFlags = DSBCAPS_GETCURRENTPOSITION2 | DSBCAPS_GLOBALFOCUS | DSBCAPS_CTRLVOLUME | DSBCAPS_CTRLPOSITIONNOTIFY;
   bd.dwBufferBytes = (DWORD) (wfx.Format.nSamplesPerSec / 1000.0 * latency * bytes_per_frame(stream_params));
-  bd.dwBufferBytes += bytes_per_frame(stream_params) - (bd.dwBufferBytes % bytes_per_frame(stream_params));
+  if (bd.dwBufferBytes % bytes_per_frame(stream_params) != 0) {
+    bd.dwBufferBytes += bytes_per_frame(stream_params) - (bd.dwBufferBytes % bytes_per_frame(stream_params));
+  }
   bd.lpwfxFormat = (LPWAVEFORMATEX) &wfx;
   if (FAILED(context->dsound->CreateSoundBuffer(&bd, &stm->buffer, NULL))) {
     return CUBEB_ERROR;

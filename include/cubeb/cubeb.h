@@ -32,11 +32,9 @@ extern "C" {
     params.rate = 48000;
     params.channels = 2;
 
-    latency = params.rate / 4;
-
     cubeb_stream * stm;
     cubeb_stream_init(app_ctx, &stm, "Example Stream 1", params,
-                      latency, data_cb, state_cb, NULL);
+                      250, data_cb, state_cb, NULL);
 
     cubeb_start(stm);
     for (;;) {
@@ -59,7 +57,7 @@ extern "C" {
           buf[i][c] = 0;
         }
       }
-      return CUBEB_OK;
+      return nframes;
     }
     @endcode
 
@@ -150,7 +148,7 @@ void cubeb_destroy(cubeb * context);
     @param stream
     @param stream_name
     @param stream_params
-    @param latency Approximate stream latency in frames.
+    @param latency Approximate stream latency in milliseconds.
     @param data_callback Will be called to preroll data before playback is
                           started by cubeb_stream_start.
     @param state_callback

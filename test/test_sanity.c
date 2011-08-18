@@ -73,7 +73,7 @@ test_init_destroy_stream(void)
   params.rate = 44100;
   params.channels = 1;
 
-  r = cubeb_stream_init(ctx, &stream, "test", params, params.rate,
+  r = cubeb_stream_init(ctx, &stream, "test", params, 1000,
                         test_data_callback, test_state_callback, &dummy);
   assert(r == 0 && stream);
 
@@ -98,7 +98,7 @@ test_init_destroy_multiple_streams(void)
   params.channels = 1;
 
   for (i = 0; i < 16; ++i) {
-    r = cubeb_stream_init(ctx, &stream[i], "test", params, params.rate,
+    r = cubeb_stream_init(ctx, &stream[i], "test", params, 1000,
                           test_data_callback, test_state_callback, &dummy);
     assert(r == 0 && stream[i]);
   }
@@ -128,7 +128,7 @@ test_init_destroy_multiple_contexts_and_streams(void)
     assert(r == 0 && ctx[i]);
 
     for (j = 0; j < 4; ++j) {
-      r = cubeb_stream_init(ctx[i], &stream[i * 4 + j], "test", params, params.rate,
+      r = cubeb_stream_init(ctx[i], &stream[i * 4 + j], "test", params, 1000,
                             test_data_callback, test_state_callback, &dummy);
       assert(r == 0 && stream[i * 4 + j]);
     }
@@ -158,7 +158,7 @@ test_basic_stream_operations(void)
   params.rate = 44100;
   params.channels = 1;
 
-  r = cubeb_stream_init(ctx, &stream, "test", params, params.rate,
+  r = cubeb_stream_init(ctx, &stream, "test", params, 1000,
                         test_data_callback, test_state_callback, &dummy);
   assert(r == 0 && stream);
 
@@ -212,7 +212,7 @@ test_stream_position(void)
   params.rate = 44100;
   params.channels = 1;
 
-  r = cubeb_stream_init(ctx, &stream, "test", params, params.rate,
+  r = cubeb_stream_init(ctx, &stream, "test", params, 1000,
                         test_data_callback, test_state_callback, &dummy);
   assert(r == 0 && stream);
 
@@ -325,7 +325,7 @@ test_drain(void)
   params.rate = 44100;
   params.channels = 1;
 
-  r = cubeb_stream_init(ctx, &stream, "test", params, params.rate,
+  r = cubeb_stream_init(ctx, &stream, "test", params, 1000,
                         test_drain_data_callback, test_drain_state_callback, &dummy);
   assert(r == 0 && stream);
 
