@@ -16,7 +16,7 @@ static long
 test_data_callback(cubeb_stream * stm, void * user_ptr, void * p, long nframes)
 {
   assert(stm && user_ptr == &dummy && p && nframes > 0);
-  memset(p, 0, nframes);
+  memset(p, 0, nframes * sizeof(short));
   total_frames_written += nframes;
   return nframes;
 }
@@ -69,7 +69,7 @@ test_init_destroy_stream(void)
   r = cubeb_init(&ctx, "test_sanity");
   assert(r == 0 && ctx);
 
-  params.format = CUBEB_SAMPLE_U8;
+  params.format = CUBEB_SAMPLE_S16LE;
   params.rate = 44100;
   params.channels = 1;
 
@@ -93,7 +93,7 @@ test_init_destroy_multiple_streams(void)
   r = cubeb_init(&ctx, "test_sanity");
   assert(r == 0 && ctx);
 
-  params.format = CUBEB_SAMPLE_U8;
+  params.format = CUBEB_SAMPLE_S16LE;
   params.rate = 44100;
   params.channels = 1;
 
@@ -119,7 +119,7 @@ test_init_destroy_multiple_contexts_and_streams(void)
   cubeb_stream * stream[16];
   cubeb_stream_params params;
 
-  params.format = CUBEB_SAMPLE_U8;
+  params.format = CUBEB_SAMPLE_S16LE;
   params.rate = 44100;
   params.channels = 1;
 
@@ -154,7 +154,7 @@ test_basic_stream_operations(void)
   r = cubeb_init(&ctx, "test_sanity");
   assert(r == 0 && ctx);
 
-  params.format = CUBEB_SAMPLE_U8;
+  params.format = CUBEB_SAMPLE_S16LE;
   params.rate = 44100;
   params.channels = 1;
 
@@ -208,7 +208,7 @@ test_stream_position(void)
   r = cubeb_init(&ctx, "test_sanity");
   assert(r == 0 && ctx);
 
-  params.format = CUBEB_SAMPLE_U8;
+  params.format = CUBEB_SAMPLE_S16LE;
   params.rate = 44100;
   params.channels = 1;
 
@@ -292,7 +292,7 @@ test_drain_data_callback(cubeb_stream * stm, void * user_ptr, void * p, long nfr
   }
   /* once drain has started, callback must never be called again */
   assert(do_drain != 2);
-  memset(p, 0, nframes);
+  memset(p, 0, nframes * sizeof(short));
   total_frames_written += nframes;
   return nframes;
 }
@@ -321,7 +321,7 @@ test_drain(void)
   r = cubeb_init(&ctx, "test_sanity");
   assert(r == 0 && ctx);
 
-  params.format = CUBEB_SAMPLE_U8;
+  params.format = CUBEB_SAMPLE_S16LE;
   params.rate = 44100;
   params.channels = 1;
 
