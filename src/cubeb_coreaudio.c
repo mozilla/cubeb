@@ -25,7 +25,9 @@ struct cubeb_stream {
   cubeb_state_callback state_callback;
   void * user_ptr;
   AudioStreamBasicDescription sample_spec;
+  int shutdown;
   int draining;
+  int free_buffers;
 };
 
 static void
@@ -44,6 +46,8 @@ audio_queue_listener_callback(void * userptr, AudioQueueRef queue, AudioQueuePro
   assert(rv == 0);
 
   if (stm->draining && !playing) {
+    stm->draining = 0;
+    stm->shutdown = 1;
     stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
   }
 }
@@ -57,11 +61,16 @@ audio_queue_output_callback(void * userptr, AudioQueueRef queue, AudioQueueBuffe
 
   stm = userptr;
 
-  if (stm->draining)
+  stm->free_buffers += 1;
+  assert(stm->free_buffers > 0 && stm->free_buffers <= NBUFS);
+
+  if (stm->draining || stm->shutdown)
     return;
 
   got = stm->data_callback(stm, stm->user_ptr, buffer->mAudioData,
                            buffer->mAudioDataBytesCapacity / stm->sample_spec.mBytesPerFrame);
+  fprintf(stderr, "%p: %p (%p %u) got %ld\n", stm, buffer, buffer->mAudioData, 
+buffer->mAudioDataByteSize, got);
   if (got < 0) {
     // XXX handle this case.
     assert(false);
@@ -72,10 +81,13 @@ audio_queue_output_callback(void * userptr, AudioQueueRef queue, AudioQueueBuffe
   if (got > 0) {
     rv = AudioQueueEnqueueBuffer(queue, buffer, 0, NULL);
     assert(rv == kAudioQueueErr_EnqueueDuringReset || rv == 0);
+    stm->free_buffers -= 1;
+    assert(stm->free_buffers >= 0);
   }
 
   if (got < buffer->mAudioDataBytesCapacity / stm->sample_spec.mBytesPerFrame) {
     stm->draining = 1;
+    fprintf(stderr, "%p: stop queue %p (draining)\n", stm, stm->queue);
     rv = AudioQueueStop(queue, false);
     assert(rv == 0);
   }
@@ -145,6 +157,7 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   r = AudioQueueNewOutput(&stm->sample_spec, audio_queue_output_callback,
                           stm, NULL, NULL, 0, &stm->queue);
   assert(r == 0);
+  fprintf(stderr, "%p: new queue %p\n", stm, stm->queue);
 
   r = AudioQueueAddPropertyListener(stm->queue, kAudioQueueProperty_IsRunning,
                                     audio_queue_listener_callback, stm);
@@ -159,6 +172,7 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   for (i = 0; i < NBUFS; ++i) {
     r = AudioQueueAllocateBuffer(stm->queue, buffer_size, &stm->buffers[i]);
     assert(r == 0);
+    fprintf(stderr, "%p: %d: %p (%p %u)\n", stm, i, stm->buffers[i], stm->buffers[i]->mAudioData, buffer_size);
 
     audio_queue_output_callback(stm, stm->queue, stm->buffers[i]);
   }
@@ -173,12 +187,18 @@ cubeb_stream_destroy(cubeb_stream * stm)
 {
   OSStatus r;
 
+  fprintf(stderr, "%p: stop queue %p (d=%d)\n", stm, stm->queue, stm->draining);
+
   r = AudioQueueRemovePropertyListener(stm->queue, kAudioQueueProperty_IsRunning,
                                        audio_queue_listener_callback, stm);
   assert(r == 0);
 
+  stm->shutdown = 1;
+
   r = AudioQueueStop(stm->queue, true);
   assert(r == 0);
+
+  assert(stm->free_buffers == NBUFS);
 
   r = AudioQueueDispose(stm->queue, true);
   assert(r == 0);
@@ -189,7 +209,9 @@ cubeb_stream_destroy(cubeb_stream * stm)
 int
 cubeb_stream_start(cubeb_stream * stm)
 {
-  OSStatus r = AudioQueueStart(stm->queue, NULL);
+  OSStatus r;
+  fprintf(stderr, "%p: start queue %p\n", stm, stm->queue);
+  r = AudioQueueStart(stm->queue, NULL);
   assert(r == 0);
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STARTED);
   return CUBEB_OK;
@@ -198,7 +220,9 @@ cubeb_stream_start(cubeb_stream * stm)
 int
 cubeb_stream_stop(cubeb_stream * stm)
 {
-  OSStatus r = AudioQueuePause(stm->queue);
+  OSStatus r;
+  fprintf(stderr, "%p: pause queue %p\n", stm, stm->queue);
+  r = AudioQueuePause(stm->queue);
   assert(r == 0);
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STOPPED);
   return CUBEB_OK;
