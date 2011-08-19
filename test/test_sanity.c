@@ -166,9 +166,6 @@ test_basic_stream_operations(void)
   r = cubeb_stream_get_position(stream, &position);
   assert(r == 0 && position == 0);
 
-  r = cubeb_stream_set_volume(stream, 0.3);
-  assert(r == 0);
-
   r = cubeb_stream_start(stream);
   assert(r == 0);
 
@@ -176,17 +173,11 @@ test_basic_stream_operations(void)
   r = cubeb_stream_get_position(stream, &position);
   assert(r == 0);
 
-  r = cubeb_stream_set_volume(stream, 0.4);
-  assert(r == 0);
-
   r = cubeb_stream_stop(stream);
   assert(r == 0);
 
   /* position and volume after stream has stopped */
   r = cubeb_stream_get_position(stream, &position);
-  assert(r == 0);
-
-  r = cubeb_stream_set_volume(stream, 0.5);
   assert(r == 0);
 
   cubeb_stream_destroy(stream);
