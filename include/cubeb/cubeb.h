@@ -28,7 +28,7 @@ extern "C" {
     cubeb_init(&app_ctx, "Example Application");
 
     cubeb_stream_params params;
-    params.format = CUBEB_SAMPLE_S16LE;
+    params.format = CUBEB_SAMPLE_S16NE;
     params.rate = 48000;
     params.channels = 2;
 
@@ -79,19 +79,33 @@ typedef struct cubeb_stream cubeb_stream; /**< Opaque handle referencing the str
 
 /** Sample format enumeration. */
 typedef enum {
-  CUBEB_SAMPLE_S16LE,    /**< Little endian 16-bit signed PCM. */
-  CUBEB_SAMPLE_FLOAT32LE /**< Little endian 32-bit IEEE floating point PCM. */
+  /**< Little endian 16-bit signed PCM. */
+  CUBEB_SAMPLE_S16LE,
+  /**< Big endian 16-bit signed PCM. */
+  CUBEB_SAMPLE_S16BE,
+  /**< Little endian 32-bit IEEE floating point PCM. */
+  CUBEB_SAMPLE_FLOAT32LE,
+  /**< Big endian 32-bit IEEE floating point PCM. */
+  CUBEB_SAMPLE_FLOAT32BE,
+#ifdef WORDS_BIGENDIAN
+  /**< Native endian 16-bit signed PCM. */
+  CUBEB_SAMPLE_S16NE = CUBEB_SAMPLE_S16BE,
+  /**< Native endian 32-bit IEEE floating point PCM. */
+  CUBEB_SAMPLE_FLOAT32NE = CUBEB_SAMPLE_FLOAT32BE,
+#else
+  /**< Native endian 16-bit signed PCM. */
+  CUBEB_SAMPLE_S16NE = CUBEB_SAMPLE_S16LE,
+  /**< Native endian 32-bit IEEE floating point PCM. */
+  CUBEB_SAMPLE_FLOAT32NE = CUBEB_SAMPLE_FLOAT32LE,
+#endif
 } cubeb_sample_format;
 
 /** Stream format initialization parameters. */
 typedef struct {
   cubeb_sample_format format; /**< Requested sample format.  One of
-                                   #CUBEB_SAMPLE_S16LE, or
-                                   #CUBEB_SAMPLE_FLOAT32LE. */
-  unsigned int rate;          /**< Requested sample rate.  Valid range is [X, Y] (XXX: fix). */
-  unsigned int channels;      /**< Requested channel count.  Valid range is
-                                   [X, Y]. (XXX: fix and deal with channel
-                                   mapping). */
+                                   #cubeb_sample_format. */
+  unsigned int rate;          /**< Requested sample rate. */
+  unsigned int channels;      /**< Requested channel count. */
 } cubeb_stream_params;
 
 /** Stream states signaled via state_callback. */

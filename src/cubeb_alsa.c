@@ -431,8 +431,14 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   case CUBEB_SAMPLE_S16LE:
     format = SND_PCM_FORMAT_S16_LE;
     break;
+  case CUBEB_SAMPLE_S16BE:
+    format = SND_PCM_FORMAT_S16_BE;
+    break;
   case CUBEB_SAMPLE_FLOAT32LE:
     format = SND_PCM_FORMAT_FLOAT_LE;
+    break;
+  case CUBEB_SAMPLE_FLOAT32BE:
+    format = SND_PCM_FORMAT_FLOAT_BE;
     break;
   default:
     return CUBEB_ERROR_INVALID_FORMAT;
