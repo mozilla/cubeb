@@ -55,7 +55,6 @@ struct cubeb_stream {
   cubeb_stream_params params;
   int state;
   int draining;
-  size_t buffer_size;
 };
 
 static int
@@ -262,18 +261,12 @@ cubeb_run_thread(void * context)
           stm->write_position += wrote;
         }
         if (got != avail) {
-          int i;
-          struct timeval tv[3];
           struct cubeb_msg msg;
           snd_pcm_state_t state = snd_pcm_state(stm->pcm);
-          gettimeofday(&tv[0], NULL);
           fprintf(stderr, "%p: about to drain state=%d\n", stm, state);
           //r = snd_pcm_drain(stm->pcm);
           //assert(r == 0 || r == -EAGAIN);
-          gettimeofday(&tv[1], NULL);
-          tv[2].tv_sec = tv[1].tv_sec - tv[0].tv_sec;
-          tv[2].tv_usec = tv[1].tv_usec - tv[0].tv_usec;
-          fprintf(stderr, "%p: %f about to drain (2) state=%d\n", stm, tv[2].tv_sec * 1000.0 + tv[2].tv_usec / 1000.0, snd_pcm_state(stm->pcm));
+          fprintf(stderr, "%p: about to drain (2) state=%d\n", stm, snd_pcm_state(stm->pcm));
 
           /* XXX only fire this once */
           stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
@@ -418,14 +411,6 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   cubeb_stream * stm;
   int r;
   snd_pcm_format_t format;
-  ssize_t bytes_per_frame;
-
-  snd_pcm_hw_params_t * hwparams;
-  snd_pcm_uframes_t period_size;
-  snd_pcm_uframes_t buffer_size;
-  snd_pcm_uframes_t period_time;
-  snd_pcm_uframes_t buffer_time;
-  int dir;
 
   switch (stream_params.format) {
   case CUBEB_SAMPLE_S16LE:
@@ -460,7 +445,7 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   assert(r == 0);
 
   r = cubeb_locked_pcm_open(&stm->pcm, SND_PCM_STREAM_PLAYBACK);
-  assert(r == 0);
+  assert(r == 0); /* XXX return error here */
 
   r = snd_pcm_nonblock(stm->pcm, 1);
   assert(r == 0);
@@ -473,43 +458,6 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
     cubeb_stream_destroy(stm);
     return CUBEB_ERROR;
   }
-
-  bytes_per_frame = snd_pcm_frames_to_bytes(stm->pcm, 1);
-  /* XXX fix latency */
-  stm->buffer_size = stm->params.rate / 1000.0 * latency * bytes_per_frame;
-  if (stm->buffer_size % bytes_per_frame != 0) {
-    stm->buffer_size += bytes_per_frame - (stm->buffer_size % bytes_per_frame);
-  }
-  buffer_time = stm->buffer_size;
-  period_time = buffer_time / 4;
-  assert(stm->buffer_size % bytes_per_frame == 0);
-  assert(period_time % bytes_per_frame == 0);
-
-#if 0
-  /* set buffer sizes */
-
-  /* XXX query min/max, limit setup based on that */
-  /* XXX check number of periods vs buffer size */
-
-  snd_pcm_hw_params_malloc(&hwparams);
-
-  r = snd_pcm_hw_params_current(stm->pcm, hwparams);
-  assert(r == 0);
-
-  r = snd_pcm_hw_params_set_period_size_near(stm->pcm, hwparams, &period_time, &dir);
-  assert(r >= 0);
-
-  r = snd_pcm_hw_params_set_buffer_size_near(stm->pcm, hwparams, &buffer_time);
-  assert(r >= 0);
-
-  r = snd_pcm_hw_params(stm->pcm, hwparams);
-  assert(r >= 0);
-
-  snd_pcm_hw_params_get_period_size(hwparams, &period_size, 0);
-  snd_pcm_hw_params_get_buffer_size(hwparams, &buffer_size);
-
-  snd_pcm_hw_params_free(hwparams);
-#endif
 
   /* set up poll infrastructure */
 
@@ -527,8 +475,6 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
 
   stm->state = CUBEB_STREAM_STATE_INACTIVE;
 
-  fprintf(stderr, "%p: created pcm %p (state: %d)\n", stm, stm->pcm, snd_pcm_state(stm->pcm));
-
   *stream = stm;
 
   return CUBEB_OK;
@@ -537,10 +483,6 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
 void
 cubeb_stream_destroy(cubeb_stream * stm)
 {
-  int r;
-
-  fprintf(stderr, "%p: destroying pcm %p (state: %d)\n", stm, stm->pcm, snd_pcm_state(stm->pcm));
-
   if (stm->pcm) {
     cubeb_locked_pcm_close(stm->pcm);
   }
@@ -559,16 +501,16 @@ cubeb_stream_start(cubeb_stream * stm)
   int r;
   struct cubeb_msg msg;
 
-  fprintf(stderr, "%p: start pcm %p (state: %d)\n", stm, stm->pcm, snd_pcm_state(stm->pcm));
-
   pthread_mutex_lock(&stm->lock);
+
+  /* XXX check how this is used in refill loop */
   if (stm->state == CUBEB_STREAM_STATE_ACTIVE || stm->state == CUBEB_STREAM_STATE_ACTIVATING) {
     pthread_mutex_unlock(&stm->lock);
     return CUBEB_OK; /* XXX perhaps this should signal an error */
   }
 
   r = snd_pcm_pause(stm->pcm, 0);
-//  assert(r == 0);
+  assert(r == 0);
 
   if (stm->state != CUBEB_STREAM_STATE_ACTIVATING) {
     stm->state = CUBEB_STREAM_STATE_ACTIVATING;
@@ -593,8 +535,6 @@ cubeb_stream_stop(cubeb_stream * stm)
   int r;
   struct cubeb_msg msg;
 
-  fprintf(stderr, "%p: pause pcm %p (state: %d)\n", stm, stm->pcm, snd_pcm_state(stm->pcm));
-
   pthread_mutex_lock(&stm->lock);
 
   if (stm->state == CUBEB_STREAM_STATE_INACTIVE) {
@@ -603,7 +543,7 @@ cubeb_stream_stop(cubeb_stream * stm)
   }
 
   r = snd_pcm_pause(stm->pcm, 1);
-//  assert(r == 0);
+  assert(r == 0);
 
   if (stm->state != CUBEB_STREAM_STATE_DEACTIVATING) {
     stm->state = CUBEB_STREAM_STATE_DEACTIVATING;
@@ -627,13 +567,12 @@ cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
 {
   snd_pcm_sframes_t delay;
 
-  *position = stm->last_position;
+  pthread_mutex_lock(&stm->lock);
 
-  if (snd_pcm_state(stm->pcm) != SND_PCM_STATE_RUNNING) {
-    return CUBEB_OK;
-  }
-
-  if (snd_pcm_delay(stm->pcm, &delay) != 0) {
+  if (snd_pcm_state(stm->pcm) != SND_PCM_STATE_RUNNING ||
+      snd_pcm_delay(stm->pcm, &delay) != 0) {
+    *position = stm->last_position;
+    pthread_mutex_unlock(&stm->lock);
     return CUBEB_OK;
   }
 
@@ -646,6 +585,7 @@ cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
 
   stm->last_position = *position;
 
+  pthread_mutex_unlock(&stm->lock);
   return CUBEB_OK;
 }
 
