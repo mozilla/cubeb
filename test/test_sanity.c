@@ -9,6 +9,11 @@
 #include <string.h>
 #include <unistd.h>
 
+#define STREAM_LATENCY 100
+#define STREAM_RATE 44100
+#define STREAM_CHANNELS 1
+#define STREAM_FORMAT CUBEB_SAMPLE_S16LE
+
 static int dummy;
 static uint64_t total_frames_written;
 
@@ -69,11 +74,11 @@ test_init_destroy_stream(void)
   r = cubeb_init(&ctx, "test_sanity");
   assert(r == 0 && ctx);
 
-  params.format = CUBEB_SAMPLE_S16LE;
-  params.rate = 44100;
-  params.channels = 1;
+  params.format = STREAM_FORMAT;
+  params.rate = STREAM_RATE;
+  params.channels = STREAM_CHANNELS;
 
-  r = cubeb_stream_init(ctx, &stream, "test", params, 1000,
+  r = cubeb_stream_init(ctx, &stream, "test", params, STREAM_LATENCY,
                         test_data_callback, test_state_callback, &dummy);
   assert(r == 0 && stream);
 
@@ -93,12 +98,12 @@ test_init_destroy_multiple_streams(void)
   r = cubeb_init(&ctx, "test_sanity");
   assert(r == 0 && ctx);
 
-  params.format = CUBEB_SAMPLE_S16LE;
-  params.rate = 44100;
-  params.channels = 1;
+  params.format = STREAM_FORMAT;
+  params.rate = STREAM_RATE;
+  params.channels = STREAM_CHANNELS;
 
   for (i = 0; i < 16; ++i) {
-    r = cubeb_stream_init(ctx, &stream[i], "test", params, 1000,
+    r = cubeb_stream_init(ctx, &stream[i], "test", params, STREAM_LATENCY,
                           test_data_callback, test_state_callback, &dummy);
     assert(r == 0 && stream[i]);
   }
@@ -119,16 +124,16 @@ test_init_destroy_multiple_contexts_and_streams(void)
   cubeb_stream * stream[16];
   cubeb_stream_params params;
 
-  params.format = CUBEB_SAMPLE_S16LE;
-  params.rate = 44100;
-  params.channels = 1;
+  params.format = STREAM_FORMAT;
+  params.rate = STREAM_RATE;
+  params.channels = STREAM_CHANNELS;
 
   for (i = 0; i < 4; ++i) {
     r = cubeb_init(&ctx[i], "test_sanity");
     assert(r == 0 && ctx[i]);
 
     for (j = 0; j < 4; ++j) {
-      r = cubeb_stream_init(ctx[i], &stream[i * 4 + j], "test", params, 1000,
+      r = cubeb_stream_init(ctx[i], &stream[i * 4 + j], "test", params, STREAM_LATENCY,
                             test_data_callback, test_state_callback, &dummy);
       assert(r == 0 && stream[i * 4 + j]);
     }
@@ -154,11 +159,11 @@ test_basic_stream_operations(void)
   r = cubeb_init(&ctx, "test_sanity");
   assert(r == 0 && ctx);
 
-  params.format = CUBEB_SAMPLE_S16LE;
-  params.rate = 44100;
-  params.channels = 1;
+  params.format = STREAM_FORMAT;
+  params.rate = STREAM_RATE;
+  params.channels = STREAM_CHANNELS;
 
-  r = cubeb_stream_init(ctx, &stream, "test", params, 1000,
+  r = cubeb_stream_init(ctx, &stream, "test", params, STREAM_LATENCY,
                         test_data_callback, test_state_callback, &dummy);
   assert(r == 0 && stream);
 
@@ -199,11 +204,11 @@ test_stream_position(void)
   r = cubeb_init(&ctx, "test_sanity");
   assert(r == 0 && ctx);
 
-  params.format = CUBEB_SAMPLE_S16LE;
-  params.rate = 44100;
-  params.channels = 1;
+  params.format = STREAM_FORMAT;
+  params.rate = STREAM_RATE;
+  params.channels = STREAM_CHANNELS;
 
-  r = cubeb_stream_init(ctx, &stream, "test", params, 1000,
+  r = cubeb_stream_init(ctx, &stream, "test", params, STREAM_LATENCY,
                         test_data_callback, test_state_callback, &dummy);
   assert(r == 0 && stream);
 
@@ -312,11 +317,11 @@ test_drain(void)
   r = cubeb_init(&ctx, "test_sanity");
   assert(r == 0 && ctx);
 
-  params.format = CUBEB_SAMPLE_S16LE;
-  params.rate = 44100;
-  params.channels = 1;
+  params.format = STREAM_FORMAT;
+  params.rate = STREAM_RATE;
+  params.channels = STREAM_CHANNELS;
 
-  r = cubeb_stream_init(ctx, &stream, "test", params, 1000,
+  r = cubeb_stream_init(ctx, &stream, "test", params, STREAM_LATENCY,
                         test_drain_data_callback, test_drain_state_callback, &dummy);
   assert(r == 0 && stream);
 
