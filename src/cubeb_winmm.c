@@ -25,7 +25,6 @@ struct cubeb {
 };
 
 struct cubeb_stream {
-  cubeb * context;
   cubeb_stream_params params;
   cubeb_data_callback data_callback;
   cubeb_state_callback state_callback;
@@ -115,7 +114,6 @@ cubeb_buffer_thread(void * user_ptr)
 
   for (;;) {
     DWORD rv;
-    struct cubeb_stream_item * item;
 
     rv = MsgWaitForMultipleObjects(1, &ctx->event, FALSE, INFINITE, QS_ALLEVENTS);
     assert(rv == WAIT_OBJECT_0 || rv == WAIT_OBJECT_0 + 1);
@@ -218,7 +216,7 @@ cubeb_destroy(cubeb * ctx)
 }
 
 int
-cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
+cubeb_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
                   cubeb_stream_params stream_params, unsigned int latency,
                   cubeb_data_callback data_callback,
                   cubeb_state_callback state_callback,
@@ -269,8 +267,6 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   stm = calloc(1, sizeof(*stm));
   assert(stm);
 
-  stm->context = context;
-
   stm->params = stream_params;
 
   stm->data_callback = data_callback;
@@ -304,7 +300,7 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   /* XXX: cubeb_buffer_callback will be called during waveOutOpen, so all
      other initialization must be complete before calling it. */
   r = waveOutOpen(&stm->waveout, WAVE_MAPPER, &wfx.Format,
-                  NULL, (DWORD_PTR) ctx->thread_id, CALLBACK_THREAD);
+                  (DWORD_PTR) NULL, (DWORD_PTR) ctx->thread_id, CALLBACK_THREAD);
   if (r != MMSYSERR_NOERROR) {
     cubeb_stream_destroy(stm);
     return CUBEB_ERROR;
