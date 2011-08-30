@@ -25,7 +25,7 @@ struct cubeb_msg {
 
 struct cubeb_list_item {
   struct cubeb_list_item * next;
-  struct cubeb_list_item * prev;
+  struct cubeb_list_item ** prev;
   void * data;
 };
 
@@ -79,42 +79,6 @@ cubeb_send_msg(cubeb * ctx, struct cubeb_msg * msg)
 }
 
 static void
-cubeb_list_push(struct cubeb_list_item ** head, cubeb_stream * stm)
-{
-  struct cubeb_list_item * item;
-
-  item = calloc(1, sizeof(*item));
-  assert(item);
-  item->data = stm;
-  stm->key = item;
-
-  if (*head) {
-    item->next = *head;
-    (*head)->prev = item;
-  }
-  *head = item;
-}
-
-static void
-cubeb_list_remove(struct cubeb_list_item ** head, cubeb_stream * stm)
-{
-  struct cubeb_list_item * item = stm->key;
-
-  if (item->prev) {
-    item->prev->next = item->next->next;
-  }
-  if (item->next) {
-    item->next->prev = item->prev;
-  }
-  if (item == *head) {
-    *head = item->next;
-  }
-
-  free(item);
-  stm->key = NULL;
-}
-
-static void
 rebuild_pfds(cubeb * ctx)
 {
   struct cubeb_list_item * item;
@@ -153,14 +117,36 @@ rebuild_pfds(cubeb * ctx)
 static void
 cubeb_register_active_stream(cubeb * ctx, cubeb_stream * stm)
 {
-  cubeb_list_push(&ctx->active_streams, stm);
+  struct cubeb_list_item * item;
+
+  item = calloc(1, sizeof(*item));
+  assert(item);
+  item->data = stm;
+  stm->key = item;
+
+  item->next = ctx->active_streams;
+  if (item->next) {
+    ctx->active_streams->prev = &item->next;
+  }
+  ctx->active_streams = item;
+  item->prev = &ctx->active_streams;
+
   rebuild_pfds(ctx);
 }
 
 static void
 cubeb_unregister_active_stream(cubeb * ctx, cubeb_stream * stm)
 {
-  cubeb_list_remove(&ctx->active_streams, stm);
+  struct cubeb_list_item * item = stm->key;
+
+  if (item->next) {
+    item->next->prev = item->prev;
+  }
+  *item->prev = item->next;
+
+  free(item);
+  stm->key = NULL;
+
   rebuild_pfds(ctx);
 }
 
