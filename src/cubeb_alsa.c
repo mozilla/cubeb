@@ -187,8 +187,8 @@ cubeb_run_thread(void * context)
     item = ctx->active_streams;
     tmppfds = ctx->descriptors;
     while (item) {
-      stm = item->data;
       unsigned short revents;
+      stm = item->data;
 
       r = snd_pcm_poll_descriptors_revents(stm->pcm, tmppfds, stm->n_descriptors, &revents);
       assert(r >= 0);
@@ -201,11 +201,12 @@ cubeb_run_thread(void * context)
       if (revents & POLLOUT) {
         long got;
         snd_pcm_sframes_t avail = snd_pcm_avail_update(stm->pcm);
+        void * p;
         if (avail == -EPIPE) {
           snd_pcm_recover(stm->pcm, avail, 1);
           avail = snd_pcm_avail_update(stm->pcm);
         }
-        void * p = calloc(1, snd_pcm_frames_to_bytes(stm->pcm, avail));
+        p = calloc(1, snd_pcm_frames_to_bytes(stm->pcm, avail));
         assert(p);
         got = stm->data_callback(stm, stm->user_ptr, p, avail);
         if (got < 0) {
@@ -217,9 +218,11 @@ cubeb_run_thread(void * context)
         }
         if (got != avail) {
           struct cubeb_msg msg;
-          //snd_pcm_state_t state = snd_pcm_state(stm->pcm);
-          //r = snd_pcm_drain(stm->pcm);
-          //assert(r == 0 || r == -EAGAIN);
+#if 0
+          snd_pcm_state_t state = snd_pcm_state(stm->pcm);
+          r = snd_pcm_drain(stm->pcm);
+          assert(r == 0 || r == -EAGAIN);
+#endif
 
           /* XXX only fire this once */
           stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
@@ -419,7 +422,9 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   assert(r == stm->n_descriptors);
 
   r = snd_pcm_pause(stm->pcm, 1);
-//  assert(r == 0);
+#if 0
+  assert(r == 0);
+#endif
 
   stm->state = CUBEB_STREAM_STATE_INACTIVE;
 
@@ -460,7 +465,9 @@ cubeb_stream_start(cubeb_stream * stm)
   }
 
   r = snd_pcm_pause(stm->pcm, 0);
-  //assert(r == 0);
+#if 0
+  assert(r == 0);
+#endif
 
   if (stm->state != CUBEB_STREAM_STATE_ACTIVATING) {
     stm->state = CUBEB_STREAM_STATE_ACTIVATING;
@@ -493,7 +500,9 @@ cubeb_stream_stop(cubeb_stream * stm)
   }
 
   r = snd_pcm_pause(stm->pcm, 1);
-  //assert(r == 0);
+#if 0
+  assert(r == 0);
+#endif
 
   if (stm->state != CUBEB_STREAM_STATE_DEACTIVATING) {
     stm->state = CUBEB_STREAM_STATE_DEACTIVATING;

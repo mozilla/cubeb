@@ -91,12 +91,12 @@ typedef enum {
   /**< Native endian 16-bit signed PCM. */
   CUBEB_SAMPLE_S16NE = CUBEB_SAMPLE_S16BE,
   /**< Native endian 32-bit IEEE floating point PCM. */
-  CUBEB_SAMPLE_FLOAT32NE = CUBEB_SAMPLE_FLOAT32BE,
+  CUBEB_SAMPLE_FLOAT32NE = CUBEB_SAMPLE_FLOAT32BE
 #else
   /**< Native endian 16-bit signed PCM. */
   CUBEB_SAMPLE_S16NE = CUBEB_SAMPLE_S16LE,
   /**< Native endian 32-bit IEEE floating point PCM. */
-  CUBEB_SAMPLE_FLOAT32NE = CUBEB_SAMPLE_FLOAT32LE,
+  CUBEB_SAMPLE_FLOAT32NE = CUBEB_SAMPLE_FLOAT32LE
 #endif
 } cubeb_sample_format;
 
