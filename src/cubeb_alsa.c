@@ -25,12 +25,15 @@ struct cubeb_msg {
 
 struct cubeb_list_item {
   struct cubeb_list_item * next;
+  struct cubeb_list_item * prev;
   void * data;
 };
 
 struct cubeb {
   pthread_t thread;
   struct cubeb_list_item * active_streams;
+  struct pollfd * descriptors;
+  size_t n_descriptors;
   int control_fd_read;
   int control_fd_write;
 };
@@ -45,8 +48,9 @@ struct cubeb_stream {
   pthread_mutex_t lock;
   pthread_cond_t cond;
   snd_pcm_t * pcm;
-  struct pollfd * pfds;
-  int npfds;
+  struct pollfd * descriptors;
+  int n_descriptors;
+  struct cubeb_list_item * key;
   cubeb_data_callback data_callback;
   cubeb_state_callback state_callback;
   void * user_ptr;
@@ -54,163 +58,116 @@ struct cubeb_stream {
   snd_pcm_uframes_t last_position;
   cubeb_stream_params params;
   int state;
-  int draining;
 };
-
-static int
-cubeb_safe_read(int fd, void * buf, size_t count)
-{
-  unsigned char * p = buf;
-
-  while (count) {
-    ssize_t val = read(fd, p, count);
-    if (val <= 0) {
-      return -1;
-    }
-    p += val;
-    count -= val;
-  }
-
-  return 0;
-}
-
-static int
-cubeb_safe_write(int fd, void * buf, size_t count)
-{
-  unsigned char * p = buf;
-
-  while (count) {
-    ssize_t val = write(fd, p, count);
-    if (val <= 0) {
-      return -1;
-    }
-    p += val;
-    count -= val;
-  }
-
-  return 0;
-}
 
 static void
 cubeb_recv_msg(cubeb * ctx, struct cubeb_msg * msg)
 {
-  int r;
+  ssize_t r;
 
-  r = cubeb_safe_read(ctx->control_fd_read, msg, sizeof(*msg));
-  assert(r == 0);
+  r = read(ctx->control_fd_read, msg, sizeof(*msg));
+  assert(r == sizeof(*msg));
 }
 
 static void
 cubeb_send_msg(cubeb * ctx, struct cubeb_msg * msg)
 {
-  int r;
+  ssize_t r;
 
-  r = cubeb_safe_write(ctx->control_fd_write, msg, sizeof(*msg));
-  assert(r == 0);
+  r = write(ctx->control_fd_write, msg, sizeof(*msg));
+  assert(r == sizeof(*msg));
 }
 
 static void
-cubeb_list_append(struct cubeb_list_item ** head, cubeb_stream * stm)
+cubeb_list_push(struct cubeb_list_item ** head, cubeb_stream * stm)
 {
-  struct cubeb_list_item * list;
   struct cubeb_list_item * item;
 
   item = calloc(1, sizeof(*item));
   assert(item);
-
   item->data = stm;
+  stm->key = item;
 
-  list = *head;
-  while (list) {
-    if (!list->next) {
-      list->next = item;
-      break;
-    }
-    list = list->next;
+  if (*head) {
+    item->next = *head;
+    (*head)->prev = item;
   }
-
-  if (!*head) {
-    *head = item;
-  }
+  *head = item;
 }
 
 static void
 cubeb_list_remove(struct cubeb_list_item ** head, cubeb_stream * stm)
 {
-  struct cubeb_list_item * list;
-  struct cubeb_list_item * item = NULL;
+  struct cubeb_list_item * item = stm->key;
 
-  list = *head;
-
-  if (list->data == stm) {
-    *head = list->next;
-    free(list);
-    return;
+  if (item->prev) {
+    item->prev->next = item->next->next;
+  }
+  if (item->next) {
+    item->next->prev = item->prev;
+  }
+  if (item == *head) {
+    *head = item->next;
   }
 
-  while (list) {
-    if (list->next && list->next->data == stm) {
-      item = list->next;
-      break;
-    }
-    list = list->next;
-  }
-
-  if (item) {
-    list->next = item->next;
-    free(item);
-    return;
-  }
-
-  assert(0);
+  free(item);
+  stm->key = NULL;
 }
 
 static void
-rebuild_pfds(cubeb * ctx, struct pollfd ** pfds, size_t * pfds_count)
+rebuild_pfds(cubeb * ctx)
 {
   struct cubeb_list_item * item;
-  struct pollfd * fds;
-  size_t nfds = 1;
+  struct pollfd * p;
 
-  item = ctx->active_streams;
-
-  while (item) {
-    cubeb_stream * stm = item->data;
-    nfds += stm->npfds;
-    item = item->next;
-  }
-
-  free(*pfds);
-  *pfds = NULL;
-
-  fds = calloc(nfds, sizeof(*fds));
-  assert(fds);
-
-  *pfds = fds;
-  *pfds_count = nfds;
-
-  fds[0].fd = ctx->control_fd_read;
-  fds[0].events = POLLIN;
-
-  fds += 1;
+  free(ctx->descriptors);
+  ctx->n_descriptors = 0;
 
   item = ctx->active_streams;
   while (item) {
     cubeb_stream * stm = item->data;
-    memcpy(fds, stm->pfds, stm->npfds * sizeof(*stm->pfds));
-    fds += stm->npfds;
+    ctx->n_descriptors += stm->n_descriptors;
     item = item->next;
   }
+
+  /* last descriptor is reserved for the control connection. */
+  ctx->n_descriptors += 1;
+
+  ctx->descriptors = calloc(ctx->n_descriptors, sizeof(*ctx->descriptors));
+  assert(ctx->descriptors);
+
+  p = ctx->descriptors;
+  item = ctx->active_streams;
+  while (item) {
+    cubeb_stream * stm = item->data;
+    memcpy(p, stm->descriptors, stm->n_descriptors * sizeof(*stm->descriptors));
+    p += stm->n_descriptors;
+    item = item->next;
+  }
+
+  /* initialize last descriptor with control connection details. */
+  p->fd = ctx->control_fd_read;
+  p->events = POLLIN;
+}
+
+static void
+cubeb_register_active_stream(cubeb * ctx, cubeb_stream * stm)
+{
+  cubeb_list_push(&ctx->active_streams, stm);
+  rebuild_pfds(ctx);
+}
+
+static void
+cubeb_unregister_active_stream(cubeb * ctx, cubeb_stream * stm)
+{
+  cubeb_list_remove(&ctx->active_streams, stm);
+  rebuild_pfds(ctx);
 }
 
 static void *
 cubeb_run_thread(void * context)
 {
   cubeb * ctx = context;
-  struct pollfd * pfds = NULL;
-  size_t pfds_count;
-
-  rebuild_pfds(ctx, &pfds, &pfds_count);
 
   for (;;) {
     int r;
@@ -220,7 +177,7 @@ cubeb_run_thread(void * context)
     cubeb_stream * stm;
 
     do {
-      r = poll(pfds, pfds_count, -1);
+      r = poll(ctx->descriptors, ctx->n_descriptors, -1);
     } while (r == -1 && errno == EINTR);
     assert(r > 0);
 
@@ -228,24 +185,23 @@ cubeb_run_thread(void * context)
     /* XXX plus rebuild loses revents state anyway */
 
     item = ctx->active_streams;
-    tmppfds = pfds + 1;
+    tmppfds = ctx->descriptors;
     while (item) {
       stm = item->data;
       unsigned short revents;
 
-      r = snd_pcm_poll_descriptors_revents(stm->pcm, tmppfds, stm->npfds, &revents);
+      r = snd_pcm_poll_descriptors_revents(stm->pcm, tmppfds, stm->n_descriptors, &revents);
       assert(r >= 0);
 
       if (revents & POLLERR) {
         /* XXX deal with this properly */
-        fprintf(stderr, "%p: in error\n", stm);
+        assert(0);
       }
 
       if (revents & POLLOUT) {
         long got;
         snd_pcm_sframes_t avail = snd_pcm_avail_update(stm->pcm);
         if (avail == -EPIPE) {
-          fprintf(stderr, "%p: recovering %d\n", stm, avail);
           snd_pcm_recover(stm->pcm, avail, 1);
           avail = snd_pcm_avail_update(stm->pcm);
         }
@@ -257,16 +213,13 @@ cubeb_run_thread(void * context)
         }
         if (got > 0) {
           snd_pcm_sframes_t wrote = snd_pcm_writei(stm->pcm, p, got);
-          fprintf(stderr, "%p: refill, wants %d, got %ld, wrote %d\n", stm, avail, got, wrote);
           stm->write_position += wrote;
         }
         if (got != avail) {
           struct cubeb_msg msg;
-          snd_pcm_state_t state = snd_pcm_state(stm->pcm);
-          fprintf(stderr, "%p: about to drain state=%d\n", stm, state);
+          //snd_pcm_state_t state = snd_pcm_state(stm->pcm);
           //r = snd_pcm_drain(stm->pcm);
           //assert(r == 0 || r == -EAGAIN);
-          fprintf(stderr, "%p: about to drain (2) state=%d\n", stm, snd_pcm_state(stm->pcm));
 
           /* XXX only fire this once */
           stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
@@ -281,7 +234,7 @@ cubeb_run_thread(void * context)
 #else
           /* disable fds for poll */
           /* XXX this will be undone upon next rebuild, so need to flag this somehow */
-          for (i = 0; i < stm->npfds; ++i) {
+          for (i = 0; i < stm->n_descriptors; ++i) {
             tmppfds[i].fd = -1;
           }
 #endif
@@ -289,22 +242,19 @@ cubeb_run_thread(void * context)
         free(p);
       }
 
-      tmppfds += stm->npfds;
+      tmppfds += stm->n_descriptors;
       item = item->next;
     }
 
-    if (pfds[0].revents & POLLIN) {
+    if (tmppfds->revents & POLLIN) {
       cubeb_recv_msg(ctx, &msg);
 
       switch (msg.type) {
       case CUBEB_MSG_SHUTDOWN:
-        fprintf(stderr, "shutdown\n");
-        goto shutdown;
+        return NULL;
       case CUBEB_MSG_ADD_STREAM:
         stm = msg.data;
-        fprintf(stderr, "add stm %p\n", stm);
-        cubeb_list_append(&ctx->active_streams, stm);
-        rebuild_pfds(ctx, &pfds, &pfds_count);
+        cubeb_register_active_stream(ctx, stm);
         pthread_mutex_lock(&stm->lock);
         assert(stm->state == CUBEB_STREAM_STATE_ACTIVATING);
         stm->state = CUBEB_STREAM_STATE_ACTIVE;
@@ -313,9 +263,7 @@ cubeb_run_thread(void * context)
         break;
       case CUBEB_MSG_DEL_STREAM:
         stm = msg.data;
-        fprintf(stderr, "del stm %p\n", stm);
-        cubeb_list_remove(&ctx->active_streams, stm);
-        rebuild_pfds(ctx, &pfds, &pfds_count);
+        cubeb_unregister_active_stream(ctx, stm);
         pthread_mutex_lock(&stm->lock);
         assert(stm->state == CUBEB_STREAM_STATE_DEACTIVATING);
         stm->state = CUBEB_STREAM_STATE_INACTIVE;
@@ -325,9 +273,6 @@ cubeb_run_thread(void * context)
       }
     }
   }
-
-shutdown:
-  free(pfds);
 
   return NULL;
 }
@@ -374,6 +319,8 @@ cubeb_init(cubeb ** context, char const * context_name)
   ctx->control_fd_read = pipe_fd[0];
   ctx->control_fd_write = pipe_fd[1];
 
+  rebuild_pfds(ctx);
+
   /* XXX set stack size to minimum */
   r = pthread_create(&ctx->thread, NULL, cubeb_run_thread, ctx);
   assert(r == 0);
@@ -399,6 +346,7 @@ cubeb_destroy(cubeb * ctx)
   close(ctx->control_fd_read);
   close(ctx->control_fd_write);
 
+  free(ctx->descriptors);
   free(ctx);
 }
 
@@ -461,14 +409,14 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
 
   /* set up poll infrastructure */
 
-  stm->npfds = snd_pcm_poll_descriptors_count(stm->pcm);
-  assert(stm->npfds > 0);
+  stm->n_descriptors = snd_pcm_poll_descriptors_count(stm->pcm);
+  assert(stm->n_descriptors > 0);
 
-  stm->pfds = calloc(stm->npfds, sizeof(*stm->pfds));
-  assert(stm->pfds);
+  stm->descriptors = calloc(stm->n_descriptors, sizeof(*stm->descriptors));
+  assert(stm->descriptors);
 
-  r = snd_pcm_poll_descriptors(stm->pcm, stm->pfds, stm->npfds);
-  assert(r == stm->npfds);
+  r = snd_pcm_poll_descriptors(stm->pcm, stm->descriptors, stm->n_descriptors);
+  assert(r == stm->n_descriptors);
 
   r = snd_pcm_pause(stm->pcm, 1);
 //  assert(r == 0);
@@ -483,6 +431,8 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
 void
 cubeb_stream_destroy(cubeb_stream * stm)
 {
+  assert(stm->state == CUBEB_STREAM_STATE_INACTIVE);
+
   if (stm->pcm) {
     cubeb_locked_pcm_close(stm->pcm);
   }
@@ -490,7 +440,7 @@ cubeb_stream_destroy(cubeb_stream * stm)
   pthread_cond_destroy(&stm->cond);
   pthread_mutex_destroy(&stm->lock);
 
-  free(stm->pfds);
+  free(stm->descriptors);
 
   free(stm);
 }
@@ -510,7 +460,7 @@ cubeb_stream_start(cubeb_stream * stm)
   }
 
   r = snd_pcm_pause(stm->pcm, 0);
-  assert(r == 0);
+  //assert(r == 0);
 
   if (stm->state != CUBEB_STREAM_STATE_ACTIVATING) {
     stm->state = CUBEB_STREAM_STATE_ACTIVATING;
@@ -543,7 +493,7 @@ cubeb_stream_stop(cubeb_stream * stm)
   }
 
   r = snd_pcm_pause(stm->pcm, 1);
-  assert(r == 0);
+  //assert(r == 0);
 
   if (stm->state != CUBEB_STREAM_STATE_DEACTIVATING) {
     stm->state = CUBEB_STREAM_STATE_DEACTIVATING;
@@ -588,4 +538,3 @@ cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
   pthread_mutex_unlock(&stm->lock);
   return CUBEB_OK;
 }
-
