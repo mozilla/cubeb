@@ -22,14 +22,14 @@ cubebinclude_HEADERS = include/cubeb/cubeb.h include/cubeb/cubeb-stdint.h
 lib_LTLIBRARIES = src/libcubeb.la
 
 src_libcubeb_la_SOURCES = \
-	src/cubeb_pulse.c
+	src/cubeb_alsa.c
 
 src_libcubeb_la_LDFLAGS = -export-symbols-regex '^cubeb_'
 
 check_PROGRAMS = test/test_sanity
 
 test_test_sanity_SOURCES = test/test_sanity.c
-test_test_sanity_LDADD = -lpulse -lm src/libcubeb.la
+test_test_sanity_LDADD = -lasound -lm src/libcubeb.la
 
 TESTS = test/test_sanity
 
