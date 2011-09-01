@@ -48,7 +48,8 @@ struct cubeb_stream {
   pthread_mutex_t lock;
   pthread_cond_t cond;
   snd_pcm_t * pcm;
-  struct pollfd descriptor;
+  struct pollfd * descriptors;
+  int n_descriptors;
   struct cubeb_list_item * key;
   cubeb_data_callback data_callback;
   cubeb_state_callback state_callback;
@@ -88,7 +89,8 @@ rebuild_pfds(cubeb * ctx)
 
   item = ctx->active_streams;
   while (item) {
-    ctx->n_descriptors += 1;
+    cubeb_stream * stm = item->data;
+    ctx->n_descriptors += stm->n_descriptors;
     item = item->next;
   }
 
@@ -102,7 +104,8 @@ rebuild_pfds(cubeb * ctx)
   item = ctx->active_streams;
   while (item) {
     cubeb_stream * stm = item->data;
-    *p++ = stm->descriptor;
+    memcpy(p, stm->descriptors, stm->n_descriptors * sizeof(*stm->descriptors));
+    p += stm->n_descriptors;
     item = item->next;
   }
 
@@ -173,7 +176,7 @@ cubeb_run_thread(void * context)
       unsigned short revents;
       stm = item->data;
 
-      r = snd_pcm_poll_descriptors_revents(stm->pcm, tmppfds, 1, &revents);
+      r = snd_pcm_poll_descriptors_revents(stm->pcm, tmppfds, stm->n_descriptors, &revents);
       assert(r >= 0);
 
       if (revents & POLLERR) {
@@ -220,13 +223,15 @@ cubeb_run_thread(void * context)
 #else
           /* disable fds for poll */
           /* XXX this will be undone upon next rebuild, so need to flag this somehow */
-          tmppfds->fd = -1;
+          for (i = 0; i < stm->n_descriptors; ++i) {
+            tmppfds[i].fd = -1;
+          }
 #endif
         }
         free(p);
       }
 
-      tmppfds += 1;
+      tmppfds += stm->n_descriptors;
       item = item->next;
     }
 
@@ -291,7 +296,6 @@ cubeb_init(cubeb ** context, char const * context_name)
   cubeb * ctx;
   int r;
   int pipe_fd[2];
-  pthread_attr_t thread_attr;
 
   assert(sizeof(struct cubeb_msg) <= PIPE_BUF);
 
@@ -306,16 +310,8 @@ cubeb_init(cubeb ** context, char const * context_name)
 
   rebuild_pfds(ctx);
 
-  r = pthread_attr_init(&thread_attr);
-  assert(r == 0);
-
-  r = pthread_attr_setstacksize(&thread_attr, 64 * 1024);
-  assert(r == 0);
-
-  r = pthread_create(&ctx->thread, &thread_attr, cubeb_run_thread, ctx);
-  assert(r == 0);
-
-  r = pthread_attr_destroy(&thread_attr);
+  /* XXX set stack size to minimum */
+  r = pthread_create(&ctx->thread, NULL, cubeb_run_thread, ctx);
   assert(r == 0);
 
   *context = ctx;
@@ -401,12 +397,20 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   }
 
   /* set up poll infrastructure */
-  /* XXX we assume (and assert) that there is only one descriptor per stream */
-  r = snd_pcm_poll_descriptors_count(stm->pcm);
-  assert(r == 1);
 
-  r = snd_pcm_poll_descriptors(stm->pcm, &stm->descriptor, 1);
-  assert(r == 1);
+  stm->n_descriptors = snd_pcm_poll_descriptors_count(stm->pcm);
+  assert(stm->n_descriptors > 0);
+
+  stm->descriptors = calloc(stm->n_descriptors, sizeof(*stm->descriptors));
+  assert(stm->descriptors);
+
+  r = snd_pcm_poll_descriptors(stm->pcm, stm->descriptors, stm->n_descriptors);
+  assert(r == stm->n_descriptors);
+
+  r = snd_pcm_pause(stm->pcm, 1);
+#if 0
+  assert(r == 0);
+#endif
 
   stm->state = CUBEB_STREAM_STATE_INACTIVE;
 
@@ -427,12 +431,15 @@ cubeb_stream_destroy(cubeb_stream * stm)
   pthread_cond_destroy(&stm->cond);
   pthread_mutex_destroy(&stm->lock);
 
+  free(stm->descriptors);
+
   free(stm);
 }
 
 int
 cubeb_stream_start(cubeb_stream * stm)
 {
+  int r;
   struct cubeb_msg msg;
 
   pthread_mutex_lock(&stm->lock);
@@ -443,7 +450,10 @@ cubeb_stream_start(cubeb_stream * stm)
     return CUBEB_OK; /* XXX perhaps this should signal an error */
   }
 
-  snd_pcm_pause(stm->pcm, 0);
+  r = snd_pcm_pause(stm->pcm, 0);
+#if 0
+  assert(r == 0);
+#endif
 
   if (stm->state != CUBEB_STREAM_STATE_ACTIVATING) {
     stm->state = CUBEB_STREAM_STATE_ACTIVATING;
@@ -465,6 +475,7 @@ cubeb_stream_start(cubeb_stream * stm)
 int
 cubeb_stream_stop(cubeb_stream * stm)
 {
+  int r;
   struct cubeb_msg msg;
 
   pthread_mutex_lock(&stm->lock);
@@ -474,7 +485,10 @@ cubeb_stream_stop(cubeb_stream * stm)
     return CUBEB_OK; /* XXX perhaps this should signal an error */
   }
 
-  snd_pcm_pause(stm->pcm, 1);
+  r = snd_pcm_pause(stm->pcm, 1);
+#if 0
+  assert(r == 0);
+#endif
 
   if (stm->state != CUBEB_STREAM_STATE_DEACTIVATING) {
     stm->state = CUBEB_STREAM_STATE_DEACTIVATING;
