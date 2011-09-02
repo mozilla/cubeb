@@ -210,6 +210,8 @@ cubeb_run_thread(void * context)
           assert(r == 0 || r == -EAGAIN);
 #endif
 
+          /* XXX write out a period of data to ensure real data is flushed to speakers */
+
           /* XXX only fire this once */
           stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
 
@@ -297,6 +299,8 @@ cubeb_init(cubeb ** context, char const * context_name)
   int r;
   int pipe_fd[2];
 
+  assert(context);
+
   assert(sizeof(struct cubeb_msg) <= PIPE_BUF);
 
   ctx = calloc(1, sizeof(*ctx));
@@ -325,6 +329,8 @@ cubeb_destroy(cubeb * ctx)
   struct cubeb_msg msg;
   int r;
 
+  assert(ctx);
+
   msg.type = CUBEB_MSG_SHUTDOWN;
   msg.data = NULL;
   cubeb_send_msg(ctx, &msg);
@@ -348,6 +354,11 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   cubeb_stream * stm;
   int r;
   snd_pcm_format_t format;
+  snd_pcm_uframes_t buffer_size;
+  snd_pcm_uframes_t period_size;
+
+  assert(context);
+  assert(stream);
 
   switch (stream_params.format) {
   case CUBEB_SAMPLE_S16LE:
@@ -382,7 +393,10 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   assert(r == 0);
 
   r = cubeb_locked_pcm_open(&stm->pcm, SND_PCM_STREAM_PLAYBACK);
-  assert(r == 0); /* XXX return error here */
+  if (r < 0) {
+    cubeb_stream_destroy(stm);
+    return CUBEB_ERROR;
+  }
 
   r = snd_pcm_nonblock(stm->pcm, 1);
   assert(r == 0);
@@ -395,6 +409,10 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
     cubeb_stream_destroy(stm);
     return CUBEB_ERROR;
   }
+
+  r = snd_pcm_get_params(stm->pcm, &buffer_size, &period_size);
+  assert(r == 0);
+  fprintf(stderr, "b=%u p=%u\n", buffer_size, period_size);
 
   /* set up poll infrastructure */
 
@@ -422,6 +440,7 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
 void
 cubeb_stream_destroy(cubeb_stream * stm)
 {
+  assert(stm);
   assert(stm->state == CUBEB_STREAM_STATE_INACTIVE);
 
   if (stm->pcm) {
@@ -441,6 +460,8 @@ cubeb_stream_start(cubeb_stream * stm)
 {
   int r;
   struct cubeb_msg msg;
+
+  assert(stm);
 
   pthread_mutex_lock(&stm->lock);
 
@@ -478,6 +499,8 @@ cubeb_stream_stop(cubeb_stream * stm)
   int r;
   struct cubeb_msg msg;
 
+  assert(stm);
+
   pthread_mutex_lock(&stm->lock);
 
   if (stm->state == CUBEB_STREAM_STATE_INACTIVE) {
@@ -511,6 +534,9 @@ int
 cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
 {
   snd_pcm_sframes_t delay;
+
+  assert(stm);
+  assert(position);
 
   pthread_mutex_lock(&stm->lock);
 
