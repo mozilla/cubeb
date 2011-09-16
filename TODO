@@ -1,37 +1,27 @@
 TODO:
-- sync issues after seeking on osx
-  - prefill on start is aggressive, fills all buffers... on playback start
-    we (usually) have enough, but that's not true after seeking (why's it
-    different?)
-- prefill timing behaviour is different on osx vs linux:
-  linux takes ~6ms before prefill callback - actually seening it called
-  immediately while stream_init waits on STREAM_READY
-  osx prefills immediately from stream_init
-  so it's likely that osx underruns when linux may not
-- prefill needs some amount of data, depending on latency (and maybe platform)
-  - decoder needs to know how much before so it can decode ahead
-  - or it can write silence and deal with it via underrun handling
-    - except that means we have [audio ...] [inserted gap] [audio ...]
-      which is stupid, so the caller needs to know how much is required for
-      prefill
-  - *also* need xrun handling for real xruns, where we've run out of data
-     and must write silence and adjust the clock by it
-- deal with interaction between prefill and short files
-  - allow callback to signal how much has been written as well as EOS
+- osx drain: listener fails to fire on 10.5 often (and sometimes on 10.6)
+  add watchdog timer to deal with this
+- osx: understand why AudioQueueGetCurrentTime can return negative mSampleTime
+- alsa: drain blocks in nblock mode (for alsa-pulse), so need watchdog timer
+- test (and fix) sub-prefill size data playback
+- report stream delay instead of position; leave position calculation to user
+- capture support
+- capture and output enumeration and configuration
+  - also expose default hardware config to allow decisions on speaker layout
+- prefill occurs at different times in each backend:
+  - pulse prefills async off worker thread after init
+  - coreaudio prefills during init
+  - alsa prefills async after start
+- expose configured prefill size; may differ from requested latency
+  - solved by exposing stream delay
+- xruns may occur in user callback but also in audio hardware
+  may need to expose details of hardware xruns to user api
 - document thread safety
-- document what is and isn't safe inside callbacks, locking, blocking, cubeb calls
-- clarify samples vs frames vs bytes, introduce types or something
-- add silence insertion code
-- underrun handling for decoder
-- fix locking in callbacks
-- implement basic support for windows
-- get tests passing on windows
-- get pulse volume sane
-- test (and fix) small file handling
-- implement correct channel mapping
-  - switch on channel count for simple formats, use fixed mapping
-  - vorbis has documented mapping based on channel count (if mapping type == 0)
-    http://xiph.org/vorbis/doc/Vorbis_I_spec.html#x1-800004.3.9
+- document which calls may block, and when effects take effect
+- document what's permissible inside callbacks
+- implement basic channel mapping for surround
+  - vorbis has documented mapping based on channel count (if mapping type ==
+    0) -- http://xiph.org/vorbis/doc/Vorbis_I_spec.html#x1-800004.3.9
     1 -> M
     2 -> L, R
     3 -> L, C, R
@@ -48,172 +38,6 @@ TODO:
     6 -> L, R, C, LFE, RL, RR
     7 -> L, R, C, LFE, RC, SL, SR
     8 -> L, R, C, LFE, RL, RR, SL, SR
-  - wave files with WAVE_FORMAT_EXTENSIBLE have explicitly mappings, can extract these
-- fix audio api code
-- rework remote-audio code for android/fennec
-- document which calls may block, and when effects take effect
-  (e.g. drain doesn't block, volume doesn't(?) and effect is delayed)
-
-
-NOTES:
-- osx drain: fill buffer in prefill, return EOS.  listener set up for drain.
-  then user starts playback.
-  listener fires for playing==true.
-- AudioQueueGetCurrentTime can return negative mSampleTimes - why?
-
-============================================================================
-
-  start with basic stuff:
-  - callback to get data
-  - preflight buffering (user needs to know how much to prepare first?)
-  - per-stream volume
-  - threading model
-  - underrun handling model
-  - vorbis channel mappings
-
-
-  preflight - read a bunch of data before starting playback.
-   - user needs to know how much to prepare.
-
-  channel mapping - per vorbis spec
-   - what if particular mapping not available?
-     http://www.xiph.org/vorbis/doc/Vorbis_I_spec.html#x1-800004.3.9
-   - pick next one down and remix?
-
-  per-stream volume
-   - if we can't provide, cubeb will implement in software
-
-  implement formats in software by resampling
-
-  callback states:
-   preflight
-   playing
-   destroy
-
-  user can handle destroy as immediate or play-all-before-destroy by
-  reacting in callback.  actually doesn't work if latency is high so much
-  audio is buffered--need a way to force immediately destroy.  maybe destroy
-  while playing = drain, destroy while stopped = immediate?  one of stop or
-  destroy must provide an immediate option.
-
-  all of the library calls should return immediately.  this means any
-  potentially blocking operation (drain) must be notified via a callback.
-  should we reuse the audio callback for this, or use a new callback?
-  possibly use new, but structure it so the user can reuse the same callback
-  for both.
-
-  -> data callback, requests (or supplies -- for input) data
-  -> state callback, indicates a state change when it happens
-
-  must make guarantees about when callbacks will and won't run.  e.g. if
-  stream destroyed, no more callbacks run.  if a callback is currently
-  running... what? block the destroy or return but let the callback
-  complete?
-
-  callback timestamp is latest playback pos.  user can store this for
-  playback pos.  but then depends on callback latency -- not good idea to
-  callback as fast as we can provide position updates if it's unnecessary?
-
-  underrun handling?
-
-basic api:
-
-ctx = init(rate, channels, format, latency, data_callback)
-start(ctx)
-... data_callback runs on some thread ...
-ms = get_time(ctx)
-set_volume(ctx, v)
-stop(ctx, mode) : mode = now/drain
-... guarantee no data_callbacks after stop returns ...
-start(ctx)
-... data_callback runs on some thread ...
-ms = get_time(ctx)
-set_volume(ctx, v)
-stop(ctx, mode) : mode = now/drain
-destroy(ctx) (if running, calls stop)
-
-mode now = pause and keep buffered data to play when started
-mode drain = pause after remaining buffers played
-mode flush = pause and drop buffered data
-
-
-introduce types for samples and frames
-
-
-============================================================================
-from bugzilla:
-============================================================================
-The plan is to build a small library that maps closely to modern sound APIs
-(PulseAudio on Linux, CoreAudio (AudioQueue) on OS X, and either DirectSound or
-XAudio2 on Windows).  Rather than exposing a push-to-play model like
-sydneyaudio (which effectively requires a separate thread per playing media
-element to write audio), a callback will be called when more audio is required.
-
-It may be necessary to provide an ALSA backend in addition to the PulseAudio
-one, depending on the minimum Linux distro requirements post Firefox 4.
-
-Requirements:
-- remove necessity for 1-2 threads per active audio stream that we currently
-have (bug 592833)
-- underrun behavior/handling should be the same on each platform
-- low latency volume changes (bug 487504)
-- sharing top-level audio resources (bug 617852)
-- correct playback of sub-one-buffer length audio chunks (bug 615452)
-
-Reviewing some important aspects of existing behaviour:
-
-Playback start:
-- Linux: when start threshold reached
-- OS X: after first write
-- Win32: when block filled
-
-With a callback based model, this problem mostly disappears.  The library can
-decide what an appropriate initial buffer size is and explicitly request that
-the application fill it.
-
-Underrun:
-- Linux: audio clock stops ticking
-- OS X: audio clock continues at normal rate (callback writes silence)
-- Win32: audio clock stops ticking
-
-It's preferable for the clock to stop ticking.  The only reason it doesn't on
-OS X is that I'm not aware of a way to stop it--the implementation is already
-using a callback model, and when a callback requests more data than is
-available, it's not obvious what you can do other than write silence.
-
-API calls while underrun:
-- Linux: return error, usually return useless (initial state) values after
-recovery
-- OS X: work as there's effectively no underrun state
-- Win32: return frozen state at point of underrun
-
-Ideally the underrun recovery should be dealt with in a single place, so other
-API calls should try to return sensible values when playback is stopped due to
-underrun.
-
-Underrun recovery:
-- Linux: explicit, expensive, partial buffers lost
-- OS X: N/A
-- Win32: implicit (write more), cheap, no buffers lost
-
-There's not much control available of this, it's an attribute of the OS's audio
-API.
-
-Clock granularity:
-- Linux: unknown (but probably discoverable), often not more than one period
-length
-- OS X: dependent on callback buffer request size
-- Win32: unknown, seems fairly high (likely sample accurate)
-
-Clock read cost:
-- Linux: medium to high, cross-DSO call, possibly involving IPC
-- OS X: low, reads a local counter protected by a lock
-- Win32: medium, cross-DSO call
-
-In the current implementation, the caller may call the clock read function in a
-tight loop (with very short sleeps in between).  In the older Firefox media
-playback engine, it was assumed that the clock was fine enough granularity that
-individual video frames could be timed based on the audio clock updates. 
-Either the clock granularity must be explicit, high, and fast to read, or the
-API must be designed in such a way that the application can't easily make
-inappropriate assumptions about the clock's behaviour.
+  - wave files with WAVE_FORMAT_EXTENSIBLE have explicitly mappings, can
+    extract these
+- implement configurable channel mapping
