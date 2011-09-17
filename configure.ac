@@ -45,6 +45,34 @@ AM_PROG_CC_C_O
 AC_LIBTOOL_WIN32_DLL
 AM_PROG_LIBTOOL
 
+dnl Choose the target platform audio API
+AC_CHECK_HEADERS([alsa/soundlib.h pulse/pulseaudio.h \
+                  AudioToolbox/AudioToolbox.h \
+                  windows.h dsound.h])
+platform_api="none"
+platform_lib="none"
+if test $ac_cv_header_pulse_pulseaudio_h = yes; then
+  platform_api="pulse"
+  platform_lib="-lpulse"
+elif test $ac_cv_header_alsa_soundlib_h = yes; then
+  platform_api="alsa"
+  platform_lib="-lpulse"
+elif test $ac_cv_header_AudioToolbox_AudioToolbox_h = yes; then
+  platform_api="coreaudio"
+  platform_lib="-framework AudioToolbox"
+elif test $ac_cv_header_windows_h = yes; then
+  if test $ac_cv_header_dsound_h = yes; then
+    platform_api="dsound"
+  else
+    platform_api="wave"
+  fi
+fi
+AM_CONDITIONAL([PULSE], [test ${platform_api} = "pulse"])
+AM_CONDITIONAL([ALSA], [test ${platform_api} = "alsa"])
+AM_CONDITIONAL([COREAUDIO], [test ${platform_api} = "coreaudio"])
+AM_CONDITIONAL([DSOUND], [test ${platform_api} = "dsound"])
+AM_CONDITIONAL([WAVE], [test ${platform_api} = "wave"])
+
 dnl Check for doxygen
 AC_ARG_ENABLE([doc],
 	AS_HELP_STRING([--enable-doc], [Build API documentation]),
@@ -78,6 +106,7 @@ dnl --------------------------------------------------
 
 AC_SUBST(DEBUG)
 AC_SUBST(PROFILE)
+AC_SUBST(platform_lib)
 
 AC_OUTPUT([
   Makefile 
@@ -104,6 +133,7 @@ AC_MSG_RESULT([
 
   General configuration:
 
+    Platform API target: ........ ${platform_api}
     API Documentation: .......... ${doc_build}
 
   Installation paths:

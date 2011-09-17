@@ -21,15 +21,32 @@ cubebinclude_HEADERS = include/cubeb/cubeb.h include/cubeb/cubeb-stdint.h
 
 lib_LTLIBRARIES = src/libcubeb.la
 
-src_libcubeb_la_SOURCES = \
-	src/cubeb_pulse.c
+if PULSE
+src_libcubeb_la_SOURCES = src/cubeb_coreaudio.c
+endif
+if ALSA
+src_libcubeb_la_SOURCES = src/cubeb_alsa.c
+endif
+if COREAUDIO
+src_libcubeb_la_SOURCES = src/cubeb_coreaudio.c
+endif
+if WAVE
+src_libcubeb_la_SOURCES = src/cubeb_winmm.c
+endif
+if DSOUND
+src_libcubeb_la_SOURCES = src/cubeb_directsound.c
+endif
 
+EXTRA_src_libcubeb_la_SOURCES = \
+	cubeb_alsa.c cubeb_pulse.c \
+	cubeb_coreaudio.c \
+	cubeb_directsound.c cubeb_winmm.c
 src_libcubeb_la_LDFLAGS = -export-symbols-regex '^cubeb_'
 
 check_PROGRAMS = test/test_sanity
 
 test_test_sanity_SOURCES = test/test_sanity.c
-test_test_sanity_LDADD = -lpulse -lm src/libcubeb.la
+test_test_sanity_LDADD = $(platform_lib) -lm src/libcubeb.la
 
 TESTS = test/test_sanity
 
