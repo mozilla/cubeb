@@ -22,7 +22,7 @@ cubebinclude_HEADERS = include/cubeb/cubeb.h include/cubeb/cubeb-stdint.h
 lib_LTLIBRARIES = src/libcubeb.la
 
 if PULSE
-src_libcubeb_la_SOURCES = src/cubeb_coreaudio.c
+src_libcubeb_la_SOURCES = src/cubeb_pulse.c
 endif
 if ALSA
 src_libcubeb_la_SOURCES = src/cubeb_alsa.c
