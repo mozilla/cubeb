@@ -36,20 +36,20 @@ extern "C" {
     cubeb_stream_init(app_ctx, &stm, "Example Stream 1", params,
                       250, data_cb, state_cb, NULL);
 
-    cubeb_start(stm);
+    cubeb_stream_start(stm);
     for (;;) {
       cubeb_get_time(stm, &ts);
       printf("time=%lu\n", ts);
       sleep(1);
     }
-    cubeb_stop(stm);
+    cubeb_stream_stop(stm);
 
     cubeb_stream_destroy(stm);
     cubeb_destroy(app_ctx);
     @endcode
 
     @code
-    int data_cb(cubeb_stream * stm, void * user, void * buffer, size_t nframes)
+    long data_cb(cubeb_stream * stm, void * user, void * buffer, long nframes)
     {
       short * buf = buffer;
       for (i = 0; i < nframes; ++i) {
