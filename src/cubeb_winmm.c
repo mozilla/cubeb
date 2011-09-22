@@ -298,8 +298,6 @@ cubeb_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
 
   stm->free_buffers = NBUFS;
 
-  /* XXX: cubeb_buffer_callback will be called during waveOutOpen, so all
-     other initialization must be complete before calling it. */
   r = waveOutOpen(&stm->waveout, WAVE_MAPPER, &wfx.Format,
                   (DWORD_PTR) NULL, (DWORD_PTR) ctx->thread_id, CALLBACK_THREAD);
   if (r != MMSYSERR_NOERROR) {
