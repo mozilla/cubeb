@@ -36,6 +36,6 @@ cubeb.pc
 src/.dirstamp
 src/libcubeb.la
 stamp-h1
-test/test
 test/test_sanity
+test/test_tone
 include/cubeb/cubeb-stdint.h
