@@ -31,28 +31,6 @@ struct cubeb_stream {
 };
 
 static void
-audio_queue_listener_callback(void * userptr, AudioQueueRef queue, AudioQueuePropertyID id)
-{
-  cubeb_stream * stm;
-  OSStatus rv;
-  UInt32 playing, playing_size;
-
-  stm = userptr;
-
-  assert(id == kAudioQueueProperty_IsRunning);
-
-  playing_size = sizeof(playing);
-  rv = AudioQueueGetProperty(queue, kAudioQueueProperty_IsRunning, &playing, &playing_size);
-  assert(rv == 0);
-
-  if (stm->draining && !playing) {
-    stm->draining = 0;
-    stm->shutdown = 1;
-    stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
-  }
-}
-
-static void
 audio_queue_output_callback(void * userptr, AudioQueueRef queue, AudioQueueBufferRef buffer)
 {
   cubeb_stream * stm;
@@ -64,8 +42,12 @@ audio_queue_output_callback(void * userptr, AudioQueueRef queue, AudioQueueBuffe
   stm->free_buffers += 1;
   assert(stm->free_buffers > 0 && stm->free_buffers <= NBUFS);
 
-  if (stm->draining || stm->shutdown)
+  if (stm->draining || stm->shutdown) {
+    if (stm->draining && stm->free_buffers == NBUFS) {
+      stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
+    }
     return;
+  }
 
   got = stm->data_callback(stm, stm->user_ptr, buffer->mAudioData,
                            buffer->mAudioDataBytesCapacity / stm->sample_spec.mBytesPerFrame);
@@ -162,10 +144,6 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
                           stm, NULL, NULL, 0, &stm->queue);
   assert(r == 0);
 
-  r = AudioQueueAddPropertyListener(stm->queue, kAudioQueueProperty_IsRunning,
-                                    audio_queue_listener_callback, stm);
-  assert(r == 0);
-
   buffer_size = ss.mSampleRate / 1000.0 * latency * ss.mBytesPerFrame / NBUFS;
   if (buffer_size % ss.mBytesPerFrame != 0) {
     buffer_size += ss.mBytesPerFrame - (buffer_size % ss.mBytesPerFrame);
@@ -188,10 +166,6 @@ void
 cubeb_stream_destroy(cubeb_stream * stm)
 {
   OSStatus r;
-
-  r = AudioQueueRemovePropertyListener(stm->queue, kAudioQueueProperty_IsRunning,
-                                       audio_queue_listener_callback, stm);
-  assert(r == 0);
 
   stm->shutdown = 1;
 
