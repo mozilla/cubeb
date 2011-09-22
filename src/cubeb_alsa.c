@@ -150,6 +150,59 @@ cubeb_unregister_active_stream(cubeb * ctx, cubeb_stream * stm)
   rebuild_pfds(ctx);
 }
 
+static void
+cubeb_process_stream(cubeb_stream * stm)
+{
+  long got;
+  snd_pcm_sframes_t avail;
+  void * p;
+
+  avail = snd_pcm_avail_update(stm->pcm);
+  if (avail == -EPIPE) {
+    snd_pcm_recover(stm->pcm, avail, 1);
+    avail = snd_pcm_avail_update(stm->pcm);
+  }
+  p = calloc(1, snd_pcm_frames_to_bytes(stm->pcm, avail));
+  assert(p);
+  got = stm->data_callback(stm, stm->user_ptr, p, avail);
+  if (got < 0) {
+    assert(0); /* XXX handle this case */
+  }
+  if (got > 0) {
+    snd_pcm_sframes_t wrote = snd_pcm_writei(stm->pcm, p, got);
+    stm->write_position += wrote;
+  }
+  if (got != avail) {
+    struct cubeb_msg msg;
+#if 0
+    snd_pcm_state_t state = snd_pcm_state(stm->pcm);
+    r = snd_pcm_drain(stm->pcm);
+    assert(r == 0 || r == -EAGAIN);
+#endif
+
+    /* XXX write out a period of data to ensure real data is flushed to speakers */
+
+    /* XXX only fire this once */
+    stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
+
+#if 1
+    /* XXX can't rebuild pfds until we've finished processing the current list */
+    stm->state = CUBEB_STREAM_STATE_DEACTIVATING;
+
+    msg.type = CUBEB_MSG_DEL_STREAM;
+    msg.data = stm;
+    cubeb_send_msg(stm->context, &msg);
+#else
+    /* disable fds for poll */
+    /* XXX this will be undone upon next rebuild, so need to flag this somehow */
+    for (i = 0; i < stm->n_descriptors; ++i) {
+      tmppfds[i].fd = -1;
+    }
+#endif
+  }
+  free(p);
+}
+
 static void *
 cubeb_run_thread(void * context)
 {
@@ -185,52 +238,7 @@ cubeb_run_thread(void * context)
       }
 
       if (revents & POLLOUT) {
-        long got;
-        snd_pcm_sframes_t avail = snd_pcm_avail_update(stm->pcm);
-        void * p;
-        if (avail == -EPIPE) {
-          snd_pcm_recover(stm->pcm, avail, 1);
-          avail = snd_pcm_avail_update(stm->pcm);
-        }
-        p = calloc(1, snd_pcm_frames_to_bytes(stm->pcm, avail));
-        assert(p);
-        got = stm->data_callback(stm, stm->user_ptr, p, avail);
-        if (got < 0) {
-          assert(0); /* XXX handle this case */
-        }
-        if (got > 0) {
-          snd_pcm_sframes_t wrote = snd_pcm_writei(stm->pcm, p, got);
-          stm->write_position += wrote;
-        }
-        if (got != avail) {
-          struct cubeb_msg msg;
-#if 0
-          snd_pcm_state_t state = snd_pcm_state(stm->pcm);
-          r = snd_pcm_drain(stm->pcm);
-          assert(r == 0 || r == -EAGAIN);
-#endif
-
-          /* XXX write out a period of data to ensure real data is flushed to speakers */
-
-          /* XXX only fire this once */
-          stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
-
-#if 1
-          /* XXX can't rebuild pfds until we've finished processing the current list */
-          stm->state = CUBEB_STREAM_STATE_DEACTIVATING;
-
-          msg.type = CUBEB_MSG_DEL_STREAM;
-          msg.data = stm;
-          cubeb_send_msg(stm->context, &msg);
-#else
-          /* disable fds for poll */
-          /* XXX this will be undone upon next rebuild, so need to flag this somehow */
-          for (i = 0; i < stm->n_descriptors; ++i) {
-            tmppfds[i].fd = -1;
-          }
-#endif
-        }
-        free(p);
+        cubeb_process_stream(stm);
       }
 
       tmppfds += stm->n_descriptors;
