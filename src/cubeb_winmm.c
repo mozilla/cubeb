@@ -17,20 +17,14 @@
 
 #define NBUFS 4
 
-struct cubeb_stream_item {
-  SLIST_ENTRY head;
-  cubeb_stream * stream;
-};
-
 struct cubeb {
   HANDLE event;
   HANDLE thread;
+  unsigned int thread_id;
   int shutdown;
-  PSLIST_HEADER work;
 };
 
 struct cubeb_stream {
-  cubeb * context;
   cubeb_stream_params params;
   cubeb_data_callback data_callback;
   cubeb_state_callback state_callback;
@@ -115,39 +109,54 @@ cubeb_buffer_thread(void * user_ptr)
   cubeb * ctx = (cubeb *) user_ptr;
   assert(ctx);
 
+  /* force creation of thread's message queue. */
+  PeekMessage(NULL, NULL, 0, 0, PM_NOREMOVE);
+  SetEvent(ctx->event);
+
   for (;;) {
     DWORD rv;
-    struct cubeb_stream_item * item;
 
-    rv = WaitForSingleObject(ctx->event, INFINITE);
-    assert(rv == WAIT_OBJECT_0);
+    rv = MsgWaitForMultipleObjects(1, &ctx->event, FALSE, INFINITE, QS_ALLEVENTS);
+    assert(rv == WAIT_OBJECT_0 || rv == WAIT_OBJECT_0 + 1);
 
-    item = (struct cubeb_stream_item *) InterlockedPopEntrySList(ctx->work);
-    while (item) {
-      cubeb_stream * stm = item->stream;
+    if (rv == WAIT_OBJECT_0 + 1) {
+      MSG msg;
+      BOOL ok = PeekMessage(&msg, NULL, 0, 0, PM_REMOVE);
+      assert(ok);
+      switch (msg.message) {
+      case MM_WOM_OPEN:
+        fprintf(stderr, "stream open\n");
+        break;
+      case MM_WOM_CLOSE:
+        fprintf(stderr, "stream close\n");
+        break;
+      case MM_WOM_DONE: {
+        cubeb_stream * stm = (cubeb_stream *)((WAVEHDR *) msg.lParam)->dwUser;
+        fprintf(stderr, "stream buffer done\n");
 
-      EnterCriticalSection(&stm->lock);
-      stm->free_buffers += 1;
-      assert(stm->free_buffers > 0 && stm->free_buffers <= NBUFS);
+        EnterCriticalSection(&stm->lock);
+        stm->free_buffers += 1;
+        assert(stm->free_buffers > 0 && stm->free_buffers <= NBUFS);
 
-      if (stm->draining || stm->shutdown) {
-        if (stm->free_buffers == NBUFS) {
-          if (stm->draining) {
-            stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
+        if (stm->draining || stm->shutdown) {
+          if (stm->free_buffers == NBUFS) {
+            if (stm->draining) {
+              stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
+            }
+            SetEvent(stm->event);
           }
-          SetEvent(stm->event);
+        } else {
+          cubeb_submit_buffer(stm, cubeb_get_next_buffer(stm));
         }
-      } else {
-        cubeb_submit_buffer(stm, cubeb_get_next_buffer(stm));
+        LeaveCriticalSection(&stm->lock);
+
+        break;
       }
-      LeaveCriticalSection(&stm->lock);
-
-      _aligned_free(item);
-
-      item = (struct cubeb_stream_item *) InterlockedPopEntrySList(ctx->work);
+      default:
+        fprintf(stderr, "weird message: %u\n", msg.message);
+        assert(0);
+      }
     }
-
-    assert(!InterlockedPopEntrySList(ctx->work));
 
     if (ctx->shutdown) {
       break;
@@ -155,24 +164,6 @@ cubeb_buffer_thread(void * user_ptr)
   }
 
   return 0;
-}
-
-static void CALLBACK
-cubeb_buffer_callback(HWAVEOUT waveout, UINT msg, DWORD_PTR user_ptr, DWORD_PTR p1, DWORD_PTR p2)
-{
-  cubeb_stream * stm = (cubeb_stream *) user_ptr;
-  struct cubeb_stream_item * item;
-
-  if (msg != WOM_DONE) {
-    return;
-  }
-
-  item = _aligned_malloc(sizeof(struct cubeb_stream_item), MEMORY_ALLOCATION_ALIGNMENT);
-  assert(item);
-  item->stream = stm;
-  InterlockedPushEntrySList(stm->context->work, &item->head);
-
-  SetEvent(stm->context->event);
 }
 
 int
@@ -183,23 +174,22 @@ cubeb_init(cubeb ** context, char const * context_name)
   ctx = calloc(1, sizeof(*ctx));
   assert(ctx);
 
-  ctx->work = _aligned_malloc(sizeof(*ctx->work), MEMORY_ALLOCATION_ALIGNMENT);
-  assert(ctx->work);
-  InitializeSListHead(ctx->work);
-
   ctx->event = CreateEvent(NULL, FALSE, FALSE, NULL);
   if (!ctx->event) {
     cubeb_destroy(ctx);
     return CUBEB_ERROR;
   }
 
-  ctx->thread = (HANDLE) _beginthreadex(NULL, 64 * 1024, cubeb_buffer_thread, ctx, 0, NULL);
+  ctx->thread = (HANDLE) _beginthreadex(NULL, 64 * 1024, cubeb_buffer_thread, ctx, 0, &ctx->thread_id);
   if (!ctx->thread) {
     cubeb_destroy(ctx);
     return CUBEB_ERROR;
   }
 
   SetThreadPriority(ctx->thread, THREAD_PRIORITY_TIME_CRITICAL);
+
+  /* wait for thread to start; need thread message queue created before creating a stream. */
+  WaitForSingleObject(ctx->event, INFINITE);
 
   *context = ctx;
 
@@ -210,8 +200,6 @@ void
 cubeb_destroy(cubeb * ctx)
 {
   DWORD rv;
-
-  assert(!InterlockedPopEntrySList(ctx->work));
 
   if (ctx->thread) {
     ctx->shutdown = 1;
@@ -225,13 +213,11 @@ cubeb_destroy(cubeb * ctx)
     CloseHandle(ctx->event);
   }
 
-  _aligned_free(ctx->work);
-
   free(ctx);
 }
 
 int
-cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
+cubeb_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
                   cubeb_stream_params stream_params, unsigned int latency,
                   cubeb_data_callback data_callback,
                   cubeb_state_callback state_callback,
@@ -282,8 +268,6 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   stm = calloc(1, sizeof(*stm));
   assert(stm);
 
-  stm->context = context;
-
   stm->params = stream_params;
 
   stm->data_callback = data_callback;
@@ -301,6 +285,7 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
     assert(stm->buffers[i].lpData);
     stm->buffers[i].dwBufferLength = bufsz;
     stm->buffers[i].dwFlags = 0;
+    stm->buffers[i].dwUser = (DWORD_PTR) stm;
   }
 
   InitializeCriticalSection(&stm->lock);
@@ -313,11 +298,10 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
 
   stm->free_buffers = NBUFS;
 
-  /* cubeb_buffer_callback will be called during waveOutOpen, so all
+  /* XXX: cubeb_buffer_callback will be called during waveOutOpen, so all
      other initialization must be complete before calling it. */
   r = waveOutOpen(&stm->waveout, WAVE_MAPPER, &wfx.Format,
-                  (DWORD_PTR) cubeb_buffer_callback, (DWORD_PTR) stm,
-                  CALLBACK_FUNCTION);
+                  (DWORD_PTR) NULL, (DWORD_PTR) ctx->thread_id, CALLBACK_THREAD);
   if (r != MMSYSERR_NOERROR) {
     cubeb_stream_destroy(stm);
     return CUBEB_ERROR;
