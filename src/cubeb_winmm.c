@@ -85,9 +85,10 @@ cubeb_submit_buffer(cubeb_stream * stm, WAVEHDR * hdr)
   long got;
   MMRESULT r;
 
-  got = stm->data_callback(stm, stm->user_ptr, hdr->lpData, hdr->dwBufferLength / bytes_per_frame(stm->params));
+  got = stm->data_callback(stm, stm->user_ptr, hdr->lpData,
+                           hdr->dwBufferLength / bytes_per_frame(stm->params));
   if (got < 0) {
-    // XXX handle this case
+    /* XXX handle this case */
     assert(0);
     return;
   } else if ((DWORD) got < hdr->dwBufferLength / bytes_per_frame(stm->params)) {
@@ -157,7 +158,7 @@ cubeb_buffer_thread(void * user_ptr)
 }
 
 static void CALLBACK
-cubeb_buffer_callback(HWAVEOUT waveout, UINT msg, DWORD_PTR user_ptr, DWORD_PTR param1, DWORD_PTR param2)
+cubeb_buffer_callback(HWAVEOUT waveout, UINT msg, DWORD_PTR user_ptr, DWORD_PTR p1, DWORD_PTR p2)
 {
   cubeb_stream * stm = (cubeb_stream *) user_ptr;
   struct cubeb_stream_item * item;
