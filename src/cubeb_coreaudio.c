@@ -69,8 +69,6 @@ audio_queue_output_callback(void * userptr, AudioQueueRef queue, AudioQueueBuffe
 
   got = stm->data_callback(stm, stm->user_ptr, buffer->mAudioData,
                            buffer->mAudioDataBytesCapacity / stm->sample_spec.mBytesPerFrame);
-  fprintf(stderr, "%p: %p (%p %u) got %ld\n", stm, buffer, buffer->mAudioData, 
-buffer->mAudioDataByteSize, got);
   if (got < 0) {
     // XXX handle this case.
     assert(false);
@@ -87,7 +85,6 @@ buffer->mAudioDataByteSize, got);
 
   if (got < buffer->mAudioDataBytesCapacity / stm->sample_spec.mBytesPerFrame) {
     stm->draining = 1;
-    fprintf(stderr, "%p: stop queue %p (draining)\n", stm, stm->queue);
     rv = AudioQueueStop(queue, false);
     assert(rv == 0);
   }
@@ -164,7 +161,6 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   r = AudioQueueNewOutput(&stm->sample_spec, audio_queue_output_callback,
                           stm, NULL, NULL, 0, &stm->queue);
   assert(r == 0);
-  fprintf(stderr, "%p: new queue %p\n", stm, stm->queue);
 
   r = AudioQueueAddPropertyListener(stm->queue, kAudioQueueProperty_IsRunning,
                                     audio_queue_listener_callback, stm);
@@ -179,7 +175,6 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   for (i = 0; i < NBUFS; ++i) {
     r = AudioQueueAllocateBuffer(stm->queue, buffer_size, &stm->buffers[i]);
     assert(r == 0);
-    fprintf(stderr, "%p: %d: %p (%p %u)\n", stm, i, stm->buffers[i], stm->buffers[i]->mAudioData, buffer_size);
 
     audio_queue_output_callback(stm, stm->queue, stm->buffers[i]);
   }
@@ -193,8 +188,6 @@ void
 cubeb_stream_destroy(cubeb_stream * stm)
 {
   OSStatus r;
-
-  fprintf(stderr, "%p: stop queue %p (d=%d)\n", stm, stm->queue, stm->draining);
 
   r = AudioQueueRemovePropertyListener(stm->queue, kAudioQueueProperty_IsRunning,
                                        audio_queue_listener_callback, stm);
@@ -217,7 +210,6 @@ int
 cubeb_stream_start(cubeb_stream * stm)
 {
   OSStatus r;
-  fprintf(stderr, "%p: start queue %p\n", stm, stm->queue);
   r = AudioQueueStart(stm->queue, NULL);
   assert(r == 0);
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STARTED);
@@ -228,7 +220,6 @@ int
 cubeb_stream_stop(cubeb_stream * stm)
 {
   OSStatus r;
-  fprintf(stderr, "%p: pause queue %p\n", stm, stm->queue);
   r = AudioQueuePause(stm->queue);
   assert(r == 0);
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STOPPED);
@@ -248,7 +239,7 @@ cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
   }
   assert(tstamp.mFlags & kAudioTimeStampSampleTimeValid);
   *position = tstamp.mSampleTime;
-  /* XXX need to investigate why GetCurrentTime returns a "valid" negative time */
+  /* XXX understand why GetCurrentTime may return a negative time on success */
   if (tstamp.mSampleTime < 0) {
     *position = 0;
   }
