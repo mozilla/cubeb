@@ -49,6 +49,11 @@ check_PROGRAMS = test/test_sanity
 test_test_sanity_SOURCES = test/test_sanity.c
 test_test_sanity_LDADD = $(platform_lib) -lm src/libcubeb.la
 
+noinst_PROGRAMS = test/test_tone
+
+test_test_tone_SOURCES = test/test_tone.c
+test_test_tone_LDADD = $(platform_lib) -lm src/libcubeb.la
+
 TESTS = test/test_sanity
 
 DISTCLEANFILES = include/cubeb/cubeb-stdint.h
