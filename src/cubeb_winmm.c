@@ -290,7 +290,7 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   stm->state_callback = state_callback;
   stm->user_ptr = user_ptr;
 
-  bufsz = stm->params.rate / 1000.0 * latency * bytes_per_frame(stm->params) / NBUFS;
+  bufsz = (size_t) (stm->params.rate / 1000.0 * latency * bytes_per_frame(stm->params) / NBUFS);
   if (bufsz % bytes_per_frame(stm->params) != 0) {
     bufsz += bytes_per_frame(stm->params) - (bufsz % bytes_per_frame(stm->params));
   }
