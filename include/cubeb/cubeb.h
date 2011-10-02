@@ -32,9 +32,11 @@ extern "C" {
     params.rate = 48000;
     params.channels = 2;
 
+    unsigned int latency_ms = 250;
+
     cubeb_stream * stm;
     cubeb_stream_init(app_ctx, &stm, "Example Stream 1", params,
-                      250, data_cb, state_cb, NULL);
+                      latency_ms, data_cb, state_cb, NULL);
 
     cubeb_stream_start(stm);
     for (;;) {
@@ -104,8 +106,8 @@ typedef enum {
 typedef struct {
   cubeb_sample_format format; /**< Requested sample format.  One of
                                    #cubeb_sample_format. */
-  unsigned int rate;          /**< Requested sample rate. */
-  unsigned int channels;      /**< Requested channel count. */
+  unsigned int rate;          /**< Requested sample rate.  Valid range is [1, 192000]. */
+  unsigned int channels;      /**< Requested channel count.  Valid range is [1, 32]. */
 } cubeb_stream_params;
 
 /** Stream states signaled via state_callback. */
@@ -162,7 +164,7 @@ void cubeb_destroy(cubeb * context);
     @param stream
     @param stream_name
     @param stream_params
-    @param latency Approximate stream latency in milliseconds.
+    @param latency Approximate stream latency in milliseconds.  Valid range is [1, 2000].
     @param data_callback Will be called to preroll data before playback is
                           started by cubeb_stream_start.
     @param state_callback

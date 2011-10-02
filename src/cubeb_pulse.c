@@ -42,12 +42,6 @@ context_state_callback(pa_context * c, void * m)
 }
 
 static void
-context_success_callback(pa_context * c, int success, void * m)
-{
-  pa_threaded_mainloop_signal(m, 0);
-}
-
-static void
 context_notify_callback(pa_context * c, void * m)
 {
   pa_threaded_mainloop_signal(m, 0);
@@ -246,6 +240,12 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   pa_operation * o;
   pa_buffer_attr battr;
   pa_channel_map map;
+
+  if (stream_params.rate < 1 || stream_params.rate > 192000 ||
+      stream_params.channels < 1 || stream_params.channels > 32 ||
+      latency < 1 || latency > 2000) {
+    return CUBEB_ERROR_INVALID_FORMAT;
+  }
 
   switch (stream_params.format) {
   case CUBEB_SAMPLE_S16LE:
