@@ -42,12 +42,6 @@ context_state_callback(pa_context * c, void * m)
 }
 
 static void
-context_success_callback(pa_context * c, int success, void * m)
-{
-  pa_threaded_mainloop_signal(m, 0);
-}
-
-static void
 context_notify_callback(pa_context * c, void * m)
 {
   pa_threaded_mainloop_signal(m, 0);
