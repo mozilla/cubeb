@@ -347,6 +347,12 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
 {
   struct cubeb_list_node * node;
 
+  if (stream_params.rate < 1 || stream_params.rate > 192000 ||
+      stream_params.channels < 1 || stream_params.channels > 32 ||
+      latency < 1 || latency > 2000) {
+    return CUBEB_ERROR_INVALID_FORMAT;
+  }
+
   /*
     create primary buffer
   */
