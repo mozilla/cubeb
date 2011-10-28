@@ -12,11 +12,15 @@
 #include <unistd.h>
 #include "cubeb/cubeb.h"
 
-static pthread_mutex_t cubeb_alsa_lock = PTHREAD_MUTEX_INITIALIZER;
+/* ALSA is not thread-safe.  snd_pcm_t instances are individually protected
+   by the owning cubeb_stream's mutex.  snd_pcm_t creation and destruction
+   is not thread-safe until ALSA 1.0.24 (see alsa-lib.git commit 91c9c8f1),
+   so those calls must be wrapped in the following global mutex. */
+static pthread_mutex_t cubeb_alsa_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-#define CUBEB_MSG_SHUTDOWN   0
-#define CUBEB_MSG_ADD_STREAM 1
-#define CUBEB_MSG_DEL_STREAM 2
+#define CUBEB_MSG_TYPE_SHUTDOWN   0
+#define CUBEB_MSG_TYPE_ADD_STREAM 1
+#define CUBEB_MSG_TYPE_DEL_STREAM 2
 
 struct cubeb_msg {
   int type;
@@ -45,7 +49,7 @@ struct cubeb {
 
 struct cubeb_stream {
   cubeb * context;
-  pthread_mutex_t lock;
+  pthread_mutex_t mutex;
   pthread_cond_t cond;
   snd_pcm_t * pcm;
   struct pollfd * descriptors;
@@ -189,7 +193,7 @@ cubeb_process_stream(cubeb_stream * stm)
     /* XXX can't rebuild pfds until we've finished processing the current list */
     stm->state = CUBEB_STREAM_STATE_DEACTIVATING;
 
-    msg.type = CUBEB_MSG_DEL_STREAM;
+    msg.type = CUBEB_MSG_TYPE_DEL_STREAM;
     msg.data = stm;
     cubeb_send_msg(stm->context, &msg);
 #else
@@ -249,25 +253,25 @@ cubeb_run_thread(void * context)
       cubeb_recv_msg(ctx, &msg);
 
       switch (msg.type) {
-      case CUBEB_MSG_SHUTDOWN:
+      case CUBEB_MSG_TYPE_SHUTDOWN:
         return NULL;
-      case CUBEB_MSG_ADD_STREAM:
+      case CUBEB_MSG_TYPE_ADD_STREAM:
         stm = msg.data;
         cubeb_register_active_stream(ctx, stm);
-        pthread_mutex_lock(&stm->lock);
+        pthread_mutex_lock(&stm->mutex);
         assert(stm->state == CUBEB_STREAM_STATE_ACTIVATING);
         stm->state = CUBEB_STREAM_STATE_ACTIVE;
         pthread_cond_broadcast(&stm->cond);
-        pthread_mutex_unlock(&stm->lock);
+        pthread_mutex_unlock(&stm->mutex);
         break;
-      case CUBEB_MSG_DEL_STREAM:
+      case CUBEB_MSG_TYPE_DEL_STREAM:
         stm = msg.data;
         cubeb_unregister_active_stream(ctx, stm);
-        pthread_mutex_lock(&stm->lock);
+        pthread_mutex_lock(&stm->mutex);
         assert(stm->state == CUBEB_STREAM_STATE_DEACTIVATING);
         stm->state = CUBEB_STREAM_STATE_INACTIVE;
         pthread_cond_broadcast(&stm->cond);
-        pthread_mutex_unlock(&stm->lock);
+        pthread_mutex_unlock(&stm->mutex);
         break;
       }
     }
@@ -281,9 +285,9 @@ cubeb_locked_pcm_open(snd_pcm_t ** pcm, snd_pcm_stream_t stream)
 {
   int r;
 
-  pthread_mutex_lock(&cubeb_alsa_lock);
+  pthread_mutex_lock(&cubeb_alsa_mutex);
   r = snd_pcm_open(pcm, "default", stream, SND_PCM_NONBLOCK);
-  pthread_mutex_unlock(&cubeb_alsa_lock);
+  pthread_mutex_unlock(&cubeb_alsa_mutex);
 
   return r;
 }
@@ -293,9 +297,9 @@ cubeb_locked_pcm_close(snd_pcm_t * pcm)
 {
   int r;
 
-  pthread_mutex_lock(&cubeb_alsa_lock);
+  pthread_mutex_lock(&cubeb_alsa_mutex);
   r = snd_pcm_close(pcm);
-  pthread_mutex_unlock(&cubeb_alsa_lock);
+  pthread_mutex_unlock(&cubeb_alsa_mutex);
 
   return r;
 }
@@ -339,7 +343,7 @@ cubeb_destroy(cubeb * ctx)
 
   assert(ctx);
 
-  msg.type = CUBEB_MSG_SHUTDOWN;
+  msg.type = CUBEB_MSG_TYPE_SHUTDOWN;
   msg.data = NULL;
   cubeb_send_msg(ctx, &msg);
 
@@ -400,7 +404,7 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   stm->user_ptr = user_ptr;
   stm->params = stream_params;
 
-  r = pthread_mutex_init(&stm->lock, NULL);
+  r = pthread_mutex_init(&stm->mutex, NULL);
   assert(r == 0);
 
   r = pthread_cond_init(&stm->cond, NULL);
@@ -462,7 +466,7 @@ cubeb_stream_destroy(cubeb_stream * stm)
   }
 
   pthread_cond_destroy(&stm->cond);
-  pthread_mutex_destroy(&stm->lock);
+  pthread_mutex_destroy(&stm->mutex);
 
   free(stm->descriptors);
 
@@ -477,11 +481,11 @@ cubeb_stream_start(cubeb_stream * stm)
 
   assert(stm);
 
-  pthread_mutex_lock(&stm->lock);
+  pthread_mutex_lock(&stm->mutex);
 
   /* XXX check how this is used in refill loop */
   if (stm->state == CUBEB_STREAM_STATE_ACTIVE || stm->state == CUBEB_STREAM_STATE_ACTIVATING) {
-    pthread_mutex_unlock(&stm->lock);
+    pthread_mutex_unlock(&stm->mutex);
     return CUBEB_OK; /* XXX perhaps this should signal an error */
   }
 
@@ -493,16 +497,16 @@ cubeb_stream_start(cubeb_stream * stm)
   if (stm->state != CUBEB_STREAM_STATE_ACTIVATING) {
     stm->state = CUBEB_STREAM_STATE_ACTIVATING;
 
-    msg.type = CUBEB_MSG_ADD_STREAM;
+    msg.type = CUBEB_MSG_TYPE_ADD_STREAM;
     msg.data = stm;
     cubeb_send_msg(stm->context, &msg);
   }
 
   while (stm->state == CUBEB_STREAM_STATE_ACTIVATING) {
-    pthread_cond_wait(&stm->cond, &stm->lock);
+    pthread_cond_wait(&stm->cond, &stm->mutex);
   }
 
-  pthread_mutex_unlock(&stm->lock);
+  pthread_mutex_unlock(&stm->mutex);
 
   return CUBEB_OK;
 }
@@ -515,10 +519,10 @@ cubeb_stream_stop(cubeb_stream * stm)
 
   assert(stm);
 
-  pthread_mutex_lock(&stm->lock);
+  pthread_mutex_lock(&stm->mutex);
 
   if (stm->state == CUBEB_STREAM_STATE_INACTIVE) {
-    pthread_mutex_unlock(&stm->lock);
+    pthread_mutex_unlock(&stm->mutex);
     return CUBEB_OK; /* XXX perhaps this should signal an error */
   }
 
@@ -530,16 +534,16 @@ cubeb_stream_stop(cubeb_stream * stm)
   if (stm->state != CUBEB_STREAM_STATE_DEACTIVATING) {
     stm->state = CUBEB_STREAM_STATE_DEACTIVATING;
 
-    msg.type = CUBEB_MSG_DEL_STREAM;
+    msg.type = CUBEB_MSG_TYPE_DEL_STREAM;
     msg.data = stm;
     cubeb_send_msg(stm->context, &msg);
   }
 
   while (stm->state == CUBEB_STREAM_STATE_DEACTIVATING) {
-    pthread_cond_wait(&stm->cond, &stm->lock);
+    pthread_cond_wait(&stm->cond, &stm->mutex);
   }
 
-  pthread_mutex_unlock(&stm->lock);
+  pthread_mutex_unlock(&stm->mutex);
 
   return CUBEB_OK;
 }
@@ -552,12 +556,12 @@ cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
   assert(stm);
   assert(position);
 
-  pthread_mutex_lock(&stm->lock);
+  pthread_mutex_lock(&stm->mutex);
 
   if (snd_pcm_state(stm->pcm) != SND_PCM_STATE_RUNNING ||
       snd_pcm_delay(stm->pcm, &delay) != 0) {
     *position = stm->last_position;
-    pthread_mutex_unlock(&stm->lock);
+    pthread_mutex_unlock(&stm->mutex);
     return CUBEB_OK;
   }
 
@@ -570,6 +574,6 @@ cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
 
   stm->last_position = *position;
 
-  pthread_mutex_unlock(&stm->lock);
+  pthread_mutex_unlock(&stm->mutex);
   return CUBEB_OK;
 }
