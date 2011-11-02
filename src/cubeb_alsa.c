@@ -366,8 +366,6 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   cubeb_stream * stm;
   int r;
   snd_pcm_format_t format;
-  snd_pcm_uframes_t buffer_size;
-  snd_pcm_uframes_t period_size;
 
   assert(context);
   assert(stream);
@@ -428,10 +426,6 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
     return CUBEB_ERROR;
   }
 
-  r = snd_pcm_get_params(stm->pcm, &buffer_size, &period_size);
-  assert(r == 0);
-  fprintf(stderr, "b=%u p=%u\n", buffer_size, period_size);
-
   /* set up poll infrastructure */
 
   stm->n_descriptors = snd_pcm_poll_descriptors_count(stm->pcm);
@@ -442,11 +436,6 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
 
   r = snd_pcm_poll_descriptors(stm->pcm, stm->descriptors, stm->n_descriptors);
   assert(r == stm->n_descriptors);
-
-  r = snd_pcm_pause(stm->pcm, 1);
-#if 0
-  assert(r == 0);
-#endif
 
   stm->state = CUBEB_STREAM_STATE_INACTIVE;
 
@@ -476,7 +465,6 @@ cubeb_stream_destroy(cubeb_stream * stm)
 int
 cubeb_stream_start(cubeb_stream * stm)
 {
-  int r;
   struct cubeb_msg msg;
 
   assert(stm);
@@ -489,10 +477,7 @@ cubeb_stream_start(cubeb_stream * stm)
     return CUBEB_OK; /* XXX perhaps this should signal an error */
   }
 
-  r = snd_pcm_pause(stm->pcm, 0);
-#if 0
-  assert(r == 0);
-#endif
+  snd_pcm_pause(stm->pcm, 0);
 
   if (stm->state != CUBEB_STREAM_STATE_ACTIVATING) {
     stm->state = CUBEB_STREAM_STATE_ACTIVATING;
@@ -514,7 +499,6 @@ cubeb_stream_start(cubeb_stream * stm)
 int
 cubeb_stream_stop(cubeb_stream * stm)
 {
-  int r;
   struct cubeb_msg msg;
 
   assert(stm);
@@ -526,10 +510,7 @@ cubeb_stream_stop(cubeb_stream * stm)
     return CUBEB_OK; /* XXX perhaps this should signal an error */
   }
 
-  r = snd_pcm_pause(stm->pcm, 1);
-#if 0
-  assert(r == 0);
-#endif
+  snd_pcm_pause(stm->pcm, 1);
 
   if (stm->state != CUBEB_STREAM_STATE_DEACTIVATING) {
     stm->state = CUBEB_STREAM_STATE_DEACTIVATING;
