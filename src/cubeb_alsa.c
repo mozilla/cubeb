@@ -5,11 +5,13 @@
  * accompanying file LICENSE for details.
  */
 #undef NDEBUG
-#include <linux/limits.h>
-#include <alsa/asoundlib.h>
+#define _POSIX_SOURCE 1
 #include <assert.h>
+#include <limits.h>
 #include <pthread.h>
+#include <time.h>
 #include <unistd.h>
+#include <alsa/asoundlib.h>
 #include "cubeb/cubeb.h"
 
 /* ALSA is not thread-safe.  snd_pcm_t instances are individually protected
@@ -310,6 +312,7 @@ cubeb_init(cubeb ** context, char const * context_name)
   cubeb * ctx;
   int r;
   int pipe_fd[2];
+  pthread_attr_t attr;
 
   assert(context);
 
@@ -326,8 +329,15 @@ cubeb_init(cubeb ** context, char const * context_name)
 
   rebuild_pfds(ctx);
 
-  /* XXX set stack size to minimum */
-  r = pthread_create(&ctx->thread, NULL, cubeb_run_thread, ctx);
+  r = pthread_attr_init(&attr);
+  assert(r == 0);
+  r = pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN);
+  assert(r == 0);
+
+  r = pthread_create(&ctx->thread, &attr, cubeb_run_thread, ctx);
+  assert(r == 0);
+
+  r = pthread_attr_destroy(&attr);
   assert(r == 0);
 
   *context = ctx;
