@@ -1,8 +1,5 @@
 TODO:
-- osx drain: listener fails to fire on 10.5 often (and sometimes on 10.6)
-  add watchdog timer to deal with this
 - osx: understand why AudioQueueGetCurrentTime can return negative mSampleTime
-- alsa: drain blocks in nblock mode (for alsa-pulse), so need watchdog timer
 - test (and fix) sub-prefill size data playback
 - report stream delay instead of position; leave position calculation to user
 - capture support
