@@ -21,7 +21,7 @@ struct cubeb_stream {
   cubeb_data_callback data_callback;
   cubeb_state_callback state_callback;
   void * user_ptr;
-  pa_operation * draining;
+  pa_time_event * drain_timer;
   pa_sample_spec sample_spec;
   int shutdown;
 };
@@ -54,13 +54,14 @@ stream_success_callback(pa_stream * s, int success, void * m)
 }
 
 static void
-stream_drain_success_callback(pa_stream * s, int success, void * u)
+stream_drain_callback(pa_mainloop_api * a, pa_time_event * e, struct timeval const * tv, void * u)
 {
   cubeb_stream * stm = u;
 
+  /* there's no pa_rttime_free, so use this instead. */
+  a->time_free(stm->drain_timer);
+  stm->drain_timer = NULL;
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
-
-  pa_threaded_mainloop_signal(stm->context->mainloop, 0);
 }
 
 static void
@@ -114,7 +115,10 @@ stream_request_callback(pa_stream * s, size_t nbytes, void * u)
     assert(r == 0);
 
     if ((size_t) got < size / frame_size) {
-      stm->draining = pa_stream_drain(s, stream_drain_success_callback, stm);
+      size_t buffer_fill = pa_stream_get_buffer_attr(s)->maxlength - pa_stream_writable_size(s);
+      double buffer_time = (double) buffer_fill / stm->sample_spec.rate;
+      /* pa_stream_drain is useless, see PA bug# 866. this is a workaround. */
+      stm->drain_timer = pa_context_rttime_new(stm->context->context, pa_rtclock_now() + buffer_time * 1e6, stream_drain_callback, stm);
       stm->shutdown = 1;
       return;
     }
@@ -321,9 +325,9 @@ cubeb_stream_destroy(cubeb_stream * stm)
 
     pa_threaded_mainloop_lock(stm->context->mainloop);
 
-    if (stm->draining) {
-      pa_operation_cancel(stm->draining);
-      pa_operation_unref(stm->draining);
+    if (stm->drain_timer) {
+      /* there's no pa_rttime_free, so use this instead. */
+      pa_threaded_mainloop_get_api(stm->context->mainloop)->time_free(stm->drain_timer);
     }
 
     pa_stream_disconnect(stm->stream);
