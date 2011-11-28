@@ -147,8 +147,6 @@ cubeb_buffer_thread(void * user_ptr)
       item = (struct cubeb_stream_item *) InterlockedPopEntrySList(ctx->work);
     }
 
-    assert(!InterlockedPopEntrySList(ctx->work));
-
     if (ctx->shutdown) {
       break;
     }
