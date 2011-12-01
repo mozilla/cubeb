@@ -1,4 +1,5 @@
 TODO:
+- directsound: incomplete and somewhat broken
 - osx: understand why AudioQueueGetCurrentTime can return negative mSampleTime
 - test (and fix) sub-prefill size data playback
 - report stream delay instead of position; leave position calculation to user
