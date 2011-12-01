@@ -456,13 +456,17 @@ cubeb_refill_stream(void * stream, struct pollfd * fds, nfds_t nfds)
   long got;
   void * p;
 
+  pthread_mutex_lock(&stm->mutex);
+
   r = snd_pcm_poll_descriptors_revents(stm->pcm, fds, nfds, &revents);
   if (r < 0 || revents == POLLERR) {
     stm->waitable = NULL;
+    pthread_mutex_unlock(&stm->mutex);
     return XPOLL_WAITABLE_REMOVE;
   }
 
   if (revents != POLLOUT) {
+    pthread_mutex_unlock(&stm->mutex);
     return XPOLL_WAITABLE_CONTINUE;
   }
 
@@ -473,6 +477,7 @@ cubeb_refill_stream(void * stream, struct pollfd * fds, nfds_t nfds)
   }
   if (avail < 0) {
     stm->waitable = NULL;
+    pthread_mutex_unlock(&stm->mutex);
     return XPOLL_WAITABLE_REMOVE;
   }
 
@@ -502,7 +507,10 @@ cubeb_refill_stream(void * stream, struct pollfd * fds, nfds_t nfds)
 
   free(p);
 
-  return stm->waitable ? XPOLL_WAITABLE_CONTINUE : XPOLL_WAITABLE_REMOVE;
+  r = stm->waitable ? XPOLL_WAITABLE_CONTINUE : XPOLL_WAITABLE_REMOVE;
+  pthread_mutex_unlock(&stm->mutex);
+
+  return r;
 }
 
 static void *
@@ -694,6 +702,8 @@ cubeb_stream_start(cubeb_stream * stm)
     return CUBEB_OK;
   }
 
+  snd_pcm_pause(stm->pcm, 0);
+
   nfds = snd_pcm_poll_descriptors_count(stm->pcm);
   assert(nfds > 0);
 
@@ -702,7 +712,6 @@ cubeb_stream_start(cubeb_stream * stm)
   r = snd_pcm_poll_descriptors(stm->pcm, fds, nfds);
   assert(r == nfds);
 
-  snd_pcm_pause(stm->pcm, 0);
   stm->waitable = xpoll_waitable_init(stm->context->xpoll, fds, nfds, cubeb_refill_stream, stm);
 
   free(fds);
