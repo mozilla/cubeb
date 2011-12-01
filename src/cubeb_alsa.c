@@ -457,9 +457,8 @@ cubeb_refill_stream(void * stream, struct pollfd * fds, nfds_t nfds)
   void * p;
 
   r = snd_pcm_poll_descriptors_revents(stm->pcm, fds, nfds, &revents);
-  assert(r >= 0);
-
-  if (revents == POLLERR) {
+  if (r < 0 || revents == POLLERR) {
+    stm->waitable = NULL;
     return XPOLL_WAITABLE_REMOVE;
   }
 
@@ -473,6 +472,7 @@ cubeb_refill_stream(void * stream, struct pollfd * fds, nfds_t nfds)
     avail = snd_pcm_avail_update(stm->pcm);
   }
   if (avail < 0) {
+    stm->waitable = NULL;
     return XPOLL_WAITABLE_REMOVE;
   }
 
