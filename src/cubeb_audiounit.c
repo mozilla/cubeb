@@ -6,70 +6,72 @@
  */
 #undef NDEBUG
 #include <assert.h>
+#include <pthread.h>
 #include <stdlib.h>
-#include <AudioToolbox/AudioToolbox.h>
+#include <CoreServices/CoreServices.h>
+#include <AudioUnit/AudioUnit.h>
 #include "cubeb/cubeb.h"
-
-#if !defined(MAC_OS_X_VERSION_10_6) || MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_6
-enum {
-  kAudioQueueErr_EnqueueDuringReset = -66632
-};
-#endif
 
 #define NBUFS 4
 
 struct cubeb_stream {
-  AudioQueueRef queue;
-  AudioQueueBufferRef buffers[NBUFS];
+  AudioUnit unit;
   cubeb_data_callback data_callback;
   cubeb_state_callback state_callback;
   void * user_ptr;
   AudioStreamBasicDescription sample_spec;
+  pthread_mutex_t mutex;
+  uint64_t frames_played;
+  uint64_t frames_queued;
   int shutdown;
   int draining;
-  int free_buffers;
 };
 
-static void
-audio_queue_output_callback(void * userptr, AudioQueueRef queue, AudioQueueBufferRef buffer)
+static OSStatus
+audio_unit_output_callback(void * user_ptr, AudioUnitRenderActionFlags * flags, AudioTimeStamp const * tstamp, UInt32 bus, UInt32 nframes, AudioBufferList * bufs)
 {
   cubeb_stream * stm;
+  unsigned char * buf;
   long got;
-  OSStatus rv;
+  OSStatus r;
 
-  stm = userptr;
+  assert(bufs->mNumberBuffers == 1);
+  buf = bufs->mBuffers[0].mData;
 
-  stm->free_buffers += 1;
-  assert(stm->free_buffers > 0 && stm->free_buffers <= NBUFS);
+  stm = user_ptr;
+
+  pthread_mutex_lock(&stm->mutex);
 
   if (stm->draining || stm->shutdown) {
-    if (stm->draining && stm->free_buffers == NBUFS) {
+    pthread_mutex_unlock(&stm->mutex);
+    if (stm->draining) {
+      r = AudioOutputUnitStop(stm->unit);
+      assert(r == 0);
       stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
     }
-    return;
+    return noErr;
   }
 
-  got = stm->data_callback(stm, stm->user_ptr, buffer->mAudioData,
-                           buffer->mAudioDataBytesCapacity / stm->sample_spec.mBytesPerFrame);
+  pthread_mutex_unlock(&stm->mutex);
+  got = stm->data_callback(stm, stm->user_ptr, buf, nframes);
+  pthread_mutex_lock(&stm->mutex);
   if (got < 0) {
     // XXX handle this case.
     assert(false);
-    return;
+    pthread_mutex_unlock(&stm->mutex);
+    return noErr;
   }
 
-  buffer->mAudioDataByteSize = got * stm->sample_spec.mBytesPerFrame;
-  if (got > 0) {
-    rv = AudioQueueEnqueueBuffer(queue, buffer, 0, NULL);
-    assert(rv == kAudioQueueErr_EnqueueDuringReset || rv == 0);
-    stm->free_buffers -= 1;
-    assert(stm->free_buffers >= 0);
-  }
-
-  if (got < buffer->mAudioDataBytesCapacity / stm->sample_spec.mBytesPerFrame) {
+  if (got < nframes) {
     stm->draining = 1;
-    rv = AudioQueueStop(queue, false);
-    assert(rv == 0);
+    memset(buf + (got * stm->sample_spec.mBytesPerFrame), 0, (nframes - got) * stm->sample_spec.mBytesPerFrame);
   }
+
+  stm->frames_played = stm->frames_queued;
+  stm->frames_queued += got;
+  pthread_mutex_unlock(&stm->mutex);
+
+  return noErr;
 }
 
 int
@@ -82,6 +84,7 @@ cubeb_init(cubeb ** context, char const * context_name)
 void
 cubeb_destroy(cubeb * ctx)
 {
+  assert(ctx == (void *) 0xdeadbeef);
 }
 
 int
@@ -91,10 +94,14 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
                   void * user_ptr)
 {
   AudioStreamBasicDescription ss;
+  ComponentDescription desc;
   cubeb_stream * stm;
+  Component comp;
+  AURenderCallbackStruct input;
   unsigned int buffer_size;
   OSStatus r;
-  int i;
+
+  assert(context == (void *) 0xdeadbeef);
 
   if (stream_params.rate < 1 || stream_params.rate > 192000 ||
       stream_params.channels < 1 || stream_params.channels > 32 ||
@@ -103,7 +110,7 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   }
 
   memset(&ss, 0, sizeof(ss));
-  ss.mFormatFlags = kAudioFormatFlagsAreAllClear;
+  ss.mFormatFlags = 0;
 
   switch (stream_params.format) {
   case CUBEB_SAMPLE_S16LE:
@@ -137,6 +144,14 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   ss.mFramesPerPacket = 1;
   ss.mBytesPerPacket = ss.mBytesPerFrame * ss.mFramesPerPacket;
 
+  desc.componentType = kAudioUnitType_Output;
+  desc.componentSubType = kAudioUnitSubType_DefaultOutput;
+  desc.componentManufacturer = kAudioUnitManufacturer_Apple;
+  desc.componentFlags = 0;
+  desc.componentFlagsMask = 0;
+  comp = FindNextComponent(NULL, &desc);
+  assert(comp);
+
   stm = calloc(1, sizeof(*stm));
   assert(stm);
 
@@ -146,8 +161,22 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
 
   stm->sample_spec = ss;
 
-  r = AudioQueueNewOutput(&stm->sample_spec, audio_queue_output_callback,
-                          stm, NULL, NULL, 0, &stm->queue);
+  pthread_mutex_init(&stm->mutex, NULL);
+  // XXX error check
+
+  stm->frames_played = 0;
+  stm->frames_queued = 0;
+
+  r = OpenAComponent(comp, &stm->unit);
+  assert(r == 0);
+
+  input.inputProc = audio_unit_output_callback;
+  input.inputProcRefCon = stm;
+  r = AudioUnitSetProperty(stm->unit, kAudioUnitProperty_SetRenderCallback,
+                           kAudioUnitScope_Global, 0, &input, sizeof(input));
+  assert(r == 0);
+
+  r = AudioUnitSetProperty(stm->unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &ss, sizeof(ss));
   assert(r == 0);
 
   buffer_size = ss.mSampleRate / 1000.0 * latency * ss.mBytesPerFrame / NBUFS;
@@ -156,12 +185,8 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   }
   assert(buffer_size % ss.mBytesPerFrame == 0);
 
-  for (i = 0; i < NBUFS; ++i) {
-    r = AudioQueueAllocateBuffer(stm->queue, buffer_size, &stm->buffers[i]);
-    assert(r == 0);
-
-    audio_queue_output_callback(stm, stm->queue, stm->buffers[i]);
-  }
+  r = AudioUnitInitialize(stm->unit);
+  assert(r == 0);
 
   *stream = stm;
 
@@ -175,13 +200,17 @@ cubeb_stream_destroy(cubeb_stream * stm)
 
   stm->shutdown = 1;
 
-  r = AudioQueueStop(stm->queue, true);
+  r = AudioOutputUnitStop(stm->unit);
   assert(r == 0);
 
-  assert(stm->free_buffers == NBUFS);
-
-  r = AudioQueueDispose(stm->queue, true);
+  r = AudioUnitUninitialize(stm->unit);
   assert(r == 0);
+
+  r = CloseComponent(stm->unit);
+  assert(r == 0);
+
+  pthread_mutex_destroy(&stm->mutex);
+  // XXX error check
 
   free(stm);
 }
@@ -190,7 +219,7 @@ int
 cubeb_stream_start(cubeb_stream * stm)
 {
   OSStatus r;
-  r = AudioQueueStart(stm->queue, NULL);
+  r = AudioOutputUnitStart(stm->unit);
   assert(r == 0);
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STARTED);
   return CUBEB_OK;
@@ -200,7 +229,7 @@ int
 cubeb_stream_stop(cubeb_stream * stm)
 {
   OSStatus r;
-  r = AudioQueuePause(stm->queue);
+  r = AudioOutputUnitStop(stm->unit);
   assert(r == 0);
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STOPPED);
   return CUBEB_OK;
@@ -209,20 +238,8 @@ cubeb_stream_stop(cubeb_stream * stm)
 int
 cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
 {
-  AudioTimeStamp tstamp;
-  OSStatus r = AudioQueueGetCurrentTime(stm->queue, NULL, &tstamp, NULL);
-  if (r == kAudioQueueErr_InvalidRunState) {
-    *position = 0;
-    return CUBEB_OK;
-  } else if (r != 0) {
-    return CUBEB_ERROR;
-  }
-  assert(tstamp.mFlags & kAudioTimeStampSampleTimeValid);
-  *position = tstamp.mSampleTime;
-  /* XXX understand why GetCurrentTime may return a negative time on success */
-  if (tstamp.mSampleTime < 0) {
-    *position = 0;
-  }
+  pthread_mutex_lock(&stm->mutex);
+  *position = stm->frames_played;
+  pthread_mutex_unlock(&stm->mutex);
   return CUBEB_OK;
 }
-
