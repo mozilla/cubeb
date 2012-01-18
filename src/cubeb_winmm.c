@@ -52,7 +52,7 @@ bytes_per_frame(cubeb_stream_params params)
 
   switch (params.format) {
   case CUBEB_SAMPLE_S16LE:
-    bytes = sizeof(signed int);
+    bytes = sizeof(signed short);
     break;
   case CUBEB_SAMPLE_FLOAT32LE:
     bytes = sizeof(float);
