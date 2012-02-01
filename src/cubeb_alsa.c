@@ -5,8 +5,8 @@
  * accompanying file LICENSE for details.
  */
 #undef NDEBUG
-#define _BSD_SOURCE 1
-#define _POSIX_SOURCE 1
+#define _BSD_SOURCE
+#define _POSIX_SOURCE
 #include <pthread.h>
 #include <sys/time.h>
 #include <assert.h>
@@ -19,61 +19,58 @@
 /* ALSA is not thread-safe.  snd_pcm_t instances are individually protected
    by the owning cubeb_stream's mutex.  snd_pcm_t creation and destruction
    is not thread-safe until ALSA 1.0.24 (see alsa-lib.git commit 91c9c8f1),
-   so those calls must be wrapped in the following global mutex. */
+   so those calls must be wrapped in the following mutex. */
 static pthread_mutex_t cubeb_alsa_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-#define XPOLL_WAITABLE_CONTINUE 0
-#define XPOLL_WAITABLE_REMOVE   1
+typedef void (*poll_waitable_callback)(void * user_ptr, struct pollfd * fds, nfds_t nfds);
+typedef void (*poll_timer_callback)(void * user_ptr);
 
-typedef int (*xpoll_waitable_callback)(void * user_ptr, struct pollfd * fds, nfds_t nfds);
-typedef void (*xpoll_timer_callback)(void * user_ptr);
+struct poll_timer {
+  struct poll_timer * next;
+  struct poll_timer * prev;
 
-struct xpoll_timer {
-  struct xpoll_timer * next;
-  struct xpoll_timer * prev;
-
-  struct xpoll * xpoll;
+  struct cubeb * context;
 
   struct timeval wakeup;
 
-  xpoll_timer_callback callback;
+  poll_timer_callback callback;
   void * user_ptr;
 };
 
-struct xpoll_waitable {
-  struct xpoll_waitable * next;
-  struct xpoll_waitable * prev;
+struct poll_waitable {
+  struct poll_waitable * next;
+  struct poll_waitable * prev;
 
-  struct xpoll * xpoll;
+  struct cubeb * context;
 
   struct pollfd * saved_fds; /* A copy of the pollfds passed in at init time. */
-  struct pollfd * fds; /* Pointer to this waitable's pollfds within struct xpoll's fds. */
+  struct pollfd * fds; /* Pointer to this waitable's pollfds within struct cubeb's fds. */
   nfds_t nfds;
 
-  xpoll_waitable_callback callback;
+  poll_waitable_callback callback;
   void * user_ptr;
-};
-
-struct xpoll {
-  pthread_mutex_t timer_mutex;
-  struct xpoll_timer * timer;
-
-  pthread_mutex_t waitable_mutex;
-  struct xpoll_waitable * waitable;
-
-  /* fds and nfds are only updated by xpoll_run when rebuild is set. */
-  struct pollfd * fds;
-  nfds_t nfds;
-  int rebuild;
-
-  /* Waitable for forcing poll to wake and rebuild fds or recalculate timeout. */
-  int control_fd;
-  struct xpoll_waitable * control;
 };
 
 struct cubeb {
   pthread_t thread;
-  struct xpoll * xpoll;
+
+  struct poll_timer * timer;
+  struct poll_waitable * waitable;
+
+  /* fds and nfds are only updated by cubeb_run when rebuild is set. */
+  struct pollfd * fds;
+  nfds_t nfds;
+  int rebuild;
+
+  int shutdown;
+
+  /* control pipe for forcing poll to wake and rebuild fds or recalculate timeout. */
+  int control_fd_read;
+  int control_fd_write;
+
+  /* mutex for timer and waitable lists, must not be held while blocked in
+   * poll(2) or when writing to control_fd */
+  pthread_mutex_t mutex;
 };
 
 struct cubeb_stream {
@@ -88,8 +85,8 @@ struct cubeb_stream {
   snd_pcm_uframes_t buffer_size;
   cubeb_stream_params params;
 
-  struct xpoll_waitable * waitable;
-  struct xpoll_timer * timer;
+  struct poll_waitable * waitable;
+  struct poll_timer * timer;
 };
 
 static int
@@ -138,121 +135,157 @@ timeval_to_relative_ms(struct timeval * tv)
 }
 
 static void
-rebuild(struct xpoll * p)
+pipe_init(int * read_fd, int * write_fd)
+{
+  int r;
+  int fd[2];
+
+  r = pipe(fd);
+  assert(r == 0);
+
+  *read_fd = fd[0];
+  *write_fd = fd[1];
+}
+
+static void
+set_close_on_exec(int fd)
+{
+  long flags;
+  int r;
+
+  flags = fcntl(fd, F_GETFD);
+  assert(flags >= 0);
+
+  flags |= FD_CLOEXEC;
+
+  r = fcntl(fd, F_SETFD, flags);
+  assert(r == 0);
+}
+
+static void
+rebuild(struct cubeb * ctx)
 {
   nfds_t nfds;
   int i;
-  struct xpoll_waitable * item;
+  struct poll_waitable * item;
 
-  assert(p->rebuild);
+  assert(ctx->rebuild);
 
   nfds = 0;
-  for (item = p->waitable; item; item = item->next) {
+  for (item = ctx->waitable; item; item = item->next) {
     nfds += item->nfds;
   }
 
-  free(p->fds);
-  p->fds = calloc(nfds, sizeof(struct pollfd));
-  assert(p->fds);
-  p->nfds = nfds;
+  /* Special case: add control pipe fd. */
+  nfds += 1;
 
-  for (i = 0, item = p->waitable; item; item = item->next) {
-    memcpy(&p->fds[i], item->saved_fds, item->nfds * sizeof(struct pollfd));
-    item->fds = &p->fds[i];
+  free(ctx->fds);
+  ctx->fds = calloc(nfds, sizeof(struct pollfd));
+  assert(ctx->fds);
+  ctx->nfds = nfds;
+
+  for (i = 0, item = ctx->waitable; item; item = item->next) {
+    memcpy(&ctx->fds[i], item->saved_fds, item->nfds * sizeof(struct pollfd));
+    item->fds = &ctx->fds[i];
     i += item->nfds;
   }
 
-  p->rebuild = 0;
+  /* Special case: add control pipe fd. */
+  ctx->fds[i].fd = ctx->control_fd_read;
+  ctx->fds[i].events = POLLIN | POLLERR;
+
+  ctx->rebuild = 0;
 }
 
-static struct xpoll_waitable *
-xpoll_waitable_init(struct xpoll * p, struct pollfd * fds, nfds_t nfds,
-                    xpoll_waitable_callback callback, void * user_ptr)
+static void
+poll_woke(struct cubeb * ctx)
 {
-  struct xpoll_waitable * w;
+  ssize_t r;
+  char dummy;
 
-  w = calloc(1, sizeof(struct xpoll_waitable));
-  assert(w);
-  w->xpoll = p;
+  r = read(ctx->control_fd_read, &dummy, 1);
+  assert(dummy = 'x' && r == 1);
+}
 
-  w->saved_fds = calloc(nfds, sizeof(struct pollfd));
-  assert(w->saved_fds);
-  w->nfds = nfds;
-  memcpy(w->saved_fds, fds, nfds * sizeof(struct pollfd));
+static void
+poll_wake(struct cubeb * ctx)
+{
+  ssize_t r;
+  char dummy;
 
-  w->callback = callback;
-  w->user_ptr = user_ptr;
+  r = write(ctx->control_fd_write, &dummy, 1);
+  assert(r == 1);
+}
 
-  pthread_mutex_lock(&p->waitable_mutex);
+static struct poll_waitable *
+poll_waitable_init(struct cubeb * ctx, struct pollfd * fds, nfds_t nfds,
+                   poll_waitable_callback callback, void * user_ptr)
+{
+  struct poll_waitable * waitable;
 
-  w->next = p->waitable;
-  if (p->waitable) {
-    p->waitable->prev = w;
+  waitable = calloc(1, sizeof(struct poll_waitable));
+  assert(waitable);
+  waitable->context = ctx;
+
+  waitable->saved_fds = calloc(nfds, sizeof(struct pollfd));
+  assert(waitable->saved_fds);
+  waitable->nfds = nfds;
+  memcpy(waitable->saved_fds, fds, nfds * sizeof(struct pollfd));
+
+  waitable->callback = callback;
+  waitable->user_ptr = user_ptr;
+
+  waitable->next = ctx->waitable;
+  if (ctx->waitable) {
+    ctx->waitable->prev = waitable;
   }
-  p->waitable = w;
+  ctx->waitable = waitable;
+  ctx->rebuild = 1;
 
-  p->rebuild = 1;
+  poll_wake(ctx);
 
-  pthread_mutex_unlock(&p->waitable_mutex);
-
-  write(p->control_fd, "x", 1);
-
-  return w;
+  return waitable;
 }
 
-static struct xpoll_waitable *
-waitable_destroy_unlocked(struct xpoll_waitable * w)
+static void
+poll_waitable_destroy(struct poll_waitable * w)
 {
-  struct xpoll_waitable * next;
+  struct cubeb * ctx = w->context;
 
-  next = w->next;
   if (w->next) {
     w->next->prev = w->prev;
   }
   if (w->prev) {
     w->prev->next = w->next;
   }
-  if (w->xpoll->waitable == w) {
-    w->xpoll->waitable = w->next;
-  }
 
-  w->xpoll->rebuild = 1;
+  if (ctx->waitable == w) {
+    ctx->waitable = w->next;
+  }
 
   free(w->saved_fds);
   free(w);
 
-  return next;
+  ctx->rebuild = 1;
+  poll_wake(ctx);
 }
 
-static void
-xpoll_waitable_destroy(struct xpoll_waitable * w)
+static struct poll_timer *
+poll_timer_absolute_init(struct cubeb * ctx, struct timeval * wakeup,
+                         poll_timer_callback callback, void * user_ptr)
 {
-  struct xpoll * p = w->xpoll;
-
-  pthread_mutex_lock(&p->waitable_mutex);
-  waitable_destroy_unlocked(w);
-  pthread_mutex_unlock(&p->waitable_mutex);
-  write(p->control_fd, "x", 1);
-}
-
-static struct xpoll_timer *
-xpoll_timer_absolute_oneshot(struct xpoll * p, struct timeval * wakeup,
-                             xpoll_timer_callback callback, void * user_ptr)
-{
-  struct xpoll_timer * timer;
-  struct xpoll_timer * item;
+  struct poll_timer * timer;
+  struct poll_timer * item;
 
   timer = calloc(1, sizeof(*timer));
   assert(timer);
-  timer->xpoll = p;
+  timer->context = ctx;
   timer->wakeup = *wakeup;
   timer->callback = callback;
   timer->user_ptr = user_ptr;
 
-  pthread_mutex_lock(&p->timer_mutex);
-
-  for (item = p->timer; item; item = item->next) {
-    if (cmp_timeval(wakeup, &item->wakeup) < 0) {
+  for (item = ctx->timer; item; item = item->next) {
+    if (cmp_timeval(&timer->wakeup, &item->wakeup) < 0) {
       timer->next = item;
       timer->prev = item->prev;
 
@@ -272,19 +305,17 @@ xpoll_timer_absolute_oneshot(struct xpoll * p, struct timeval * wakeup,
   }
 
   if (!timer->prev) {
-    p->timer = timer;
+    ctx->timer = timer;
   }
 
-  pthread_mutex_unlock(&p->timer_mutex);
-
-  write(p->control_fd, "x", 1);
+  poll_wake(ctx);
 
   return timer;
 }
 
-static struct xpoll_timer *
-xpoll_timer_relative_oneshot(struct xpoll * p, unsigned int ms,
-                             xpoll_timer_callback callback, void * user_ptr)
+static struct poll_timer *
+poll_timer_relative_init(struct cubeb * ctx, unsigned int ms,
+                         poll_timer_callback callback, void * user_ptr)
 {
   struct timeval wakeup;
 
@@ -292,147 +323,81 @@ xpoll_timer_relative_oneshot(struct xpoll * p, unsigned int ms,
   wakeup.tv_sec += ms / 1000;
   wakeup.tv_usec += (ms % 1000) * 1000;
 
-  return xpoll_timer_absolute_oneshot(p, &wakeup, callback, user_ptr);
+  return poll_timer_absolute_init(ctx, &wakeup, callback, user_ptr);
 }
 
 static void
-timer_destroy_unlocked(struct xpoll_timer * t)
+poll_timer_destroy(struct poll_timer * t)
 {
+  struct cubeb * ctx = t->context;
+
   if (t->next) {
     t->next->prev = t->prev;
   }
   if (t->prev) {
     t->prev->next = t->next;
   }
-  if (t->xpoll->timer == t) {
-    t->xpoll->timer = t->next;
+
+  if (ctx->timer == t) {
+    ctx->timer = t->next;
   }
 
   free(t);
-}
 
-static void
-xpoll_timer_destroy(struct xpoll_timer * t)
-{
-  struct xpoll * p = t->xpoll;
-
-  pthread_mutex_lock(&p->timer_mutex);
-  timer_destroy_unlocked(t);
-  pthread_mutex_unlock(&p->timer_mutex);
-
-  write(p->control_fd, "x", 1);
+  poll_wake(ctx);
 }
 
 static int
-wakeup(void * user_ptr, struct pollfd * fds, nfds_t nfds)
-{
-  char dummy;
-
-  assert(nfds == 1);
-  assert(fds[0].revents == POLLIN);
-
-  read(fds[0].fd, &dummy, 1);
-  return XPOLL_WAITABLE_CONTINUE;
-}
-
-static struct xpoll *
-xpoll_init(void)
-{
-  struct xpoll * p;
-  int r;
-  int pipe_fd[2];
-  struct pollfd fd;
-
-  p = calloc(1, sizeof(struct xpoll));
-  assert(p);
-
-  pthread_mutex_init(&p->waitable_mutex, NULL);
-  pthread_mutex_init(&p->timer_mutex, NULL);
-
-  r = pipe(pipe_fd);
-  assert(r == 0);
-
-  fd.fd = pipe_fd[0];
-  fd.events = POLLIN;
-
-  p->control_fd = pipe_fd[1];
-
-  p->control = xpoll_waitable_init(p, &fd, 1, wakeup, p);
-
-  /* Force an early rebuild when xpoll_run is called to ensure fds and nfds
-   * have been initialized. */
-  p->rebuild = 1;
-
-  return p;
-}
-
-static void
-xpoll_quit(struct xpoll * p)
-{
-  xpoll_waitable_destroy(p->control);
-}
-
-static void
-xpoll_destroy(struct xpoll * p)
-{
-  assert(!p->waitable);
-  assert(!p->timer);
-  free(p->fds);
-  pthread_mutex_destroy(&p->waitable_mutex);
-  pthread_mutex_destroy(&p->timer_mutex);
-  free(p);
-}
-
-static int
-xpoll_run(struct xpoll * p)
+cubeb_run(struct cubeb * ctx)
 {
   int r;
   int timeout;
-  struct xpoll_waitable * waitable;
-  struct xpoll_timer * timer;
+  struct poll_waitable * waitable;
+  struct poll_waitable * tmp;
+  struct poll_timer * timer;
 
-  pthread_mutex_lock(&p->waitable_mutex);
-  if (p->rebuild) {
-    rebuild(p);
+  pthread_mutex_lock(&ctx->mutex);
+
+  if (ctx->rebuild) {
+    rebuild(ctx);
   }
-  pthread_mutex_unlock(&p->waitable_mutex);
 
-  pthread_mutex_lock(&p->timer_mutex);
   timeout = -1;
-  timer = p->timer;
+  timer = ctx->timer;
   if (timer) {
     timeout = timeval_to_relative_ms(&timer->wakeup);
   }
-  pthread_mutex_unlock(&p->timer_mutex);
 
   /* No timers or waitables, we're done. */
-  if (timeout == -1 && p->nfds == 0) {
+  if (timeout == -1 && ctx->nfds == 0) {
     return -1;
   }
 
-  r = poll(p->fds, p->nfds, timeout);
+  pthread_mutex_unlock(&ctx->mutex);
+  r = poll(ctx->fds, ctx->nfds, timeout);
+  pthread_mutex_lock(&ctx->mutex);
 
   if (r > 0) {
-    pthread_mutex_lock(&p->waitable_mutex);
-    for (waitable = p->waitable; waitable; ) {
-      if (waitable->fds && any_revents(waitable->fds, waitable->nfds)) {
-        r = waitable->callback(waitable->user_ptr, waitable->fds, waitable->nfds);
-        if (r == XPOLL_WAITABLE_REMOVE) {
-          waitable = waitable_destroy_unlocked(waitable);
-          continue;
-        }
+    if (ctx->fds[ctx->nfds - 1].revents & POLLIN) {
+      poll_woke(ctx);
+      if (ctx->shutdown) {
+        pthread_mutex_unlock(&ctx->mutex);
+        return -1;
       }
-      waitable = waitable->next;
     }
-    pthread_mutex_unlock(&p->waitable_mutex);
+
+    /* XXX todo: bail early once r pfds processed */
+    for (waitable = ctx->waitable; waitable && (tmp = waitable->next, 1); waitable = tmp) {
+      if (waitable->fds && any_revents(waitable->fds, waitable->nfds)) {
+        waitable->callback(waitable->user_ptr, waitable->fds, waitable->nfds);
+      }
+    }
   } else if (r == 0) {
-    pthread_mutex_lock(&p->timer_mutex);
-    if (timer == p->timer) {
-      timer->callback(timer->user_ptr);
-      timer_destroy_unlocked(timer);
-    }
-    pthread_mutex_unlock(&p->timer_mutex);
+    assert(timer);
+    timer->callback(timer->user_ptr);
   }
+
+  pthread_mutex_unlock(&ctx->mutex);
 
   return 0;
 }
@@ -443,10 +408,13 @@ cubeb_drain_stream(void * stream)
   cubeb_stream * stm = stream;
 
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
+  pthread_mutex_lock(&stm->mutex);
+  poll_timer_destroy(stm->timer);
   stm->timer = NULL;
+  pthread_mutex_unlock(&stm->mutex);
 }
 
-static int
+static void
 cubeb_refill_stream(void * stream, struct pollfd * fds, nfds_t nfds)
 {
   cubeb_stream * stm = stream;
@@ -460,14 +428,15 @@ cubeb_refill_stream(void * stream, struct pollfd * fds, nfds_t nfds)
 
   r = snd_pcm_poll_descriptors_revents(stm->pcm, fds, nfds, &revents);
   if (r < 0 || revents == POLLERR) {
+    poll_waitable_destroy(stm->waitable);
     stm->waitable = NULL;
     pthread_mutex_unlock(&stm->mutex);
-    return XPOLL_WAITABLE_REMOVE;
+    return;
   }
 
   if (revents != POLLOUT) {
     pthread_mutex_unlock(&stm->mutex);
-    return XPOLL_WAITABLE_CONTINUE;
+    return;
   }
 
   avail = snd_pcm_avail_update(stm->pcm);
@@ -476,20 +445,30 @@ cubeb_refill_stream(void * stream, struct pollfd * fds, nfds_t nfds)
     avail = snd_pcm_avail_update(stm->pcm);
   }
   if (avail < 0) {
+    poll_waitable_destroy(stm->waitable);
     stm->waitable = NULL;
     pthread_mutex_unlock(&stm->mutex);
-    return XPOLL_WAITABLE_REMOVE;
+    return;
+  }
+
+  /* XXX handle avail == 0 */
+  if (avail == 0) {
+    assert(avail != 0);
+    avail = stm->buffer_size;
   }
 
   p = calloc(1, snd_pcm_frames_to_bytes(stm->pcm, avail));
   assert(p);
 
+  pthread_mutex_unlock(&stm->mutex);
   got = stm->data_callback(stm, stm->user_ptr, p, avail);
+  pthread_mutex_lock(&stm->mutex);
   if (got < 0) {
     assert(0); /* XXX handle this case */
   }
   if (got > 0) {
     snd_pcm_sframes_t wrote = snd_pcm_writei(stm->pcm, p, got);
+    assert(wrote >= 0);
     stm->write_position += wrote;
   }
   if (got != avail) {
@@ -499,18 +478,15 @@ cubeb_refill_stream(void * stream, struct pollfd * fds, nfds_t nfds)
     /* Fill the remaining buffer with silence to guarantee at least a period has been written. */
     snd_pcm_writei(stm->pcm, (char *) p + got, avail - got);
 
+    poll_waitable_destroy(stm->waitable);
     stm->waitable = NULL;
 
-    stm->timer = xpoll_timer_relative_oneshot(stm->context->xpoll, buffer_time * 1000,
-                                              cubeb_drain_stream, stm);
+    stm->timer = poll_timer_relative_init(stm->context, buffer_time * 1000,
+                                          cubeb_drain_stream, stm);
   }
 
   free(p);
-
-  r = stm->waitable ? XPOLL_WAITABLE_CONTINUE : XPOLL_WAITABLE_REMOVE;
   pthread_mutex_unlock(&stm->mutex);
-
-  return r;
 }
 
 static void *
@@ -520,7 +496,7 @@ cubeb_run_thread(void * context)
   int r;
 
   do {
-    r = xpoll_run(ctx->xpoll);
+    r = cubeb_run(ctx);
   } while (r >= 0);
 
   return NULL;
@@ -562,11 +538,21 @@ cubeb_init(cubeb ** context, char const * context_name)
   ctx = calloc(1, sizeof(*ctx));
   assert(ctx);
 
-  ctx->xpoll = xpoll_init();
-  assert(ctx->xpoll);
+  pipe_init(&ctx->control_fd_read, &ctx->control_fd_write);
+
+  set_close_on_exec(ctx->control_fd_read);
+  set_close_on_exec(ctx->control_fd_write);
+
+  r = pthread_mutex_init(&ctx->mutex, NULL);
+  assert(r == 0);
+
+  /* Force an early rebuild when cubeb_run is first called to ensure fds and
+   * nfds have been initialized. */
+  ctx->rebuild = 1;
 
   r = pthread_attr_init(&attr);
   assert(r == 0);
+
   r = pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN);
   assert(r == 0);
 
@@ -588,12 +574,20 @@ cubeb_destroy(cubeb * ctx)
 
   assert(ctx);
 
-  xpoll_quit(ctx->xpoll);
+  pthread_mutex_lock(&ctx->mutex);
+  ctx->shutdown = 1;
+  poll_wake(ctx);
+  pthread_mutex_unlock(&ctx->mutex);
 
   r = pthread_join(ctx->thread, NULL);
   assert(r == 0);
 
-  xpoll_destroy(ctx->xpoll);
+  assert(!ctx->waitable);
+  assert(!ctx->timer);
+  close(ctx->control_fd_read);
+  close(ctx->control_fd_write);
+  pthread_mutex_destroy(&ctx->mutex);
+  free(ctx->fds);
 
   free(ctx);
 }
@@ -678,10 +672,11 @@ cubeb_stream_destroy(cubeb_stream * stm)
 {
   assert(stm);
 
+  pthread_mutex_lock(&stm->mutex);
   if (stm->pcm) {
     cubeb_locked_pcm_close(stm->pcm);
   }
-
+  pthread_mutex_unlock(&stm->mutex);
   pthread_mutex_destroy(&stm->mutex);
 
   free(stm);
@@ -696,6 +691,7 @@ cubeb_stream_start(cubeb_stream * stm)
 
   assert(stm);
 
+  pthread_mutex_lock(&stm->context->mutex);
   pthread_mutex_lock(&stm->mutex);
   if (stm->waitable) {
     pthread_mutex_unlock(&stm->mutex);
@@ -712,10 +708,11 @@ cubeb_stream_start(cubeb_stream * stm)
   r = snd_pcm_poll_descriptors(stm->pcm, fds, nfds);
   assert(r == nfds);
 
-  stm->waitable = xpoll_waitable_init(stm->context->xpoll, fds, nfds, cubeb_refill_stream, stm);
+  stm->waitable = poll_waitable_init(stm->context, fds, nfds, cubeb_refill_stream, stm);
 
   free(fds);
   pthread_mutex_unlock(&stm->mutex);
+  pthread_mutex_unlock(&stm->context->mutex);
 
   return CUBEB_OK;
 }
@@ -725,17 +722,19 @@ cubeb_stream_stop(cubeb_stream * stm)
 {
   assert(stm);
 
+  pthread_mutex_lock(&stm->context->mutex);
   pthread_mutex_lock(&stm->mutex);
   if (stm->waitable) {
-    xpoll_waitable_destroy(stm->waitable);
+    poll_waitable_destroy(stm->waitable);
     stm->waitable = NULL;
   }
   if (stm->timer) {
-    xpoll_timer_destroy(stm->timer);
+    poll_timer_destroy(stm->timer);
     stm->timer = NULL;
   }
   snd_pcm_pause(stm->pcm, 1);
   pthread_mutex_unlock(&stm->mutex);
+  pthread_mutex_unlock(&stm->context->mutex);
 
   return CUBEB_OK;
 }
