@@ -13,8 +13,6 @@
 #include <stdlib.h>
 #include "cubeb/cubeb.h"
 
-#include <stdio.h>
-
 #define NBUFS 4
 
 struct cubeb_stream_item {
@@ -85,8 +83,12 @@ cubeb_submit_buffer(cubeb_stream * stm, WAVEHDR * hdr)
   long got;
   MMRESULT r;
 
+  /* It is assumed that the caller is holding this lock.  It must be dropped
+     during the callback to avoid deadlocks. */
+  LeaveCriticalSection(&stm->lock);
   got = stm->data_callback(stm, stm->user_ptr, hdr->lpData,
                            hdr->dwBufferLength / bytes_per_frame(stm->params));
+  EnterCriticalSection(&stm->lock);
   if (got < 0) {
     /* XXX handle this case */
     assert(0);
@@ -133,7 +135,9 @@ cubeb_buffer_thread(void * user_ptr)
       if (stm->draining || stm->shutdown) {
         if (stm->free_buffers == NBUFS) {
           if (stm->draining) {
+            LeaveCriticalSection(&stm->lock);
             stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
+            EnterCriticalSection(&stm->lock);
           }
           SetEvent(stm->event);
         }
@@ -177,6 +181,9 @@ int
 cubeb_init(cubeb ** context, char const * context_name)
 {
   cubeb * ctx;
+
+  assert(context);
+  *context = NULL;
 
   ctx = calloc(1, sizeof(*ctx));
   assert(ctx);
@@ -238,6 +245,11 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   cubeb_stream * stm;
   int i;
   size_t bufsz;
+
+  assert(context);
+  assert(stream);
+
+  *stream = NULL;
 
   if (stream_params.rate < 1 || stream_params.rate > 192000 ||
       stream_params.channels < 1 || stream_params.channels > 32 ||
@@ -329,6 +341,8 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   r = waveOutPause(stm->waveout);
   assert(r == MMSYSERR_NOERROR);
 
+  /* cubeb_submit_buffer assumes the stream lock is held. */
+  EnterCriticalSection(&stm->lock);
   for (i = 0; i < NBUFS; ++i) {
     WAVEHDR * hdr = cubeb_get_next_buffer(stm);
 
@@ -337,6 +351,7 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
 
     cubeb_submit_buffer(stm, hdr);
   }
+  LeaveCriticalSection(&stm->lock);
 
   *stream = stm;
 
@@ -394,8 +409,12 @@ cubeb_stream_start(cubeb_stream * stm)
 {
   MMRESULT r;
 
+  EnterCriticalSection(&stm->lock);
+
   r = waveOutRestart(stm->waveout);
   assert(r == MMSYSERR_NOERROR);
+
+  LeaveCriticalSection(&stm->lock);
 
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STARTED);
 
@@ -407,8 +426,12 @@ cubeb_stream_stop(cubeb_stream * stm)
 {
   MMRESULT r;
 
+  EnterCriticalSection(&stm->lock);
+
   r = waveOutPause(stm->waveout);
   assert(r == MMSYSERR_NOERROR);
+
+  LeaveCriticalSection(&stm->lock);
 
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STOPPED);
 
@@ -421,10 +444,14 @@ cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
   MMRESULT r;
   MMTIME time;
 
+  EnterCriticalSection(&stm->lock);
+
   time.wType = TIME_SAMPLES;
   r = waveOutGetPosition(stm->waveout, &time, sizeof(time));
   assert(r == MMSYSERR_NOERROR);
   assert(time.wType == TIME_SAMPLES);
+
+  LeaveCriticalSection(&stm->lock);
 
   *position = time.u.sample;
 
