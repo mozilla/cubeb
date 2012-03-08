@@ -189,6 +189,8 @@ cubeb_init(cubeb ** context, char const * context_name)
 {
   cubeb * ctx;
 
+  *context = NULL;
+
   ctx = calloc(1, sizeof(*ctx));
 
   ctx->mainloop = pa_threaded_mainloop_new();
@@ -244,6 +246,8 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   pa_operation * o;
   pa_buffer_attr battr;
   pa_channel_map map;
+
+  *stream = NULL;
 
   if (stream_params.rate < 1 || stream_params.rate > 192000 ||
       stream_params.channels < 1 || stream_params.channels > 32 ||

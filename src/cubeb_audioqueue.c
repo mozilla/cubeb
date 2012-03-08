@@ -98,6 +98,7 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   int i;
 
   assert(context == (void *) 0xdeadbeef);
+  *stream = NULL;
 
   if (stream_params.rate < 1 || stream_params.rate > 192000 ||
       stream_params.channels < 1 || stream_params.channels > 32 ||

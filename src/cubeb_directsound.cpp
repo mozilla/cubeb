@@ -243,6 +243,8 @@ cubeb_init(cubeb ** context, char const * context_name)
 {
   cubeb * ctx;
 
+  *context = NULL;
+
   ctx = (cubeb *) calloc(1, sizeof(*ctx));
 
   /* register a hidden window for DirectSound's SetCooperativeLevel */
@@ -346,6 +348,9 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
 		  void * user_ptr)
 {
   struct cubeb_list_node * node;
+
+  assert(context);
+  *stream = NULL;
 
   if (stream_params.rate < 1 || stream_params.rate > 192000 ||
       stream_params.channels < 1 || stream_params.channels > 32 ||
