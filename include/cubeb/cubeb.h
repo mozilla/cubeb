@@ -114,7 +114,8 @@ typedef struct {
 typedef enum {
   CUBEB_STATE_STARTED, /**< Stream started. */
   CUBEB_STATE_STOPPED, /**< Stream stopped. */
-  CUBEB_STATE_DRAINED /**< Stream drained. */
+  CUBEB_STATE_DRAINED, /**< Stream drained. */
+  CUBEB_STATE_ERROR    /**< Stream disabled due to error. */
 } cubeb_state;
 
 /** Result code enumeration. */
