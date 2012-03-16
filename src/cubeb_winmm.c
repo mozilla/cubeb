@@ -69,7 +69,7 @@ cubeb_get_next_buffer(cubeb_stream * stm)
 
   assert(stm->free_buffers > 0 && stm->free_buffers <= NBUFS);
   hdr = &stm->buffers[stm->next_buffer];
-  assert(hdr->dwFlags == 0 ||
+  assert(hdr->dwFlags & WHDR_PREPARED ||
          (hdr->dwFlags & WHDR_DONE && !(hdr->dwFlags & WHDR_INQUEUE)));
   stm->next_buffer = (stm->next_buffer + 1) % NBUFS;
   stm->free_buffers -= 1;
@@ -78,22 +78,47 @@ cubeb_get_next_buffer(cubeb_stream * stm)
 }
 
 static void
-cubeb_submit_buffer(cubeb_stream * stm, WAVEHDR * hdr)
+cubeb_refill_stream(cubeb_stream * stm)
 {
+  WAVEHDR * hdr;
   long got;
+  long wanted;
   MMRESULT r;
+
+  EnterCriticalSection(&stm->lock);
+  stm->free_buffers += 1;
+  assert(stm->free_buffers > 0 && stm->free_buffers <= NBUFS);
+
+  if (stm->draining) {
+    LeaveCriticalSection(&stm->lock);
+    if (stm->free_buffers == NBUFS) {
+      stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
+    }
+    SetEvent(stm->event);
+    return;
+  }
+
+  if (stm->shutdown) {
+    LeaveCriticalSection(&stm->lock);
+    SetEvent(stm->event);
+    return;
+  }
+
+  hdr = cubeb_get_next_buffer(stm);
+
+  wanted = (DWORD) hdr->dwBufferLength / bytes_per_frame(stm->params);
 
   /* It is assumed that the caller is holding this lock.  It must be dropped
      during the callback to avoid deadlocks. */
   LeaveCriticalSection(&stm->lock);
-  got = stm->data_callback(stm, stm->user_ptr, hdr->lpData,
-                           hdr->dwBufferLength / bytes_per_frame(stm->params));
+  got = stm->data_callback(stm, stm->user_ptr, hdr->lpData, wanted);
   EnterCriticalSection(&stm->lock);
   if (got < 0) {
     /* XXX handle this case */
     assert(0);
     return;
-  } else if ((DWORD) got < hdr->dwBufferLength / bytes_per_frame(stm->params)) {
+  } else if (got < wanted) {
+    /* Buffer smaller than expected, reprepare it before submission. */
     r = waveOutUnprepareHeader(stm->waveout, hdr, sizeof(*hdr));
     assert(r == MMSYSERR_NOERROR);
 
@@ -109,6 +134,8 @@ cubeb_submit_buffer(cubeb_stream * stm, WAVEHDR * hdr)
 
   r = waveOutWrite(stm->waveout, hdr, sizeof(*hdr));
   assert(r == MMSYSERR_NOERROR);
+
+  LeaveCriticalSection(&stm->lock);
 }
 
 static unsigned __stdcall
@@ -126,28 +153,8 @@ cubeb_buffer_thread(void * user_ptr)
 
     item = (struct cubeb_stream_item *) InterlockedPopEntrySList(ctx->work);
     while (item) {
-      cubeb_stream * stm = item->stream;
-
-      EnterCriticalSection(&stm->lock);
-      stm->free_buffers += 1;
-      assert(stm->free_buffers > 0 && stm->free_buffers <= NBUFS);
-
-      if (stm->draining || stm->shutdown) {
-        if (stm->free_buffers == NBUFS) {
-          if (stm->draining) {
-            LeaveCriticalSection(&stm->lock);
-            stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
-            EnterCriticalSection(&stm->lock);
-          }
-          SetEvent(stm->event);
-        }
-      } else {
-        cubeb_submit_buffer(stm, cubeb_get_next_buffer(stm));
-      }
-      LeaveCriticalSection(&stm->lock);
-
+      cubeb_refill_stream(item->stream);
       _aligned_free(item);
-
       item = (struct cubeb_stream_item *) InterlockedPopEntrySList(ctx->work);
     }
 
@@ -310,13 +317,6 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   }
   assert(bufsz % bytes_per_frame(stm->params) == 0);
 
-  for (i = 0; i < NBUFS; ++i) {
-    stm->buffers[i].lpData = calloc(1, bufsz);
-    assert(stm->buffers[i].lpData);
-    stm->buffers[i].dwBufferLength = bufsz;
-    stm->buffers[i].dwFlags = 0;
-  }
-
   InitializeCriticalSection(&stm->lock);
 
   stm->event = CreateEvent(NULL, FALSE, FALSE, NULL);
@@ -324,8 +324,6 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
     cubeb_stream_destroy(stm);
     return CUBEB_ERROR;
   }
-
-  stm->free_buffers = NBUFS;
 
   /* cubeb_buffer_callback will be called during waveOutOpen, so all
      other initialization must be complete before calling it. */
@@ -341,17 +339,19 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   r = waveOutPause(stm->waveout);
   assert(r == MMSYSERR_NOERROR);
 
-  /* cubeb_submit_buffer assumes the stream lock is held. */
-  EnterCriticalSection(&stm->lock);
   for (i = 0; i < NBUFS; ++i) {
-    WAVEHDR * hdr = cubeb_get_next_buffer(stm);
+    WAVEHDR * hdr = &stm->buffers[i];
+
+    hdr->lpData = calloc(1, bufsz);
+    assert(hdr->lpData);
+    hdr->dwBufferLength = bufsz;
+    hdr->dwFlags = 0;
 
     r = waveOutPrepareHeader(stm->waveout, hdr, sizeof(*hdr));
     assert(r == MMSYSERR_NOERROR);
 
-    cubeb_submit_buffer(stm, hdr);
+    cubeb_refill_stream(stm);
   }
-  LeaveCriticalSection(&stm->lock);
 
   *stream = stm;
 
@@ -376,11 +376,17 @@ cubeb_stream_destroy(cubeb_stream * stm)
     enqueued = NBUFS - stm->free_buffers;
     LeaveCriticalSection(&stm->lock);
 
-    /* wait for all blocks to complete */
-    if (enqueued > 0) {
+    /* Wait for all blocks to complete. */
+    while (enqueued > 0) {
       rv = WaitForSingleObject(stm->event, INFINITE);
       assert(rv == WAIT_OBJECT_0);
+
+      EnterCriticalSection(&stm->lock);
+      enqueued = NBUFS - stm->free_buffers;
+      LeaveCriticalSection(&stm->lock);
     }
+
+    EnterCriticalSection(&stm->lock);
 
     for (i = 0; i < NBUFS; ++i) {
       r = waveOutUnprepareHeader(stm->waveout, &stm->buffers[i], sizeof(stm->buffers[i]));
@@ -389,6 +395,8 @@ cubeb_stream_destroy(cubeb_stream * stm)
 
     r = waveOutClose(stm->waveout);
     assert(r == MMSYSERR_NOERROR);
+
+    LeaveCriticalSection(&stm->lock);
   }
 
   if (stm->event) {
