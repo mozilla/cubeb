@@ -37,6 +37,12 @@ struct poll_timer {
   void * user_ptr;
 };
 
+enum wait_state {
+  ACTIVE = 0,
+  IDLE,
+  RECOVERING
+};
+
 struct poll_waitable {
   struct poll_waitable * next;
   struct poll_waitable * prev;
@@ -49,6 +55,9 @@ struct poll_waitable {
 
   poll_waitable_callback callback;
   void * user_ptr;
+
+  unsigned int state;
+  unsigned int counter;
 };
 
 struct cubeb {
@@ -71,6 +80,8 @@ struct cubeb {
   /* mutex for timer and waitable lists, must not be held while blocked in
    * poll(2) or when writing to control_fd */
   pthread_mutex_t mutex;
+
+  struct poll_timer * state_dumper;
 };
 
 struct cubeb_stream {
@@ -83,10 +94,13 @@ struct cubeb_stream {
   snd_pcm_uframes_t write_position;
   snd_pcm_uframes_t last_position;
   snd_pcm_uframes_t buffer_size;
+  snd_pcm_uframes_t period_size;
   cubeb_stream_params params;
 
   struct poll_waitable * waitable;
   struct poll_timer * timer;
+
+  int error;
 };
 
 static int
@@ -204,7 +218,7 @@ poll_woke(struct cubeb * ctx)
   char dummy;
 
   r = read(ctx->control_fd_read, &dummy, 1);
-  assert(dummy = 'x' && r == 1);
+  assert(dummy == 'x' && r == 1);
 }
 
 static void
@@ -213,6 +227,7 @@ poll_wake(struct cubeb * ctx)
   ssize_t r;
   char dummy;
 
+  dummy = 'x';
   r = write(ctx->control_fd_write, &dummy, 1);
   assert(r == 1);
 }
@@ -387,9 +402,15 @@ cubeb_run(struct cubeb * ctx)
     }
 
     /* XXX todo: bail early once r pfds processed */
+    /* XXX: would be most useful if waitables were sorted by latency, since
+     * earlier waitables will be more likely to be ready */
     for (waitable = ctx->waitable; waitable && (tmp = waitable->next, 1); waitable = tmp) {
       if (waitable->fds && any_revents(waitable->fds, waitable->nfds)) {
         waitable->callback(waitable->user_ptr, waitable->fds, waitable->nfds);
+        if (waitable->state == IDLE) {
+          waitable->counter = 0;
+        }
+        waitable->state = ACTIVE;
       }
     }
   } else if (r == 0) {
@@ -400,6 +421,43 @@ cubeb_run(struct cubeb * ctx)
   pthread_mutex_unlock(&ctx->mutex);
 
   return 0;
+}
+
+static void
+cubeb_dump_state(void * context)
+{
+  cubeb * ctx = context;
+  struct poll_waitable * waitable;
+  struct poll_waitable * tmp;
+
+  if (ctx->state_dumper) {
+    poll_timer_destroy(ctx->state_dumper);
+  }
+
+  for (waitable = ctx->waitable; waitable && (tmp = waitable->next, 1); waitable = tmp) {
+    waitable->counter += 1;
+    waitable->state = IDLE;
+    if (waitable->counter % 5 == 0) {
+      cubeb_stream * stm = waitable->user_ptr;
+      int killed = 0;
+      pthread_mutex_lock(&stm->mutex);
+      if (waitable->counter % 10 == 0) {
+        poll_waitable_destroy(stm->waitable);
+        stm->waitable = NULL;
+        stm->error = 1; /* XXX state -> DEAD */
+        killed = 1;
+      } else {
+        snd_pcm_recover(stm->pcm, -EPIPE, 1);
+        waitable->state = RECOVERING;
+      }
+      pthread_mutex_unlock(&stm->mutex);
+      if (killed) {
+        stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
+      }
+    }
+  }
+
+  ctx->state_dumper = poll_timer_relative_init(ctx, 1000, cubeb_dump_state, ctx);
 }
 
 static void
@@ -427,14 +485,13 @@ cubeb_refill_stream(void * stream, struct pollfd * fds, nfds_t nfds)
   pthread_mutex_lock(&stm->mutex);
 
   r = snd_pcm_poll_descriptors_revents(stm->pcm, fds, nfds, &revents);
-  if (r < 0 || revents == POLLERR) {
+  if (r < 0 || revents != POLLOUT) {
+#if 0
+    /* Running with raw ALSA (no alsa-pulse) results in this situation happening regularly. */
     poll_waitable_destroy(stm->waitable);
     stm->waitable = NULL;
-    pthread_mutex_unlock(&stm->mutex);
-    return;
-  }
-
-  if (revents != POLLOUT) {
+    stm->error = 1;
+#endif
     pthread_mutex_unlock(&stm->mutex);
     return;
   }
@@ -447,14 +504,29 @@ cubeb_refill_stream(void * stream, struct pollfd * fds, nfds_t nfds)
   if (avail < 0) {
     poll_waitable_destroy(stm->waitable);
     stm->waitable = NULL;
+    stm->error = 1;
     pthread_mutex_unlock(&stm->mutex);
     return;
   }
 
+  if ((unsigned int) avail >= stm->buffer_size * 5 ||
+      (unsigned int) avail >= stm->params.rate * 10) {
+    avail = stm->period_size;
+  }
+
+  if ((unsigned int) avail > stm->buffer_size) {
+    avail = stm->buffer_size;
+  }
+
   /* XXX handle avail == 0 */
   if (avail == 0) {
-    assert(avail != 0);
-    avail = stm->buffer_size;
+    snd_pcm_recover(stm->pcm, -EPIPE, 1);
+    avail = snd_pcm_avail_update(stm->pcm);
+  }
+
+  /* XXX could also try writing a single frame */
+  if (stm->waitable->state == RECOVERING && avail > 1) {
+    avail = stm->period_size;
   }
 
   p = calloc(1, snd_pcm_frames_to_bytes(stm->pcm, avail));
@@ -468,7 +540,11 @@ cubeb_refill_stream(void * stream, struct pollfd * fds, nfds_t nfds)
   }
   if (got > 0) {
     snd_pcm_sframes_t wrote = snd_pcm_writei(stm->pcm, p, got);
-    assert(wrote >= 0);
+    if (wrote == -EPIPE) {
+      snd_pcm_recover(stm->pcm, wrote, 1);
+      wrote = snd_pcm_writei(stm->pcm, p, got);
+    }
+    assert(wrote >= 0 && wrote == got);
     stm->write_position += wrote;
   }
   if (got != avail) {
@@ -534,6 +610,7 @@ cubeb_init(cubeb ** context, char const * context_name)
   pthread_attr_t attr;
 
   assert(context);
+  *context = NULL;
 
   ctx = calloc(1, sizeof(*ctx));
   assert(ctx);
@@ -550,11 +627,15 @@ cubeb_init(cubeb ** context, char const * context_name)
    * nfds have been initialized. */
   ctx->rebuild = 1;
 
+  cubeb_dump_state(ctx);
+
   r = pthread_attr_init(&attr);
   assert(r == 0);
 
+#if 1 /* XXX enable after debugging complete */
   r = pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN);
   assert(r == 0);
+#endif
 
   r = pthread_create(&ctx->thread, &attr, cubeb_run_thread, ctx);
   assert(r == 0);
@@ -582,6 +663,9 @@ cubeb_destroy(cubeb * ctx)
   r = pthread_join(ctx->thread, NULL);
   assert(r == 0);
 
+  poll_timer_destroy(ctx->state_dumper);
+  ctx->state_dumper = NULL;
+
   assert(!ctx->waitable);
   assert(!ctx->timer);
   close(ctx->control_fd_read);
@@ -601,10 +685,11 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   cubeb_stream * stm;
   int r;
   snd_pcm_format_t format;
-  snd_pcm_uframes_t period_size;
 
   assert(context);
   assert(stream);
+
+  *stream = NULL;
 
   if (stream_params.rate < 1 || stream_params.rate > 192000 ||
       stream_params.channels < 1 || stream_params.channels > 32 ||
@@ -659,7 +744,7 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
     return CUBEB_ERROR;
   }
 
-  r = snd_pcm_get_params(stm->pcm, &stm->buffer_size, &period_size);
+  r = snd_pcm_get_params(stm->pcm, &stm->buffer_size, &stm->period_size);
   assert(r == 0);
 
   *stream = stm;
@@ -675,6 +760,7 @@ cubeb_stream_destroy(cubeb_stream * stm)
   pthread_mutex_lock(&stm->mutex);
   if (stm->pcm) {
     cubeb_locked_pcm_close(stm->pcm);
+    stm->pcm = NULL;
   }
   pthread_mutex_unlock(&stm->mutex);
   pthread_mutex_destroy(&stm->mutex);
@@ -728,11 +814,14 @@ cubeb_stream_stop(cubeb_stream * stm)
     poll_waitable_destroy(stm->waitable);
     stm->waitable = NULL;
   }
+
   if (stm->timer) {
     poll_timer_destroy(stm->timer);
     stm->timer = NULL;
   }
+
   snd_pcm_pause(stm->pcm, 1);
+
   pthread_mutex_unlock(&stm->mutex);
   pthread_mutex_unlock(&stm->context->mutex);
 
@@ -749,6 +838,7 @@ cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
 
   pthread_mutex_lock(&stm->mutex);
 
+  delay = -1;
   if (snd_pcm_state(stm->pcm) != SND_PCM_STATE_RUNNING ||
       snd_pcm_delay(stm->pcm, &delay) != 0) {
     *position = stm->last_position;
@@ -757,6 +847,11 @@ cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
   }
 
   assert(delay >= 0);
+
+  if ((unsigned int) delay >= stm->buffer_size * 5 ||
+      (unsigned int) delay >= stm->params.rate * 10) {
+    delay = 0;
+  }
 
   *position = 0;
   if (stm->write_position >= (snd_pcm_uframes_t) delay) {
