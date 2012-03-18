@@ -92,8 +92,6 @@ struct cubeb_stream {
 
   struct poll_waitable * waitable;
   struct poll_timer * timer;
-
-  int error;
 };
 
 static int
@@ -435,7 +433,6 @@ cubeb_reaper(void * context)
       pthread_mutex_lock(&stm->mutex);
       poll_waitable_destroy(stm->waitable);
       stm->waitable = NULL;
-      stm->error = 1;
       pthread_mutex_unlock(&stm->mutex);
       stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
     }
@@ -487,8 +484,8 @@ cubeb_refill_stream(void * stream, struct pollfd * fds, nfds_t nfds)
   if (avail < 0) {
     poll_waitable_destroy(stm->waitable);
     stm->waitable = NULL;
-    stm->error = 1;
     pthread_mutex_unlock(&stm->mutex);
+    stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
     return;
   }
 
@@ -640,8 +637,7 @@ cubeb_destroy(cubeb * ctx)
   poll_timer_destroy(ctx->reaper_timer);
   ctx->reaper_timer = NULL;
 
-  assert(!ctx->waitable);
-  assert(!ctx->timer);
+  assert(!ctx->waitable && !ctx->timer);
   close(ctx->control_fd_read);
   close(ctx->control_fd_write);
   pthread_mutex_destroy(&ctx->mutex);
@@ -660,8 +656,7 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   int r;
   snd_pcm_format_t format;
 
-  assert(context);
-  assert(stream);
+  assert(context && stream);
 
   *stream = NULL;
 
@@ -729,7 +724,7 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
 void
 cubeb_stream_destroy(cubeb_stream * stm)
 {
-  assert(stm);
+  assert(stm && !stm->waitable && !stm->timer);
 
   pthread_mutex_lock(&stm->mutex);
   if (stm->pcm) {
@@ -807,8 +802,7 @@ cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
 {
   snd_pcm_sframes_t delay;
 
-  assert(stm);
-  assert(position);
+  assert(stm && position);
 
   pthread_mutex_lock(&stm->mutex);
 
