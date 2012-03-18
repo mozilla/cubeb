@@ -37,12 +37,6 @@ struct poll_timer {
   void * user_ptr;
 };
 
-enum wait_state {
-  ACTIVE = 0,
-  IDLE,
-  RECOVERING
-};
-
 struct poll_waitable {
   struct poll_waitable * next;
   struct poll_waitable * prev;
@@ -56,7 +50,6 @@ struct poll_waitable {
   poll_waitable_callback callback;
   void * user_ptr;
 
-  unsigned int state;
   unsigned int counter;
 };
 
@@ -73,15 +66,15 @@ struct cubeb {
 
   int shutdown;
 
-  /* control pipe for forcing poll to wake and rebuild fds or recalculate timeout. */
+  /* Control pipe for forcing poll to wake and rebuild fds or recalculate timeout. */
   int control_fd_read;
   int control_fd_write;
 
-  /* mutex for timer and waitable lists, must not be held while blocked in
-   * poll(2) or when writing to control_fd */
+  /* Mutex for timer and waitable lists, must not be held while blocked in
+     poll(2) or when writing to control_fd */
   pthread_mutex_t mutex;
 
-  struct poll_timer * state_dumper;
+  struct poll_timer * reaper_timer;
 };
 
 struct cubeb_stream {
@@ -401,16 +394,12 @@ cubeb_run(struct cubeb * ctx)
       }
     }
 
-    /* XXX todo: bail early once r pfds processed */
-    /* XXX: would be most useful if waitables were sorted by latency, since
-     * earlier waitables will be more likely to be ready */
+    /* TODO: Break once r pfds have been processed, ideally with a waitable
+       list sorted by latency. */
     for (waitable = ctx->waitable; waitable && (tmp = waitable->next, 1); waitable = tmp) {
       if (waitable->fds && any_revents(waitable->fds, waitable->nfds)) {
         waitable->callback(waitable->user_ptr, waitable->fds, waitable->nfds);
-        if (waitable->state == IDLE) {
-          waitable->counter = 0;
-        }
-        waitable->state = ACTIVE;
+        waitable->counter = 0;
       }
     }
   } else if (r == 0) {
@@ -424,40 +413,35 @@ cubeb_run(struct cubeb * ctx)
 }
 
 static void
-cubeb_dump_state(void * context)
+cubeb_reaper(void * context)
 {
   cubeb * ctx = context;
   struct poll_waitable * waitable;
   struct poll_waitable * tmp;
 
-  if (ctx->state_dumper) {
-    poll_timer_destroy(ctx->state_dumper);
+  if (ctx->reaper_timer) {
+    poll_timer_destroy(ctx->reaper_timer);
   }
 
+  /* XXX: Horrible hack -- if an active (registered) stream has been idle
+     for 10 ticks of the reaper, kill it and mark the stream in error.  This
+     works around a bug seen with older versions of ALSA and PulseAudio
+     where streams would stop requesting new data despite still being
+     logically active and playing. */
   for (waitable = ctx->waitable; waitable && (tmp = waitable->next, 1); waitable = tmp) {
     waitable->counter += 1;
-    waitable->state = IDLE;
-    if (waitable->counter % 5 == 0) {
+    if (waitable->counter == 10) {
       cubeb_stream * stm = waitable->user_ptr;
-      int killed = 0;
       pthread_mutex_lock(&stm->mutex);
-      if (waitable->counter % 10 == 0) {
-        poll_waitable_destroy(stm->waitable);
-        stm->waitable = NULL;
-        stm->error = 1; /* XXX state -> DEAD */
-        killed = 1;
-      } else {
-        snd_pcm_recover(stm->pcm, -EPIPE, 1);
-        waitable->state = RECOVERING;
-      }
+      poll_waitable_destroy(stm->waitable);
+      stm->waitable = NULL;
+      stm->error = 1;
       pthread_mutex_unlock(&stm->mutex);
-      if (killed) {
-        stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
-      }
+      stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
     }
   }
 
-  ctx->state_dumper = poll_timer_relative_init(ctx, 1000, cubeb_dump_state, ctx);
+  ctx->reaper_timer = poll_timer_relative_init(ctx, 1000, cubeb_reaper, ctx);
 }
 
 static void
@@ -522,11 +506,6 @@ cubeb_refill_stream(void * stream, struct pollfd * fds, nfds_t nfds)
   if (avail == 0) {
     snd_pcm_recover(stm->pcm, -EPIPE, 1);
     avail = snd_pcm_avail_update(stm->pcm);
-  }
-
-  /* XXX could also try writing a single frame */
-  if (stm->waitable->state == RECOVERING && avail > 1) {
-    avail = stm->period_size;
   }
 
   p = calloc(1, snd_pcm_frames_to_bytes(stm->pcm, avail));
@@ -627,15 +606,13 @@ cubeb_init(cubeb ** context, char const * context_name)
    * nfds have been initialized. */
   ctx->rebuild = 1;
 
-  cubeb_dump_state(ctx);
+  cubeb_reaper(ctx);
 
   r = pthread_attr_init(&attr);
   assert(r == 0);
 
-#if 1 /* XXX enable after debugging complete */
   r = pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN);
   assert(r == 0);
-#endif
 
   r = pthread_create(&ctx->thread, &attr, cubeb_run_thread, ctx);
   assert(r == 0);
@@ -663,8 +640,8 @@ cubeb_destroy(cubeb * ctx)
   r = pthread_join(ctx->thread, NULL);
   assert(r == 0);
 
-  poll_timer_destroy(ctx->state_dumper);
-  ctx->state_dumper = NULL;
+  poll_timer_destroy(ctx->reaper_timer);
+  ctx->reaper_timer = NULL;
 
   assert(!ctx->waitable);
   assert(!ctx->timer);
