@@ -50,7 +50,7 @@ struct poll_waitable {
   poll_waitable_callback callback;
   void * user_ptr;
 
-  unsigned int counter;
+  unsigned int idle_count;
 };
 
 struct cubeb {
@@ -399,7 +399,7 @@ cubeb_run(struct cubeb * ctx)
     for (waitable = ctx->waitable; waitable && (tmp = waitable->next, 1); waitable = tmp) {
       if (waitable->fds && any_revents(waitable->fds, waitable->nfds)) {
         waitable->callback(waitable->user_ptr, waitable->fds, waitable->nfds);
-        waitable->counter = 0;
+        waitable->idle_count = 0;
       }
     }
   } else if (r == 0) {
@@ -429,8 +429,8 @@ cubeb_reaper(void * context)
      where streams would stop requesting new data despite still being
      logically active and playing. */
   for (waitable = ctx->waitable; waitable && (tmp = waitable->next, 1); waitable = tmp) {
-    waitable->counter += 1;
-    if (waitable->counter == 10) {
+    waitable->idle_count += 1;
+    if (waitable->idle_count == 10) {
       cubeb_stream * stm = waitable->user_ptr;
       pthread_mutex_lock(&stm->mutex);
       poll_waitable_destroy(stm->waitable);
@@ -470,12 +470,9 @@ cubeb_refill_stream(void * stream, struct pollfd * fds, nfds_t nfds)
 
   r = snd_pcm_poll_descriptors_revents(stm->pcm, fds, nfds, &revents);
   if (r < 0 || revents != POLLOUT) {
-#if 0
-    /* Running with raw ALSA (no alsa-pulse) results in this situation happening regularly. */
-    poll_waitable_destroy(stm->waitable);
-    stm->waitable = NULL;
-    stm->error = 1;
-#endif
+    /* This should be a stream error; it makes no sense for poll(2) to wake
+       for this stream and then have the stream report that it's not ready.
+       Unfortunately, this does happen, so just bail out and try again. */
     pthread_mutex_unlock(&stm->mutex);
     return;
   }
@@ -485,6 +482,8 @@ cubeb_refill_stream(void * stream, struct pollfd * fds, nfds_t nfds)
     snd_pcm_recover(stm->pcm, avail, 1);
     avail = snd_pcm_avail_update(stm->pcm);
   }
+
+  /* Failed to recover from an xrun, this stream must be broken. */
   if (avail < 0) {
     poll_waitable_destroy(stm->waitable);
     stm->waitable = NULL;
@@ -493,16 +492,14 @@ cubeb_refill_stream(void * stream, struct pollfd * fds, nfds_t nfds)
     return;
   }
 
-  if ((unsigned int) avail >= stm->buffer_size * 5 ||
-      (unsigned int) avail >= stm->params.rate * 10) {
-    avail = stm->period_size;
-  }
-
+  /* This should never happen. */
   if ((unsigned int) avail > stm->buffer_size) {
     avail = stm->buffer_size;
   }
 
-  /* XXX handle avail == 0 */
+  /* poll(2) claims this stream is active, so there should be some space
+     available to write.  If avail is still zero here, the stream must be in
+     a funky state, so reset it and try again. */
   if (avail == 0) {
     snd_pcm_recover(stm->pcm, -EPIPE, 1);
     avail = snd_pcm_avail_update(stm->pcm);
@@ -824,11 +821,6 @@ cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
   }
 
   assert(delay >= 0);
-
-  if ((unsigned int) delay >= stm->buffer_size * 5 ||
-      (unsigned int) delay >= stm->params.rate * 10) {
-    delay = 0;
-  }
 
   *position = 0;
   if (stm->write_position >= (snd_pcm_uframes_t) delay) {
