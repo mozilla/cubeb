@@ -575,6 +575,12 @@ cubeb_locked_pcm_close(snd_pcm_t * pcm)
   return r;
 }
 
+static void
+silent_error_handler(char const * file, int line, char const * function,
+                     int err, char const * fmt, ...)
+{
+}
+
 int
 cubeb_init(cubeb ** context, char const * context_name)
 {
@@ -613,6 +619,8 @@ cubeb_init(cubeb ** context, char const * context_name)
 
   r = pthread_attr_destroy(&attr);
   assert(r == 0);
+
+  snd_lib_error_set_handler(silent_error_handler);
 
   *context = ctx;
 
