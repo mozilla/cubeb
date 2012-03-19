@@ -120,12 +120,20 @@ cubeb_refill_stream(cubeb_stream * stm)
   } else if (got < wanted) {
     /* Buffer smaller than expected, reprepare it before submission. */
     r = waveOutUnprepareHeader(stm->waveout, hdr, sizeof(*hdr));
-    assert(r == MMSYSERR_NOERROR);
+    if (r != MMSYSERR_NOERROR) {
+      LeaveCriticalSection(&stm->lock);
+      stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
+      return;
+    }
 
     hdr->dwBufferLength = got * bytes_per_frame(stm->params);
 
     r = waveOutPrepareHeader(stm->waveout, hdr, sizeof(*hdr));
-    assert(r == MMSYSERR_NOERROR);
+    if (r != MMSYSERR_NOERROR) {
+      LeaveCriticalSection(&stm->lock);
+      stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
+      return;
+    }
 
     stm->draining = 1;
   }
@@ -133,7 +141,11 @@ cubeb_refill_stream(cubeb_stream * stm)
   assert(hdr->dwFlags & WHDR_PREPARED);
 
   r = waveOutWrite(stm->waveout, hdr, sizeof(*hdr));
-  assert(r == MMSYSERR_NOERROR);
+  if (r != MMSYSERR_NOERROR) {
+    LeaveCriticalSection(&stm->lock);
+    stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
+    return;
+  }
 
   LeaveCriticalSection(&stm->lock);
 }
@@ -334,10 +346,12 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
     cubeb_stream_destroy(stm);
     return CUBEB_ERROR;
   }
-  assert(r == MMSYSERR_NOERROR);
 
   r = waveOutPause(stm->waveout);
-  assert(r == MMSYSERR_NOERROR);
+  if (r != MMSYSERR_NOERROR) {
+    cubeb_stream_destroy(stm);
+    return CUBEB_ERROR;
+  }
 
   for (i = 0; i < NBUFS; ++i) {
     WAVEHDR * hdr = &stm->buffers[i];
@@ -348,7 +362,10 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
     hdr->dwFlags = 0;
 
     r = waveOutPrepareHeader(stm->waveout, hdr, sizeof(*hdr));
-    assert(r == MMSYSERR_NOERROR);
+    if (r != MMSYSERR_NOERROR) {
+      cubeb_stream_destroy(stm);
+      return CUBEB_ERROR;
+    }
 
     cubeb_refill_stream(stm);
   }
@@ -361,7 +378,6 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
 void
 cubeb_stream_destroy(cubeb_stream * stm)
 {
-  MMRESULT r;
   DWORD rv;
   int i;
   int enqueued;
@@ -370,8 +386,7 @@ cubeb_stream_destroy(cubeb_stream * stm)
     EnterCriticalSection(&stm->lock);
     stm->shutdown = 1;
 
-    r = waveOutReset(stm->waveout);
-    assert(r == MMSYSERR_NOERROR);
+    waveOutReset(stm->waveout);
 
     enqueued = NBUFS - stm->free_buffers;
     LeaveCriticalSection(&stm->lock);
@@ -389,12 +404,12 @@ cubeb_stream_destroy(cubeb_stream * stm)
     EnterCriticalSection(&stm->lock);
 
     for (i = 0; i < NBUFS; ++i) {
-      r = waveOutUnprepareHeader(stm->waveout, &stm->buffers[i], sizeof(stm->buffers[i]));
-      assert(r == MMSYSERR_NOERROR);
+      if (stm->buffers[i].dwFlags & WHDR_PREPARED) {
+        waveOutUnprepareHeader(stm->waveout, &stm->buffers[i], sizeof(stm->buffers[i]));
+      }
     }
 
-    r = waveOutClose(stm->waveout);
-    assert(r == MMSYSERR_NOERROR);
+    waveOutClose(stm->waveout);
 
     LeaveCriticalSection(&stm->lock);
   }
@@ -418,11 +433,12 @@ cubeb_stream_start(cubeb_stream * stm)
   MMRESULT r;
 
   EnterCriticalSection(&stm->lock);
-
   r = waveOutRestart(stm->waveout);
-  assert(r == MMSYSERR_NOERROR);
-
   LeaveCriticalSection(&stm->lock);
+
+  if (r != MMSYSERR_NOERROR) {
+    return CUBEB_ERROR;
+  }
 
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STARTED);
 
@@ -435,11 +451,12 @@ cubeb_stream_stop(cubeb_stream * stm)
   MMRESULT r;
 
   EnterCriticalSection(&stm->lock);
-
   r = waveOutPause(stm->waveout);
-  assert(r == MMSYSERR_NOERROR);
-
   LeaveCriticalSection(&stm->lock);
+
+  if (r != MMSYSERR_NOERROR) {
+    return CUBEB_ERROR;
+  }
 
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STOPPED);
 
@@ -453,13 +470,13 @@ cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
   MMTIME time;
 
   EnterCriticalSection(&stm->lock);
-
   time.wType = TIME_SAMPLES;
   r = waveOutGetPosition(stm->waveout, &time, sizeof(time));
-  assert(r == MMSYSERR_NOERROR);
-  assert(time.wType == TIME_SAMPLES);
-
   LeaveCriticalSection(&stm->lock);
+
+  if (r != MMSYSERR_NOERROR || time.wType != TIME_SAMPLES) {
+    return CUBEB_ERROR;
+  }
 
   *position = time.u.sample;
 
