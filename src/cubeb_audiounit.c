@@ -28,7 +28,9 @@ struct cubeb_stream {
 };
 
 static OSStatus
-audio_unit_output_callback(void * user_ptr, AudioUnitRenderActionFlags * flags, AudioTimeStamp const * tstamp, UInt32 bus, UInt32 nframes, AudioBufferList * bufs)
+audio_unit_output_callback(void * user_ptr, AudioUnitRenderActionFlags * flags,
+                           AudioTimeStamp const * tstamp, UInt32 bus, UInt32 nframes,
+                           AudioBufferList * bufs)
 {
   cubeb_stream * stm;
   unsigned char * buf;
@@ -63,8 +65,12 @@ audio_unit_output_callback(void * user_ptr, AudioUnitRenderActionFlags * flags, 
   }
 
   if (got < nframes) {
+    size_t got_bytes = got * stm->sample_spec.mBytesPerFrame;
+    size_t rem_bytes = (nframes - got) * stm->sample_spec.mBytesPerFrame;
+
     stm->draining = 1;
-    memset(buf + (got * stm->sample_spec.mBytesPerFrame), 0, (nframes - got) * stm->sample_spec.mBytesPerFrame);
+
+    memset(buf + got_bytes, 0, rem_bytes);
   }
 
   stm->frames_played = stm->frames_queued;
@@ -162,8 +168,8 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
 
   stm->sample_spec = ss;
 
-  pthread_mutex_init(&stm->mutex, NULL);
-  // XXX error check
+  r = pthread_mutex_init(&stm->mutex, NULL);
+  assert(r == 0);
 
   stm->frames_played = 0;
   stm->frames_queued = 0;
@@ -177,7 +183,8 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
                            kAudioUnitScope_Global, 0, &input, sizeof(input));
   assert(r == 0);
 
-  r = AudioUnitSetProperty(stm->unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &ss, sizeof(ss));
+  r = AudioUnitSetProperty(stm->unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input,
+                           0, &ss, sizeof(ss));
   assert(r == 0);
 
   buffer_size = ss.mSampleRate / 1000.0 * latency * ss.mBytesPerFrame / NBUFS;
@@ -210,8 +217,8 @@ cubeb_stream_destroy(cubeb_stream * stm)
   r = CloseComponent(stm->unit);
   assert(r == 0);
 
-  pthread_mutex_destroy(&stm->mutex);
-  // XXX error check
+  r = pthread_mutex_destroy(&stm->mutex);
+  assert(r == 0);
 
   free(stm);
 }
