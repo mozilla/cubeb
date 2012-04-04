@@ -42,6 +42,7 @@ struct cubeb_stream {
   cubeb_state_callback state_callback;
   void * user_ptr;
   WAVEHDR buffers[NBUFS];
+  size_t buffer_size;
   int next_buffer;
   int free_buffers;
   int shutdown;
@@ -114,7 +115,7 @@ cubeb_refill_stream(cubeb_stream * stm)
 
   hdr = cubeb_get_next_buffer(stm);
 
-  wanted = (DWORD) hdr->dwBufferLength / bytes_per_frame(stm->params);
+  wanted = (DWORD) stm->buffer_size / bytes_per_frame(stm->params);
 
   /* It is assumed that the caller is holding this lock.  It must be dropped
      during the callback to avoid deadlocks. */
@@ -126,27 +127,13 @@ cubeb_refill_stream(cubeb_stream * stm)
     assert(0);
     return;
   } else if (got < wanted) {
-    /* Buffer smaller than expected, reprepare it before submission. */
-    r = waveOutUnprepareHeader(stm->waveout, hdr, sizeof(*hdr));
-    if (r != MMSYSERR_NOERROR) {
-      LeaveCriticalSection(&stm->lock);
-      stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
-      return;
-    }
-
-    hdr->dwBufferLength = got * bytes_per_frame(stm->params);
-
-    r = waveOutPrepareHeader(stm->waveout, hdr, sizeof(*hdr));
-    if (r != MMSYSERR_NOERROR) {
-      LeaveCriticalSection(&stm->lock);
-      stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
-      return;
-    }
-
     stm->draining = 1;
   }
 
   assert(hdr->dwFlags & WHDR_PREPARED);
+
+  hdr->dwBufferLength = got * bytes_per_frame(stm->params);
+  assert(hdr->dwBufferLength <= stm->buffer_size);
 
   r = waveOutWrite(stm->waveout, hdr, sizeof(*hdr));
   if (r != MMSYSERR_NOERROR) {
@@ -351,6 +338,8 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
     bufsz += bytes_per_frame(stm->params) - (bufsz % bytes_per_frame(stm->params));
   }
   assert(bufsz % bytes_per_frame(stm->params) == 0);
+
+  stm->buffer_size = bufsz;
 
   InitializeCriticalSection(&stm->lock);
 
