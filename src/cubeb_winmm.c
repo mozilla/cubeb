@@ -158,16 +158,14 @@ cubeb_buffer_thread(void * user_ptr)
 
   for (;;) {
     DWORD rv;
-    struct cubeb_stream_item * item;
+    PSLIST_ENTRY item;
 
     rv = WaitForSingleObject(ctx->event, INFINITE);
     assert(rv == WAIT_OBJECT_0);
 
-    item = (struct cubeb_stream_item *) InterlockedPopEntrySList(ctx->work);
-    while (item) {
-      cubeb_refill_stream(item->stream);
+    while ((item = InterlockedPopEntrySList(ctx->work)) != NULL) {
+      cubeb_refill_stream(((struct cubeb_stream_item *) item)->stream);
       _aligned_free(item);
-      item = (struct cubeb_stream_item *) InterlockedPopEntrySList(ctx->work);
     }
 
     if (ctx->shutdown) {
