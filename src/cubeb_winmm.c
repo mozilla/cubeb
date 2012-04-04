@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include "cubeb/cubeb.h"
 
+#define CUBEB_STREAM_MAX 32
 #define NBUFS 4
 
 struct cubeb_stream_item {
@@ -25,6 +26,8 @@ struct cubeb {
   HANDLE thread;
   int shutdown;
   PSLIST_HEADER work;
+  CRITICAL_SECTION lock;
+  unsigned int active_streams;
 };
 
 struct cubeb_stream {
@@ -221,6 +224,9 @@ cubeb_init(cubeb ** context, char const * context_name)
     return CUBEB_ERROR;
   }
 
+  InitializeCriticalSection(&ctx->lock);
+  ctx->active_streams = 0;
+
   *context = ctx;
 
   return CUBEB_OK;
@@ -231,7 +237,10 @@ cubeb_destroy(cubeb * ctx)
 {
   DWORD rv;
 
+  assert(ctx->active_streams == 0);
   assert(!InterlockedPopEntrySList(ctx->work));
+
+  DeleteCriticalSection(&ctx->lock);
 
   if (ctx->thread) {
     ctx->shutdown = 1;
@@ -309,6 +318,17 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   wfx.Samples.wValidBitsPerSample = 0;
   wfx.Samples.wSamplesPerBlock = 0;
   wfx.Samples.wReserved = 0;
+
+  EnterCriticalSection(&context->lock);
+  /* CUBEB_STREAM_MAX is a horrible hack to avoid a situation where, when
+     many streams are active at once, a subset of them will not consume (via
+     playback) or release (via waveOutReset) their buffers. */
+  if (context->active_streams >= CUBEB_STREAM_MAX) {
+    LeaveCriticalSection(&context->lock);
+    return CUBEB_ERROR;
+  }
+  context->active_streams += 1;
+  LeaveCriticalSection(&context->lock);
 
   stm = calloc(1, sizeof(*stm));
   assert(stm);
@@ -421,6 +441,11 @@ cubeb_stream_destroy(cubeb_stream * stm)
   for (i = 0; i < NBUFS; ++i) {
     free(stm->buffers[i].lpData);
   }
+
+  EnterCriticalSection(&stm->context->lock);
+  assert(stm->context->active_streams >= 1);
+  stm->context->active_streams -= 1;
+  LeaveCriticalSection(&stm->context->lock);
 
   free(stm);
 }
