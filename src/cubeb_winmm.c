@@ -123,6 +123,7 @@ cubeb_refill_stream(cubeb_stream * stm)
   got = stm->data_callback(stm, stm->user_ptr, hdr->lpData, wanted);
   EnterCriticalSection(&stm->lock);
   if (got < 0) {
+    LeaveCriticalSection(&stm->lock);
     /* XXX handle this case */
     assert(0);
     return;
