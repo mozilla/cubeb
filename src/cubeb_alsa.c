@@ -5,8 +5,7 @@
  * accompanying file LICENSE for details.
  */
 #undef NDEBUG
-#define _BSD_SOURCE
-#define _POSIX_SOURCE
+#define _GNU_SOURCE
 #include <pthread.h>
 #include <sys/time.h>
 #include <assert.h>
@@ -15,6 +14,8 @@
 #include <unistd.h>
 #include <alsa/asoundlib.h>
 #include "cubeb/cubeb.h"
+
+#define UNUSED __attribute__ ((__unused__))
 
 /* ALSA is not thread-safe.  snd_pcm_t instances are individually protected
    by the owning cubeb_stream's mutex.  snd_pcm_t creation and destruction
@@ -74,7 +75,7 @@ struct cubeb {
      poll(2) or when writing to control_fd */
   pthread_mutex_t mutex;
 
-  struct poll_timer * reaper_timer;
+  struct poll_timer * watchdog_timer;
 };
 
 struct cubeb_stream {
@@ -145,26 +146,11 @@ pipe_init(int * read_fd, int * write_fd)
   int r;
   int fd[2];
 
-  r = pipe(fd);
+  r = pipe2(fd, O_NONBLOCK | O_CLOEXEC);
   assert(r == 0);
 
   *read_fd = fd[0];
   *write_fd = fd[1];
-}
-
-static void
-set_close_on_exec(int fd)
-{
-  long flags;
-  int r;
-
-  flags = fcntl(fd, F_GETFD);
-  assert(flags >= 0);
-
-  flags |= FD_CLOEXEC;
-
-  r = fcntl(fd, F_SETFD, flags);
-  assert(r == 0);
 }
 
 static void
@@ -411,19 +397,19 @@ cubeb_run(struct cubeb * ctx)
 }
 
 static void
-cubeb_reaper(void * context)
+cubeb_watchdog(void * context)
 {
   cubeb * ctx = context;
   struct poll_waitable * waitable;
   struct poll_waitable * tmp;
 
-  if (ctx->reaper_timer) {
-    poll_timer_destroy(ctx->reaper_timer);
+  if (ctx->watchdog_timer) {
+    poll_timer_destroy(ctx->watchdog_timer);
   }
 
   /* XXX: Horrible hack -- if an active (registered) stream has been idle
-     for 10 ticks of the reaper, kill it and mark the stream in error.  This
-     works around a bug seen with older versions of ALSA and PulseAudio
+     for 10 ticks of the watchdog, kill it and mark the stream in error.
+     This works around a bug seen with older versions of ALSA and PulseAudio
      where streams would stop requesting new data despite still being
      logically active and playing. */
   for (waitable = ctx->waitable; waitable && (tmp = waitable->next, 1); waitable = tmp) {
@@ -438,7 +424,7 @@ cubeb_reaper(void * context)
     }
   }
 
-  ctx->reaper_timer = poll_timer_relative_init(ctx, 1000, cubeb_reaper, ctx);
+  ctx->watchdog_timer = poll_timer_relative_init(ctx, 1000, cubeb_watchdog, ctx);
 }
 
 static void
@@ -576,13 +562,13 @@ cubeb_locked_pcm_close(snd_pcm_t * pcm)
 }
 
 static void
-silent_error_handler(char const * file, int line, char const * function,
-                     int err, char const * fmt, ...)
+silent_error_handler(char const * file UNUSED, int line UNUSED, char const * function UNUSED,
+                     int err UNUSED, char const * fmt UNUSED, ...)
 {
 }
 
 int
-cubeb_init(cubeb ** context, char const * context_name)
+cubeb_init(cubeb ** context, char const * context_name UNUSED)
 {
   cubeb * ctx;
   int r;
@@ -596,9 +582,6 @@ cubeb_init(cubeb ** context, char const * context_name)
 
   pipe_init(&ctx->control_fd_read, &ctx->control_fd_write);
 
-  set_close_on_exec(ctx->control_fd_read);
-  set_close_on_exec(ctx->control_fd_write);
-
   r = pthread_mutex_init(&ctx->mutex, NULL);
   assert(r == 0);
 
@@ -606,7 +589,7 @@ cubeb_init(cubeb ** context, char const * context_name)
    * nfds have been initialized. */
   ctx->rebuild = 1;
 
-  cubeb_reaper(ctx);
+  cubeb_watchdog(ctx);
 
   r = pthread_attr_init(&attr);
   assert(r == 0);
@@ -642,8 +625,8 @@ cubeb_destroy(cubeb * ctx)
   r = pthread_join(ctx->thread, NULL);
   assert(r == 0);
 
-  poll_timer_destroy(ctx->reaper_timer);
-  ctx->reaper_timer = NULL;
+  poll_timer_destroy(ctx->watchdog_timer);
+  ctx->watchdog_timer = NULL;
 
   assert(!ctx->waitable && !ctx->timer);
   close(ctx->control_fd_read);
@@ -655,7 +638,7 @@ cubeb_destroy(cubeb * ctx)
 }
 
 int
-cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
+cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name UNUSED,
                   cubeb_stream_params stream_params, unsigned int latency,
                   cubeb_data_callback data_callback, cubeb_state_callback state_callback,
                   void * user_ptr)
@@ -756,8 +739,10 @@ cubeb_stream_start(cubeb_stream * stm)
 
   pthread_mutex_lock(&stm->context->mutex);
   pthread_mutex_lock(&stm->mutex);
+
   if (stm->waitable) {
     pthread_mutex_unlock(&stm->mutex);
+    pthread_mutex_unlock(&stm->context->mutex);
     return CUBEB_OK;
   }
 
@@ -787,6 +772,7 @@ cubeb_stream_stop(cubeb_stream * stm)
 
   pthread_mutex_lock(&stm->context->mutex);
   pthread_mutex_lock(&stm->mutex);
+
   if (stm->waitable) {
     poll_waitable_destroy(stm->waitable);
     stm->waitable = NULL;
