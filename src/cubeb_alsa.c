@@ -461,6 +461,19 @@ poll_timer_destroy(struct poll_timer * t)
   mutex_unlock(&ctx->mutex);
 }
 
+static void
+poll_phase_wait(cubeb * ctx)
+{
+  int phase;
+
+  mutex_lock(&ctx->mutex);
+  phase = ctx->phase;
+  while (ctx->phase == phase) {
+    pthread_cond_wait(&ctx->cond, &ctx->mutex.mutex);
+  }
+  mutex_unlock(&ctx->mutex);
+}
+
 static int
 cubeb_run(struct cubeb * ctx)
 {
@@ -649,10 +662,17 @@ cubeb_refill_stream(void * stream, struct pollfd * fds, nfds_t nfds)
 
   /* poll(2) claims this stream is active, so there should be some space
      available to write.  If avail is still zero here, the stream must be in
-     a funky state, so reset it and try again. */
+     a funky state, so recover and try again. */
   if (avail == 0) {
     snd_pcm_recover(stm->pcm, -EPIPE, 1);
     avail = snd_pcm_avail_update(stm->pcm);
+    if (avail <= 0) {
+      poll_waitable_unref(stm->waitable);
+      stm->waitable = NULL;
+      mutex_unlock(&stm->mutex);
+      stream_state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
+      return;
+    }
   }
 
   p = calloc(1, snd_pcm_frames_to_bytes(stm->pcm, avail));
@@ -662,7 +682,11 @@ cubeb_refill_stream(void * stream, struct pollfd * fds, nfds_t nfds)
   got = stream_data_callback(stm, stm->user_ptr, p, avail);
   mutex_lock(&stm->mutex);
   if (got < 0) {
-    assert(0); /* XXX handle this case */
+    poll_waitable_unref(stm->waitable);
+    stm->waitable = NULL;
+    mutex_unlock(&stm->mutex);
+    stream_state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
+    return;
   }
   if (got > 0) {
     snd_pcm_sframes_t wrote = snd_pcm_writei(stm->pcm, p, got);
@@ -913,9 +937,8 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
                          stm->params.channels, stm->params.rate, 1,
                          latency * 1000);
   if (r < 0) {
-    /* XXX return format error if necessary */
     cubeb_stream_destroy(stm);
-    return CUBEB_ERROR;
+    return CUBEB_ERROR_INVALID_FORMAT;
   }
 
   r = snd_pcm_get_params(stm->pcm, &stm->buffer_size, &stm->period_size);
@@ -974,19 +997,6 @@ cubeb_stream_start(cubeb_stream * stm)
   mutex_unlock(&stm->mutex);
 
   return CUBEB_OK;
-}
-
-static void
-poll_phase_wait(cubeb * ctx)
-{
-  int phase;
-
-  mutex_lock(&ctx->mutex);
-  phase = ctx->phase;
-  while (ctx->phase == phase) {
-    pthread_cond_wait(&ctx->cond, &ctx->mutex.mutex);
-  }
-  mutex_unlock(&ctx->mutex);
 }
 
 int
