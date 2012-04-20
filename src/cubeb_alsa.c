@@ -24,6 +24,7 @@
    is not thread-safe until ALSA 1.0.24 (see alsa-lib.git commit 91c9c8f1),
    so those calls must be wrapped in the following mutex. */
 static pthread_mutex_t cubeb_alsa_mutex = PTHREAD_MUTEX_INITIALIZER;
+static int cubeb_alsa_set_error_handler = 0;
 
 typedef void (*poll_waitable_callback)(void * user_ptr, struct pollfd * fds, nfds_t nfds);
 typedef void (*poll_timer_callback)(void * user_ptr);
@@ -798,6 +799,13 @@ cubeb_init(cubeb ** context, char const * context_name UNUSED)
   assert(context);
   *context = NULL;
 
+  pthread_mutex_lock(&cubeb_alsa_mutex);
+  if (!cubeb_alsa_set_error_handler) {
+    snd_lib_error_set_handler(silent_error_handler);
+    cubeb_alsa_set_error_handler = 1;
+  }
+  pthread_mutex_unlock(&cubeb_alsa_mutex);
+
   ctx = calloc(1, sizeof(*ctx));
   assert(ctx);
 
@@ -836,8 +844,6 @@ cubeb_init(cubeb ** context, char const * context_name UNUSED)
   assert(r == 0);
 
   ctx->active_streams = 0;
-
-  snd_lib_error_set_handler(silent_error_handler);
 
   *context = ctx;
 
