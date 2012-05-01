@@ -302,6 +302,8 @@ cubeb_init(cubeb ** context, char const * context_name)
   }
   ctx->refill_thread = reinterpret_cast<HANDLE>(thread);
 
+  SetThreadPriority(thread, THREAD_PRIORITY_TIME_CRITICAL);
+
   *context = ctx;
 
   return CUBEB_OK;
