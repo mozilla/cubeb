@@ -4,6 +4,7 @@
  * This program is made available under an ISC-style license.  See the
  * accompanying file LICENSE for details.
  */
+#define _XOPEN_SOURCE 500
 #include "cubeb/cubeb.h"
 #include <assert.h>
 #include <string.h>
@@ -16,6 +17,7 @@
 
 static int dummy;
 static uint64_t total_frames_written;
+static int delay_callback;
 
 static long
 test_data_callback(cubeb_stream * stm, void * user_ptr, void * p, long nframes)
@@ -23,6 +25,9 @@ test_data_callback(cubeb_stream * stm, void * user_ptr, void * p, long nframes)
   assert(stm && user_ptr == &dummy && p && nframes > 0);
   memset(p, 0, nframes * sizeof(short));
   total_frames_written += nframes;
+  if (delay_callback) {
+    usleep(10 * 1000);
+  }
   return nframes;
 }
 
@@ -109,6 +114,62 @@ test_init_destroy_multiple_streams(void)
   }
 
   for (i = 0; i < 16; ++i) {
+    cubeb_stream_destroy(stream[i]);
+  }
+
+  cubeb_destroy(ctx);
+}
+
+static void
+test_init_start_stop_destroy_multiple_streams(int early, int delay)
+{
+  int i;
+  int r;
+  cubeb * ctx;
+  cubeb_stream * stream[16];
+  cubeb_stream_params params;
+
+  r = cubeb_init(&ctx, "test_sanity");
+  assert(r == 0 && ctx);
+
+  params.format = STREAM_FORMAT;
+  params.rate = STREAM_RATE;
+  params.channels = STREAM_CHANNELS;
+
+  for (i = 0; i < 16; ++i) {
+    r = cubeb_stream_init(ctx, &stream[i], "test", params, STREAM_LATENCY,
+                          test_data_callback, test_state_callback, &dummy);
+    assert(r == 0 && stream[i]);
+    if (early) {
+      r = cubeb_stream_start(stream[i]);
+      assert(r == 0);
+    }
+  }
+
+
+  if (!early) {
+    for (i = 0; i < 16; ++i) {
+      r = cubeb_stream_start(stream[i]);
+      assert(r == 0);
+    }
+  }
+
+  if (delay) {
+    usleep(delay * 1000);
+  }
+
+  if (!early) {
+    for (i = 0; i < 16; ++i) {
+      r = cubeb_stream_stop(stream[i]);
+      assert(r == 0);
+    }
+  }
+
+  for (i = 0; i < 16; ++i) {
+    if (early) {
+      r = cubeb_stream_stop(stream[i]);
+      assert(r == 0);
+    }
     cubeb_stream_destroy(stream[i]);
   }
 
@@ -361,6 +422,17 @@ main(int argc, char * argv[])
   test_init_destroy_multiple_contexts_and_streams();
   test_basic_stream_operations();
   test_stream_position();
+  delay_callback = 0;
+  test_init_start_stop_destroy_multiple_streams(0, 0);
+  test_init_start_stop_destroy_multiple_streams(1, 0);
+  test_init_start_stop_destroy_multiple_streams(0, 150);
+  test_init_start_stop_destroy_multiple_streams(1, 150);
+  delay_callback = 1;
+  test_init_start_stop_destroy_multiple_streams(0, 0);
+  test_init_start_stop_destroy_multiple_streams(1, 0);
+  test_init_start_stop_destroy_multiple_streams(0, 150);
+  test_init_start_stop_destroy_multiple_streams(1, 150);
+  delay_callback = 0;
 /*
   to fix:
   test_drain();
