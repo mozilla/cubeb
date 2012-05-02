@@ -42,7 +42,7 @@ EXTRA_src_libcubeb_la_SOURCES = \
 	cubeb_coreaudio.c \
 	cubeb_directsound.c cubeb_winmm.c
 
-src_libcubeb_la_LDFLAGS = -export-symbols-regex '^cubeb_' $(platform_lib)
+src_libcubeb_la_LDFLAGS = -pthread -export-symbols-regex '^cubeb_' $(platform_lib)
 
 noinst_PROGRAMS = test/test_sanity test/test_tone
 
