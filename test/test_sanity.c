@@ -7,6 +7,7 @@
 #define _XOPEN_SOURCE 500
 #include "cubeb/cubeb.h"
 #include <assert.h>
+#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -412,26 +413,33 @@ test_drain(void)
   cubeb_destroy(ctx);
 }
 
+static void
+progress(void)
+{
+  printf(".");
+  fflush(stdout);
+}
+
 int
 main(int argc, char * argv[])
 {
-  test_init_destroy_context();
-  test_init_destroy_multiple_contexts();
-  test_init_destroy_stream();
-  test_init_destroy_multiple_streams();
-  test_init_destroy_multiple_contexts_and_streams();
-  test_basic_stream_operations();
-  test_stream_position();
+  test_init_destroy_context(); progress();
+  test_init_destroy_multiple_contexts(); progress();
+  test_init_destroy_stream(); progress();
+  test_init_destroy_multiple_streams(); progress();
+  test_init_destroy_multiple_contexts_and_streams(); progress();
+  test_basic_stream_operations(); progress();
+  test_stream_position(); progress();
   delay_callback = 0;
-  test_init_start_stop_destroy_multiple_streams(0, 0);
-  test_init_start_stop_destroy_multiple_streams(1, 0);
-  test_init_start_stop_destroy_multiple_streams(0, 150);
-  test_init_start_stop_destroy_multiple_streams(1, 150);
+  test_init_start_stop_destroy_multiple_streams(0, 0); progress();
+  test_init_start_stop_destroy_multiple_streams(1, 0); progress();
+  test_init_start_stop_destroy_multiple_streams(0, 150); progress();
+  test_init_start_stop_destroy_multiple_streams(1, 150); progress();
   delay_callback = 1;
-  test_init_start_stop_destroy_multiple_streams(0, 0);
-  test_init_start_stop_destroy_multiple_streams(1, 0);
-  test_init_start_stop_destroy_multiple_streams(0, 150);
-  test_init_start_stop_destroy_multiple_streams(1, 150);
+  test_init_start_stop_destroy_multiple_streams(0, 0); progress();
+  test_init_start_stop_destroy_multiple_streams(1, 0); progress();
+  test_init_start_stop_destroy_multiple_streams(0, 150); progress();
+  test_init_start_stop_destroy_multiple_streams(1, 150); progress();
   delay_callback = 0;
 /*
   to fix:
@@ -442,5 +450,6 @@ main(int argc, char * argv[])
   test_eos_during_prefill();
   test_stream_destroy_pending_drain();
 */
+  printf("\n");
   return 0;
 }
