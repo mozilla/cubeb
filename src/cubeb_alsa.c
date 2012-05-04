@@ -111,6 +111,24 @@ struct cubeb_stream {
 };
 
 static void
+mutex_init(struct mutex * mtx)
+{
+  int r;
+
+  r = pthread_mutex_init(&mtx->mutex, NULL);
+  assert(r == 0);
+
+  mtx->locked = 0;
+}
+
+static void
+mutex_destroy(struct mutex * mtx)
+{
+  assert(mtx->locked == 0);
+  pthread_mutex_destroy(&mtx->mutex);
+}
+
+static void
 mutex_lock(struct mutex * mtx)
 {
   int r;
@@ -817,8 +835,7 @@ cubeb_init(cubeb ** context, char const * context_name UNUSED)
   set_close_on_exec(ctx->control_fd_write);
   set_non_block(ctx->control_fd_write);
 
-  r = pthread_mutex_init(&ctx->mutex.mutex, NULL);
-  assert(r == 0);
+  mutex_init(&ctx->mutex);
 
   r = pthread_cond_init(&ctx->cond, NULL);
   assert(r == 0);
@@ -873,7 +890,7 @@ cubeb_destroy(cubeb * ctx)
   close(ctx->control_fd_read);
   close(ctx->control_fd_write);
   pthread_cond_destroy(&ctx->cond);
-  pthread_mutex_destroy(&ctx->mutex.mutex);
+  mutex_destroy(&ctx->mutex);
   free(ctx->fds);
 
   free(ctx);
@@ -927,8 +944,7 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   stm->user_ptr = user_ptr;
   stm->params = stream_params;
 
-  r = pthread_mutex_init(&stm->mutex.mutex, NULL);
-  assert(r == 0);
+  mutex_init(&stm->mutex);
 
   r = cubeb_locked_pcm_open(&stm->pcm, SND_PCM_STREAM_PLAYBACK);
   if (r < 0) {
@@ -966,7 +982,7 @@ cubeb_stream_destroy(cubeb_stream * stm)
     stm->pcm = NULL;
   }
   mutex_unlock(&stm->mutex);
-  pthread_mutex_destroy(&stm->mutex.mutex);
+  mutex_destroy(&stm->mutex);
 
   cubeb_free_stream(stm->context, stm);
 }
