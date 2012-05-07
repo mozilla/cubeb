@@ -192,6 +192,7 @@ cubeb_init(cubeb ** context, char const * context_name)
   *context = NULL;
 
   ctx = calloc(1, sizeof(*ctx));
+  assert(ctx);
 
   ctx->mainloop = pa_threaded_mainloop_new();
   ctx->context = pa_context_new(pa_threaded_mainloop_get_api(ctx->mainloop), context_name);
@@ -247,6 +248,8 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   pa_buffer_attr battr;
   pa_channel_map map;
 
+  assert(context);
+
   *stream = NULL;
 
   if (stream_params.rate < 1 || stream_params.rate > 192000 ||
@@ -282,7 +285,6 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   assert(stm);
 
   stm->context = context;
-  assert(stm->context);
 
   stm->data_callback = data_callback;
   stm->state_callback = state_callback;
@@ -291,7 +293,7 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   stm->sample_spec = ss;
 
   battr.maxlength = -1;
-  battr.tlength = pa_usec_to_bytes(latency * 1000, &stm->sample_spec);
+  battr.tlength = pa_usec_to_bytes(latency * PA_USEC_PER_MSEC, &stm->sample_spec);
   battr.prebuf = -1;
   battr.minreq = battr.tlength / 2;
   battr.fragsize = -1;
@@ -371,7 +373,6 @@ cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
     return CUBEB_ERROR;
   }
 
-  /* XXX might be more accurate to compute directly from get_timing_info */
   bytes = pa_usec_to_bytes(r_usec, &stm->sample_spec);
   *position = bytes / pa_frame_size(&stm->sample_spec);
 
