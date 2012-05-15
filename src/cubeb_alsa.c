@@ -376,7 +376,7 @@ cubeb_refill_stream(cubeb_stream * stm)
     double buffer_time = (double) buffer_fill / stm->params.rate;
 
     /* Fill the remaining buffer with silence to guarantee one full period
-     * has been written. */
+       has been written. */
     snd_pcm_writei(stm->pcm, (char *) p + got, avail - got);
 
     set_timeout(&stm->drain_timeout, buffer_time * 1000);
@@ -581,7 +581,7 @@ cubeb_init(cubeb ** context, char const * context_name UNUSED)
   ctx->control_fd_write = fd[1];
 
   /* Force an early rebuild when cubeb_run is first called to ensure fds and
-   * nfds have been initialized. */
+     nfds have been initialized. */
   ctx->rebuild = 1;
 
   r = pthread_attr_init(&attr);
