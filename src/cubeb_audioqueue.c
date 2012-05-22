@@ -79,6 +79,12 @@ cubeb_init(cubeb ** context, char const * context_name)
   return CUBEB_OK;
 }
 
+char const *
+cubeb_get_backend_id(cubeb * ctx)
+{
+  return "audioqueue";
+}
+
 void
 cubeb_destroy(cubeb * ctx)
 {

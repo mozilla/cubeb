@@ -156,6 +156,11 @@ typedef int (* cubeb_state_callback)(cubeb_stream * stream,
     @retval CUBEB_ERROR */
 int cubeb_init(cubeb ** context, char const * context_name);
 
+/** Get a read-only string identifying this context's current backend.
+    @param context
+    @retval Read-only string identifying current backend. */
+char const * cubeb_get_backend_id(cubeb * context);
+
 /** Destroy an application context.
     @param context */
 void cubeb_destroy(cubeb * context);
