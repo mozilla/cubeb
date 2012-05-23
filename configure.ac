@@ -48,7 +48,7 @@ AM_PROG_LIBTOOL
 dnl Choose the target platform audio API
 AC_CHECK_HEADERS([alsa/asoundlib.h pulse/pulseaudio.h \
                   AudioToolbox/AudioToolbox.h \
-                  windows.h dsound.h])
+                  windows.h dsound.h sndio.h])
 platform_api="none"
 platform_lib="none"
 if test "x$ac_cv_header_pulse_pulseaudio_h" = "xyes"; then
@@ -60,6 +60,9 @@ elif test "x$ac_cv_header_alsa_asoundlib_h" = "xyes"; then
 elif test "x$ac_cv_header_AudioToolbox_AudioToolbox_h" = "xyes"; then
   platform_api="coreaudio"
   platform_lib="-framework AudioToolbox"
+elif test "x$ac_cv_header_sndio_h" = "xyes"; then
+  platform_api="sndio"
+  platform_lib="-lsndio -lm"
 elif test "x$ac_cv_header_windows_h" = "xyes"; then
 #  if test "x$ac_cv_header_dsound_h" = "xyes"; then
 #    platform_api="dsound"
@@ -72,6 +75,7 @@ AM_CONDITIONAL([ALSA], [test ${platform_api} = "alsa"])
 AM_CONDITIONAL([COREAUDIO], [test ${platform_api} = "coreaudio"])
 AM_CONDITIONAL([DSOUND], [test ${platform_api} = "dsound"])
 AM_CONDITIONAL([WAVE], [test ${platform_api} = "wave"])
+AM_CONDITIONAL([SNDIO], [test ${platform_api} = "sndio"])
 
 dnl Check for doxygen
 AC_ARG_ENABLE([doc],
