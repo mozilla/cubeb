@@ -156,7 +156,6 @@ cubeb_stream_init(cubeb *context,
   struct cubeb_stream *s;
   struct sio_par wpar, rpar;
   DPR("cubeb_stream_init(%s)\n", stream_name);
-  unsigned minbufsz = stream_params.rate * 50 / 1000;
   size_t size;
 
   s = malloc(sizeof(struct cubeb_stream));
@@ -176,7 +175,7 @@ cubeb_stream_init(cubeb *context,
     wpar.le = 1;
     break;
   case CUBEB_SAMPLE_S16BE:
-    wpar.le = 1;
+    wpar.le = 0;
     break;
   case CUBEB_SAMPLE_FLOAT32NE:
     wpar.le = SIO_LE_NATIVE;
@@ -187,7 +186,7 @@ cubeb_stream_init(cubeb *context,
   }
   wpar.rate = stream_params.rate;
   wpar.pchan = stream_params.channels;
-  wpar.appbufsz = latency < minbufsz ? minbufsz : latency;
+  wpar.appbufsz = latency * wpar.rate / 1000;
   if (!sio_setpar(s->hdl, &wpar) || !sio_getpar(s->hdl, &rpar)) {
     sio_close(s->hdl);
     free(s);
