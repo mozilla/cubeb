@@ -49,12 +49,12 @@ long data_cb(cubeb_stream *stream, void *user, void *buffer, long nframes)
   return nframes;
 }
 
-int state_cb(cubeb_stream *stream, void *user, cubeb_state state)
+void state_cb(cubeb_stream *stream, void *user, cubeb_state state)
 {
   struct cb_user_data *u = (struct cb_user_data *)user;
 
   if (stream == NULL || u == NULL)
-    return CUBEB_ERROR;
+    return;
 
   switch (state) {
     case CUBEB_STATE_STARTED:
@@ -67,7 +67,7 @@ int state_cb(cubeb_stream *stream, void *user, cubeb_state state)
       printf("unknown stream state %d\n", state);
   }
 
-  return CUBEB_OK;
+  return;
 }
 
 int main(int argc, char *argv[])

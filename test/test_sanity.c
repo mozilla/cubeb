@@ -32,10 +32,9 @@ test_data_callback(cubeb_stream * stm, void * user_ptr, void * p, long nframes)
   return nframes;
 }
 
-int
+void
 test_state_callback(cubeb_stream * stm, void * user_ptr, cubeb_state state)
 {
-  return CUBEB_OK;
 }
 
 static void
@@ -355,14 +354,13 @@ test_drain_data_callback(cubeb_stream * stm, void * user_ptr, void * p, long nfr
   return nframes;
 }
 
-int
+void
 test_drain_state_callback(cubeb_stream * stm, void * user_ptr, cubeb_state state)
 {
   if (state == CUBEB_STATE_DRAINED) {
     assert(!got_drain);
     got_drain = 1;
   }
-  return CUBEB_OK;
 }
 
 static void
