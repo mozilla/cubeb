@@ -96,7 +96,7 @@ int main(int argc, char *argv[])
   user_data->position = 0;
 
   ret = cubeb_stream_init(ctx, &stream, "Cubeb tone (mono)", params,
-                               250, data_cb, state_cb, user_data);
+                          250, data_cb, state_cb, user_data);
   if (ret != CUBEB_OK) {
     fprintf(stderr, "Error initializing cubeb stream\n");
     return ret;
