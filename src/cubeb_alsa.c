@@ -20,9 +20,6 @@
 #define CUBEB_WATCHDOG_MS 10000
 #define UNUSED __attribute__ ((__unused__))
 
-#define CUBEB_ALSA_PCM_NAME "default"
-#define CUBEB_ALSA_PCM_NODE_NAME "pcm.default"
-
 /* ALSA is not thread-safe.  snd_pcm_t instances are individually protected
    by the owning cubeb_stream's mutex.  snd_pcm_t creation and destruction
    is not thread-safe until ALSA 1.0.24 (see alsa-lib.git commit 91c9c8f1),
@@ -53,11 +50,6 @@ struct cubeb {
   /* Track number of active streams.  This is limited to CUBEB_STREAM_MAX
      due to resource contraints. */
   unsigned int active_streams;
-
-  /* Local configuration with handle_underrun workaround set for PulseAudio
-     ALSA plugin.  Will be NULL if the PA ALSA plugin is not in use or the
-     workaround is not required. */
-  snd_config_t * local_config;
 };
 
 enum stream_state {
@@ -417,99 +409,13 @@ cubeb_run_thread(void * context)
   return NULL;
 }
 
-/* Work around PulseAudio ALSA plugin bug where the PA server forces a
-   higher than requested latency, but the plugin does not update its (and
-   ALSA's) internal state to reflect that, leading to an immediate underrun
-   situation.  Inspired by WINE's make_handle_underrun_config.
-   Reference: http://mailman.alsa-project.org/pipermail/alsa-devel/2012-July/053391.html
- */
-static snd_config_t *
-init_local_config_with_workaround(char const * pcm_node_name)
-{
-  int r;
-  snd_config_t * lconf;
-  snd_config_t * device_node;
-  snd_config_t * type_node;
-  snd_config_t * node;
-  char const * type_string;
-
-  lconf = NULL;
-
-  pthread_mutex_lock(&cubeb_alsa_mutex);
-
-  if (snd_config == NULL) {
-    snd_config_update();
-  }
-
-  r = snd_config_copy(&lconf, snd_config);
-  assert(r >= 0);
-
-  r = snd_config_search(lconf, pcm_node_name, &device_node);
-  if (r != 0) {
-    snd_config_delete(lconf);
-    pthread_mutex_unlock(&cubeb_alsa_mutex);
-    return NULL;
-  }
-
-  /* Fetch the PCM node's type, and bail out if it's not the PulseAudio plugin. */
-  r = snd_config_search(device_node, "type", &type_node);
-  if (r != 0) {
-    snd_config_delete(lconf);
-    pthread_mutex_unlock(&cubeb_alsa_mutex);
-    return NULL;
-  }
-
-  r = snd_config_get_string(type_node, &type_string);
-  if (r != 0) {
-    snd_config_delete(lconf);
-    pthread_mutex_unlock(&cubeb_alsa_mutex);
-    return NULL;
-  }
-
-  if (strcmp(type_string, "pulse") != 0) {
-    snd_config_delete(lconf);
-    pthread_mutex_unlock(&cubeb_alsa_mutex);
-    return NULL;
-  }
-
-  /* Don't clobber an explicit existing handle_underrun value, set it only
-     if it doesn't already exist. */
-  r = snd_config_search(device_node, "handle_underrun", &node);
-  if (r != -ENOENT) {
-    snd_config_delete(lconf);
-    pthread_mutex_unlock(&cubeb_alsa_mutex);
-    return NULL;
-  }
-
-  r = snd_config_imake_integer(&node, "handle_underrun", 0);
-  if (r != 0) {
-    snd_config_delete(lconf);
-    pthread_mutex_unlock(&cubeb_alsa_mutex);
-    return NULL;
-  }
-
-  r = snd_config_add(device_node, node);
-  if (r != 0) {
-    snd_config_delete(lconf);
-    pthread_mutex_unlock(&cubeb_alsa_mutex);
-    return NULL;
-  }
-
-  pthread_mutex_unlock(&cubeb_alsa_mutex);
-  return lconf;
-}
-
 static int
-cubeb_locked_pcm_open(snd_pcm_t ** pcm, snd_pcm_stream_t stream, snd_config_t * local_config)
+cubeb_locked_pcm_open(snd_pcm_t ** pcm, snd_pcm_stream_t stream)
 {
   int r;
 
   pthread_mutex_lock(&cubeb_alsa_mutex);
-  if (local_config) {
-    r = snd_pcm_open_lconf(pcm, CUBEB_ALSA_PCM_NAME, stream, SND_PCM_NONBLOCK, local_config);
-  } else {
-    r = snd_pcm_open(pcm, CUBEB_ALSA_PCM_NAME, stream, SND_PCM_NONBLOCK);
-  }
+  r = snd_pcm_open(pcm, "default", stream, SND_PCM_NONBLOCK);
   pthread_mutex_unlock(&cubeb_alsa_mutex);
 
   return r;
@@ -620,8 +526,6 @@ cubeb_init(cubeb ** context, char const * context_name UNUSED)
   r = pthread_attr_destroy(&attr);
   assert(r == 0);
 
-  ctx->local_config = init_local_config_with_workaround(CUBEB_ALSA_PCM_NODE_NAME);
-
   *context = ctx;
 
   return CUBEB_OK;
@@ -652,10 +556,6 @@ cubeb_destroy(cubeb * ctx)
   close(ctx->control_fd_write);
   pthread_mutex_destroy(&ctx->mutex);
   free(ctx->fds);
-
-  if (ctx->local_config) {
-    snd_config_delete(ctx->local_config);
-  }
 
   free(ctx);
 }
@@ -718,7 +618,7 @@ cubeb_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name 
   r = pthread_mutex_init(&stm->mutex, NULL);
   assert(r == 0);
 
-  r = cubeb_locked_pcm_open(&stm->pcm, SND_PCM_STREAM_PLAYBACK, ctx->local_config);
+  r = cubeb_locked_pcm_open(&stm->pcm, SND_PCM_STREAM_PLAYBACK);
   if (r < 0) {
     cubeb_stream_destroy(stm);
     return CUBEB_ERROR;
