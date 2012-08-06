@@ -6,7 +6,7 @@
  */
 #undef NDEBUG
 #define _BSD_SOURCE
-#define _POSIX_SOURCE
+#define _POSIX_C_SOURCE 199309L
 #include <pthread.h>
 #include <sys/time.h>
 #include <assert.h>
