@@ -727,6 +727,7 @@ cubeb_stream_start(cubeb_stream * stm)
 
   pthread_mutex_lock(&stm->mutex);
   snd_pcm_pause(stm->pcm, 0);
+  gettimeofday(&stm->last_activity, NULL);
   pthread_mutex_unlock(&stm->mutex);
 
   pthread_mutex_lock(&ctx->mutex);
