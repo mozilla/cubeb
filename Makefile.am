@@ -28,7 +28,7 @@ if ALSA
 src_libcubeb_la_SOURCES = src/cubeb_alsa.c
 endif
 if COREAUDIO
-src_libcubeb_la_SOURCES = src/cubeb_coreaudio.c
+src_libcubeb_la_SOURCES = src/cubeb_audiounit.c
 endif
 if WAVE
 src_libcubeb_la_SOURCES = src/cubeb_winmm.c
@@ -42,8 +42,8 @@ endif
 
 EXTRA_src_libcubeb_la_SOURCES = \
 	cubeb_alsa.c cubeb_pulse.c \
-	cubeb_coreaudio.c cubeb_sndio.c \
-	cubeb_directsound.c cubeb_winmm.c
+	cubeb_audiounit.c cubeb_audioqueue.c \
+	cubeb_sndio.c cubeb_directsound.c cubeb_winmm.c
 
 src_libcubeb_la_LDFLAGS = -pthread -export-symbols-regex '^cubeb_' $(platform_lib)
 
