@@ -18,7 +18,6 @@
 
 #define CUBEB_STREAM_MAX 16
 #define CUBEB_WATCHDOG_MS 10000
-#define UNUSED __attribute__ ((__unused__))
 
 #define ALSA_PA_PLUGIN "ALSA <-> PulseAudio PCM I/O Plugin"
 
@@ -471,8 +470,8 @@ cubeb_unregister_stream(cubeb_stream * stm)
 }
 
 static void
-silent_error_handler(char const * file UNUSED, int line UNUSED, char const * function UNUSED,
-                     int err UNUSED, char const * fmt UNUSED, ...)
+silent_error_handler(char const * file, int line, char const * function,
+                     int err, char const * fmt, ...)
 {
 }
 
@@ -495,7 +494,7 @@ pcm_uses_pulseaudio_plugin(snd_pcm_t * pcm)
 }
 
 int
-cubeb_init(cubeb ** context, char const * context_name UNUSED)
+cubeb_init(cubeb ** context, char const * context_name)
 {
   cubeb * ctx;
   int r;
@@ -552,7 +551,7 @@ cubeb_init(cubeb ** context, char const * context_name UNUSED)
 }
 
 char const *
-cubeb_get_backend_id(cubeb * ctx UNUSED)
+cubeb_get_backend_id(cubeb * ctx)
 {
   return "alsa";
 }
@@ -581,7 +580,7 @@ cubeb_destroy(cubeb * ctx)
 }
 
 int
-cubeb_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name UNUSED,
+cubeb_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
                   cubeb_stream_params stream_params, unsigned int latency,
                   cubeb_data_callback data_callback, cubeb_state_callback state_callback,
                   void * user_ptr)
