@@ -46,7 +46,7 @@ AC_LIBTOOL_WIN32_DLL
 AM_PROG_LIBTOOL
 
 dnl Choose the target platform audio API
-AC_CHECK_HEADERS([alsa/asoundlib.h xxpulse/pulseaudio.h \
+AC_CHECK_HEADERS([alsa/asoundlib.h pulse/pulseaudio.h \
                   AudioToolbox/AudioToolbox.h \
                   windows.h dsound.h sndio.h])
 platform_api="none"
