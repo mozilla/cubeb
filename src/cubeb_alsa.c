@@ -19,6 +19,9 @@
 #define CUBEB_STREAM_MAX 16
 #define CUBEB_WATCHDOG_MS 10000
 
+#define CUBEB_ALSA_PCM_NAME "default"
+#define CUBEB_ALSA_PCM_NODE_NAME "pcm.default"
+
 #define ALSA_PA_PLUGIN "ALSA <-> PulseAudio PCM I/O Plugin"
 
 /* ALSA is not thread-safe.  snd_pcm_t instances are individually protected
@@ -51,6 +54,11 @@ struct cubeb {
   /* Track number of active streams.  This is limited to CUBEB_STREAM_MAX
      due to resource contraints. */
   unsigned int active_streams;
+
+  /* Local configuration with handle_underrun workaround set for PulseAudio
+     ALSA plugin.  Will be NULL if the PA ALSA plugin is not in use or the
+     workaround is not required. */
+  snd_config_t * local_config;
 };
 
 enum stream_state {
@@ -410,13 +418,101 @@ cubeb_run_thread(void * context)
   return NULL;
 }
 
+/* Work around PulseAudio ALSA plugin bug where the PA server forces a
+   higher than requested latency, but the plugin does not update its (and
+   ALSA's) internal state to reflect that, leading to an immediate underrun
+   situation.  Inspired by WINE's make_handle_underrun_config.
+   Reference: http://mailman.alsa-project.org/pipermail/alsa-devel/2012-July/05
+ */
+static snd_config_t *
+init_local_config_with_workaround(char const * pcm_node_name)
+{
+  int r;
+  snd_config_t * lconf;
+  snd_config_t * device_node;
+  snd_config_t * type_node;
+  snd_config_t * node;
+  char const * type_string;
+  lconf = NULL;
+
+  pthread_mutex_lock(&cubeb_alsa_mutex);
+
+  if (snd_config == NULL) {
+    pthread_mutex_unlock(&cubeb_alsa_mutex);
+    return NULL;
+  }
+
+  r = snd_config_copy(&lconf, snd_config);
+  assert(r >= 0);
+
+  r = snd_config_search(lconf, pcm_node_name, &device_node);
+  if (r != 0) {
+    snd_config_delete(lconf);
+    pthread_mutex_unlock(&cubeb_alsa_mutex);
+    return NULL;
+  }
+
+  /* Fetch the PCM node's type, and bail out if it's not the PulseAudio plugin. */
+  r = snd_config_search(device_node, "type", &type_node);
+  if (r != 0) {
+    snd_config_delete(lconf);
+    pthread_mutex_unlock(&cubeb_alsa_mutex);
+    return NULL;
+  }
+
+  r = snd_config_get_string(type_node, &type_string);
+  if (r != 0) {
+    snd_config_delete(lconf);
+    pthread_mutex_unlock(&cubeb_alsa_mutex);
+    return NULL;
+  }
+
+  if (strcmp(type_string, "pulse") != 0) {
+    snd_config_delete(lconf);
+    pthread_mutex_unlock(&cubeb_alsa_mutex);
+    return NULL;
+  }
+
+  /* Don't clobber an explicit existing handle_underrun value, set it only
+     if it doesn't already exist. */
+  r = snd_config_search(device_node, "handle_underrun", &node);
+  if (r != -ENOENT) {
+    snd_config_delete(lconf);
+    pthread_mutex_unlock(&cubeb_alsa_mutex);
+    return NULL;
+  }
+
+  /* Disable pcm_pulse's asynchronous underrun handling. */
+  r = snd_config_imake_integer(&node, "handle_underrun", 0);
+  if (r != 0) {
+    snd_config_delete(lconf);
+    pthread_mutex_unlock(&cubeb_alsa_mutex);
+    return NULL;
+  }
+
+  r = snd_config_add(device_node, node);
+  if (r != 0) {
+    snd_config_delete(lconf);
+    pthread_mutex_unlock(&cubeb_alsa_mutex);
+    return NULL;
+  }
+
+  pthread_mutex_unlock(&cubeb_alsa_mutex);
+  return lconf;
+}
+
+
 static int
-cubeb_locked_pcm_open(snd_pcm_t ** pcm, snd_pcm_stream_t stream)
+cubeb_locked_pcm_open(snd_pcm_t ** pcm, snd_pcm_stream_t stream, snd_config_t * local_config)
 {
   int r;
 
   pthread_mutex_lock(&cubeb_alsa_mutex);
-  r = snd_pcm_open(pcm, "default", stream, SND_PCM_NONBLOCK);
+  if (local_config) {
+    r = snd_pcm_open_lconf(pcm, CUBEB_ALSA_PCM_NAME, stream, SND_PCM_NONBLOCK, local_config);
+  } else {
+    r = snd_pcm_open(pcm, CUBEB_ALSA_PCM_NAME, stream, SND_PCM_NONBLOCK);
+  }
   pthread_mutex_unlock(&cubeb_alsa_mutex);
 
   return r;
@@ -501,6 +597,7 @@ cubeb_init(cubeb ** context, char const * context_name)
   int i;
   int fd[2];
   pthread_attr_t attr;
+  snd_pcm_t * dummy;
 
   assert(context);
   *context = NULL;
@@ -545,6 +642,15 @@ cubeb_init(cubeb ** context, char const * context_name)
   r = pthread_attr_destroy(&attr);
   assert(r == 0);
 
+  /* Open a dummy PCM to force the configuration space to be evaluated so that
+     init_local_config_with_workaround can find and modify the default node. */
+  dummy = NULL;
+  cubeb_locked_pcm_open(&dummy, SND_PCM_STREAM_PLAYBACK, NULL);
+  if (dummy) {
+    cubeb_locked_pcm_close(dummy);
+  }
+  ctx->local_config = init_local_config_with_workaround(CUBEB_ALSA_PCM_NODE_NAME);
+
   *context = ctx;
 
   return CUBEB_OK;
@@ -575,6 +681,10 @@ cubeb_destroy(cubeb * ctx)
   close(ctx->control_fd_write);
   pthread_mutex_destroy(&ctx->mutex);
   free(ctx->fds);
+
+  if (ctx->local_config) {
+    snd_config_delete(ctx->local_config);
+  }
 
   free(ctx);
 }
@@ -637,7 +747,7 @@ cubeb_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
   r = pthread_mutex_init(&stm->mutex, NULL);
   assert(r == 0);
 
-  r = cubeb_locked_pcm_open(&stm->pcm, SND_PCM_STREAM_PLAYBACK);
+  r = cubeb_locked_pcm_open(&stm->pcm, SND_PCM_STREAM_PLAYBACK, ctx->local_config);
   if (r < 0) {
     cubeb_stream_destroy(stm);
     return CUBEB_ERROR;
@@ -647,8 +757,9 @@ cubeb_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
   assert(r == 0);
 
   /* Ugly hack: the PA ALSA plugin allows buffer configurations that can't
-     possibly work.  See https://bugzilla.mozilla.org/show_bug.cgi?id=761274 */
-  if (pcm_uses_pulseaudio_plugin(stm->pcm)) {
+     possibly work.  See https://bugzilla.mozilla.org/show_bug.cgi?id=761274.
+     Only resort to this hack if the handle_underrun workaround failed. */
+  if (!ctx->local_config && pcm_uses_pulseaudio_plugin(stm->pcm)) {
     latency = latency < 200 ? 200 : latency;
   }
 
