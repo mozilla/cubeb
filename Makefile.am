@@ -39,11 +39,15 @@ endif
 if SNDIO
 src_libcubeb_la_SOURCES = src/cubeb_sndio.c
 endif
+if OPENSL
+src_libcubeb_la_SOURCES = src/cubeb_opensl.c
+endif
 
 EXTRA_src_libcubeb_la_SOURCES = \
 	cubeb_alsa.c cubeb_pulse.c \
 	cubeb_audiounit.c cubeb_audioqueue.c \
-	cubeb_sndio.c cubeb_directsound.c cubeb_winmm.c
+	cubeb_sndio.c cubeb_directsound.c \
+	cubeb_winmm.c cubeb_opensl.c
 
 src_libcubeb_la_LDFLAGS = -pthread -export-symbols-regex '^cubeb_' $(platform_lib)
 
