@@ -20,7 +20,6 @@
 #define CUBEB_WATCHDOG_MS 10000
 
 #define CUBEB_ALSA_PCM_NAME "default"
-#define CUBEB_ALSA_PCM_NODE_NAME "pcm.default"
 
 #define ALSA_PA_PLUGIN "ALSA <-> PulseAudio PCM I/O Plugin"
 
@@ -418,87 +417,151 @@ cubeb_run_thread(void * context)
   return NULL;
 }
 
+static snd_config_t *
+get_slave_pcm_node(snd_config_t * lconf, snd_config_t * root_pcm)
+{
+  int r;
+  snd_config_t * slave_pcm;
+  snd_config_t * slave_def;
+  snd_config_t * pcm;
+  char const * string;
+  char node_name[64];
+
+  slave_def = NULL;
+
+  r = snd_config_search(root_pcm, "slave", &slave_pcm);
+  if (r < 0) {
+    return NULL;
+  }
+
+  r = snd_config_get_string(slave_pcm, &string);
+  if (r >= 0) {
+    r = snd_config_search_definition(lconf, "pcm_slave", string, &slave_def);
+    if (r < 0) {
+      return NULL;
+    }
+  }
+
+  do {
+    r = snd_config_search(slave_def ? slave_def : slave_pcm, "pcm", &pcm);
+    if (r < 0) {
+      break;
+    }
+
+    r = snd_config_get_string(slave_def ? slave_def : slave_pcm, &string);
+    if (r < 0) {
+      break;
+    }
+
+    r = snprintf(node_name, sizeof(node_name), "pcm.%s", string);
+    if (r < 0 || r > sizeof(node_name)) {
+      break;
+    }
+    r = snd_config_search(lconf, node_name, &pcm);
+    if (r < 0) {
+      break;
+    }
+
+    return pcm;
+  } while (0);
+
+  if (slave_def) {
+    snd_config_delete(slave_def);
+  }
+
+  return NULL;
+}
+
 /* Work around PulseAudio ALSA plugin bug where the PA server forces a
    higher than requested latency, but the plugin does not update its (and
    ALSA's) internal state to reflect that, leading to an immediate underrun
    situation.  Inspired by WINE's make_handle_underrun_config.
-   Reference: http://mailman.alsa-project.org/pipermail/alsa-devel/2012-July/05
- */
+   Reference: http://mailman.alsa-project.org/pipermail/alsa-devel/2012-July/05 */
 static snd_config_t *
-init_local_config_with_workaround(char const * pcm_node_name)
+init_local_config_with_workaround(char const * pcm_name)
 {
   int r;
   snd_config_t * lconf;
-  snd_config_t * device_node;
-  snd_config_t * type_node;
+  snd_config_t * pcm_node;
   snd_config_t * node;
-  char const * type_string;
+  char const * string;
+  char node_name[64];
+
   lconf = NULL;
 
-  pthread_mutex_lock(&cubeb_alsa_mutex);
-
   if (snd_config == NULL) {
-    pthread_mutex_unlock(&cubeb_alsa_mutex);
     return NULL;
   }
 
   r = snd_config_copy(&lconf, snd_config);
-  assert(r >= 0);
-
-  r = snd_config_search(lconf, pcm_node_name, &device_node);
-  if (r != 0) {
-    snd_config_delete(lconf);
-    pthread_mutex_unlock(&cubeb_alsa_mutex);
+  if (r < 0) {
     return NULL;
   }
 
-  /* Fetch the PCM node's type, and bail out if it's not the PulseAudio plugin. */
-  r = snd_config_search(device_node, "type", &type_node);
-  if (r != 0) {
-    snd_config_delete(lconf);
-    pthread_mutex_unlock(&cubeb_alsa_mutex);
-    return NULL;
-  }
+  do {
+    r = snd_config_search_definition(lconf, "pcm", pcm_name, &pcm_node);
+    if (r < 0) {
+      break;
+    }
 
-  r = snd_config_get_string(type_node, &type_string);
-  if (r != 0) {
-    snd_config_delete(lconf);
-    pthread_mutex_unlock(&cubeb_alsa_mutex);
-    return NULL;
-  }
+    r = snd_config_get_id(pcm_node, &string);
+    if (r < 0) {
+      break;
+    }
 
-  if (strcmp(type_string, "pulse") != 0) {
-    snd_config_delete(lconf);
-    pthread_mutex_unlock(&cubeb_alsa_mutex);
-    return NULL;
-  }
+    r = snprintf(node_name, sizeof(node_name), "pcm.%s", string);
+    if (r < 0 || r > sizeof(node_name)) {
+      break;
+    }
+    r = snd_config_search(lconf, node_name, &pcm_node);
+    if (r < 0) {
+      break;
+    }
 
-  /* Don't clobber an explicit existing handle_underrun value, set it only
-     if it doesn't already exist. */
-  r = snd_config_search(device_node, "handle_underrun", &node);
-  if (r != -ENOENT) {
-    snd_config_delete(lconf);
-    pthread_mutex_unlock(&cubeb_alsa_mutex);
-    return NULL;
-  }
+    /* If this PCM has a slave, walk the slave configurations until we reach the bottom. */
+    while ((node = get_slave_pcm_node(lconf, pcm_node)) != NULL) {
+      pcm_node = node;
+    }
 
-  /* Disable pcm_pulse's asynchronous underrun handling. */
-  r = snd_config_imake_integer(&node, "handle_underrun", 0);
-  if (r != 0) {
-    snd_config_delete(lconf);
-    pthread_mutex_unlock(&cubeb_alsa_mutex);
-    return NULL;
-  }
+    /* Fetch the PCM node's type, and bail out if it's not the PulseAudio plugin. */
+    r = snd_config_search(pcm_node, "type", &node);
+    if (r < 0) {
+      break;
+    }
 
-  r = snd_config_add(device_node, node);
-  if (r != 0) {
-    snd_config_delete(lconf);
-    pthread_mutex_unlock(&cubeb_alsa_mutex);
-    return NULL;
-  }
+    r = snd_config_get_string(node, &string);
+    if (r < 0) {
+      break;
+    }
 
-  pthread_mutex_unlock(&cubeb_alsa_mutex);
-  return lconf;
+    if (strcmp(string, "pulse") != 0) {
+      break;
+    }
+
+    /* Don't clobber an explicit existing handle_underrun value, set it only
+       if it doesn't already exist. */
+    r = snd_config_search(pcm_node, "handle_underrun", &node);
+    if (r != -ENOENT) {
+      break;
+    }
+
+    /* Disable pcm_pulse's asynchronous underrun handling. */
+    r = snd_config_imake_integer(&node, "handle_underrun", 0);
+    if (r < 0) {
+      break;
+    }
+
+    r = snd_config_add(pcm_node, node);
+    if (r < 0) {
+      break;
+    }
+
+    return lconf;
+  } while (0);
+
+  snd_config_delete(lconf);
+
+  return NULL;
 }
 
 
@@ -649,7 +712,9 @@ cubeb_init(cubeb ** context, char const * context_name)
   if (dummy) {
     cubeb_locked_pcm_close(dummy);
   }
-  ctx->local_config = init_local_config_with_workaround(CUBEB_ALSA_PCM_NODE_NAME);
+  pthread_mutex_lock(&cubeb_alsa_mutex);
+  ctx->local_config = init_local_config_with_workaround(CUBEB_ALSA_PCM_NAME);
+  pthread_mutex_unlock(&cubeb_alsa_mutex);
 
   *context = ctx;
 
@@ -760,7 +825,7 @@ cubeb_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
      possibly work.  See https://bugzilla.mozilla.org/show_bug.cgi?id=761274.
      Only resort to this hack if the handle_underrun workaround failed. */
   if (!ctx->local_config && pcm_uses_pulseaudio_plugin(stm->pcm)) {
-    latency = latency < 200 ? 200 : latency;
+    latency = latency < 500 ? 500 : latency;
   }
 
   r = snd_pcm_set_params(stm->pcm, format, SND_PCM_ACCESS_RW_INTERLEAVED,
