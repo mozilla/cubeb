@@ -454,7 +454,7 @@ get_slave_pcm_node(snd_config_t * lconf, snd_config_t * root_pcm)
     }
 
     r = snprintf(node_name, sizeof(node_name), "pcm.%s", string);
-    if (r < 0 || r > sizeof(node_name)) {
+    if (r < 0 || r > (int) sizeof(node_name)) {
       break;
     }
     r = snd_config_search(lconf, node_name, &pcm);
@@ -510,7 +510,7 @@ init_local_config_with_workaround(char const * pcm_name)
     }
 
     r = snprintf(node_name, sizeof(node_name), "pcm.%s", string);
-    if (r < 0 || r > sizeof(node_name)) {
+    if (r < 0 || r > (int) sizeof(node_name)) {
       break;
     }
     r = snd_config_search(lconf, node_name, &pcm_node);
@@ -707,14 +707,26 @@ cubeb_init(cubeb ** context, char const * context_name)
 
   /* Open a dummy PCM to force the configuration space to be evaluated so that
      init_local_config_with_workaround can find and modify the default node. */
-  dummy = NULL;
-  cubeb_locked_pcm_open(&dummy, SND_PCM_STREAM_PLAYBACK, NULL);
-  if (dummy) {
+  r = cubeb_locked_pcm_open(&dummy, SND_PCM_STREAM_PLAYBACK, NULL);
+  if (r >= 0) {
     cubeb_locked_pcm_close(dummy);
   }
   pthread_mutex_lock(&cubeb_alsa_mutex);
   ctx->local_config = init_local_config_with_workaround(CUBEB_ALSA_PCM_NAME);
   pthread_mutex_unlock(&cubeb_alsa_mutex);
+  if (ctx->local_config) {
+    r = cubeb_locked_pcm_open(&dummy, SND_PCM_STREAM_PLAYBACK, ctx->local_config);
+    /* If we got a local_config, we found a PA PCM.  If opening a PCM with that
+       config fails with EINVAL, the PA PCM is too old for this workaround. */
+    if (r == -EINVAL) {
+      pthread_mutex_lock(&cubeb_alsa_mutex);
+      snd_config_delete(ctx->local_config);
+      pthread_mutex_unlock(&cubeb_alsa_mutex);
+      ctx->local_config = NULL;
+    } else if (r >= 0) {
+      cubeb_locked_pcm_close(dummy);
+    }
+  }
 
   *context = ctx;
 
@@ -748,7 +760,9 @@ cubeb_destroy(cubeb * ctx)
   free(ctx->fds);
 
   if (ctx->local_config) {
+    pthread_mutex_lock(&cubeb_alsa_mutex);
     snd_config_delete(ctx->local_config);
+    pthread_mutex_unlock(&cubeb_alsa_mutex);
   }
 
   free(ctx);
