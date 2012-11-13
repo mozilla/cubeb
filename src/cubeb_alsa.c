@@ -58,6 +58,7 @@ struct cubeb {
      ALSA plugin.  Will be NULL if the PA ALSA plugin is not in use or the
      workaround is not required. */
   snd_config_t * local_config;
+  int is_pa;
 };
 
 enum stream_state {
@@ -634,24 +635,6 @@ silent_error_handler(char const * file, int line, char const * function,
 {
 }
 
-static int
-pcm_uses_pulseaudio_plugin(snd_pcm_t * pcm)
-{
-  snd_output_t * out;
-  char * buf;
-  size_t bufsz;
-  int r;
-
-  snd_output_buffer_open(&out);
-  snd_pcm_dump(pcm, out);
-  bufsz = snd_output_buffer_string(out, &buf);
-  r = bufsz >= strlen(ALSA_PA_PLUGIN) &&
-      strncmp(buf, ALSA_PA_PLUGIN, strlen(ALSA_PA_PLUGIN)) == 0;
-  snd_output_close(out);
-
-  return r;
-}
-
 int
 cubeb_init(cubeb ** context, char const * context_name)
 {
@@ -711,10 +694,12 @@ cubeb_init(cubeb ** context, char const * context_name)
   if (r >= 0) {
     cubeb_locked_pcm_close(dummy);
   }
+  ctx->is_pa = 0;
   pthread_mutex_lock(&cubeb_alsa_mutex);
   ctx->local_config = init_local_config_with_workaround(CUBEB_ALSA_PCM_NAME);
   pthread_mutex_unlock(&cubeb_alsa_mutex);
   if (ctx->local_config) {
+    ctx->is_pa = 1;
     r = cubeb_locked_pcm_open(&dummy, SND_PCM_STREAM_PLAYBACK, ctx->local_config);
     /* If we got a local_config, we found a PA PCM.  If opening a PCM with that
        config fails with EINVAL, the PA PCM is too old for this workaround. */
@@ -838,7 +823,7 @@ cubeb_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
   /* Ugly hack: the PA ALSA plugin allows buffer configurations that can't
      possibly work.  See https://bugzilla.mozilla.org/show_bug.cgi?id=761274.
      Only resort to this hack if the handle_underrun workaround failed. */
-  if (!ctx->local_config && pcm_uses_pulseaudio_plugin(stm->pcm)) {
+  if (!ctx->local_config && ctx->is_pa) {
     latency = latency < 500 ? 500 : latency;
   }
 
