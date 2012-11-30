@@ -277,7 +277,7 @@ test_stream_position(void)
   r = cubeb_stream_get_position(stream, &position);
   assert(r == 0 && position == 0);
 
-  sleep(1);
+  usleep(500000);
 
   r = cubeb_stream_get_position(stream, &position);
   assert(r == 0 && position == 0);
@@ -287,7 +287,7 @@ test_stream_position(void)
   assert(r == 0);
 
   /* XXX let start happen */
-  sleep(1);
+  usleep(500000);
 
   /* stream should have prefilled */
   assert(total_frames_written > 0);
@@ -296,7 +296,7 @@ test_stream_position(void)
   assert(r == 0);
   last_position = position;
 
-  sleep(1);
+  usleep(500000);
 
   r = cubeb_stream_get_position(stream, &position);
   assert(r == 0);
@@ -310,7 +310,7 @@ test_stream_position(void)
     assert(position >= last_position);
     assert(position <= total_frames_written);
     last_position = position;
-    sleep(1);
+    usleep(500000);
   }
 
   assert(last_position != 0);
@@ -320,13 +320,13 @@ test_stream_position(void)
   assert(r == 0);
 
   /* XXX allow stream to settle */
-  sleep(1);
+  usleep(500000);
 
   r = cubeb_stream_get_position(stream, &position);
   assert(r == 0);
   last_position = position;
 
-  sleep(1);
+  usleep(500000);
 
   r = cubeb_stream_get_position(stream, &position);
   assert(r == 0);
@@ -388,7 +388,7 @@ test_drain(void)
   r = cubeb_stream_start(stream);
   assert(r == 0);
 
-  sleep(1);
+  usleep(500000);
 
   do_drain = 1;
 
@@ -399,7 +399,7 @@ test_drain(void)
     if (got_drain) {
       break;
     }
-    sleep(1);
+    usleep(500000);
   }
 
   r = cubeb_stream_get_position(stream, &position);

@@ -5,6 +5,10 @@
  * accompanying file LICENSE for details.
  */
 #undef NDEBUG
+#define __MSVCRT_VERSION__ 0x0700
+#define WINVER 0x0501
+#define WIN32_LEAN_AND_MEAN
+#include <malloc.h>
 #include <assert.h>
 #include <windows.h>
 #include <mmreg.h>
@@ -12,6 +16,11 @@
 #include <process.h>
 #include <stdlib.h>
 #include "cubeb/cubeb.h"
+
+/* This is missing from the MinGW headers. Use a safe fallback. */
+#ifndef MEMORY_ALLOCATION_ALIGNMENT
+#define MEMORY_ALLOCATION_ALIGNMENT 16
+#endif
 
 #define CUBEB_STREAM_MAX 32
 #define NBUFS 4
@@ -33,7 +42,7 @@ struct cubeb {
   PSLIST_HEADER work;
   CRITICAL_SECTION lock;
   unsigned int active_streams;
-  int minimum_latency;
+  unsigned int minimum_latency;
 };
 
 struct cubeb_stream {
@@ -191,7 +200,7 @@ cubeb_buffer_callback(HWAVEOUT waveout, UINT msg, DWORD_PTR user_ptr, DWORD_PTR 
   SetEvent(stm->context->event);
 }
 
-static int
+static unsigned int
 calculate_minimum_latency(void)
 {
   OSVERSIONINFOEX osvi;

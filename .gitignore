@@ -37,5 +37,7 @@ src/.dirstamp
 src/libcubeb.la
 stamp-h1
 test/test_sanity
+test/test_sanity.exe
 test/test_tone
+test/test_tone.exe
 include/cubeb/cubeb-stdint.h

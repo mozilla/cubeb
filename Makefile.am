@@ -49,15 +49,15 @@ EXTRA_src_libcubeb_la_SOURCES = \
 	cubeb_sndio.c cubeb_directsound.c \
 	cubeb_winmm.c cubeb_opensl.c
 
-src_libcubeb_la_LDFLAGS = -pthread -export-symbols-regex '^cubeb_' $(platform_lib)
+src_libcubeb_la_LDFLAGS = -pthread -export-symbols-regex '^cubeb_' $(platform_lib) -no-undefined
 
 noinst_PROGRAMS = test/test_sanity test/test_tone
 
 test_test_sanity_SOURCES = test/test_sanity.c
-test_test_sanity_LDADD = -lm src/libcubeb.la
+test_test_sanity_LDADD = -lm src/libcubeb.la $(platform_lib)
 
 test_test_tone_SOURCES = test/test_tone.c
-test_test_tone_LDADD = -lm src/libcubeb.la
+test_test_tone_LDADD = -lm src/libcubeb.la $(platform_lib)
 
 TESTS = test/test_sanity
 

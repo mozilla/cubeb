@@ -71,6 +71,7 @@ elif test "x$ac_cv_header_windows_h" = "xyes"; then
 #    platform_api="dsound"
 #  else
     platform_api="wave"
+    platform_lib="-lwinmm"
 #  fi
 fi
 AM_CONDITIONAL([PULSE], [test ${platform_api} = "pulse"])

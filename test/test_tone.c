@@ -6,7 +6,7 @@
  */
 
 /* libcubeb api/function test. Plays a simple tone. */
-
+#define _XOPEN_SOURCE 500
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -103,7 +103,7 @@ int main(int argc, char *argv[])
   }
 
   cubeb_stream_start(stream);
-  sleep(1);
+  usleep(500000);
   cubeb_stream_stop(stream);
 
   cubeb_stream_destroy(stream);
