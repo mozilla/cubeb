@@ -47,7 +47,7 @@ AM_PROG_LIBTOOL
 
 dnl Choose the target platform audio API
 AC_CHECK_HEADERS([alsa/asoundlib.h pulse/pulseaudio.h \
-                  AudioToolbox/AudioToolbox.h \
+                  AudioUnit/AudioUnit.h \
                   windows.h dsound.h sndio.h SLES/OpenSLES.h])
 platform_api="none"
 platform_lib="none"
@@ -57,9 +57,9 @@ if test "x$ac_cv_header_pulse_pulseaudio_h" = "xyes"; then
 elif test "x$ac_cv_header_alsa_asoundlib_h" = "xyes"; then
   platform_api="alsa"
   platform_lib="-lasound"
-elif test "x$ac_cv_header_AudioToolbox_AudioToolbox_h" = "xyes"; then
+elif test "x$ac_cv_header_AudioUnit_AudioUnit_h" = "xyes"; then
   platform_api="coreaudio"
-  platform_lib="-framework AudioToolbox"
+  platform_lib="-framework AudioUnit"
 elif test "x$ac_cv_header_sndio_h" = "xyes"; then
   platform_api="sndio"
   platform_lib="-lsndio -lm"

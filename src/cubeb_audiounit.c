@@ -8,7 +8,6 @@
 #include <assert.h>
 #include <pthread.h>
 #include <stdlib.h>
-#include <CoreServices/CoreServices.h>
 #include <AudioUnit/AudioUnit.h>
 #include "cubeb/cubeb.h"
 
@@ -106,9 +105,9 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
                   void * user_ptr)
 {
   AudioStreamBasicDescription ss;
-  ComponentDescription desc;
+  AudioComponentDescription desc;
   cubeb_stream * stm;
-  Component comp;
+  AudioComponent comp;
   AURenderCallbackStruct input;
   unsigned int buffer_size;
   OSStatus r;
@@ -162,7 +161,7 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   desc.componentManufacturer = kAudioUnitManufacturer_Apple;
   desc.componentFlags = 0;
   desc.componentFlagsMask = 0;
-  comp = FindNextComponent(NULL, &desc);
+  comp = AudioComponentFindNext(NULL, &desc);
   assert(comp);
 
   stm = calloc(1, sizeof(*stm));
@@ -180,7 +179,7 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   stm->frames_played = 0;
   stm->frames_queued = 0;
 
-  r = OpenAComponent(comp, &stm->unit);
+  r = AudioComponentInstanceNew(comp, &stm->unit);
   if (r != 0) {
     cubeb_stream_destroy(stm);
     return CUBEB_ERROR;
@@ -229,7 +228,7 @@ cubeb_stream_destroy(cubeb_stream * stm)
   if (stm->unit) {
     AudioOutputUnitStop(stm->unit);
     AudioUnitUninitialize(stm->unit);
-    CloseComponent(stm->unit);
+    AudioComponentInstanceDispose(stm->unit);
   }
 
   r = pthread_mutex_destroy(&stm->mutex);
