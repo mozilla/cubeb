@@ -39,6 +39,7 @@ dnl if $CFLAGS is blank
 cflags_save="$CFLAGS"
 AC_PROG_CC
 AC_PROG_CPP
+AC_PROG_CXX
 CFLAGS="$cflags_save"
 
 AM_PROG_CC_C_O
