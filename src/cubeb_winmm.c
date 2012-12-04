@@ -169,9 +169,15 @@ cubeb_buffer_thread(void * user_ptr)
     rv = WaitForSingleObject(ctx->event, INFINITE);
     assert(rv == WAIT_OBJECT_0);
 
-    while ((item = InterlockedPopEntrySList(ctx->work)) != NULL) {
-      cubeb_refill_stream(((struct cubeb_stream_item *) item)->stream);
-      _aligned_free(item);
+    /* Process work items in batches so that a single stream can't
+       starve the others by continuously adding new work to the top of
+       the work item stack. */
+    item = InterlockedFlushSList(ctx->work);
+    while (item != NULL) {
+      PSLIST_ENTRY tmp = item;
+      cubeb_refill_stream(((struct cubeb_stream_item *) tmp)->stream);
+      item = item->Next;
+      _aligned_free(tmp);
     }
 
     if (ctx->shutdown) {
