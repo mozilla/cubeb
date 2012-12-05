@@ -2,7 +2,7 @@ dnl ------------------------------------------------
 dnl Initialization and Versioning
 dnl ------------------------------------------------
 
-AC_INIT(libcubeb,[0.1git])
+AC_INIT(libcubeb,[0.2])
 
 AC_CANONICAL_HOST
 AC_CANONICAL_TARGET
