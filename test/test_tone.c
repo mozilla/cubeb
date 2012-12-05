@@ -9,8 +9,13 @@
 #define _XOPEN_SOURCE 500
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <math.h>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
 
 #include "cubeb/cubeb.h"
 
@@ -19,6 +24,17 @@
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
+
+static void
+delay(unsigned int ms)
+{
+#ifdef _WIN32
+	Sleep(ms);
+#else
+	sleep(ms / 1000);
+	usleep(ms % 1000 * 1000);
+#endif
+}
 
 /* store the phase of the generated waveform */
 struct cb_user_data {
@@ -103,7 +119,7 @@ int main(int argc, char *argv[])
   }
 
   cubeb_stream_start(stream);
-  usleep(500000);
+  delay(500);
   cubeb_stream_stop(stream);
 
   cubeb_stream_destroy(stream);
