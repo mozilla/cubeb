@@ -246,6 +246,7 @@ cubeb_destroy(cubeb * ctx)
       operation_wait(ctx, NULL, o);
       pa_operation_unref(o);
     }
+    pa_context_set_state_callback(ctx->context, NULL, NULL);
     pa_context_disconnect(ctx->context);
     pa_context_unref(ctx->context);
     pa_threaded_mainloop_unlock(ctx->mainloop);
@@ -366,6 +367,7 @@ cubeb_stream_destroy(cubeb_stream * stm)
       pa_threaded_mainloop_get_api(stm->context->mainloop)->time_free(stm->drain_timer);
     }
 
+    pa_stream_set_state_callback(stm->stream, NULL, NULL);
     pa_stream_disconnect(stm->stream);
     pa_stream_unref(stm->stream);
     pa_threaded_mainloop_unlock(stm->context->mainloop);
