@@ -29,13 +29,13 @@ endif
 if ALSA
 src_libcubeb_la_SOURCES += src/cubeb_alsa.c
 endif
-if COREAUDIO
+if AUDIOUNIT
 src_libcubeb_la_SOURCES += src/cubeb_audiounit.c
 endif
-if WAVE
+if WINMM
 src_libcubeb_la_SOURCES += src/cubeb_winmm.c
 endif
-if DSOUND
+if DIRECTSOUND
 src_libcubeb_la_SOURCES += src/cubeb_directsound.cpp
 endif
 if SNDIO

@@ -5,6 +5,7 @@
  * accompanying file LICENSE for details.
  */
 #include <stddef.h>
+#include "config.h"
 #include "cubeb/cubeb.h"
 #include "cubeb-internal.h"
 
@@ -44,21 +45,61 @@ validate_latency(int latency)
   return CUBEB_OK;
 }
 
-int pulse_init(cubeb ** context, char const * context_name);
-
 int
 cubeb_init(cubeb ** context, char const * context_name)
 {
+  int r;
+
   if (!context) {
     return CUBEB_ERROR_INVALID_PARAMETER;
   }
 
-  return pulse_init(context, context_name);
-#if 0
-  /* XXX: special sauce to create appropriate context for system's capabilities. */
+  r = CUBEB_ERROR;
 
-  return (*context)->ops->init(context, context_name);
+#ifdef CUBEB_PULSE
+  int pulse_init(cubeb ** context, char const * context_name);
+  if ((r = pulse_init(context, context_name)) == CUBEB_OK) {
+    return r;
+  }
 #endif
+#ifdef CUBEB_ALSA
+  int alsa_init(cubeb ** context, char const * context_name);
+  if ((r = alsa_init(context, context_name)) == CUBEB_OK) {
+    return r;
+  }
+#endif
+#ifdef CUBEB_AUDIOUNIT
+  int audiounit_init(cubeb ** context, char const * context_name);
+  if ((r = audiounit_init(context, context_name)) == CUBEB_OK) {
+    return r;
+  }
+#endif
+#ifdef CUBEB_WINMM
+  int winmm_init(cubeb ** context, char const * context_name);
+  if ((r = winmm_init(context, context_name)) == CUBEB_OK) {
+    return r;
+  }
+#endif
+#ifdef CUBEB_DIRECTSOUND
+  int directsound_init(cubeb ** context, char const * context_name);
+  if ((r = directsound_init(context, context_name)) == CUBEB_OK) {
+    return r;
+  }
+#endif
+#ifdef CUBEB_SNDIO
+  int sndio_init(cubeb ** context, char const * context_name);
+  if ((r = sndio_init(context, context_name)) == CUBEB_OK) {
+    return r;
+  }
+#endif
+#ifdef CUBEB_OPENSL
+  int opensl_init(cubeb ** context, char const * context_name);
+  if ((r = opensl_init(context, context_name)) == CUBEB_OK) {
+    return r;
+  }
+#endif
+
+  return CUBEB_ERROR;
 }
 
 char const *

@@ -30,9 +30,9 @@ AC_SUBST(CUBEB_REVISION)
 AC_SUBST(CUBEB_AGE)
 
 
-dnl --------------------------------------------------  
+dnl --------------------------------------------------
 dnl Check for programs
-dnl --------------------------------------------------  
+dnl --------------------------------------------------
 
 dnl save $CFLAGS since AC_PROG_CC likes to insert "-g -O2"
 dnl if $CFLAGS is blank
@@ -50,38 +50,58 @@ dnl Choose the target platform audio API
 AC_CHECK_HEADERS([alsa/asoundlib.h pulse/pulseaudio.h \
                   AudioUnit/AudioUnit.h \
                   windows.h dsound.h sndio.h SLES/OpenSLES.h])
-platform_api="none"
-platform_lib="none"
+platform_api=""
+platform_lib=""
 if test "x$ac_cv_header_pulse_pulseaudio_h" = "xyes"; then
-  platform_api="pulse"
-  platform_lib="-lpulse"
-elif test "x$ac_cv_header_alsa_asoundlib_h" = "xyes"; then
-  platform_api="alsa"
-  platform_lib="-lasound"
-elif test "x$ac_cv_header_AudioUnit_AudioUnit_h" = "xyes"; then
-  platform_api="coreaudio"
-  platform_lib="-framework CoreServices -framework AudioUnit"
-elif test "x$ac_cv_header_sndio_h" = "xyes"; then
-  platform_api="sndio"
-  platform_lib="-lsndio -lm"
-elif test "x$ac_cv_header_SLES_OpenSLES_h" = "xyes"; then
-  platform_api="opensl"
-  platform_lib=""
-elif test "x$ac_cv_header_windows_h" = "xyes"; then
+  platform_api="pulse ${platform_api}"
+  platform_lib="-lpulse ${platform_lib}"
+  HAVE_PULSE=1
+fi
+if test "x$ac_cv_header_alsa_asoundlib_h" = "xyes"; then
+  platform_api="alsa ${platform_api}"
+  platform_lib="-lasound ${platform_lib}"
+  HAVE_ALSA=1
+fi
+if test "x$ac_cv_header_AudioUnit_AudioUnit_h" = "xyes"; then
+  platform_api="audiounit ${platform_api}"
+  platform_lib="-framework CoreServices -framework AudioUnit  ${platform_lib}"
+  HAVE_AUDIOUNIT=1
+fi
+if test "x$ac_cv_header_sndio_h" = "xyes"; then
+  platform_api="sndio ${platform_api}"
+  platform_lib="-lsndio -lm  ${platform_lib}"
+  HAVE_SNDIO=1
+fi
+if test "x$ac_cv_header_SLES_OpenSLES_h" = "xyes"; then
+  platform_api="opensl ${platform_api}"
+  platform_lib=" ${platform_lib}"
+  HAVE_OPENSL=1
+fi
+if test "x$ac_cv_header_windows_h" = "xyes"; then
 #  if test "x$ac_cv_header_dsound_h" = "xyes"; then
-#    platform_api="dsound"
+#    platform_api="directsound ${platform_api}"
+#    platform_lib=" ${platform_lib}"
+#    HAVE_DIRECTSOUND=1
 #  else
-    platform_api="wave"
-    platform_lib="-lwinmm"
+    platform_api="winmm ${platform_api}"
+    platform_lib="-lwinmm ${platform_lib}"
+    HAVE_WINMM=1
 #  fi
 fi
-AM_CONDITIONAL([PULSE], [test ${platform_api} = "pulse"])
-AM_CONDITIONAL([ALSA], [test ${platform_api} = "alsa"])
-AM_CONDITIONAL([COREAUDIO], [test ${platform_api} = "coreaudio"])
-AM_CONDITIONAL([DSOUND], [test ${platform_api} = "dsound"])
-AM_CONDITIONAL([WAVE], [test ${platform_api} = "wave"])
-AM_CONDITIONAL([SNDIO], [test ${platform_api} = "sndio"])
-AM_CONDITIONAL([OPENSL], [test ${platform_api} = "opensl"])
+AM_CONDITIONAL([PULSE], [test "$HAVE_PULSE" -eq 1])
+AM_CONDITIONAL([ALSA], [test "$HAVE_ALSA" -eq 1])
+AM_CONDITIONAL([AUDIOUNIT], [test "$HAVE_AUDIOUNIT" -eq 1])
+AM_CONDITIONAL([SNDIO], [test "$HAVE_SNDIO" -eq 1])
+AM_CONDITIONAL([OPENSL], [test "$HAVE_OPENSL" -eq 1])
+AM_CONDITIONAL([DIRECTSOUND], [test "$HAVE_DIRECTSOUND" -eq 1])
+AM_CONDITIONAL([WINMM], [test "$HAVE_WINMM" -eq 1])
+AS_IF([test "$HAVE_PULSE" -eq 1], [AC_DEFINE([CUBEB_PULSE], [1], [Define if using pulse.])])
+AS_IF([test "$HAVE_ALSA" -eq 1], [AC_DEFINE([CUBEB_ALSA], [1], [Define if using alsa.])])
+AS_IF([test "$HAVE_AUDIOUNIT" -eq 1], [AC_DEFINE([CUBEB_AUDIOUNIT], [1], [Define if using audiounit.])])
+AS_IF([test "$HAVE_SNDIO" -eq 1], [AC_DEFINE([CUBEB_SNDIO], [1], [Define if using sndio.])])
+AS_IF([test "$HAVE_OPENSL" -eq 1], [AC_DEFINE([CUBEB_OPENSL], [1], [Define if using opensl.])])
+AS_IF([test "$HAVE_DIRECTSOUND" -eq 1], [AC_DEFINE([CUBEB_DIRECTSOUND], [1], [Define if using directsound.])])
+AS_IF([test "$HAVE_WINMM" -eq 1], [AC_DEFINE([CUBEB_WINMM], [1], [Define if using winmm.])])
 
 dnl Check for doxygen
 AC_ARG_ENABLE([doc],
@@ -119,7 +139,7 @@ AC_SUBST(PROFILE)
 AC_SUBST(platform_lib)
 
 AC_OUTPUT([
-  Makefile 
+  Makefile
   docs/Makefile
   docs/Doxyfile
   cubeb.pc
@@ -161,4 +181,3 @@ AC_MSG_RESULT([
   Example programs will be built but not installed.
 ------------------------------------------------------------------------
 ])
-
