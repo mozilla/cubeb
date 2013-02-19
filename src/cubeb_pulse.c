@@ -9,8 +9,12 @@
 #include <stdlib.h>
 #include <pulse/pulseaudio.h>
 #include "cubeb/cubeb.h"
+#include "cubeb-internal.h"
+
+static struct cubeb_ops const pulse_ops;
 
 struct cubeb {
+  struct cubeb_ops const * ops;
   pa_threaded_mainloop * mainloop;
   pa_context * context;
   int error;
@@ -197,8 +201,8 @@ stream_cork(cubeb_stream * stm, enum cork_state state)
   }
 }
 
-int
-cubeb_init(cubeb ** context, char const * context_name)
+/*static*/ int
+pulse_init(cubeb ** context, char const * context_name)
 {
   cubeb * ctx;
 
@@ -206,6 +210,8 @@ cubeb_init(cubeb ** context, char const * context_name)
 
   ctx = calloc(1, sizeof(*ctx));
   assert(ctx);
+
+  ctx->ops = &pulse_ops;
 
   ctx->mainloop = pa_threaded_mainloop_new();
   ctx->context = pa_context_new(pa_threaded_mainloop_get_api(ctx->mainloop), context_name);
@@ -228,14 +234,14 @@ cubeb_init(cubeb ** context, char const * context_name)
   return CUBEB_OK;
 }
 
-char const *
-cubeb_get_backend_id(cubeb * ctx)
+static char const *
+pulse_get_backend_id(cubeb * ctx)
 {
   return "pulse";
 }
 
-void
-cubeb_destroy(cubeb * ctx)
+static void
+pulse_destroy(cubeb * ctx)
 {
   pa_operation * o;
 
@@ -260,8 +266,10 @@ cubeb_destroy(cubeb * ctx)
   free(ctx);
 }
 
-int
-cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
+static void pulse_stream_destroy(cubeb_stream * stm);
+
+static int
+pulse_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
                   cubeb_stream_params stream_params, unsigned int latency,
                   cubeb_data_callback data_callback, cubeb_state_callback state_callback,
                   void * user_ptr)
@@ -345,7 +353,7 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   pa_threaded_mainloop_unlock(stm->context->mainloop);
 
   if (r != 0) {
-    cubeb_stream_destroy(stm);
+    alsa_stream_destroy(stm);
     return CUBEB_ERROR;
   }
 
@@ -354,8 +362,8 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   return CUBEB_OK;
 }
 
-void
-cubeb_stream_destroy(cubeb_stream * stm)
+static void
+pulse_stream_destroy(cubeb_stream * stm)
 {
   if (stm->stream) {
     stream_cork(stm, CORK);
@@ -376,22 +384,22 @@ cubeb_stream_destroy(cubeb_stream * stm)
   free(stm);
 }
 
-int
-cubeb_stream_start(cubeb_stream * stm)
+static int
+pulse_stream_start(cubeb_stream * stm)
 {
   stream_cork(stm, UNCORK | NOTIFY);
   return CUBEB_OK;
 }
 
-int
-cubeb_stream_stop(cubeb_stream * stm)
+static int
+pulse_stream_stop(cubeb_stream * stm)
 {
   stream_cork(stm, CORK | NOTIFY);
   return CUBEB_OK;
 }
 
-int
-cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
+static int
+pulse_stream_get_position(cubeb_stream * stm, uint64_t * position)
 {
   int r;
   pa_usec_t r_usec;
@@ -411,3 +419,13 @@ cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
   return CUBEB_OK;
 }
 
+static struct cubeb_ops const pulse_ops = {
+  .init = pulse_init,
+  .get_backend_id = pulse_get_backend_id,
+  .destroy = pulse_destroy,
+  .stream_init = pulse_stream_init,
+  .stream_destroy = pulse_stream_destroy,
+  .stream_start = pulse_stream_start,
+  .stream_stop = pulse_stream_stop,
+  .stream_get_position = pulse_stream_get_position
+};

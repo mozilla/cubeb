@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "cubeb/cubeb.h"
+#include "cubeb-internal.h"
 
 #ifdef CUBEB_SNDIO_DEBUG
 #define DPR(...) fprintf(stderr, __VA_ARGS__);
@@ -17,7 +18,10 @@
 #define DPR(...) do {} while(0)
 #endif
 
+static struct cubeb_ops const pulse_ops;
+
 struct cubeb_stream {
+  struct cubeb_ops const * ops;
   pthread_t th;			  /* to run real-time audio i/o */
   pthread_mutex_t mtx;		  /* protects hdl and pos */
   struct sio_hdl *hdl;		  /* link us to sndio */
@@ -34,7 +38,7 @@ struct cubeb_stream {
   void *arg;			  /* user arg to {data,state}_cb */
 };
 
-void
+static void
 float_to_s16(void *ptr, long nsamp)
 {
   int16_t *dst = ptr;
@@ -44,16 +48,16 @@ float_to_s16(void *ptr, long nsamp)
     *(dst++) = *(src++) * 32767;
 }
 
-void
-cubeb_onmove(void *arg, int delta)
+static void
+sndio_onmove(void *arg, int delta)
 {
   struct cubeb_stream *s = (struct cubeb_stream *)arg;
 
   s->rdpos += delta;
 }
 
-void *
-cubeb_mainloop(void *arg)
+static void *
+sndio_mainloop(void *arg)
 {
 #define MAXFDS 8
   struct pollfd pfds[MAXFDS];
@@ -99,7 +103,7 @@ cubeb_mainloop(void *arg)
     }
     if (end == 0)
       continue;
-    nfds = sio_pollfd(s->hdl, pfds, POLLOUT);    
+    nfds = sio_pollfd(s->hdl, pfds, POLLOUT);
     if (nfds > 0) {
       pthread_mutex_unlock(&s->mtx);
       n = poll(pfds, nfds, -1);
@@ -128,8 +132,8 @@ cubeb_mainloop(void *arg)
   return NULL;
 }
 
-int
-cubeb_init(cubeb **context, char const *context_name)
+/*static*/ int
+sndio_init(cubeb **context, char const *context_name)
 {
   DPR("cubeb_init(%s)\n", context_name);
   *context = (void *)0xdeadbeef;
@@ -137,21 +141,21 @@ cubeb_init(cubeb **context, char const *context_name)
   return CUBEB_OK;
 }
 
-void
-cubeb_destroy(cubeb *context)
+static void
+sndio_destroy(cubeb *context)
 {
   DPR("cubeb_destroy()\n");
   (void)context;
 }
 
-int
-cubeb_stream_init(cubeb *context,
-    cubeb_stream **stream,
-    char const *stream_name,
-    cubeb_stream_params stream_params, unsigned int latency,
-    cubeb_data_callback data_callback,
-    cubeb_state_callback state_callback,
-    void *user_ptr)
+static int
+sndio_stream_init(cubeb *context,
+                  cubeb_stream **stream,
+                  char const *stream_name,
+                  cubeb_stream_params stream_params, unsigned int latency,
+                  cubeb_data_callback data_callback,
+                  cubeb_state_callback state_callback,
+                  void *user_ptr)
 {
   struct cubeb_stream *s;
   struct sio_par wpar, rpar;
@@ -231,16 +235,16 @@ cubeb_stream_init(cubeb *context,
   return CUBEB_OK;
 }
 
-void
-cubeb_stream_destroy(cubeb_stream *s)
+static void
+sndio_stream_destroy(cubeb_stream *s)
 {
   DPR("cubeb_stream_destroy()\n");
   sio_close(s->hdl);
   free(s);
 }
 
-int
-cubeb_stream_start(cubeb_stream *s)
+static int
+sndio_stream_start(cubeb_stream *s)
 {
   int err;
 
@@ -254,8 +258,8 @@ cubeb_stream_start(cubeb_stream *s)
   return CUBEB_OK;
 }
 
-int
-cubeb_stream_stop(cubeb_stream *s)
+static int
+sndio_stream_stop(cubeb_stream *s)
 {
   void *dummy;
 
@@ -267,8 +271,8 @@ cubeb_stream_stop(cubeb_stream *s)
   return CUBEB_OK;
 }
 
-int
-cubeb_stream_get_position(cubeb_stream *s, uint64_t *p)
+static int
+sndio_stream_get_position(cubeb_stream *s, uint64_t *p)
 {
   pthread_mutex_lock(&s->mtx);
   DPR("cubeb_stream_get_position() %lld\n", s->rdpos);
@@ -277,8 +281,8 @@ cubeb_stream_get_position(cubeb_stream *s, uint64_t *p)
   return CUBEB_OK;
 }
 
-int
-cubeb_stream_set_volume(cubeb_stream *s, float volume)
+static int
+sndio_stream_set_volume(cubeb_stream *s, float volume)
 {
   DPR("cubeb_stream_set_volume(%f)\n", volume);
   pthread_mutex_lock(&s->mtx);
@@ -286,3 +290,14 @@ cubeb_stream_set_volume(cubeb_stream *s, float volume)
   pthread_mutex_unlock(&s->mtx);
   return CUBEB_OK;
 }
+
+static struct cubeb_ops const sndio_ops = {
+  .init = sndio_init,
+  .get_backend_id = sndio_get_backend_id,
+  .destroy = sndio_destroy,
+  .stream_init = sndio_stream_init,
+  .stream_destroy = sndio_stream_destroy,
+  .stream_start = sndio_stream_start,
+  .stream_stop = sndio_stream_stop,
+  .stream_get_position = sndio_stream_get_position
+};

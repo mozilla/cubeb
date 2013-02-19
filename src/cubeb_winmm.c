@@ -16,6 +16,7 @@
 #include <process.h>
 #include <stdlib.h>
 #include "cubeb/cubeb.h"
+#include "cubeb-internal.h"
 
 /* This is missing from the MinGW headers. Use a safe fallback. */
 #ifndef MEMORY_ALLOCATION_ALIGNMENT
@@ -35,7 +36,10 @@ struct cubeb_stream_item {
   cubeb_stream * stream;
 };
 
+static struct cubeb_ops const pulse_ops;
+
 struct cubeb {
+  struct cubeb_ops const * ops;
   HANDLE event;
   HANDLE thread;
   int shutdown;
@@ -82,7 +86,7 @@ bytes_per_frame(cubeb_stream_params params)
 }
 
 static WAVEHDR *
-cubeb_get_next_buffer(cubeb_stream * stm)
+winmm_get_next_buffer(cubeb_stream * stm)
 {
   WAVEHDR * hdr = NULL;
 
@@ -97,7 +101,7 @@ cubeb_get_next_buffer(cubeb_stream * stm)
 }
 
 static void
-cubeb_refill_stream(cubeb_stream * stm)
+winmm_refill_stream(cubeb_stream * stm)
 {
   WAVEHDR * hdr;
   long got;
@@ -157,7 +161,7 @@ cubeb_refill_stream(cubeb_stream * stm)
 }
 
 static unsigned __stdcall
-cubeb_buffer_thread(void * user_ptr)
+winmm_buffer_thread(void * user_ptr)
 {
   cubeb * ctx = (cubeb *) user_ptr;
   assert(ctx);
@@ -189,7 +193,7 @@ cubeb_buffer_thread(void * user_ptr)
 }
 
 static void CALLBACK
-cubeb_buffer_callback(HWAVEOUT waveout, UINT msg, DWORD_PTR user_ptr, DWORD_PTR p1, DWORD_PTR p2)
+winmm_buffer_callback(HWAVEOUT waveout, UINT msg, DWORD_PTR user_ptr, DWORD_PTR p1, DWORD_PTR p2)
 {
   cubeb_stream * stm = (cubeb_stream *) user_ptr;
   struct cubeb_stream_item * item;
@@ -234,8 +238,8 @@ calculate_minimum_latency(void)
   return 0;
 }
 
-int
-cubeb_init(cubeb ** context, char const * context_name)
+/*static*/ int
+winmm_init(cubeb ** context, char const * context_name)
 {
   cubeb * ctx;
 
@@ -273,14 +277,14 @@ cubeb_init(cubeb ** context, char const * context_name)
   return CUBEB_OK;
 }
 
-char const *
-cubeb_get_backend_id(cubeb * ctx)
+static char const *
+winmm_get_backend_id(cubeb * ctx)
 {
   return "winmm";
 }
 
-void
-cubeb_destroy(cubeb * ctx)
+static void
+winmm_destroy(cubeb * ctx)
 {
   DWORD rv;
 
@@ -306,8 +310,10 @@ cubeb_destroy(cubeb * ctx)
   free(ctx);
 }
 
-int
-cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
+static void winmm_stream_destroy(cubeb_stream * stm);
+
+static int
+winmm_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
                   cubeb_stream_params stream_params, unsigned int latency,
                   cubeb_data_callback data_callback,
                   cubeb_state_callback state_callback,
@@ -402,7 +408,7 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
 
   stm->event = CreateEvent(NULL, FALSE, FALSE, NULL);
   if (!stm->event) {
-    cubeb_stream_destroy(stm);
+    winmm_stream_destroy(stm);
     return CUBEB_ERROR;
   }
 
@@ -412,13 +418,13 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
                   (DWORD_PTR) cubeb_buffer_callback, (DWORD_PTR) stm,
                   CALLBACK_FUNCTION);
   if (r != MMSYSERR_NOERROR) {
-    cubeb_stream_destroy(stm);
+    winmm_stream_destroy(stm);
     return CUBEB_ERROR;
   }
 
   r = waveOutPause(stm->waveout);
   if (r != MMSYSERR_NOERROR) {
-    cubeb_stream_destroy(stm);
+    winmm_stream_destroy(stm);
     return CUBEB_ERROR;
   }
 
@@ -432,7 +438,7 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
 
     r = waveOutPrepareHeader(stm->waveout, hdr, sizeof(*hdr));
     if (r != MMSYSERR_NOERROR) {
-      cubeb_stream_destroy(stm);
+      winmm_stream_destroy(stm);
       return CUBEB_ERROR;
     }
 
@@ -444,8 +450,8 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   return CUBEB_OK;
 }
 
-void
-cubeb_stream_destroy(cubeb_stream * stm)
+static void
+winmm_stream_destroy(cubeb_stream * stm)
 {
   DWORD rv;
   int i;
@@ -501,8 +507,8 @@ cubeb_stream_destroy(cubeb_stream * stm)
   free(stm);
 }
 
-int
-cubeb_stream_start(cubeb_stream * stm)
+static int
+winmm_stream_start(cubeb_stream * stm)
 {
   MMRESULT r;
 
@@ -519,8 +525,8 @@ cubeb_stream_start(cubeb_stream * stm)
   return CUBEB_OK;
 }
 
-int
-cubeb_stream_stop(cubeb_stream * stm)
+static int
+winmm_stream_stop(cubeb_stream * stm)
 {
   MMRESULT r;
 
@@ -537,8 +543,8 @@ cubeb_stream_stop(cubeb_stream * stm)
   return CUBEB_OK;
 }
 
-int
-cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
+static int
+winmm_stream_get_position(cubeb_stream * stm, uint64_t * position)
 {
   MMRESULT r;
   MMTIME time;
@@ -557,3 +563,13 @@ cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
   return CUBEB_OK;
 }
 
+static struct cubeb_ops const winmm_ops = {
+  .init = winmm_init,
+  .get_backend_id = winmm_get_backend_id,
+  .destroy = winmm_destroy,
+  .stream_init = winmm_stream_init,
+  .stream_destroy = winmm_stream_destroy,
+  .stream_start = winmm_stream_start,
+  .stream_stop = winmm_stream_stop,
+  .stream_get_position = winmm_stream_get_position
+};

@@ -21,29 +21,32 @@ cubebinclude_HEADERS = include/cubeb/cubeb.h include/cubeb/cubeb-stdint.h
 
 lib_LTLIBRARIES = src/libcubeb.la
 
+src_libcubeb_la_SOURCES = src/cubeb.c
+
 if PULSE
-src_libcubeb_la_SOURCES = src/cubeb_pulse.c
+src_libcubeb_la_SOURCES += src/cubeb_pulse.c
 endif
 if ALSA
-src_libcubeb_la_SOURCES = src/cubeb_alsa.c
+src_libcubeb_la_SOURCES += src/cubeb_alsa.c
 endif
 if COREAUDIO
-src_libcubeb_la_SOURCES = src/cubeb_audiounit.c
+src_libcubeb_la_SOURCES += src/cubeb_audiounit.c
 endif
 if WAVE
-src_libcubeb_la_SOURCES = src/cubeb_winmm.c
+src_libcubeb_la_SOURCES += src/cubeb_winmm.c
 endif
 if DSOUND
-src_libcubeb_la_SOURCES = src/cubeb_directsound.cpp
+src_libcubeb_la_SOURCES += src/cubeb_directsound.cpp
 endif
 if SNDIO
-src_libcubeb_la_SOURCES = src/cubeb_sndio.c
+src_libcubeb_la_SOURCES += src/cubeb_sndio.c
 endif
 if OPENSL
-src_libcubeb_la_SOURCES = src/cubeb_opensl.c
+src_libcubeb_la_SOURCES += src/cubeb_opensl.c
 endif
 
 EXTRA_src_libcubeb_la_SOURCES = \
+        src/cubeb.c \
 	src/cubeb_alsa.c src/cubeb_pulse.c \
 	src/cubeb_audiounit.c src/cubeb_audioqueue.c \
 	src/cubeb_sndio.c src/cubeb_directsound.cpp \

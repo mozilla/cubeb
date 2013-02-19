@@ -9,6 +9,9 @@
 #include <stdlib.h>
 #include <AudioToolbox/AudioToolbox.h>
 #include "cubeb/cubeb.h"
+#include "cubeb-internal.h"
+
+static struct cubeb_ops const audioqueue_ops;
 
 #if !defined(MAC_OS_X_VERSION_10_6) || MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_6
 enum {
@@ -17,6 +20,10 @@ enum {
 #endif
 
 #define NBUFS 4
+
+struct cubeb {
+  struct cubeb_ops const * ops;
+};
 
 struct cubeb_stream {
   AudioQueueRef queue;
@@ -72,30 +79,40 @@ audio_queue_output_callback(void * user_ptr, AudioQueueRef queue, AudioQueueBuff
   }
 }
 
-int
-cubeb_init(cubeb ** context, char const * context_name)
+/*static*/ int
+audioqueue_init(cubeb ** context, char const * context_name)
 {
-  *context = (void *) 0xdeadbeef;
+  cubeb * ctx;
+
+  *context = NULL;
+
+  ctx = calloc(1, sizeof(*ctx));
+  assert(ctx);
+
+  ctx->ops = &audioqueue_ops;
+
+  *context = ctx;
+
   return CUBEB_OK;
 }
 
-char const *
-cubeb_get_backend_id(cubeb * ctx)
+static char const *
+audioqueue_get_backend_id(cubeb * ctx)
 {
   return "audioqueue";
 }
 
-void
-cubeb_destroy(cubeb * ctx)
+static void
+audioqueue_destroy(cubeb * ctx)
 {
-  assert(ctx == (void *) 0xdeadbeef);
+  free(ctx);
 }
 
-int
-cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
-                  cubeb_stream_params stream_params, unsigned int latency,
-                  cubeb_data_callback data_callback, cubeb_state_callback state_callback,
-                  void * user_ptr)
+static int
+audioqueue_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
+                       cubeb_stream_params stream_params, unsigned int latency,
+                       cubeb_data_callback data_callback, cubeb_state_callback state_callback,
+                       void * user_ptr)
 {
   AudioStreamBasicDescription ss;
   cubeb_stream * stm;
@@ -178,8 +195,8 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   return CUBEB_OK;
 }
 
-void
-cubeb_stream_destroy(cubeb_stream * stm)
+static void
+audioqueue_stream_destroy(cubeb_stream * stm)
 {
   OSStatus r;
 
@@ -196,8 +213,8 @@ cubeb_stream_destroy(cubeb_stream * stm)
   free(stm);
 }
 
-int
-cubeb_stream_start(cubeb_stream * stm)
+static int
+audioqueue_stream_start(cubeb_stream * stm)
 {
   OSStatus r;
   r = AudioQueueStart(stm->queue, NULL);
@@ -206,8 +223,8 @@ cubeb_stream_start(cubeb_stream * stm)
   return CUBEB_OK;
 }
 
-int
-cubeb_stream_stop(cubeb_stream * stm)
+static int
+audioqueue_stream_stop(cubeb_stream * stm)
 {
   OSStatus r;
   r = AudioQueuePause(stm->queue);
@@ -216,8 +233,8 @@ cubeb_stream_stop(cubeb_stream * stm)
   return CUBEB_OK;
 }
 
-int
-cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
+static int
+audioqueue_stream_get_position(cubeb_stream * stm, uint64_t * position)
 {
   AudioTimeStamp tstamp;
   OSStatus r = AudioQueueGetCurrentTime(stm->queue, NULL, &tstamp, NULL);
@@ -235,3 +252,14 @@ cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
   }
   return CUBEB_OK;
 }
+
+static struct cubeb_ops const audioqueue_ops = {
+  .init = audioqueue_init,
+  .get_backend_id = audioqueue_get_backend_id,
+  .destroy = audioqueue_destroy,
+  .stream_init = audioqueue_stream_init,
+  .stream_destroy = audioqueue_stream_destroy,
+  .stream_start = audioqueue_stream_start,
+  .stream_stop = audioqueue_stream_stop,
+  .stream_get_position = audioqueue_stream_get_position
+};
