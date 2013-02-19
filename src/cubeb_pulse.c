@@ -353,7 +353,7 @@ pulse_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   pa_threaded_mainloop_unlock(stm->context->mainloop);
 
   if (r != 0) {
-    alsa_stream_destroy(stm);
+    pulse_stream_destroy(stm);
     return CUBEB_ERROR;
   }
 
