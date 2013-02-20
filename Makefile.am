@@ -32,6 +32,9 @@ endif
 if AUDIOUNIT
 src_libcubeb_la_SOURCES += src/cubeb_audiounit.c
 endif
+if AUDIOQUEUE
+src_libcubeb_la_SOURCES += src/cubeb_audioqueue.c
+endif
 if WINMM
 src_libcubeb_la_SOURCES += src/cubeb_winmm.c
 endif

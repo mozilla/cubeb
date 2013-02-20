@@ -46,66 +46,104 @@ AM_PROG_CC_C_O
 AC_LIBTOOL_WIN32_DLL
 AM_PROG_LIBTOOL
 
-dnl Choose the target platform audio API
-AC_CHECK_HEADERS([alsa/asoundlib.h pulse/pulseaudio.h \
-                  AudioUnit/AudioUnit.h \
-                  windows.h dsound.h sndio.h SLES/OpenSLES.h])
-platform_api=""
-platform_lib=""
-if test "x$ac_cv_header_pulse_pulseaudio_h" = "xyes"; then
-  platform_api="pulse ${platform_api}"
-  platform_lib="-lpulse ${platform_lib}"
-  HAVE_PULSE=1
-fi
-if test "x$ac_cv_header_alsa_asoundlib_h" = "xyes"; then
-  platform_api="alsa ${platform_api}"
-  platform_lib="-lasound ${platform_lib}"
-  HAVE_ALSA=1
-fi
-if test "x$ac_cv_header_AudioUnit_AudioUnit_h" = "xyes"; then
-  platform_api="audiounit ${platform_api}"
-  platform_lib="-framework CoreServices -framework AudioUnit  ${platform_lib}"
-  HAVE_AUDIOUNIT=1
-fi
-if test "x$ac_cv_header_sndio_h" = "xyes"; then
-  platform_api="sndio ${platform_api}"
-  platform_lib="-lsndio -lm  ${platform_lib}"
-  HAVE_SNDIO=1
-fi
-if test "x$ac_cv_header_SLES_OpenSLES_h" = "xyes"; then
-  platform_api="opensl ${platform_api}"
-  platform_lib=" ${platform_lib}"
-  HAVE_OPENSL=1
-fi
-if test "x$ac_cv_header_windows_h" = "xyes"; then
-#  if test "x$ac_cv_header_dsound_h" = "xyes"; then
-#    platform_api="directsound ${platform_api}"
-#    platform_lib=" ${platform_lib}"
-#    HAVE_DIRECTSOUND=1
-#  else
-    platform_api="winmm ${platform_api}"
-    platform_lib="-lwinmm ${platform_lib}"
-    HAVE_WINMM=1
-#  fi
-fi
-AM_CONDITIONAL([PULSE], [test "$HAVE_PULSE" -eq 1])
+AC_ARG_WITH([pulse],
+            AS_HELP_STRING([--with-pulse], [with PulseAudio @<:@default=check@:>@]))
+AS_IF([test "x$with_pulse" != xno],
+      [PKG_CHECK_MODULES(PULSE, libpulse >= 0.9.16, [
+       HAVE_PULSE=1
+       AC_DEFINE([USE_PULSE], [], [Use PulseAudio])
+      ], [
+       HAVE_ALSA=0
+       AS_IF([test "x$with_pulse" = xyes], [AC_MSG_ERROR(PulseAudio not detected)])])])
+AM_CONDITIONAL([PULSE], [test $HAVE_PULSE -eq 1])
+
+AC_ARG_WITH([alsa],
+            AS_HELP_STRING([--with-alsa], [with ALSA @<:@default=check@:>@]))
+AS_IF([test "x$with_alsa" != xno],
+      [PKG_CHECK_MODULES(ALSA, alsa >= 1.0.17, [
+       HAVE_ALSA=1
+       AC_DEFINE([USE_ALSA], [], [Use ALSA])
+      ], [
+       HAVE_ALSA=0
+       AS_IF([test "x$with_alsa" = xyes], [AC_MSG_ERROR(ALSA not detected)])])])
 AM_CONDITIONAL([ALSA], [test "$HAVE_ALSA" -eq 1])
-AM_CONDITIONAL([AUDIOUNIT], [test "$HAVE_AUDIOUNIT" -eq 1])
-AM_CONDITIONAL([SNDIO], [test "$HAVE_SNDIO" -eq 1])
-AM_CONDITIONAL([OPENSL], [test "$HAVE_OPENSL" -eq 1])
-AM_CONDITIONAL([DIRECTSOUND], [test "$HAVE_DIRECTSOUND" -eq 1])
-AM_CONDITIONAL([WINMM], [test "$HAVE_WINMM" -eq 1])
-AS_IF([test "$HAVE_PULSE" -eq 1], [AC_DEFINE([CUBEB_PULSE], [1], [Define if using pulse.])])
-AS_IF([test "$HAVE_ALSA" -eq 1], [AC_DEFINE([CUBEB_ALSA], [1], [Define if using alsa.])])
-AS_IF([test "$HAVE_AUDIOUNIT" -eq 1], [AC_DEFINE([CUBEB_AUDIOUNIT], [1], [Define if using audiounit.])])
-AS_IF([test "$HAVE_SNDIO" -eq 1], [AC_DEFINE([CUBEB_SNDIO], [1], [Define if using sndio.])])
-AS_IF([test "$HAVE_OPENSL" -eq 1], [AC_DEFINE([CUBEB_OPENSL], [1], [Define if using opensl.])])
-AS_IF([test "$HAVE_DIRECTSOUND" -eq 1], [AC_DEFINE([CUBEB_DIRECTSOUND], [1], [Define if using directsound.])])
-AS_IF([test "$HAVE_WINMM" -eq 1], [AC_DEFINE([CUBEB_WINMM], [1], [Define if using winmm.])])
+
+AC_ARG_WITH([audiounit],
+            AS_HELP_STRING([--with-audiounit], [with AudioUnit @<:@default=check@:>@]))
+AS_IF([test "x$with_audiounit" != xno],
+      [AC_CHECK_HEADER([AudioUnit/AudioUnit.h], [
+       HAVE_AUDIOUNIT=1
+       AUDIOUNIT_LIBS="-framework CoreServices -framework AudioUnit"
+       AC_DEFINE([USE_AUDIOUNIT], [], [Use AudioUnit])
+      ], [
+       HAVE_AUDIOUNIT=0
+       AS_IF([test "x$with_audiounit" = xyes], [AC_MSG_ERROR(AudioUnit not detected)])])])
+AM_CONDITIONAL([AUDIOUNIT], [test $HAVE_AUDIOUNIT -eq 1])
+
+AC_ARG_WITH([audioqueue],
+            AS_HELP_STRING([--with-audioqueue], [with AudioQueue @<:@default=check@:>@]))
+AS_IF([test "x$with_audioqueue" != xno],
+      [AC_CHECK_HEADER([AudioToolbox/AudioToolbox.h], [
+       HAVE_AUDIOQUEUE=1
+       AUDIOQUEUE_LIBS="-framework CoreServices -framework AudioToolbox"
+       AC_DEFINE([USE_AUDIOQUEUE], [], [Use AudioQueue])
+      ], [
+       HAVE_AUDIOQUEUE=0
+       AS_IF([test "x$with_audioqueue" = xyes], [AC_MSG_ERROR(AudioQueue not detected)])])])
+AM_CONDITIONAL([AUDIOQUEUE], [test $HAVE_AUDIOQUEUE -eq 1])
+
+AC_ARG_WITH([sndio],
+            AS_HELP_STRING([--with-sndio], [with sndio @<:@default=check@:>@]))
+AS_IF([test "x$with_sndio" != xno],
+      [AC_CHECK_HEADER([sndio.h], [
+       HAVE_SNDIO=1
+       SNDIO_LIBS="-lsndio"
+       AC_DEFINE([USE_SNDIO], [], [Use sndio])
+      ], [
+       HAVE_SNDIO=0
+       AS_IF([test "x$with_sndio" = xyes], [AC_MSG_ERROR(sndio not detected)])])])
+AM_CONDITIONAL([SNDIO], [test $HAVE_SNDIO -eq 1])
+
+AC_ARG_WITH([opensl],
+            AS_HELP_STRING([--with-opensl], [with OpenSL @<:@default=check@:>@]))
+AS_IF([test "x$with_opensl" != xno],
+      [AC_CHECK_HEADER([SLES/OpenSLES.h], [
+       HAVE_OPENSL=1
+       AC_DEFINE([USE_OPENSL], [], [Use OpenSL])
+      ], [
+       HAVE_OPENSL=0
+       AS_IF([test "x$with_opensl" = xyes], [AC_MSG_ERROR(OpenSL not detected)])])])
+AM_CONDITIONAL([OPENSL], [test $HAVE_OPENSL -eq 1])
+
+AC_ARG_WITH([directsound],
+            AS_HELP_STRING([--with-directsound], [with DirectSound @<:@default=check@:>@]))
+AS_IF([test "x$with_directsound" != xno],
+      [AC_CHECK_HEADER([dsound.h], [
+       HAVE_DIRECTSOUND=1
+       DIRECTSOUND_LIBS="-ldsound"
+       AC_DEFINE([USE_DIRECTSOUND], [], [Use DirectSound])
+      ], [
+       HAVE_DIRECTSOUND=0
+       AS_IF([test "x$with_directsound" = xyes], [AC_MSG_ERROR(DirectSound not detected)])])])
+AM_CONDITIONAL([DIRECTSOUND], [test $HAVE_DIRECTSOUND -eq 1])
+
+AC_ARG_WITH([winmm],
+            AS_HELP_STRING([--with-winmm], [with WinMM @<:@default=check@:>@]))
+AS_IF([test "x$with_winmm" != xno],
+      [AC_CHECK_HEADER([windows.h], [
+       HAVE_WINMM=1
+       DIRECTSOUND_LIBS="-lwinmm"
+       AC_DEFINE([USE_WINMM], [], [Use WinMM])
+      ], [
+       HAVE_WINMM=0
+       AS_IF([test "x$with_winmm" = xyes], [AC_MSG_ERROR(WinMM not detected)])])])
+AM_CONDITIONAL([WINMM], [test $HAVE_WINMM -eq 1])
+
+platform_lib="$PULSE_LIBS $ALSA_LIBS $AUDIOUNIT_LIBS $SNDIO_LIBS $OPENSL_LIBS $DIRECTSOUND_LIBS $WINMM_LIBS"
 
 dnl Check for doxygen
 AC_ARG_ENABLE([doc],
-	AS_HELP_STRING([--enable-doc], [Build API documentation]),
+	AS_HELP_STRING([--enable-doc], [build API documentation]),
 	[ac_enable_doc=$enableval], [ac_enable_doc=auto])
 
 if test "x$ac_enable_doc" != "xno"; then
@@ -156,28 +194,3 @@ if test $HAVE_DOXYGEN = "false"; then
 else
   doc_build="yes"
 fi
-
-AC_MSG_RESULT([
-------------------------------------------------------------------------
-  $PACKAGE $VERSION:  Automatic configuration OK.
-
-  General configuration:
-
-    Platform API target: ........ ${platform_api}
-    API Documentation: .......... ${doc_build}
-
-  Installation paths:
-
-    libcubeb: .................... ${LIBDIR}
-    C header files: .............. ${INCLUDEDIR}/cubeb
-    Documentation: ............... ${DOCDIR}
-
-  Building:
-
-    Type 'make' to compile $PACKAGE.
-
-    Type 'make install' to install $PACKAGE.
-
-  Example programs will be built but not installed.
-------------------------------------------------------------------------
-])
