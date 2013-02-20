@@ -26,6 +26,7 @@ struct cubeb {
 };
 
 struct cubeb_stream {
+  cubeb * context;
   AudioQueueRef queue;
   AudioQueueBufferRef buffers[NBUFS];
   cubeb_data_callback data_callback;
@@ -120,7 +121,7 @@ audioqueue_stream_init(cubeb * context, cubeb_stream ** stream, char const * str
   OSStatus r;
   int i;
 
-  assert(context == (void *) 0xdeadbeef);
+  assert(context);
   *stream = NULL;
 
   if (stream_params.rate < 1 || stream_params.rate > 192000 ||
@@ -167,6 +168,7 @@ audioqueue_stream_init(cubeb * context, cubeb_stream ** stream, char const * str
   stm = calloc(1, sizeof(*stm));
   assert(stm);
 
+  stm->context = context;
   stm->data_callback = data_callback;
   stm->state_callback = state_callback;
   stm->user_ptr = user_ptr;

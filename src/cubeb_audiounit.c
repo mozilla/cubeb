@@ -21,6 +21,7 @@ struct cubeb {
 };
 
 struct cubeb_stream {
+  cubeb * context;
   AudioUnit unit;
   cubeb_data_callback data_callback;
   cubeb_state_callback state_callback;
@@ -115,6 +116,8 @@ audiounit_destroy(cubeb * ctx)
   free(ctx);
 }
 
+static void audiounit_stream_destroy(cubeb_stream * stm);
+
 static int
 audiounit_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
                       cubeb_stream_params stream_params, unsigned int latency,
@@ -134,7 +137,7 @@ audiounit_stream_init(cubeb * context, cubeb_stream ** stream, char const * stre
   unsigned int buffer_size;
   OSStatus r;
 
-  assert(context == (void *) 0xdeadbeef);
+  assert(context);
   *stream = NULL;
 
   if (stream_params.rate < 1 || stream_params.rate > 192000 ||
@@ -193,6 +196,7 @@ audiounit_stream_init(cubeb * context, cubeb_stream ** stream, char const * stre
   stm = calloc(1, sizeof(*stm));
   assert(stm);
 
+  stm->context = context;
   stm->data_callback = data_callback;
   stm->state_callback = state_callback;
   stm->user_ptr = user_ptr;

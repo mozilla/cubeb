@@ -20,8 +20,12 @@
 
 static struct cubeb_ops const pulse_ops;
 
-struct cubeb_stream {
+struct cubeb {
   struct cubeb_ops const * ops;
+};
+
+struct cubeb_stream {
+  cubeb * context;
   pthread_t th;			  /* to run real-time audio i/o */
   pthread_mutex_t mtx;		  /* protects hdl and pos */
   struct sio_hdl *hdl;		  /* link us to sndio */
@@ -136,16 +140,23 @@ sndio_mainloop(void *arg)
 sndio_init(cubeb **context, char const *context_name)
 {
   DPR("cubeb_init(%s)\n", context_name);
-  *context = (void *)0xdeadbeef;
+  *context = malloc(sizeof(*context));
+  (*context)->ops = &sndio_ops;
   (void)context_name;
   return CUBEB_OK;
+}
+
+static char const *
+sndio_get_backend_id(cubeb *context)
+{
+  return "sndio";
 }
 
 static void
 sndio_destroy(cubeb *context)
 {
   DPR("cubeb_destroy()\n");
-  (void)context;
+  free(context);
 }
 
 static int
@@ -165,6 +176,7 @@ sndio_stream_init(cubeb *context,
   s = malloc(sizeof(struct cubeb_stream));
   if (s == NULL)
     return CUBEB_ERROR;
+  s->context = context;
   s->hdl = sio_open(NULL, SIO_PLAY, 0);
   if (s->hdl == NULL) {
     free(s);

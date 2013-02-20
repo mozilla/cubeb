@@ -53,7 +53,7 @@ AS_IF([test "x$with_pulse" != xno],
        HAVE_PULSE=1
        AC_DEFINE([USE_PULSE], [], [Use PulseAudio])
       ], [
-       HAVE_ALSA=0
+       HAVE_PULSE=0
        AS_IF([test "x$with_pulse" = xyes], [AC_MSG_ERROR(PulseAudio not detected)])])])
 AM_CONDITIONAL([PULSE], [test $HAVE_PULSE -eq 1])
 
@@ -66,7 +66,7 @@ AS_IF([test "x$with_alsa" != xno],
       ], [
        HAVE_ALSA=0
        AS_IF([test "x$with_alsa" = xyes], [AC_MSG_ERROR(ALSA not detected)])])])
-AM_CONDITIONAL([ALSA], [test "$HAVE_ALSA" -eq 1])
+AM_CONDITIONAL([ALSA], [test $HAVE_ALSA -eq 1])
 
 AC_ARG_WITH([audiounit],
             AS_HELP_STRING([--with-audiounit], [with AudioUnit @<:@default=check@:>@]))
@@ -139,7 +139,7 @@ AS_IF([test "x$with_winmm" != xno],
        AS_IF([test "x$with_winmm" = xyes], [AC_MSG_ERROR(WinMM not detected)])])])
 AM_CONDITIONAL([WINMM], [test $HAVE_WINMM -eq 1])
 
-platform_lib="$PULSE_LIBS $ALSA_LIBS $AUDIOUNIT_LIBS $SNDIO_LIBS $OPENSL_LIBS $DIRECTSOUND_LIBS $WINMM_LIBS"
+platform_lib="$PULSE_LIBS $ALSA_LIBS $AUDIOUNIT_LIBS $AUDIOQUEUE_LIBS $SNDIO_LIBS $OPENSL_LIBS $DIRECTSOUND_LIBS $WINMM_LIBS"
 
 dnl Check for doxygen
 AC_ARG_ENABLE([doc],
