@@ -115,28 +115,30 @@ AS_IF([test "x$with_opensl" != xno],
        AS_IF([test "x$with_opensl" = xyes], [AC_MSG_ERROR(OpenSL not detected)])])])
 AM_CONDITIONAL([OPENSL], [test $HAVE_OPENSL -eq 1])
 
-AC_ARG_WITH([directsound],
-            AS_HELP_STRING([--with-directsound], [with DirectSound @<:@default=check@:>@]))
-AS_IF([test "x$with_directsound" != xno],
-      [AC_CHECK_HEADER([dsound.h], [
-       HAVE_DIRECTSOUND=1
-       DIRECTSOUND_LIBS="-ldsound"
-       AC_DEFINE([USE_DIRECTSOUND], [], [Use DirectSound])
-      ], [
-       HAVE_DIRECTSOUND=0
-       AS_IF([test "x$with_directsound" = xyes], [AC_MSG_ERROR(DirectSound not detected)])])])
+#AC_ARG_WITH([directsound],
+#            AS_HELP_STRING([--with-directsound], [with DirectSound @<:@default=check@:>@]))
+#AS_IF([test "x$with_directsound" != xno],
+#      [AC_CHECK_HEADER([dsound.h], [
+#       HAVE_DIRECTSOUND=1
+#       DIRECTSOUND_LIBS="-ldsound"
+#       AC_DEFINE([USE_DIRECTSOUND], [], [Use DirectSound])
+#      ], [
+#       HAVE_DIRECTSOUND=0
+#       AS_IF([test "x$with_directsound" = xyes], [AC_MSG_ERROR(DirectSound not detected)])
+#      ], [#include <windows.h>])])
 AM_CONDITIONAL([DIRECTSOUND], [test $HAVE_DIRECTSOUND -eq 1])
 
 AC_ARG_WITH([winmm],
             AS_HELP_STRING([--with-winmm], [with WinMM @<:@default=check@:>@]))
 AS_IF([test "x$with_winmm" != xno],
-      [AC_CHECK_HEADER([windows.h], [
+      [AC_CHECK_HEADERS([mmsystem.h], [
        HAVE_WINMM=1
        DIRECTSOUND_LIBS="-lwinmm"
        AC_DEFINE([USE_WINMM], [], [Use WinMM])
       ], [
        HAVE_WINMM=0
-       AS_IF([test "x$with_winmm" = xyes], [AC_MSG_ERROR(WinMM not detected)])])])
+       AS_IF([test "x$with_winmm" = xyes], [AC_MSG_ERROR(WinMM not detected)])
+      ], [#include <windows.h>])])
 AM_CONDITIONAL([WINMM], [test $HAVE_WINMM -eq 1])
 
 platform_lib="$PULSE_LIBS $ALSA_LIBS $AUDIOUNIT_LIBS $AUDIOQUEUE_LIBS $SNDIO_LIBS $OPENSL_LIBS $DIRECTSOUND_LIBS $WINMM_LIBS"

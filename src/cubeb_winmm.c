@@ -36,7 +36,7 @@ struct cubeb_stream_item {
   cubeb_stream * stream;
 };
 
-static struct cubeb_ops const pulse_ops;
+static struct cubeb_ops const winmm_ops;
 
 struct cubeb {
   struct cubeb_ops const * ops;
@@ -127,7 +127,7 @@ winmm_refill_stream(cubeb_stream * stm)
     return;
   }
 
-  hdr = cubeb_get_next_buffer(stm);
+  hdr = winmm_get_next_buffer(stm);
 
   wanted = (DWORD) stm->buffer_size / bytes_per_frame(stm->params);
 
@@ -179,7 +179,7 @@ winmm_buffer_thread(void * user_ptr)
     item = InterlockedFlushSList(ctx->work);
     while (item != NULL) {
       PSLIST_ENTRY tmp = item;
-      cubeb_refill_stream(((struct cubeb_stream_item *) tmp)->stream);
+      winmm_refill_stream(((struct cubeb_stream_item *) tmp)->stream);
       item = item->Next;
       _aligned_free(tmp);
     }
@@ -238,6 +238,8 @@ calculate_minimum_latency(void)
   return 0;
 }
 
+static void winmm_destroy(cubeb * ctx);
+
 /*static*/ int
 winmm_init(cubeb ** context, char const * context_name)
 {
@@ -249,19 +251,21 @@ winmm_init(cubeb ** context, char const * context_name)
   ctx = calloc(1, sizeof(*ctx));
   assert(ctx);
 
+  ctx->ops = &winmm_ops;
+
   ctx->work = _aligned_malloc(sizeof(*ctx->work), MEMORY_ALLOCATION_ALIGNMENT);
   assert(ctx->work);
   InitializeSListHead(ctx->work);
 
   ctx->event = CreateEvent(NULL, FALSE, FALSE, NULL);
   if (!ctx->event) {
-    cubeb_destroy(ctx);
+    winmm_destroy(ctx);
     return CUBEB_ERROR;
   }
 
-  ctx->thread = (HANDLE) _beginthreadex(NULL, 64 * 1024, cubeb_buffer_thread, ctx, 0, NULL);
+  ctx->thread = (HANDLE) _beginthreadex(NULL, 64 * 1024, winmm_buffer_thread, ctx, 0, NULL);
   if (!ctx->thread) {
-    cubeb_destroy(ctx);
+    winmm_destroy(ctx);
     return CUBEB_ERROR;
   }
 
@@ -412,10 +416,10 @@ winmm_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
     return CUBEB_ERROR;
   }
 
-  /* cubeb_buffer_callback will be called during waveOutOpen, so all
+  /* winmm_buffer_callback will be called during waveOutOpen, so all
      other initialization must be complete before calling it. */
   r = waveOutOpen(&stm->waveout, WAVE_MAPPER, &wfx.Format,
-                  (DWORD_PTR) cubeb_buffer_callback, (DWORD_PTR) stm,
+                  (DWORD_PTR) winmm_buffer_callback, (DWORD_PTR) stm,
                   CALLBACK_FUNCTION);
   if (r != MMSYSERR_NOERROR) {
     winmm_stream_destroy(stm);
@@ -442,7 +446,7 @@ winmm_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
       return CUBEB_ERROR;
     }
 
-    cubeb_refill_stream(stm);
+    winmm_refill_stream(stm);
   }
 
   *stream = stm;
