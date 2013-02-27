@@ -80,6 +80,8 @@ bufferqueue_callback(SLBufferQueueItf caller, struct cubeb_stream *stm)
   }
 }
 
+static void opensl_destroy(cubeb * ctx);
+
 /*static*/ int
 opensl_init(cubeb ** context, char const * context_name)
 {
@@ -113,7 +115,7 @@ opensl_init(cubeb ** context, char const * context_name)
       !SL_IID_OUTPUTMIX ||
       !ctx->SL_IID_BUFFERQUEUE ||
       !ctx->SL_IID_PLAY) {
-    cubeb_destroy(ctx);
+    opensl_destroy(ctx);
     return CUBEB_ERROR;
   }
 
@@ -123,19 +125,19 @@ opensl_init(cubeb ** context, char const * context_name)
   SLresult res;
   res = f_slCreateEngine(&ctx->engObj, 1, opt, 0, NULL, NULL);
   if (res != SL_RESULT_SUCCESS) {
-    cubeb_destroy(ctx);
+    opensl_destroy(ctx);
     return CUBEB_ERROR;
   }
 
   res = (*ctx->engObj)->Realize(ctx->engObj, SL_BOOLEAN_FALSE);
   if (res != SL_RESULT_SUCCESS) {
-    cubeb_destroy(ctx);
+    opensl_destroy(ctx);
     return CUBEB_ERROR;
   }
 
   res = (*ctx->engObj)->GetInterface(ctx->engObj, SL_IID_ENGINE, &ctx->eng);
   if (res != SL_RESULT_SUCCESS) {
-    cubeb_destroy(ctx);
+    opensl_destroy(ctx);
     return CUBEB_ERROR;
   }
 
@@ -143,13 +145,13 @@ opensl_init(cubeb ** context, char const * context_name)
   const SLboolean reqom[] = {SL_BOOLEAN_TRUE};
   res = (*ctx->eng)->CreateOutputMix(ctx->eng, &ctx->outmixObj, 1, idsom, reqom);
   if (res != SL_RESULT_SUCCESS) {
-    cubeb_destroy(ctx);
+    opensl_destroy(ctx);
     return CUBEB_ERROR;
   }
 
   res = (*ctx->outmixObj)->Realize(ctx->outmixObj, SL_BOOLEAN_FALSE);
   if (res != SL_RESULT_SUCCESS) {
-    cubeb_destroy(ctx);
+    opensl_destroy(ctx);
     return CUBEB_ERROR;
   }
 

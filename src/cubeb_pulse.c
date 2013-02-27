@@ -243,6 +243,8 @@ stream_cork(cubeb_stream * stm, enum cork_state state)
   }
 }
 
+static void pulse_destroy(cubeb * ctx);
+
 /*static*/ int
 pulse_init(cubeb ** context, char const * context_name)
 {
@@ -318,7 +320,7 @@ pulse_init(cubeb ** context, char const * context_name)
 
   if (wait_until_context_ready(ctx) != 0) {
     WRAP(pa_threaded_mainloop_unlock)(ctx->mainloop);
-    cubeb_destroy(ctx);
+    pulse_destroy(ctx);
     return CUBEB_ERROR;
   }
   WRAP(pa_threaded_mainloop_unlock)(ctx->mainloop);

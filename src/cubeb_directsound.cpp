@@ -242,6 +242,8 @@ hidden_window_callback(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
 char const hidden_window_class_name[] = "cubeb_hidden_window_class";
 
+static void directsound_destroy(cubeb * ctx);
+
 /*static*/ int
 directsound_init(cubeb ** context, char const * context_name)
 {
@@ -275,18 +277,18 @@ directsound_init(cubeb ** context, char const * context_name)
 				      hidden_window_class_name, NULL, WS_DISABLED,
 				      0, 0, 0, 0, HWND_MESSAGE, NULL, NULL, NULL);
   if (!ctx->hidden_window) {
-    cubeb_destroy(ctx);
+    directsound_destroy(ctx);
     return CUBEB_ERROR;
   }
 
   if (FAILED(DirectSoundCreate(NULL, &ctx->dsound, NULL))) {
-    cubeb_destroy(ctx);
+    directsound_destroy(ctx);
     return CUBEB_ERROR;
   }
   assert(ctx->dsound);
 
   if (FAILED(ctx->dsound->SetCooperativeLevel(ctx->hidden_window, DSSCL_PRIORITY))) {
-    cubeb_destroy(ctx);
+    directsound_destroy(ctx);
     return CUBEB_ERROR;
   }
 
@@ -294,14 +296,14 @@ directsound_init(cubeb ** context, char const * context_name)
 
   ctx->streams_event = CreateEvent(NULL, FALSE, FALSE, NULL);
   if (!ctx->streams_event) {
-    cubeb_destroy(ctx);
+    directsound_destroy(ctx);
     return CUBEB_ERROR;
   }
 
   uintptr_t thread = _beginthreadex(NULL, 64 * 1024,
 				    cubeb_buffer_refill_thread, ctx, 0, NULL);
   if (!thread) {
-    cubeb_destroy(ctx);
+    directsound_destroy(ctx);
     return CUBEB_ERROR;
   }
   ctx->refill_thread = reinterpret_cast<HANDLE>(thread);
