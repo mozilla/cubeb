@@ -5,7 +5,9 @@
  * accompanying file LICENSE for details.
  */
 #include <stddef.h>
+#ifdef HAVE_CONFIG_H
 #include "config.h"
+#endif
 #include "cubeb/cubeb.h"
 #include "cubeb-internal.h"
 
