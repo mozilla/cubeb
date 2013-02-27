@@ -57,6 +57,7 @@ static struct cubeb_ops const pulse_ops;
 
 struct cubeb {
   struct cubeb_ops const * ops;
+  void * libpulse;
   pa_threaded_mainloop * mainloop;
   pa_context * context;
   int error;
@@ -248,20 +249,20 @@ static void pulse_destroy(cubeb * ctx);
 /*static*/ int
 pulse_init(cubeb ** context, char const * context_name)
 {
-  void * pulse;
+  void * libpulse;
   cubeb * ctx;
 
   *context = NULL;
 
-  pulse = dlopen("libpulse.so.0", RTLD_LAZY);
-  if (!pulse) {
+  libpulse = dlopen("libpulse.so.0", RTLD_LAZY);
+  if (!libpulse) {
     return CUBEB_ERROR;
   }
 
 #define LOAD(x) do { \
-    cubeb_##x = dlsym(pulse, #x); \
+    cubeb_##x = dlsym(libpulse, #x); \
     if (!cubeb_##x) { \
-      dlclose(pulse); \
+      dlclose(libpulse); \
       return CUBEB_ERROR; \
     } \
   } while(0)
@@ -308,6 +309,7 @@ pulse_init(cubeb ** context, char const * context_name)
   assert(ctx);
 
   ctx->ops = &pulse_ops;
+  ctx->libpulse = libpulse;
 
   ctx->mainloop = WRAP(pa_threaded_mainloop_new)();
   ctx->context = WRAP(pa_context_new)(WRAP(pa_threaded_mainloop_get_api)(ctx->mainloop), context_name);
@@ -359,6 +361,7 @@ pulse_destroy(cubeb * ctx)
     WRAP(pa_threaded_mainloop_free)(ctx->mainloop);
   }
 
+  dlclose(ctx->libpulse);
   free(ctx);
 }
 
