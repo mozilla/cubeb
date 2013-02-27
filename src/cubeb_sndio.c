@@ -18,7 +18,7 @@
 #define DPR(...) do {} while(0)
 #endif
 
-static struct cubeb_ops const pulse_ops;
+static struct cubeb_ops const sndio_ops;
 
 struct cubeb {
   struct cubeb_ops const * ops;
