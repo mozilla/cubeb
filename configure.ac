@@ -123,7 +123,7 @@ AM_CONDITIONAL([OPENSL], [test $HAVE_OPENSL -eq 1])
 #       DIRECTSOUND_LIBS="-ldsound"
 #       AC_DEFINE([USE_DIRECTSOUND], [], [Use DirectSound])
 #      ], [
-#       HAVE_DIRECTSOUND=0
+       HAVE_DIRECTSOUND=0
 #       AS_IF([test "x$with_directsound" = xyes], [AC_MSG_ERROR(DirectSound not detected)])
 #      ], [#include <windows.h>])])
 AM_CONDITIONAL([DIRECTSOUND], [test $HAVE_DIRECTSOUND -eq 1])
@@ -141,7 +141,7 @@ AS_IF([test "x$with_winmm" != xno],
       ], [#include <windows.h>])])
 AM_CONDITIONAL([WINMM], [test $HAVE_WINMM -eq 1])
 
-platform_lib="$PULSE_LIBS $ALSA_LIBS $AUDIOUNIT_LIBS $AUDIOQUEUE_LIBS $SNDIO_LIBS $OPENSL_LIBS $DIRECTSOUND_LIBS $WINMM_LIBS"
+platform_lib="$ALSA_LIBS $AUDIOUNIT_LIBS $AUDIOQUEUE_LIBS $SNDIO_LIBS $OPENSL_LIBS $DIRECTSOUND_LIBS $WINMM_LIBS"
 
 dnl Check for doxygen
 AC_ARG_ENABLE([doc],
