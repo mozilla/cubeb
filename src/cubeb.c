@@ -9,6 +9,8 @@
 #include "cubeb/cubeb.h"
 #include "cubeb-internal.h"
 
+#define NELEMS(x) ((int) (sizeof(x) / sizeof(x[0])))
+
 struct cubeb {
   struct cubeb_ops * ops;
 };
@@ -16,6 +18,31 @@ struct cubeb {
 struct cubeb_stream {
   struct cubeb * context;
 };
+
+#ifdef USE_PULSE
+int pulse_init(cubeb ** context, char const * context_name);
+#endif
+#ifdef USE_ALSA
+int alsa_init(cubeb ** context, char const * context_name);
+#endif
+#ifdef USE_AUDIOUNIT
+int audiounit_init(cubeb ** context, char const * context_name);
+#endif
+#ifdef USE_AUDIOQUEUE
+int audioqueue_init(cubeb ** context, char const * context_name);
+#endif
+#ifdef USE_WINMM
+int winmm_init(cubeb ** context, char const * context_name);
+#endif
+#ifdef USE_DIRECTSOUND
+int directsound_init(cubeb ** context, char const * context_name);
+#endif
+#ifdef USE_SNDIO
+int sndio_init(cubeb ** context, char const * context_name);
+#endif
+#ifdef USE_OPENSL
+int opensl_init(cubeb ** context, char const * context_name);
+#endif
 
 int
 validate_stream_params(cubeb_stream_params stream_params)
@@ -48,62 +75,43 @@ validate_latency(int latency)
 int
 cubeb_init(cubeb ** context, char const * context_name)
 {
-  int r;
+  int (* init[])(cubeb **, char const *) = {
+#ifdef USE_PULSE
+    pulse_init,
+#endif
+#ifdef USE_ALSA
+    alsa_init,
+#endif
+#ifdef USE_AUDIOUNIT
+    audiounit_init,
+#endif
+#ifdef USE_AUDIOQUEUE
+    audioqueue_init,
+#endif
+#ifdef USE_WINMM
+    winmm_init,
+#endif
+#ifdef USE_DIRECTSOUND
+    directsound_init,
+#endif
+#ifdef USE_SNDIO
+    sndio_init,
+#endif
+#ifdef USE_OPENSL
+    opensl_init,
+#endif
+  };
+  int i;
 
   if (!context) {
     return CUBEB_ERROR_INVALID_PARAMETER;
   }
 
-  r = CUBEB_ERROR;
-
-#ifdef USE_PULSE
-  int pulse_init(cubeb ** context, char const * context_name);
-  if ((r = pulse_init(context, context_name)) == CUBEB_OK) {
-    return r;
+  for (i = 0; i < NELEMS(init); ++i) {
+    if (init[i](context, context_name) == CUBEB_OK) {
+      return CUBEB_OK;
+    }
   }
-#endif
-#ifdef USE_ALSA
-  int alsa_init(cubeb ** context, char const * context_name);
-  if ((r = alsa_init(context, context_name)) == CUBEB_OK) {
-    return r;
-  }
-#endif
-#ifdef USE_AUDIOUNIT
-  int audiounit_init(cubeb ** context, char const * context_name);
-  if ((r = audiounit_init(context, context_name)) == CUBEB_OK) {
-    return r;
-  }
-#endif
-#ifdef USE_AUDIOQUEUE
-  int audioqueue_init(cubeb ** context, char const * context_name);
-  if ((r = audioqueue_init(context, context_name)) == CUBEB_OK) {
-    return r;
-  }
-#endif
-#ifdef USE_WINMM
-  int winmm_init(cubeb ** context, char const * context_name);
-  if ((r = winmm_init(context, context_name)) == CUBEB_OK) {
-    return r;
-  }
-#endif
-#ifdef USE_DIRECTSOUND
-  int directsound_init(cubeb ** context, char const * context_name);
-  if ((r = directsound_init(context, context_name)) == CUBEB_OK) {
-    return r;
-  }
-#endif
-#ifdef USE_SNDIO
-  int sndio_init(cubeb ** context, char const * context_name);
-  if ((r = sndio_init(context, context_name)) == CUBEB_OK) {
-    return r;
-  }
-#endif
-#ifdef USE_OPENSL
-  int opensl_init(cubeb ** context, char const * context_name);
-  if ((r = opensl_init(context, context_name)) == CUBEB_OK) {
-    return r;
-  }
-#endif
 
   return CUBEB_ERROR;
 }
