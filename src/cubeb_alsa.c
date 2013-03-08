@@ -776,12 +776,6 @@ alsa_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
 
   *stream = NULL;
 
-  if (stream_params.rate < 1 || stream_params.rate > 192000 ||
-      stream_params.channels < 1 || stream_params.channels > 32 ||
-      latency < 1 || latency > 2000) {
-    return CUBEB_ERROR_INVALID_FORMAT;
-  }
-
   switch (stream_params.format) {
   case CUBEB_SAMPLE_S16LE:
     format = SND_PCM_FORMAT_S16_LE;

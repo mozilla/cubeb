@@ -366,12 +366,6 @@ directsound_stream_init(cubeb * context, cubeb_stream ** stream, char const * st
   assert(context);
   *stream = NULL;
 
-  if (stream_params.rate < 1 || stream_params.rate > 192000 ||
-      stream_params.channels < 1 || stream_params.channels > 32 ||
-      latency < 1 || latency > 2000) {
-    return CUBEB_ERROR_INVALID_FORMAT;
-  }
-
   /*
     create primary buffer
   */
