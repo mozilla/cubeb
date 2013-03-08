@@ -591,12 +591,12 @@ directsound_stream_get_position(cubeb_stream * stm, uint64_t * position)
 }
 
 static struct cubeb_ops const directsound_ops = {
-  .init = directsound_init,
-  .get_backend_id = directsound_get_backend_id,
-  .destroy = directsound_destroy,
-  .stream_init = directsound_stream_init,
-  .stream_destroy = directsound_stream_destroy,
-  .stream_start = directsound_stream_start,
-  .stream_stop = directsound_stream_stop,
-  .stream_get_position = directsound_stream_get_position
+  /*.init =*/ directsound_init,
+  /*.get_backend_id =*/ directsound_get_backend_id,
+  /*.destroy =*/ directsound_destroy,
+  /*.stream_init =*/ directsound_stream_init,
+  /*.stream_destroy =*/ directsound_stream_destroy,
+  /*.stream_start =*/ directsound_stream_start,
+  /*.stream_stop =*/ directsound_stream_stop,
+  /*.stream_get_position =*/ directsound_stream_get_position
 };

@@ -568,12 +568,12 @@ winmm_stream_get_position(cubeb_stream * stm, uint64_t * position)
 }
 
 static struct cubeb_ops const winmm_ops = {
-  .init = winmm_init,
-  .get_backend_id = winmm_get_backend_id,
-  .destroy = winmm_destroy,
-  .stream_init = winmm_stream_init,
-  .stream_destroy = winmm_stream_destroy,
-  .stream_start = winmm_stream_start,
-  .stream_stop = winmm_stream_stop,
-  .stream_get_position = winmm_stream_get_position
+  /*.init =*/ winmm_init,
+  /*.get_backend_id =*/ winmm_get_backend_id,
+  /*.destroy =*/ winmm_destroy,
+  /*.stream_init =*/ winmm_stream_init,
+  /*.stream_destroy =*/ winmm_stream_destroy,
+  /*.stream_start =*/ winmm_stream_start,
+  /*.stream_stop =*/ winmm_stream_stop,
+  /*.stream_get_position =*/ winmm_stream_get_position
 };
