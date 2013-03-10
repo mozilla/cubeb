@@ -27,17 +27,17 @@ int pulse_init(cubeb ** context, char const * context_name);
 #ifdef USE_ALSA
 int alsa_init(cubeb ** context, char const * context_name);
 #endif
-#ifdef USE_AUDIOUNIT
-int audiounit_init(cubeb ** context, char const * context_name);
-#endif
 #ifdef USE_AUDIOQUEUE
 int audioqueue_init(cubeb ** context, char const * context_name);
 #endif
-#ifdef USE_WINMM
-int winmm_init(cubeb ** context, char const * context_name);
+#ifdef USE_AUDIOUNIT
+int audiounit_init(cubeb ** context, char const * context_name);
 #endif
 #ifdef USE_DIRECTSOUND
 int directsound_init(cubeb ** context, char const * context_name);
+#endif
+#ifdef USE_WINMM
+int winmm_init(cubeb ** context, char const * context_name);
 #endif
 #ifdef USE_SNDIO
 int sndio_init(cubeb ** context, char const * context_name);
