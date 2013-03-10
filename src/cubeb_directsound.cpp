@@ -13,6 +13,7 @@
 #include <cguid.h>
 #include <process.h>
 #include "cubeb/cubeb.h"
+#include "cubeb-internal.h"
 
 #include <stdio.h>
 
@@ -22,7 +23,10 @@ struct cubeb_list_node {
   struct cubeb_stream * stream;
 };
 
+static struct cubeb_ops const directsound_ops;
+
 struct cubeb {
+  struct cubeb_ops const * ops;
   HWND hidden_window;
   LPDIRECTSOUND dsound;
   HANDLE refill_thread;
@@ -185,7 +189,7 @@ refill_stream(cubeb_stream * stm, int prefill)
 }
 
 unsigned __stdcall
-cubeb_buffer_refill_thread(void * user_ptr)
+directsound_buffer_refill_thread(void * user_ptr)
 {
   int shutdown = 0;
   cubeb * ctx = (cubeb *) user_ptr;
@@ -238,8 +242,10 @@ hidden_window_callback(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
 char const hidden_window_class_name[] = "cubeb_hidden_window_class";
 
-int
-cubeb_init(cubeb ** context, char const * context_name)
+static void directsound_destroy(cubeb * ctx);
+
+/*static*/ int
+directsound_init(cubeb ** context, char const * context_name)
 {
   cubeb * ctx;
 
@@ -271,18 +277,18 @@ cubeb_init(cubeb ** context, char const * context_name)
 				      hidden_window_class_name, NULL, WS_DISABLED,
 				      0, 0, 0, 0, HWND_MESSAGE, NULL, NULL, NULL);
   if (!ctx->hidden_window) {
-    cubeb_destroy(ctx);
+    directsound_destroy(ctx);
     return CUBEB_ERROR;
   }
 
   if (FAILED(DirectSoundCreate(NULL, &ctx->dsound, NULL))) {
-    cubeb_destroy(ctx);
+    directsound_destroy(ctx);
     return CUBEB_ERROR;
   }
   assert(ctx->dsound);
 
   if (FAILED(ctx->dsound->SetCooperativeLevel(ctx->hidden_window, DSSCL_PRIORITY))) {
-    cubeb_destroy(ctx);
+    directsound_destroy(ctx);
     return CUBEB_ERROR;
   }
 
@@ -290,14 +296,14 @@ cubeb_init(cubeb ** context, char const * context_name)
 
   ctx->streams_event = CreateEvent(NULL, FALSE, FALSE, NULL);
   if (!ctx->streams_event) {
-    cubeb_destroy(ctx);
+    directsound_destroy(ctx);
     return CUBEB_ERROR;
   }
 
   uintptr_t thread = _beginthreadex(NULL, 64 * 1024,
 				    cubeb_buffer_refill_thread, ctx, 0, NULL);
   if (!thread) {
-    cubeb_destroy(ctx);
+    directsound_destroy(ctx);
     return CUBEB_ERROR;
   }
   ctx->refill_thread = reinterpret_cast<HANDLE>(thread);
@@ -309,14 +315,14 @@ cubeb_init(cubeb ** context, char const * context_name)
   return CUBEB_OK;
 }
 
-char const *
-cubeb_get_backend_id(cubeb * ctx)
+static char const *
+directsound_get_backend_id(cubeb * ctx)
 {
   return "directsound";
 }
 
-void
-cubeb_destroy(cubeb * ctx)
+static void
+directsound_destroy(cubeb * ctx)
 {
   assert(!ctx->streams);
 
@@ -348,23 +354,17 @@ cubeb_destroy(cubeb * ctx)
   free(ctx);
 }
 
-int
-cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
-		  cubeb_stream_params stream_params, unsigned int latency,
-		  cubeb_data_callback data_callback,
-		  cubeb_state_callback state_callback,
-		  void * user_ptr)
+static int
+directsound_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
+                        cubeb_stream_params stream_params, unsigned int latency,
+                        cubeb_data_callback data_callback,
+                        cubeb_state_callback state_callback,
+                        void * user_ptr)
 {
   struct cubeb_list_node * node;
 
   assert(context);
   *stream = NULL;
-
-  if (stream_params.rate < 1 || stream_params.rate > 192000 ||
-      stream_params.channels < 1 || stream_params.channels > 32 ||
-      latency < 1 || latency > 2000) {
-    return CUBEB_ERROR_INVALID_FORMAT;
-  }
 
   /*
     create primary buffer
@@ -490,8 +490,8 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   return CUBEB_OK;
 }
 
-void
-cubeb_stream_destroy(cubeb_stream * stm)
+static void
+directsound_stream_destroy(cubeb_stream * stm)
 {
   EnterCriticalSection(&stm->context->lock);
   if (stm->node->prev) {
@@ -514,8 +514,8 @@ cubeb_stream_destroy(cubeb_stream * stm)
   free(stm);
 }
 
-int
-cubeb_stream_start(cubeb_stream * stm)
+static int
+directsound_stream_start(cubeb_stream * stm)
 {
   EnterCriticalSection(&stm->lock);
   stm->active = 1;
@@ -533,8 +533,8 @@ cubeb_stream_start(cubeb_stream * stm)
   return CUBEB_OK;
 }
 
-int
-cubeb_stream_stop(cubeb_stream * stm)
+static int
+directsound_stream_stop(cubeb_stream * stm)
 {
   EnterCriticalSection(&stm->lock);
   stm->active = 0;
@@ -548,8 +548,8 @@ cubeb_stream_stop(cubeb_stream * stm)
   return CUBEB_OK;
 }
 
-int
-cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
+static int
+directsound_stream_get_position(cubeb_stream * stm, uint64_t * position)
 {
   EnterCriticalSection(&stm->lock);
 
@@ -584,3 +584,13 @@ cubeb_stream_get_position(cubeb_stream * stm, uint64_t * position)
   return CUBEB_OK;
 }
 
+static struct cubeb_ops const directsound_ops = {
+  /*.init =*/ directsound_init,
+  /*.get_backend_id =*/ directsound_get_backend_id,
+  /*.destroy =*/ directsound_destroy,
+  /*.stream_init =*/ directsound_stream_init,
+  /*.stream_destroy =*/ directsound_stream_destroy,
+  /*.stream_start =*/ directsound_stream_start,
+  /*.stream_stop =*/ directsound_stream_stop,
+  /*.stream_get_position =*/ directsound_stream_get_position
+};
