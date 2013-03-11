@@ -115,6 +115,17 @@ AS_IF([test "x$with_opensl" != xno],
        AS_IF([test "x$with_opensl" = xyes], [AC_MSG_ERROR(OpenSL not detected)])])])
 AM_CONDITIONAL([OPENSL], [test $HAVE_OPENSL -eq 1])
 
+AC_ARG_WITH([audiotrack],
+            AS_HELP_STRING([--with-audiotrack], [with OpenSL @<:@default=check@:>@]))
+AS_IF([test "x$with_audiotrack" != xno],
+      [AC_CHECK_HEADER([android/log.h], [
+       HAVE_AUDIOTRACK=1
+       AC_DEFINE([USE_AUDIOTRACK], [], [Use AudioTrack])
+      ], [
+       HAVE_AUDIOTRACK=0
+       AS_IF([test "x$with_audiotrack" = xyes], [AC_MSG_ERROR(AudioTrack not detected)])])])
+AM_CONDITIONAL([AUDIOTRACK], [test $HAVE_AUDIOTRACK -eq 1])
+
 #AC_ARG_WITH([directsound],
 #            AS_HELP_STRING([--with-directsound], [with DirectSound @<:@default=check@:>@]))
 #AS_IF([test "x$with_directsound" != xno],
