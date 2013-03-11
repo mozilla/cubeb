@@ -9,7 +9,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
-#ifdef _WIN32
+#if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #else
@@ -24,7 +24,7 @@
 static void
 delay(unsigned int ms)
 {
-#ifdef _WIN32
+#if defined(_WIN32)
 	Sleep(ms);
 #else
 	sleep(ms / 1000);

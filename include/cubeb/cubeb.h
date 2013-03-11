@@ -9,7 +9,7 @@
 
 #include <cubeb/cubeb-stdint.h>
 
-#ifdef __cplusplus
+#if defined(__cplusplus)
 extern "C" {
 #endif
 
@@ -226,7 +226,7 @@ int cubeb_stream_stop(cubeb_stream * stream);
     @retval CUBEB_ERROR */
 int cubeb_stream_get_position(cubeb_stream * stream, uint64_t * position);
 
-#ifdef __cplusplus
+#if defined(__cplusplus)
 }
 #endif
 
