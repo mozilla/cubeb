@@ -4,8 +4,8 @@
  * This program is made available under an ISC-style license.  See the
  * accompanying file LICENSE for details.
  */
-#ifndef   CUBEB_c2f983e9_c96f_e71c_72c3_bbf62992a382
-#define   CUBEB_c2f983e9_c96f_e71c_72c3_bbf62992a382
+#if !defined(CUBEB_c2f983e9_c96f_e71c_72c3_bbf62992a382)
+#define CUBEB_c2f983e9_c96f_e71c_72c3_bbf62992a382
 
 #include <cubeb/cubeb-stdint.h>
 
