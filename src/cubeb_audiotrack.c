@@ -69,9 +69,9 @@ struct AudioTrack {
 };
 
 struct cubeb {
+  struct cubeb_ops const * ops;
   void * library;
   struct AudioTrack klass;
-  struct cubeb_ops const * ops;
 };
 
 struct cubeb_stream {
