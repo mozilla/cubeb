@@ -9,7 +9,7 @@
 #include <dlfcn.h>
 #include <stdlib.h>
 #include <SLES/OpenSLES.h>
-#ifdef __ANDROID__
+#if defined(__ANDROID__)
 #include <SLES/OpenSLES_Android.h>
 #endif
 #include "cubeb/cubeb.h"
@@ -22,7 +22,7 @@ struct cubeb {
   void * lib;
   SLInterfaceID SL_IID_BUFFERQUEUE;
   SLInterfaceID SL_IID_PLAY;
-#ifdef __ANDROID__
+#if defined(__ANDROID__)
   SLInterfaceID SL_IID_ANDROIDCONFIGURATION;
 #endif
   SLObjectItf engObj;
@@ -87,7 +87,7 @@ bufferqueue_callback(SLBufferQueueItf caller, struct cubeb_stream *stm)
   }
 }
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__)
 static SLuint32
 convert_stream_type_to_sl_stream(cubeb_stream_type stream_type)
 {
@@ -140,7 +140,7 @@ opensl_init(cubeb ** context, char const * context_name)
   SLInterfaceID SL_IID_ENGINE = *(SLInterfaceID *)dlsym(ctx->lib, "SL_IID_ENGINE");
   SLInterfaceID SL_IID_OUTPUTMIX = *(SLInterfaceID *)dlsym(ctx->lib, "SL_IID_OUTPUTMIX");
   ctx->SL_IID_BUFFERQUEUE = *(SLInterfaceID *)dlsym(ctx->lib, "SL_IID_BUFFERQUEUE");
-#ifdef __ANDROID__
+#if defined(__ANDROID__)
   ctx->SL_IID_ANDROIDCONFIGURATION = *(SLInterfaceID *)dlsym(ctx->lib, "SL_IID_ANDROIDCONFIGURATION");
 #endif
   ctx->SL_IID_PLAY = *(SLInterfaceID *)dlsym(ctx->lib, "SL_IID_PLAY");
@@ -148,7 +148,7 @@ opensl_init(cubeb ** context, char const * context_name)
       !SL_IID_ENGINE ||
       !SL_IID_OUTPUTMIX ||
       !ctx->SL_IID_BUFFERQUEUE ||
-#ifdef __ANDROID__
+#if defined(__ANDROID__)
       !ctx->SL_IID_ANDROIDCONFIGURATION ||
 #endif
       !ctx->SL_IID_PLAY) {
@@ -289,7 +289,7 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
   sink.pLocator = &loc_outmix;
   sink.pFormat = NULL;
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__)
   const SLInterfaceID ids[] = {ctx->SL_IID_BUFFERQUEUE, ctx->SL_IID_ANDROIDCONFIGURATION};
   const SLboolean req[] = {SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE};
 #else
@@ -304,7 +304,7 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
     return CUBEB_ERROR;
   }
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__)
   SLuint32 stream_type = convert_stream_type_to_sl_stream(stream_params.stream_type);
   if (stream_type != 0xFFFFFFFF) {
     SLAndroidConfigurationItf playerConfig;

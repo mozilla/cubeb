@@ -101,6 +101,7 @@ typedef enum {
 #endif
 } cubeb_sample_format;
 
+#if defined(__ANDROID__)
 typedef enum {
     CUBEB_STREAM_TYPE_VOICE_CALL = 0,
     CUBEB_STREAM_TYPE_SYSTEM = 1,
@@ -116,6 +117,7 @@ typedef enum {
 
     CUBEB_STREAM_TYPE_MAX
 } cubeb_stream_type;
+#endif
 
 /** Stream format initialization parameters. */
 typedef struct {
@@ -123,7 +125,9 @@ typedef struct {
                                    #cubeb_sample_format. */
   unsigned int rate;          /**< Requested sample rate.  Valid range is [1, 192000]. */
   unsigned int channels;      /**< Requested channel count.  Valid range is [1, 32]. */
+#if defined(__ANDROID__)
   cubeb_stream_type stream_type; /**< Used to map Android audio stream types */
+#endif
 } cubeb_stream_params;
 
 /** Stream states signaled via state_callback. */
