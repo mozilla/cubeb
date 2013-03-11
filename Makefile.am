@@ -47,13 +47,16 @@ endif
 if OPENSL
 src_libcubeb_la_SOURCES += src/cubeb_opensl.c
 endif
+if AUDIOTRACK
+src_libcubeb_la_SOURCES += src/cubeb_audiotrack.c
+endif
 
 EXTRA_src_libcubeb_la_SOURCES = \
         src/cubeb.c \
 	src/cubeb_alsa.c src/cubeb_pulse.c \
 	src/cubeb_audiounit.c src/cubeb_audioqueue.c \
 	src/cubeb_sndio.c src/cubeb_directsound.cpp \
-	src/cubeb_winmm.c src/cubeb_opensl.c
+	src/cubeb_winmm.c src/cubeb_opensl.c src/cubeb_audiotrack.c
 
 src_libcubeb_la_LDFLAGS = -pthread -export-symbols-regex '^cubeb_' $(platform_lib) -no-undefined
 
