@@ -45,6 +45,9 @@ int sndio_init(cubeb ** context, char const * context_name);
 #if defined(USE_OPENSL)
 int opensl_init(cubeb ** context, char const * context_name);
 #endif
+#if defined(USE_AUDIOTRACK)
+int audiotrack_init(cubeb ** context, char const * context_name);
+#endif
 
 int
 validate_stream_params(cubeb_stream_params stream_params)
@@ -101,6 +104,9 @@ cubeb_init(cubeb ** context, char const * context_name)
 #endif
 #if defined(USE_OPENSL)
     opensl_init,
+#endif
+#if defined(USE_AUDIOTRACK)
+    audiotrack_init,
 #endif
   };
   int i;
