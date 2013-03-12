@@ -123,6 +123,8 @@ opensl_init(cubeb ** context, char const * context_name)
   ctx = calloc(1, sizeof(*ctx));
   assert(ctx);
 
+  ctx->ops = &opensl_ops;
+
   ctx->lib = dlopen("libOpenSLES.so", RTLD_LAZY);
   if (!ctx->lib) {
     free(ctx);

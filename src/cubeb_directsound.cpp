@@ -253,6 +253,8 @@ directsound_init(cubeb ** context, char const * context_name)
 
   ctx = (cubeb *) calloc(1, sizeof(*ctx));
 
+  ctx->ops = &directsound_ops;
+
   /* register a hidden window for DirectSound's SetCooperativeLevel */
   WNDCLASSEX wc;
   wc.cbSize        = sizeof(WNDCLASSEX);
