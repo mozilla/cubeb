@@ -15,7 +15,7 @@
 
 #include "cubeb/cubeb.h"
 #include "cubeb-internal.h"
-#include "audiotrack_definitions.h"
+#include "android/audiotrack_definitions.h"
 
 #ifndef ALOG
 #if defined(DEBUG) || defined(FORCE_ALOG)
