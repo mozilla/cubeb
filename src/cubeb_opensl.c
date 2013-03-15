@@ -10,7 +10,7 @@
 #include <stdlib.h>
 #include <SLES/OpenSLES.h>
 #if defined(__ANDROID__)
-#include "android/android_sles_definitions.h"
+#include "android/sles_definitions.h"
 #endif
 #include "cubeb/cubeb.h"
 #include "cubeb-internal.h"
