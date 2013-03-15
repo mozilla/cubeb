@@ -11,6 +11,7 @@
 #include <SLES/OpenSLES.h>
 #if defined(__ANDROID__)
 #include "android/sles_definitions.h"
+#include <SLES/OpenSLES_Android.h>
 #endif
 #include "cubeb/cubeb.h"
 #include "cubeb-internal.h"
