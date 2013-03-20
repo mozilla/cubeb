@@ -52,8 +52,9 @@ struct cubeb_stream {
 };
 
 static void
-bufferqueue_callback(SLBufferQueueItf caller, struct cubeb_stream *stm)
+bufferqueue_callback(SLBufferQueueItf caller, void * user_ptr)
 {
+  cubeb_stream * stm = user_ptr;
   SLBufferQueueState state;
   (*stm->bufq)->GetState(stm->bufq, &state);
 
