@@ -79,8 +79,13 @@ bufferqueue_callback(SLBufferQueueItf caller, void * user_ptr)
       return;
     }
 
-    (*stm->bufq)->Enqueue(stm->bufq, buf, written * stm->framesize);
-    stm->queuebuf_idx = (stm->queuebuf_idx + 1) % NBUFS;
+    if (written) {
+      (*stm->bufq)->Enqueue(stm->bufq, buf, written * stm->framesize);
+      stm->queuebuf_idx = (stm->queuebuf_idx + 1) % NBUFS;
+    } else if (!i) {
+      stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
+      return;
+    }
 
     if ((written * stm->framesize) < stm->queuebuf_len) {
       stm->draining = 1;
@@ -358,6 +363,10 @@ opensl_stream_destroy(cubeb_stream * stm)
 {
   if (stm->playerObj)
     (*stm->playerObj)->Destroy(stm->playerObj);
+  int i;
+  for (i = 0; i < NBUFS; i++) {
+    free(stm->queuebuf[i]);
+  }
   free(stm);
 }
 
