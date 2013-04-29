@@ -35,7 +35,7 @@ struct cubeb {
 #define NBUFS 4
 
 struct cubeb_stream {
-  struct cubeb * context;
+  cubeb * context;
   SLObjectItf playerObj;
   SLPlayItf play;
   SLBufferQueueItf bufq;
