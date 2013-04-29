@@ -69,7 +69,7 @@ struct cubeb {
 };
 
 struct cubeb_stream {
-  struct cubeb * context;
+  cubeb * context;
   pa_stream * stream;
   cubeb_data_callback data_callback;
   cubeb_state_callback state_callback;

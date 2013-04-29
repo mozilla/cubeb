@@ -37,7 +37,7 @@ struct cubeb {
 };
 
 struct cubeb_stream {
-  struct cubeb * context;
+  cubeb * context;
   LPDIRECTSOUNDBUFFER buffer;
   DWORD buffer_size;
   cubeb_stream_params params;

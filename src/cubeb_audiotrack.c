@@ -305,7 +305,7 @@ audiotrack_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_
                        cubeb_state_callback state_callback,
                        void * user_ptr)
 {
-  struct cubeb_stream * stm;
+  cubeb_stream * stm;
   int32_t channels;
   int32_t min_frame_count;
 

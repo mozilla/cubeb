@@ -55,7 +55,7 @@ float_to_s16(void *ptr, long nsamp)
 static void
 sndio_onmove(void *arg, int delta)
 {
-  struct cubeb_stream *s = (struct cubeb_stream *)arg;
+  cubeb_stream *s = (cubeb_stream *)arg;
 
   s->rdpos += delta;
 }
@@ -65,7 +65,7 @@ sndio_mainloop(void *arg)
 {
 #define MAXFDS 8
   struct pollfd pfds[MAXFDS];
-  struct cubeb_stream *s = arg;
+  cubeb_stream *s = arg;
   int n, nfds, revents, state;
   size_t start = 0, end = 0;
   long nfr;
@@ -169,12 +169,12 @@ sndio_stream_init(cubeb *context,
                   cubeb_state_callback state_callback,
                   void *user_ptr)
 {
-  struct cubeb_stream *s;
+  cubeb_stream *s;
   struct sio_par wpar, rpar;
   DPR("sndio_stream_init(%s)\n", stream_name);
   size_t size;
 
-  s = malloc(sizeof(struct cubeb_stream));
+  s = malloc(sizeof(cubeb_stream));
   if (s == NULL)
     return CUBEB_ERROR;
   s->context = context;
