@@ -152,6 +152,7 @@ sndio_get_backend_id(cubeb *context)
   return "sndio";
 }
 
+
 static void
 sndio_destroy(cubeb *context)
 {
@@ -244,6 +245,16 @@ sndio_stream_init(cubeb *context,
   DPR("sndio_stream_init() end, ok\n");
   (void)context;
   (void)stream_name;
+  return CUBEB_OK;
+}
+
+static int
+sndio_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
+{
+  assert(ctx && max_channels);
+
+  *max_channels = 8;
+
   return CUBEB_OK;
 }
 
