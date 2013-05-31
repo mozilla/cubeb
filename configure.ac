@@ -51,6 +51,7 @@ AC_ARG_WITH([pulse],
 AS_IF([test "x$with_pulse" != xno],
       [PKG_CHECK_MODULES(PULSE, libpulse >= 0.9.16, [
        HAVE_PULSE=1
+       PULSE_LIBS="-ldl"
        AC_DEFINE([USE_PULSE], [], [Use PulseAudio])
       ], [
        HAVE_PULSE=0
@@ -152,7 +153,7 @@ AS_IF([test "x$with_winmm" != xno],
       ], [#include <windows.h>])])
 AM_CONDITIONAL([WINMM], [test $HAVE_WINMM -eq 1])
 
-platform_lib="$ALSA_LIBS $AUDIOUNIT_LIBS $AUDIOQUEUE_LIBS $SNDIO_LIBS $OPENSL_LIBS $DIRECTSOUND_LIBS $WINMM_LIBS"
+platform_lib="$PULSE_LIBS $ALSA_LIBS $AUDIOUNIT_LIBS $AUDIOQUEUE_LIBS $SNDIO_LIBS $OPENSL_LIBS $DIRECTSOUND_LIBS $WINMM_LIBS"
 
 dnl Check for doxygen
 AC_ARG_ENABLE([doc],
