@@ -213,7 +213,7 @@ opensl_get_backend_id(cubeb * ctx)
 }
 
 static int
-sndio_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
+opensl_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
 {
   assert(ctx && max_channels);
   /* The android mixer handles up to two channels, see
