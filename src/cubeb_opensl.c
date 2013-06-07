@@ -212,6 +212,17 @@ opensl_get_backend_id(cubeb * ctx)
   return "opensl";
 }
 
+static int
+opensl_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
+{
+  assert(ctx && max_channels);
+  /* The android mixer handles up to two channels, see
+  http://androidxref.com/4.2.2_r1/xref/frameworks/av/services/audioflinger/AudioFlinger.h#67 */
+  *max_channels = 2;
+
+  return CUBEB_OK;
+}
+
 static void
 opensl_destroy(cubeb * ctx)
 {
@@ -405,6 +416,7 @@ opensl_stream_get_position(cubeb_stream * stm, uint64_t * position)
 static struct cubeb_ops const opensl_ops = {
   .init = opensl_init,
   .get_backend_id = opensl_get_backend_id,
+  .get_max_channel_count = opensl_get_max_channel_count,
   .destroy = opensl_destroy,
   .stream_init = opensl_stream_init,
   .stream_destroy = opensl_stream_destroy,

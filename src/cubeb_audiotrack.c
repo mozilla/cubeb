@@ -276,6 +276,18 @@ audiotrack_get_backend_id(cubeb * context)
   return "audiotrack";
 }
 
+static int
+audiotrack_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
+{
+  assert(ctx && max_channels);
+
+  /* The android mixer handles up to two channels, see
+  http://androidxref.com/4.2.2_r1/xref/frameworks/av/services/audioflinger/AudioFlinger.h#67 */
+  *max_channels = 2;
+
+  return CUBEB_OK;
+}
+
 void
 audiotrack_destroy(cubeb * context)
 {
