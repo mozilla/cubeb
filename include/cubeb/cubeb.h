@@ -180,7 +180,7 @@ int cubeb_init(cubeb ** context, char const * context_name);
     @retval Read-only string identifying current backend. */
 char const * cubeb_get_backend_id(cubeb * context);
 
-/** Get the maximum possible number of channel.
+/** Get the maximum possible number of channels.
     @param context
     @param max_channels The maximum number of channels.
     @retval CUBEB_OK
