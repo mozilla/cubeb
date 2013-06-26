@@ -140,6 +140,22 @@ AM_CONDITIONAL([AUDIOTRACK], [test $HAVE_AUDIOTRACK -eq 1])
 #      ], [#include <windows.h>])])
 AM_CONDITIONAL([DIRECTSOUND], [test $HAVE_DIRECTSOUND -eq 1])
 
+AC_ARG_WITH([wasapi],
+            AS_HELP_STRING([--with-wasapi], [with WASAPI @<:@default=check@:>@]))
+AS_IF([test "x$with_wasapi" != xno],
+      [AC_CHECK_HEADERS([Audioclient.h], [
+       HAVE_WASAPI=1
+       AC_DEFINE([USE_WASAPI], [], [Use WASAPI])
+       AC_DEFINE([OUTSIDE_SPEEX], [], [Tell the speex resampler no to expect speex headers.])
+       AC_DEFINE([RANDOM_PREFIX], [speex], [Required by the speex resampler.])
+       AC_DEFINE([FLOATING_POINT], [], [Tell the resampler to only enable floating point support])
+       AC_DEFINE([EXPORT], [], [Tell the resampler to export the symbols by default.])
+      ], [
+       HAVE_WASAPI=0
+       AS_IF([test "x$with_wasapi" = xyes], [AC_MSG_ERROR(WASAPI not detected)])
+      ], [#include <windows.h>])])
+AM_CONDITIONAL([WASAPI], [test $HAVE_WASAPI -eq 1])
+
 AC_ARG_WITH([winmm],
             AS_HELP_STRING([--with-winmm], [with WinMM @<:@default=check@:>@]))
 AS_IF([test "x$with_winmm" != xno],
@@ -153,7 +169,7 @@ AS_IF([test "x$with_winmm" != xno],
       ], [#include <windows.h>])])
 AM_CONDITIONAL([WINMM], [test $HAVE_WINMM -eq 1])
 
-platform_lib="$PULSE_LIBS $ALSA_LIBS $AUDIOUNIT_LIBS $AUDIOQUEUE_LIBS $SNDIO_LIBS $OPENSL_LIBS $DIRECTSOUND_LIBS $WINMM_LIBS"
+platform_lib="$PULSE_LIBS $ALSA_LIBS $AUDIOUNIT_LIBS $AUDIOQUEUE_LIBS $SNDIO_LIBS $OPENSL_LIBS $DIRECTSOUND_LIBS $WINMM_LIBS $WASAPI_LIBS"
 
 dnl Check for doxygen
 AC_ARG_ENABLE([doc],
