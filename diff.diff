@@ -1,0 +1,2884 @@
+diff --git a/Makefile.am b/Makefile.am
+index ae9c271..8d6713b 100644
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -1,8 +1,8 @@
+ AUTOMAKE_OPTIONS = foreign 1.10 dist-bzip2 subdir-objects
+ ACLOCAL_AMFLAGS = -I m4
+ 
+-INCLUDES = -I$(top_srcdir)/include -I.
+-AM_CFLAGS = -ansi -std=gnu99 -Wall -Wextra -Wno-long-long -O0 -Wno-unused -g
++INCLUDES = -I$(top_srcdir)/include -I. -I$(top_srcdir)/src -I$(top_srcdir)/src/speex
++AM_CFLAGS = -ansi -std=gnu99 -Wall -Wextra -Wno-long-long -O0 -Wno-unused -g 
+ 
+ SUBDIRS = docs
+ 
+@@ -35,6 +35,9 @@ endif
+ if AUDIOQUEUE
+ src_libcubeb_la_SOURCES += src/cubeb_audioqueue.c
+ endif
++if WASAPI
++src_libcubeb_la_SOURCES += src/cubeb_wasapi.cpp src/speex/resample.c
++endif
+ if WINMM
+ src_libcubeb_la_SOURCES += src/cubeb_winmm.c
+ endif
+@@ -56,7 +59,8 @@ EXTRA_src_libcubeb_la_SOURCES = \
+ 	src/cubeb_alsa.c src/cubeb_pulse.c \
+ 	src/cubeb_audiounit.c src/cubeb_audioqueue.c \
+ 	src/cubeb_sndio.c src/cubeb_directsound.cpp \
+-	src/cubeb_winmm.c src/cubeb_opensl.c src/cubeb_audiotrack.c
++	src/cubeb_winmm.c src/cubeb_wasapi.cpp src\speex_resampler\resample.c \
++  src/cubeb_opensl.c src/cubeb_audiotrack.c
+ 
+ src_libcubeb_la_LDFLAGS = -pthread -export-symbols-regex '^cubeb_' $(platform_lib) -no-undefined
+ 
+diff --git a/configure.ac b/configure.ac
+index 0bac4c6..cb364b0 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -140,6 +140,22 @@ AM_CONDITIONAL([AUDIOTRACK], [test $HAVE_AUDIOTRACK -eq 1])
+ #      ], [#include <windows.h>])])
+ AM_CONDITIONAL([DIRECTSOUND], [test $HAVE_DIRECTSOUND -eq 1])
+ 
++AC_ARG_WITH([wasapi],
++            AS_HELP_STRING([--with-wasapi], [with WASAPI @<:@default=check@:>@]))
++AS_IF([test "x$with_wasapi" != xno],
++      [AC_CHECK_HEADERS([Audioclient.h], [
++       HAVE_WASAPI=1
++       AC_DEFINE([USE_WASAPI], [], [Use WASAPI])
++       AC_DEFINE([OUTSIDE_SPEEX], [], [Tell the speex resampler no to expect speex headers.])
++       AC_DEFINE([RANDOM_PREFIX], [speex], [Required by the speex resampler.])
++       AC_DEFINE([FLOATING_POINT], [], [Tell the resampler to only enable floating point support])
++       AC_DEFINE([EXPORT], [], [Tell the resampler to export the symbols by default.])
++      ], [
++       HAVE_WASAPI=0
++       AS_IF([test "x$with_wasapi" = xyes], [AC_MSG_ERROR(WASAPI not detected)])
++      ], [#include <windows.h>])])
++AM_CONDITIONAL([WASAPI], [test $HAVE_WASAPI -eq 1])
++
+ AC_ARG_WITH([winmm],
+             AS_HELP_STRING([--with-winmm], [with WinMM @<:@default=check@:>@]))
+ AS_IF([test "x$with_winmm" != xno],
+@@ -153,7 +169,7 @@ AS_IF([test "x$with_winmm" != xno],
+       ], [#include <windows.h>])])
+ AM_CONDITIONAL([WINMM], [test $HAVE_WINMM -eq 1])
+ 
+-platform_lib="$PULSE_LIBS $ALSA_LIBS $AUDIOUNIT_LIBS $AUDIOQUEUE_LIBS $SNDIO_LIBS $OPENSL_LIBS $DIRECTSOUND_LIBS $WINMM_LIBS"
++platform_lib="$PULSE_LIBS $ALSA_LIBS $AUDIOUNIT_LIBS $AUDIOQUEUE_LIBS $SNDIO_LIBS $OPENSL_LIBS $DIRECTSOUND_LIBS $WINMM_LIBS $WASAPI_LIBS"
+ 
+ dnl Check for doxygen
+ AC_ARG_ENABLE([doc],
+diff --git a/src/cubeb-speex-resampler.h b/src/cubeb-speex-resampler.h
+new file mode 100644
+index 0000000..9ecf747
+--- /dev/null
++++ b/src/cubeb-speex-resampler.h
+@@ -0,0 +1 @@
++#include <speex/speex_resampler.h>
+diff --git a/src/cubeb.c b/src/cubeb.c
+index fd870d6..f136b73 100644
+--- a/src/cubeb.c
++++ b/src/cubeb.c
+@@ -39,6 +39,9 @@ int directsound_init(cubeb ** context, char const * context_name);
+ #if defined(USE_WINMM)
+ int winmm_init(cubeb ** context, char const * context_name);
+ #endif
++#if defined(USE_WASAPI)
++int wasapi_init(cubeb ** context, char const * context_name);
++#endif
+ #if defined(USE_SNDIO)
+ int sndio_init(cubeb ** context, char const * context_name);
+ #endif
+@@ -93,6 +96,9 @@ cubeb_init(cubeb ** context, char const * context_name)
+ #if defined(USE_AUDIOQUEUE)
+     audioqueue_init,
+ #endif
++#if defined(USE_WASAPI)
++    wasapi_init,
++#endif
+ #if defined(USE_WINMM)
+     winmm_init,
+ #endif
+diff --git a/src/cubeb_wasapi.cpp b/src/cubeb_wasapi.cpp
+new file mode 100644
+index 0000000..7a43167
+--- /dev/null
++++ b/src/cubeb_wasapi.cpp
+@@ -0,0 +1,789 @@
++/*
++ * Copyright © 2013 Mozilla Foundation
++ *
++ * This program is made available under an ISC-style license.  See the
++ * accompanying file LICENSE for details.
++ */
++#if defined(HAVE_CONFIG_H)
++#include "config.h"
++#endif
++#include <assert.h>
++#include <windows.h>
++#include <Mmdeviceapi.h>
++#include <WinDef.h>
++#include <Audioclient.h>
++#include <math.h>
++#include <process.h>
++#include <avrt.h>
++#include "cubeb/cubeb.h"
++#include "cubeb-internal.h"
++#include "cubeb/cubeb-stdint.h"
++#include "cubeb-speex-resampler.h"
++#include <stdio.h>
++
++#if 1
++#  define LOG(...) do {         \
++  fprintf(stderr, __VA_ARGS__); \
++  fprintf(stderr, "\n");        \
++} while(0);
++#else
++#  define LOG(...)
++#endif
++
++#define ARRAY_LENGTH(array_) \
++  (sizeof(array_) / sizeof(array_[0]))
++
++namespace {
++uint32_t
++ms_to_hns(uint32_t ms)
++{
++  return ms * 10000;
++}
++
++double
++hns_to_s(uint32_t hns)
++{
++  return static_cast<double>(hns) / 10000000;
++}
++
++long
++frame_count_at_rate(long frame_count, float rate)
++{
++  return static_cast<long>(ceilf(rate * frame_count) + 1);
++}
++
++void
++SafeRelease(HANDLE handle)
++{
++  if (handle) {
++    CloseHandle(handle);
++  }
++}
++
++template <typename T>
++void SafeRelease(T * ptr)
++{
++  if (ptr) {
++    ptr->Release();
++  }
++}
++
++typedef void (*refill_function2)(cubeb_stream * stm,
++                                float * data, long frames_needed);
++
++typedef HANDLE (WINAPI *set_mm_thread_characteristics_function)(
++                                      const char* TaskName, LPDWORD TaskIndex);
++typedef BOOL (WINAPI *revert_mm_thread_characteristics_function)(HANDLE handle);
++
++extern cubeb_ops const wasapi_ops;
++}
++
++struct cubeb
++{
++  cubeb_ops const * ops;
++  IMMDevice * device;
++  /* Library dynamically opened to increase the render
++   * thread priority, and the two function pointers we need. */
++  HMODULE mmcss_module;
++  set_mm_thread_characteristics_function set_mm_thread_characteristics;
++  revert_mm_thread_characteristics_function revert_mm_thread_characteristics;
++};
++
++
++struct cubeb_stream
++{
++  cubeb * context;
++  /* Mixer pameters. We need to convert the input
++   * stream to this samplerate/channel layout, as WASAPI
++   * does not resample nor upmix itself. */
++  cubeb_stream_params mix_params;
++  cubeb_stream_params stream_params;
++  cubeb_state_callback state_callback;
++  cubeb_data_callback data_callback;
++  void * user_ptr;
++  /* Main handle on the WASAPI stream. */
++  IAudioClient * client;
++  /* Interface pointer to use the event-driven interface. */
++  IAudioRenderClient * render_client;
++  /* Interface pointer to use the clock facilities. */
++  IAudioClock * audio_clock;
++  /* This event is set by the stream_stop and stream_destroy
++   * function, so the render loop can exit properly. */
++  HANDLE shutdown_event;
++  /* This is set by WASAPI when we should refill the stream. */
++  HANDLE refill_event;
++  /* Each cubeb_stream has its own thread. */
++  HANDLE thread;
++  uint64_t clock_freq;
++  /* Maximum number of frames we can be requested in a callback. */
++  uint32_t buffer_frame_count;
++  /* Resampler instance. If this is !NULL, resampling should happen. */
++  SpeexResamplerState * resampler;
++  /* Buffer to resample from, into the upmix buffer or the final buffer. */
++  float * resampling_src_buffer;
++  /* Pointer to the function used to refill the buffer, depending
++   * on the respective samplerate of the stream and the mix. */
++  refill_function2 refill_function;
++  /* Leftover frames handling, only used when resampling. */
++  uint32_t leftover_frame_count;
++  uint32_t leftover_frame_size;
++  float * leftover_frames_buffer;
++  /* upmix buffer of size |buffer_frame_count * bytes_per_frame / 2|. */
++  float * upmix_buffer;
++  /* Number of bytes per frame. Prefer to use frames_to_bytes_before_upmix. */
++  uint8_t bytes_per_frame;
++  /* True if the stream is draining. */
++  bool draining;
++};
++
++namespace {
++bool should_upmix(cubeb_stream * stream)
++{
++  return stream->upmix_buffer;
++}
++
++/* Upmix function, copies a mono channel in two interleaved
++ * stereo channel. |out| has to be twice as long as |in| */
++template<typename T>
++void
++mono_to_stereo(T * in, long insamples, T * out)
++{
++  int j = 0;
++  for (int i = 0; i < insamples; i++, j+=2) {
++    out[j] = out[j + 1] = in[i];
++  }
++}
++
++/* This returns the size of a frame in the stream,
++ * before the eventual upmix occurs. */
++static size_t
++frame_to_bytes_before_upmix(cubeb_stream * stm, size_t frames)
++{
++  return stm->bytes_per_frame / (should_upmix(stm) ? 2 : 1) * frames;
++}
++
++void
++refill_with_resampling(cubeb_stream * stm, float * data, long frames_needed)
++{
++  /* Use more input frames that strictly necessary, so in the worst case,
++   * we have leftover unresampled frames at the end, that we can use
++   * during the next iteration. */
++  float rate =
++    static_cast<float>(stm->stream_params.rate) / stm->mix_params.rate;
++
++  long before_resampling = frame_count_at_rate(frames_needed, rate);
++
++  long frame_requested = before_resampling - stm->leftover_frame_count;
++
++  size_t leftover_bytes =
++    frame_to_bytes_before_upmix(stm, stm->leftover_frame_count);
++
++  /* Copy the previous leftover frames to the front of the buffer. */
++  memcpy(stm->resampling_src_buffer, stm->leftover_frames_buffer, leftover_bytes);
++  uint8_t * buffer_start = reinterpret_cast<uint8_t *>(
++                                  stm->resampling_src_buffer) + leftover_bytes;
++
++  long got = stm->data_callback(stm, stm->user_ptr, buffer_start, frame_requested);
++
++  if (got != frame_requested) {
++    stm->draining = true;
++  }
++
++  uint32_t in_frames = before_resampling;
++  uint32_t out_frames = frames_needed;
++
++  /* if we need to upmix after resampling, resample into
++   * the upmix buffer to avoid a copy */
++  float * resample_dest;
++  if (should_upmix(stm)) {
++    resample_dest = stm->upmix_buffer;
++  } else {
++    resample_dest = data;
++  }
++
++  speex_resampler_process_interleaved_float(stm->resampler,
++                                            stm->resampling_src_buffer,
++                                            &in_frames,
++                                            resample_dest,
++                                            &out_frames);
++
++  /* Copy the leftover frames to buffer for the next time. */
++  stm->leftover_frame_count = before_resampling - in_frames;
++  size_t unresampled_bytes =
++    frame_to_bytes_before_upmix(stm, stm->leftover_frame_count);
++
++  uint8_t * leftover_frames_start =
++    reinterpret_cast<uint8_t *>(stm->resampling_src_buffer);
++  leftover_frames_start += frame_to_bytes_before_upmix(stm, in_frames);
++
++  assert(stm->leftover_frame_count <= stm->leftover_frame_size);
++  memcpy(stm->leftover_frames_buffer, leftover_frames_start, unresampled_bytes);
++
++  /* If this is not true, there will be glitches.
++   * It is alright to have produced less frames if we are draining, though. */
++  assert(out_frames == frames_needed || stm->draining);
++
++  if (should_upmix(stm)) {
++    mono_to_stereo(resample_dest, out_frames, data);
++  }
++}
++
++void
++refill(cubeb_stream * stm, float * data, long frames_needed)
++{
++  /* If we need to upmix after resampling, get the data into
++   * the upmix buffer to avoid a copy. */
++  float * dest;
++  if (should_upmix(stm)) {
++    dest = stm->upmix_buffer;
++  } else {
++    dest = data;
++  }
++
++  long got = stm->data_callback(stm, stm->user_ptr, dest, frames_needed);
++
++  if (got != frames_needed) {
++    LOG("draining.");
++    stm->draining = true;
++  }
++
++  if (should_upmix(stm)) {
++    mono_to_stereo(dest, got, data);
++  }
++}
++
++static unsigned int __stdcall
++wasapi_stream_render_loop(LPVOID stream)
++{
++  cubeb_stream * stm = static_cast<cubeb_stream *>(stream);
++
++  bool is_playing = true;
++  HANDLE wait_array[2] = {stm->shutdown_event, stm->refill_event};
++  HANDLE mmcss_handle = NULL;
++  HRESULT hr;
++  bool first = true;
++  DWORD mmcss_task_index = 0;
++
++  /* We could consider using "Pro Audio" here for WebAudio and
++   * maybe WebRTC. */
++  mmcss_handle =
++    stm->context->set_mm_thread_characteristics("Audio", &mmcss_task_index);
++  if (!mmcss_handle) {
++    /* This is not fatal, but we might glitch under heavy load. */
++    LOG("Unable to use mmcss to bump the render thread priority: %d",
++        GetLastError());
++  }
++
++  hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
++  if (FAILED(hr)) {
++    LOG("could not initialize COM in render thread: %x", hr);
++    return hr;
++  }
++
++  while (is_playing) {
++    DWORD waitResult = WaitForMultipleObjects(ARRAY_LENGTH(wait_array),
++                                              wait_array,
++                                              FALSE,
++                                              INFINITE);
++
++    switch (waitResult) {
++    case WAIT_OBJECT_0: { /* shutdown */
++      is_playing = false;
++      continue;
++    }
++    case WAIT_OBJECT_0 + 1: { /* refill */
++      UINT32 padding;
++
++      hr = stm->client->GetCurrentPadding(&padding);
++      if (FAILED(hr)) {
++        LOG("Failed to get padding");
++        is_playing = false;
++        continue;
++      }
++
++      if (stm->draining) {
++        if (padding == 0) {
++          stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
++          is_playing = false;
++        }
++        continue;
++      }
++
++      long available = stm->buffer_frame_count - padding;
++
++      if (available == 0) {
++        continue;
++      }
++
++      BYTE* data;
++      hr = stm->render_client->GetBuffer(available, &data);
++      if (SUCCEEDED(hr)) {
++        stm->refill_function(stm, reinterpret_cast<float *>(data), available);
++
++        hr = stm->render_client->ReleaseBuffer(available, 0);
++        if (FAILED(hr)) {
++          LOG("failed to release buffer.");
++          is_playing = false;
++        }
++      } else {
++        LOG("failed to get buffer.");
++        is_playing = false;
++      }
++    }
++    break;
++    default:
++      LOG("case %d not handled in render loop.", waitResult);
++      abort();
++    };
++  }
++
++  if (FAILED(hr)) {
++    stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STOPPED);
++  }
++
++  stm->context->revert_mm_thread_characteristics(mmcss_handle);
++
++  CoUninitialize();
++  return 0;
++}
++
++void wasapi_destroy(cubeb * context);
++
++HANDLE WINAPI set_mm_thread_characteristics_noop(const char *, LPDWORD mmcss_task_index)
++{
++  return (HANDLE)1;
++}
++
++BOOL WINAPI revert_mm_thread_characteristics_noop(HANDLE mmcss_handle)
++{
++  return true;
++}
++} // namespace anonymous
++
++extern "C" {
++int wasapi_init(cubeb ** context, char const * context_name)
++{
++  HRESULT hr;
++  IMMDeviceEnumerator * enumerator = NULL;
++
++  hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
++  if (FAILED(hr)) {
++    LOG("Could not init COM.");
++    return CUBEB_ERROR;
++  }
++
++  cubeb * ctx = (cubeb *)calloc(1, sizeof(cubeb));
++
++  ctx->ops = &wasapi_ops;
++
++  hr = CoCreateInstance(__uuidof(MMDeviceEnumerator),
++                        NULL, CLSCTX_INPROC_SERVER,
++                        IID_PPV_ARGS(&enumerator));
++  if (FAILED(hr)) {
++    LOG("Could not get device enumerator.");
++    wasapi_destroy(ctx);
++    return CUBEB_ERROR;
++  }
++
++  /* eMultimedia is okay for now ("Music, movies, narration, [...]").
++   * We will need to change this when we distinguish streams by use-case, other
++   * possible values being eConsole ("Games, system notification sounds [...]")
++   * and eCommunication ("Voice communication"). */
++  hr = enumerator->GetDefaultAudioEndpoint(eRender,
++                                           eMultimedia,
++                                           &ctx->device);
++  if (FAILED(hr)) {
++    LOG("Could not get default audio endpoint.");
++    SafeRelease(enumerator);
++    wasapi_destroy(ctx);
++    return CUBEB_ERROR;
++  }
++
++  ctx->mmcss_module = LoadLibraryA("Avrt.dll");
++
++  if (ctx->mmcss_module) {
++    ctx->set_mm_thread_characteristics =
++      (set_mm_thread_characteristics_function) GetProcAddress(
++          ctx->mmcss_module, "AvSetMmThreadCharacteristicsA");
++    ctx->revert_mm_thread_characteristics =
++      (revert_mm_thread_characteristics_function) GetProcAddress(
++          ctx->mmcss_module, "AvRevertMmThreadCharacteristics");
++    if (!(ctx->set_mm_thread_characteristics && ctx->revert_mm_thread_characteristics)) {
++      LOG("Could not load AvSetMmThreadCharacteristics or AvRevertMmThreadCharacteristics: %d", GetLastError());
++      FreeLibrary(ctx->mmcss_module);
++    }
++  } else {
++    // This is not a fatal error, but we might end up glitching when
++    // the system is under high load.
++    LOG("Could not load Avrt.dll");
++    ctx->set_mm_thread_characteristics = &set_mm_thread_characteristics_noop;
++    ctx->revert_mm_thread_characteristics = &revert_mm_thread_characteristics_noop;
++  }
++  
++  SafeRelease(enumerator);
++
++  *context = ctx;
++
++  return CUBEB_OK;
++}
++}
++
++namespace {
++
++void wasapi_destroy(cubeb * context)
++{
++  SafeRelease(context->device);
++  if (context->mmcss_module) {
++    FreeLibrary(context->mmcss_module);
++  }
++  free(context);
++}
++
++char const* wasapi_get_backend_id(cubeb * context)
++{
++  return "wasapi";
++}
++
++int
++wasapi_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
++{
++  HRESULT hr;
++  IAudioClient * client;
++  WAVEFORMATEX * mix_format;
++
++  assert(ctx && max_channels);
++
++  hr = ctx->device->Activate(__uuidof(IAudioClient),
++                             CLSCTX_INPROC_SERVER,
++                             NULL, (void **)&client);
++  if (FAILED(hr)) {
++    return CUBEB_ERROR;
++  }
++
++  hr = client->GetMixFormat(&mix_format);
++  if (FAILED(hr)) {
++    return CUBEB_ERROR;
++  }
++
++  *max_channels = mix_format->nChannels;
++
++  CoTaskMemFree(mix_format);
++  SafeRelease(client);
++
++  return CUBEB_OK;
++}
++
++
++void wasapi_stream_destroy(cubeb_stream * stm);
++
++int
++wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
++                   char const * stream_name, cubeb_stream_params stream_params,
++                   unsigned int latency, cubeb_data_callback data_callback,
++                   cubeb_state_callback state_callback, void * user_ptr)
++{
++  HRESULT hr;
++  WAVEFORMATEX * mix_format;
++
++  assert(context && stream);
++
++  hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
++  if (FAILED(hr)) {
++    LOG("Could not initialize COM.");
++    return CUBEB_ERROR;
++  }
++
++  /* 30ms in shared mode is the minimum we can get when using WASAPI */
++  if (latency < 30) {
++    LOG("Latency too low: got %u (30ms minimum)", latency);
++    return CUBEB_ERROR_INVALID_PARAMETER;
++  }
++
++  /* we don't support more that two channels for now. */
++  if (stream_params.channels > 2) {
++    return CUBEB_ERROR_INVALID_FORMAT;
++  }
++
++  cubeb_stream * stm = (cubeb_stream *)calloc(1, sizeof(cubeb_stream));
++
++  assert(stm);
++
++  stm->context = context;
++  stm->data_callback = data_callback;
++  stm->state_callback = state_callback;
++  stm->user_ptr = user_ptr;
++  stm->stream_params = stream_params;
++  stm->draining = false;
++
++  stm->shutdown_event = CreateEvent(NULL, 0, 0, NULL);
++  stm->refill_event = CreateEvent(NULL, 0, 0, NULL);
++
++  if (!stm->shutdown_event) {
++    LOG("Can't create the shutdown event, error: %d.", GetLastError());
++    wasapi_stream_destroy(stm);
++    return CUBEB_ERROR;
++  }
++
++
++  if (!stm->refill_event) {
++    SafeRelease(stm->shutdown_event);
++    LOG("Can't create the refill event, error: %d.", GetLastError());
++    wasapi_stream_destroy(stm);
++    return CUBEB_ERROR;
++  }
++
++  /* Get a client. We will get all other interfaces we need from
++   * this pointer. */
++  hr = context->device->Activate(__uuidof(IAudioClient),
++                                 CLSCTX_INPROC_SERVER,
++                                 NULL, (void **)&stm->client);
++  if (FAILED(hr)) {
++    LOG("Could not activate the device to get an audio client.");
++    wasapi_stream_destroy(stm);
++    return CUBEB_ERROR;
++  }
++
++  /* We have to distinguish between the format the mixer uses,
++  * and the format the stream we want to play uses. */
++  stm->client->GetMixFormat(&mix_format);
++
++  /* this is the number of bytes per frame after the eventual upmix. */
++  stm->bytes_per_frame = static_cast<uint8_t>(mix_format->nBlockAlign);
++
++  /* Shared mode WASAPI always supports float32 sample format, so this
++   * is safe. */
++  stm->mix_params.format = CUBEB_SAMPLE_FLOAT32NE;
++
++  stm->mix_params.rate = mix_format->nSamplesPerSec;
++  stm->mix_params.channels = mix_format->nChannels;
++
++  float resampling_rate = static_cast<float>(stm->stream_params.rate) /
++                          stm->mix_params.rate;
++
++
++  if (resampling_rate != 1.0) {
++    /* If we are playing a mono stream, we only resample one channel,
++     * and copy it over, so we are always resampling the number
++     * of channels of the stream, not the number of channels
++     * that WASAPI wants. */
++    stm->resampler = speex_resampler_init(stm->stream_params.channels,
++                                          stm->stream_params.rate,
++                                          stm->mix_params.rate,
++                                          SPEEX_RESAMPLER_QUALITY_DESKTOP,
++                                          NULL);
++    if (!stm->resampler) {
++      CoTaskMemFree(mix_format);
++      wasapi_stream_destroy(stm);
++      return CUBEB_ERROR;
++    }
++
++    /* Get a little buffer so we can store the leftover frames,
++     * that is, the samples not consumed by the resampler that we will end up
++     * using next time the render callback is called. */
++    stm->leftover_frame_size = static_cast<uint32_t>(ceilf(1 / resampling_rate * 2) + 1);
++    stm->leftover_frames_buffer = (float *)malloc(frame_to_bytes_before_upmix(stm, stm->leftover_frame_size));
++
++    stm->refill_function = &refill_with_resampling;
++  } else {
++    stm->refill_function = &refill;
++  }
++
++  hr = stm->client->Initialize(AUDCLNT_SHAREMODE_SHARED,
++                                     AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
++                                     AUDCLNT_STREAMFLAGS_NOPERSIST,
++                                     ms_to_hns(latency),
++                                     0,
++                                     mix_format,
++                                     NULL);
++
++  CoTaskMemFree(mix_format);
++
++  if (FAILED(hr)) {
++    LOG("Unable to initialize audio client: %x.", hr);
++    wasapi_stream_destroy(stm);
++    return CUBEB_ERROR;
++  }
++
++  hr = stm->client->GetBufferSize(&stm->buffer_frame_count);
++  if (FAILED(hr)) {
++    LOG("Could not get the buffer size from the client.");
++    wasapi_stream_destroy(stm);
++    return CUBEB_ERROR;
++  }
++
++  /* If we are playing a mono stream, we need to upmix to stereo.
++   * For now, we assume that the output support stereo sound.
++   * The alternative would be sad */
++  assert(stm->mix_params.channels == 2);
++
++  if (stm->mix_params.channels != stm->stream_params.channels) {
++    stm->upmix_buffer = (float *) malloc(frame_to_bytes_before_upmix(stm, stm->buffer_frame_count));
++  }
++
++  /* If we are going to resample, we will end up needing a buffer
++   * to resample from, because speex's resampler does not do
++   * in-place processing. Of course we need to take the resampling
++   * factor and the channel layout into account. */
++  if (stm->resampler) {
++    size_t frames_needed = static_cast<size_t>(frame_count_at_rate(stm->buffer_frame_count, resampling_rate));
++    stm->resampling_src_buffer = (float *)malloc(frame_to_bytes_before_upmix(stm, frames_needed));
++  }
++
++  hr = stm->client->SetEventHandle(stm->refill_event);
++  if (FAILED(hr)) {
++    LOG("Could set the event handle for the client.");
++    wasapi_stream_destroy(stm);
++    return CUBEB_ERROR;
++  }
++
++  hr = stm->client->GetService(__uuidof(IAudioRenderClient),
++                                     (void **)&stm->render_client);
++  if (FAILED(hr)) {
++    LOG("Could not get the render client.");
++    wasapi_stream_destroy(stm);
++    return CUBEB_ERROR;
++  }
++
++  hr = stm->client->GetService(__uuidof(IAudioClock),
++                                     (void **)&stm->audio_clock);
++  if (FAILED(hr)) {
++    LOG("Could not get the IAudioClock.");
++    wasapi_stream_destroy(stm);
++    return CUBEB_ERROR;
++  }
++
++  hr = stm->audio_clock->GetFrequency(&stm->clock_freq);
++  if (FAILED(hr)) {
++    LOG("failed to get audio clock frequency.");
++    return CUBEB_ERROR;
++  }
++
++  *stream = stm;
++
++  return CUBEB_OK;
++}
++
++void wasapi_stream_destroy(cubeb_stream * stm)
++{
++  assert(stm);
++
++  if (stm->thread) {
++    SetEvent(stm->shutdown_event);
++    WaitForSingleObject(stm->thread, INFINITE);
++    CloseHandle(stm->thread);
++    stm->thread = 0;
++  }
++
++  SafeRelease(stm->shutdown_event);
++  SafeRelease(stm->refill_event);
++
++  SafeRelease(stm->client);
++  SafeRelease(stm->render_client);
++  SafeRelease(stm->audio_clock);
++
++  if (stm->resampler) {
++    speex_resampler_destroy(stm->resampler);
++  }
++
++  free(stm->leftover_frames_buffer);
++  free(stm->resampling_src_buffer);
++  free(stm->upmix_buffer);
++  free(stm);
++  CoUninitialize();
++}
++
++int wasapi_stream_start(cubeb_stream * stm)
++{
++  HRESULT hr;
++
++  assert(stm);
++
++  stm->thread = (HANDLE) _beginthreadex(NULL, 64 * 1024, wasapi_stream_render_loop, stm, 0, NULL);
++  if (stm->thread == NULL) {
++    LOG("could not create WASAPI render thread.");
++    return CUBEB_ERROR;
++  }
++
++  hr = stm->client->Start();
++  if (FAILED(hr)) {
++    LOG("could not start the stream.");
++    return CUBEB_ERROR;
++  }
++
++  stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STARTED);
++
++  return CUBEB_OK;
++}
++
++int wasapi_stream_stop(cubeb_stream * stm)
++{
++  assert(stm && stm->shutdown_event);
++
++  SetEvent(stm->shutdown_event);
++
++  HRESULT hr = stm->client->Stop();
++  if (FAILED(hr)) {
++    LOG("could not stop AudioClient");
++  }
++
++  if (stm->thread) {
++    WaitForSingleObject(stm->thread, INFINITE);
++    CloseHandle(stm->thread);
++    stm->thread = NULL;
++  }
++
++  stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STOPPED);
++
++  return CUBEB_OK;
++}
++
++int wasapi_stream_get_position(cubeb_stream * stm, uint64_t * position)
++{
++  assert(stm && position);
++
++  UINT64 pos;
++  HRESULT hr;
++
++  hr = stm->audio_clock->GetPosition(&pos, NULL);
++  if (FAILED(hr)) {
++    LOG("Could not get accurate position: %x\n", hr);
++    return CUBEB_ERROR;
++  }
++
++  *position = static_cast<uint64_t>(static_cast<double>(pos) / stm->clock_freq * stm->stream_params.rate);
++
++  return CUBEB_OK;
++}
++
++int wasapi_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
++{
++  assert(stm && latency);
++
++  /* The GetStreamLatency method only works if the
++   * AudioClient has been initialized. */
++  if (!stm->client) {
++    return CUBEB_ERROR;
++  }
++
++  REFERENCE_TIME latency_hns;
++  stm->client->GetStreamLatency(&latency_hns);
++  double latency_s = hns_to_s(latency_hns);
++  *latency = static_cast<uint32_t>(latency_s * stm->stream_params.rate);
++
++  return CUBEB_OK;
++}
++
++cubeb_ops const wasapi_ops = {
++  /*.init =*/ wasapi_init,
++  /*.get_backend_id =*/ wasapi_get_backend_id,
++  /*.get_max_channel_count*/ wasapi_get_max_channel_count,
++  /*.destroy =*/ wasapi_destroy,
++  /*.stream_init =*/ wasapi_stream_init,
++  /*.stream_destroy =*/ wasapi_stream_destroy,
++  /*.stream_start =*/ wasapi_stream_start,
++  /*.stream_stop =*/ wasapi_stream_stop,
++  /*.stream_get_position =*/ wasapi_stream_get_position
++  ///*.stream_get_latency =*/ wasapi_stream_get_latency
++ };
++} // namespace anonymous
++
+diff --git a/src/speex/arch.h b/src/speex/arch.h
+new file mode 100755
+index 0000000..3b47ed9
+--- /dev/null
++++ b/src/speex/arch.h
+@@ -0,0 +1,239 @@
++/* Copyright (C) 2003 Jean-Marc Valin */
++/**
++   @file arch.h
++   @brief Various architecture definitions Speex
++*/
++/*
++   Redistribution and use in source and binary forms, with or without
++   modification, are permitted provided that the following conditions
++   are met:
++   
++   - Redistributions of source code must retain the above copyright
++   notice, this list of conditions and the following disclaimer.
++   
++   - Redistributions in binary form must reproduce the above copyright
++   notice, this list of conditions and the following disclaimer in the
++   documentation and/or other materials provided with the distribution.
++   
++   - Neither the name of the Xiph.org Foundation nor the names of its
++   contributors may be used to endorse or promote products derived from
++   this software without specific prior written permission.
++   
++   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++   ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++   LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++   A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR
++   CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
++   EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
++   PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
++   PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
++   LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
++   NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
++   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++*/
++
++#ifndef ARCH_H
++#define ARCH_H
++
++#ifndef SPEEX_VERSION
++#define SPEEX_MAJOR_VERSION 1         /**< Major Speex version. */
++#define SPEEX_MINOR_VERSION 1         /**< Minor Speex version. */
++#define SPEEX_MICRO_VERSION 15        /**< Micro Speex version. */
++#define SPEEX_EXTRA_VERSION ""        /**< Extra Speex version. */
++#define SPEEX_VERSION "speex-1.2beta3"  /**< Speex version string. */
++#endif
++
++/* A couple test to catch stupid option combinations */
++#ifdef FIXED_POINT
++
++#ifdef FLOATING_POINT
++#error You cannot compile as floating point and fixed point at the same time
++#endif
++#ifdef _USE_SSE
++#error SSE is only for floating-point
++#endif
++#if ((defined (ARM4_ASM)||defined (ARM4_ASM)) && defined(BFIN_ASM)) || (defined (ARM4_ASM)&&defined(ARM5E_ASM))
++#error Make up your mind. What CPU do you have?
++#endif
++#ifdef VORBIS_PSYCHO
++#error Vorbis-psy model currently not implemented in fixed-point
++#endif
++
++#else
++
++#ifndef FLOATING_POINT
++#error You now need to define either FIXED_POINT or FLOATING_POINT
++#endif
++#if defined (ARM4_ASM) || defined(ARM5E_ASM) || defined(BFIN_ASM)
++#error I suppose you can have a [ARM4/ARM5E/Blackfin] that has float instructions?
++#endif
++#ifdef FIXED_POINT_DEBUG
++#error "Don't you think enabling fixed-point is a good thing to do if you want to debug that?"
++#endif
++
++
++#endif
++
++#ifndef OUTSIDE_SPEEX
++#include "../include/speex/speex_types.h"
++#endif
++
++#define ABS(x) ((x) < 0 ? (-(x)) : (x))      /**< Absolute integer value. */
++#define ABS16(x) ((x) < 0 ? (-(x)) : (x))    /**< Absolute 16-bit value.  */
++#define MIN16(a,b) ((a) < (b) ? (a) : (b))   /**< Maximum 16-bit value.   */
++#define MAX16(a,b) ((a) > (b) ? (a) : (b))   /**< Maximum 16-bit value.   */
++#define ABS32(x) ((x) < 0 ? (-(x)) : (x))    /**< Absolute 32-bit value.  */
++#define MIN32(a,b) ((a) < (b) ? (a) : (b))   /**< Maximum 32-bit value.   */
++#define MAX32(a,b) ((a) > (b) ? (a) : (b))   /**< Maximum 32-bit value.   */
++
++#ifdef FIXED_POINT
++
++typedef spx_int16_t spx_word16_t;
++typedef spx_int32_t spx_word32_t;
++typedef spx_word32_t spx_mem_t;
++typedef spx_word16_t spx_coef_t;
++typedef spx_word16_t spx_lsp_t;
++typedef spx_word32_t spx_sig_t;
++
++#define Q15ONE 32767
++
++#define LPC_SCALING  8192
++#define SIG_SCALING  16384
++#define LSP_SCALING  8192.
++#define GAMMA_SCALING 32768.
++#define GAIN_SCALING 64
++#define GAIN_SCALING_1 0.015625
++
++#define LPC_SHIFT    13
++#define LSP_SHIFT    13
++#define SIG_SHIFT    14
++#define GAIN_SHIFT   6
++
++#define VERY_SMALL 0
++#define VERY_LARGE32 ((spx_word32_t)2147483647)
++#define VERY_LARGE16 ((spx_word16_t)32767)
++#define Q15_ONE ((spx_word16_t)32767)
++
++
++#ifdef FIXED_DEBUG
++#include "fixed_debug.h"
++#else
++
++#include "fixed_generic.h"
++
++#ifdef ARM5E_ASM
++#include "fixed_arm5e.h"
++#elif defined (ARM4_ASM)
++#include "fixed_arm4.h"
++#elif defined (BFIN_ASM)
++#include "fixed_bfin.h"
++#endif
++
++#endif
++
++
++#else
++
++typedef float spx_mem_t;
++typedef float spx_coef_t;
++typedef float spx_lsp_t;
++typedef float spx_sig_t;
++typedef float spx_word16_t;
++typedef float spx_word32_t;
++
++#define Q15ONE 1.0f
++#define LPC_SCALING  1.f
++#define SIG_SCALING  1.f
++#define LSP_SCALING  1.f
++#define GAMMA_SCALING 1.f
++#define GAIN_SCALING 1.f
++#define GAIN_SCALING_1 1.f
++
++
++#define VERY_SMALL 1e-15f
++#define VERY_LARGE32 1e15f
++#define VERY_LARGE16 1e15f
++#define Q15_ONE ((spx_word16_t)1.f)
++
++#define QCONST16(x,bits) (x)
++#define QCONST32(x,bits) (x)
++
++#define NEG16(x) (-(x))
++#define NEG32(x) (-(x))
++#define EXTRACT16(x) (x)
++#define EXTEND32(x) (x)
++#define SHR16(a,shift) (a)
++#define SHL16(a,shift) (a)
++#define SHR32(a,shift) (a)
++#define SHL32(a,shift) (a)
++#define PSHR16(a,shift) (a)
++#define PSHR32(a,shift) (a)
++#define VSHR32(a,shift) (a)
++#define SATURATE16(x,a) (x)
++#define SATURATE32(x,a) (x)
++
++#define PSHR(a,shift)       (a)
++#define SHR(a,shift)       (a)
++#define SHL(a,shift)       (a)
++#define SATURATE(x,a) (x)
++
++#define ADD16(a,b) ((a)+(b))
++#define SUB16(a,b) ((a)-(b))
++#define ADD32(a,b) ((a)+(b))
++#define SUB32(a,b) ((a)-(b))
++#define MULT16_16_16(a,b)     ((a)*(b))
++#define MULT16_16(a,b)     ((spx_word32_t)(a)*(spx_word32_t)(b))
++#define MAC16_16(c,a,b)     ((c)+(spx_word32_t)(a)*(spx_word32_t)(b))
++
++#define MULT16_32_Q11(a,b)     ((a)*(b))
++#define MULT16_32_Q13(a,b)     ((a)*(b))
++#define MULT16_32_Q14(a,b)     ((a)*(b))
++#define MULT16_32_Q15(a,b)     ((a)*(b))
++#define MULT16_32_P15(a,b)     ((a)*(b))
++
++#define MAC16_32_Q11(c,a,b)     ((c)+(a)*(b))
++#define MAC16_32_Q15(c,a,b)     ((c)+(a)*(b))
++
++#define MAC16_16_Q11(c,a,b)     ((c)+(a)*(b))
++#define MAC16_16_Q13(c,a,b)     ((c)+(a)*(b))
++#define MAC16_16_P13(c,a,b)     ((c)+(a)*(b))
++#define MULT16_16_Q11_32(a,b)     ((a)*(b))
++#define MULT16_16_Q13(a,b)     ((a)*(b))
++#define MULT16_16_Q14(a,b)     ((a)*(b))
++#define MULT16_16_Q15(a,b)     ((a)*(b))
++#define MULT16_16_P15(a,b)     ((a)*(b))
++#define MULT16_16_P13(a,b)     ((a)*(b))
++#define MULT16_16_P14(a,b)     ((a)*(b))
++
++#define DIV32_16(a,b)     (((spx_word32_t)(a))/(spx_word16_t)(b))
++#define PDIV32_16(a,b)     (((spx_word32_t)(a))/(spx_word16_t)(b))
++#define DIV32(a,b)     (((spx_word32_t)(a))/(spx_word32_t)(b))
++#define PDIV32(a,b)     (((spx_word32_t)(a))/(spx_word32_t)(b))
++
++
++#endif
++
++
++#if defined (CONFIG_TI_C54X) || defined (CONFIG_TI_C55X)
++
++/* 2 on TI C5x DSP */
++#define BYTES_PER_CHAR 2 
++#define BITS_PER_CHAR 16
++#define LOG2_BITS_PER_CHAR 4
++
++#else 
++
++#define BYTES_PER_CHAR 1
++#define BITS_PER_CHAR 8
++#define LOG2_BITS_PER_CHAR 3
++
++#endif
++
++
++
++#ifdef FIXED_DEBUG
++extern long long spx_mips;
++#endif
++
++
++#endif
+diff --git a/src/speex/fixed_generic.h b/src/speex/fixed_generic.h
+new file mode 100755
+index 0000000..3fb096e
+--- /dev/null
++++ b/src/speex/fixed_generic.h
+@@ -0,0 +1,106 @@
++/* Copyright (C) 2003 Jean-Marc Valin */
++/**
++   @file fixed_generic.h
++   @brief Generic fixed-point operations
++*/
++/*
++   Redistribution and use in source and binary forms, with or without
++   modification, are permitted provided that the following conditions
++   are met:
++   
++   - Redistributions of source code must retain the above copyright
++   notice, this list of conditions and the following disclaimer.
++   
++   - Redistributions in binary form must reproduce the above copyright
++   notice, this list of conditions and the following disclaimer in the
++   documentation and/or other materials provided with the distribution.
++   
++   - Neither the name of the Xiph.org Foundation nor the names of its
++   contributors may be used to endorse or promote products derived from
++   this software without specific prior written permission.
++   
++   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++   ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++   LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++   A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR
++   CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
++   EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
++   PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
++   PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
++   LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
++   NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
++   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++*/
++
++#ifndef FIXED_GENERIC_H
++#define FIXED_GENERIC_H
++
++#define QCONST16(x,bits) ((spx_word16_t)(.5+(x)*(((spx_word32_t)1)<<(bits))))
++#define QCONST32(x,bits) ((spx_word32_t)(.5+(x)*(((spx_word32_t)1)<<(bits))))
++
++#define NEG16(x) (-(x))
++#define NEG32(x) (-(x))
++#define EXTRACT16(x) ((spx_word16_t)(x))
++#define EXTEND32(x) ((spx_word32_t)(x))
++#define SHR16(a,shift) ((a) >> (shift))
++#define SHL16(a,shift) ((a) << (shift))
++#define SHR32(a,shift) ((a) >> (shift))
++#define SHL32(a,shift) ((a) << (shift))
++#define PSHR16(a,shift) (SHR16((a)+((1<<((shift))>>1)),shift))
++#define PSHR32(a,shift) (SHR32((a)+((EXTEND32(1)<<((shift))>>1)),shift))
++#define VSHR32(a, shift) (((shift)>0) ? SHR32(a, shift) : SHL32(a, -(shift)))
++#define SATURATE16(x,a) (((x)>(a) ? (a) : (x)<-(a) ? -(a) : (x)))
++#define SATURATE32(x,a) (((x)>(a) ? (a) : (x)<-(a) ? -(a) : (x)))
++
++#define SHR(a,shift) ((a) >> (shift))
++#define SHL(a,shift) ((spx_word32_t)(a) << (shift))
++#define PSHR(a,shift) (SHR((a)+((EXTEND32(1)<<((shift))>>1)),shift))
++#define SATURATE(x,a) (((x)>(a) ? (a) : (x)<-(a) ? -(a) : (x)))
++
++
++#define ADD16(a,b) ((spx_word16_t)((spx_word16_t)(a)+(spx_word16_t)(b)))
++#define SUB16(a,b) ((spx_word16_t)(a)-(spx_word16_t)(b))
++#define ADD32(a,b) ((spx_word32_t)(a)+(spx_word32_t)(b))
++#define SUB32(a,b) ((spx_word32_t)(a)-(spx_word32_t)(b))
++
++
++/* result fits in 16 bits */
++#define MULT16_16_16(a,b)     ((((spx_word16_t)(a))*((spx_word16_t)(b))))
++
++/* (spx_word32_t)(spx_word16_t) gives TI compiler a hint that it's 16x16->32 multiply */
++#define MULT16_16(a,b)     (((spx_word32_t)(spx_word16_t)(a))*((spx_word32_t)(spx_word16_t)(b)))
++
++#define MAC16_16(c,a,b) (ADD32((c),MULT16_16((a),(b))))
++#define MULT16_32_Q12(a,b) ADD32(MULT16_16((a),SHR((b),12)), SHR(MULT16_16((a),((b)&0x00000fff)),12))
++#define MULT16_32_Q13(a,b) ADD32(MULT16_16((a),SHR((b),13)), SHR(MULT16_16((a),((b)&0x00001fff)),13))
++#define MULT16_32_Q14(a,b) ADD32(MULT16_16((a),SHR((b),14)), SHR(MULT16_16((a),((b)&0x00003fff)),14))
++
++#define MULT16_32_Q11(a,b) ADD32(MULT16_16((a),SHR((b),11)), SHR(MULT16_16((a),((b)&0x000007ff)),11))
++#define MAC16_32_Q11(c,a,b) ADD32(c,ADD32(MULT16_16((a),SHR((b),11)), SHR(MULT16_16((a),((b)&0x000007ff)),11)))
++
++#define MULT16_32_P15(a,b) ADD32(MULT16_16((a),SHR((b),15)), PSHR(MULT16_16((a),((b)&0x00007fff)),15))
++#define MULT16_32_Q15(a,b) ADD32(MULT16_16((a),SHR((b),15)), SHR(MULT16_16((a),((b)&0x00007fff)),15))
++#define MAC16_32_Q15(c,a,b) ADD32(c,ADD32(MULT16_16((a),SHR((b),15)), SHR(MULT16_16((a),((b)&0x00007fff)),15)))
++
++
++#define MAC16_16_Q11(c,a,b)     (ADD32((c),SHR(MULT16_16((a),(b)),11)))
++#define MAC16_16_Q13(c,a,b)     (ADD32((c),SHR(MULT16_16((a),(b)),13)))
++#define MAC16_16_P13(c,a,b)     (ADD32((c),SHR(ADD32(4096,MULT16_16((a),(b))),13)))
++
++#define MULT16_16_Q11_32(a,b) (SHR(MULT16_16((a),(b)),11))
++#define MULT16_16_Q13(a,b) (SHR(MULT16_16((a),(b)),13))
++#define MULT16_16_Q14(a,b) (SHR(MULT16_16((a),(b)),14))
++#define MULT16_16_Q15(a,b) (SHR(MULT16_16((a),(b)),15))
++
++#define MULT16_16_P13(a,b) (SHR(ADD32(4096,MULT16_16((a),(b))),13))
++#define MULT16_16_P14(a,b) (SHR(ADD32(8192,MULT16_16((a),(b))),14))
++#define MULT16_16_P15(a,b) (SHR(ADD32(16384,MULT16_16((a),(b))),15))
++
++#define MUL_16_32_R15(a,bh,bl) ADD32(MULT16_16((a),(bh)), SHR(MULT16_16((a),(bl)),15))
++
++#define DIV32_16(a,b) ((spx_word16_t)(((spx_word32_t)(a))/((spx_word16_t)(b))))
++#define PDIV32_16(a,b) ((spx_word16_t)(((spx_word32_t)(a)+((spx_word16_t)(b)>>1))/((spx_word16_t)(b))))
++#define DIV32(a,b) (((spx_word32_t)(a))/((spx_word32_t)(b)))
++#define PDIV32(a,b) (((spx_word32_t)(a)+((spx_word16_t)(b)>>1))/((spx_word32_t)(b)))
++
++#endif
+diff --git a/src/speex/resample.c b/src/speex/resample.c
+new file mode 100755
+index 0000000..7b5a308
+--- /dev/null
++++ b/src/speex/resample.c
+@@ -0,0 +1,1137 @@
++/* Copyright (C) 2007-2008 Jean-Marc Valin
++   Copyright (C) 2008      Thorvald Natvig
++      
++   File: resample.c
++   Arbitrary resampling code
++
++   Redistribution and use in source and binary forms, with or without
++   modification, are permitted provided that the following conditions are
++   met:
++
++   1. Redistributions of source code must retain the above copyright notice,
++   this list of conditions and the following disclaimer.
++
++   2. Redistributions in binary form must reproduce the above copyright
++   notice, this list of conditions and the following disclaimer in the
++   documentation and/or other materials provided with the distribution.
++
++   3. The name of the author may not be used to endorse or promote products
++   derived from this software without specific prior written permission.
++
++   THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
++   IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
++   OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
++   DISCLAIMED. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT,
++   INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
++   (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
++   SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++   HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
++   STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
++   ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
++   POSSIBILITY OF SUCH DAMAGE.
++*/
++
++/*
++   The design goals of this code are:
++      - Very fast algorithm
++      - SIMD-friendly algorithm
++      - Low memory requirement
++      - Good *perceptual* quality (and not best SNR)
++
++   Warning: This resampler is relatively new. Although I think I got rid of 
++   all the major bugs and I don't expect the API to change anymore, there
++   may be something I've missed. So use with caution.
++
++   This algorithm is based on this original resampling algorithm:
++   Smith, Julius O. Digital Audio Resampling Home Page
++   Center for Computer Research in Music and Acoustics (CCRMA), 
++   Stanford University, 2007.
++   Web published at http://www-ccrma.stanford.edu/~jos/resample/.
++
++   There is one main difference, though. This resampler uses cubic 
++   interpolation instead of linear interpolation in the above paper. This
++   makes the table much smaller and makes it possible to compute that table
++   on a per-stream basis. In turn, being able to tweak the table for each 
++   stream makes it possible to both reduce complexity on simple ratios 
++   (e.g. 2/3), and get rid of the rounding operations in the inner loop. 
++   The latter both reduces CPU time and makes the algorithm more SIMD-friendly.
++*/
++
++#ifdef HAVE_CONFIG_H
++#include "config.h"
++#endif
++
++#ifdef OUTSIDE_SPEEX
++#include <stdlib.h>
++static void *speex_alloc (int size) {return calloc(size,1);}
++static void *speex_realloc (void *ptr, int size) {return realloc(ptr, size);}
++static void speex_free (void *ptr) {free(ptr);}
++#include "speex_resampler.h"
++#include "arch.h"
++#else /* OUTSIDE_SPEEX */
++               
++#include "../include/speex/speex_resampler.h"
++#include "arch.h"
++#include "os_support.h"
++#endif /* OUTSIDE_SPEEX */
++
++#include "stack_alloc.h"
++#include <math.h>
++
++#ifndef M_PI
++#define M_PI 3.14159263
++#endif
++
++#ifdef FIXED_POINT
++#define WORD2INT(x) ((x) < -32767 ? -32768 : ((x) > 32766 ? 32767 : (x)))  
++#else
++#define WORD2INT(x) ((x) < -32767.5f ? -32768 : ((x) > 32766.5f ? 32767 : floor(.5+(x))))  
++#endif
++               
++#define IMAX(a,b) ((a) > (b) ? (a) : (b))
++#define IMIN(a,b) ((a) < (b) ? (a) : (b))
++
++#ifndef NULL
++#define NULL 0
++#endif
++
++#ifdef _USE_SSE
++#include "resample_sse.h"
++#endif
++
++/* Numer of elements to allocate on the stack */
++#ifdef VAR_ARRAYS
++#define FIXED_STACK_ALLOC 8192
++#else
++#define FIXED_STACK_ALLOC 1024
++#endif
++
++typedef int (*resampler_basic_func)(SpeexResamplerState *, spx_uint32_t , const spx_word16_t *, spx_uint32_t *, spx_word16_t *, spx_uint32_t *);
++
++struct SpeexResamplerState_ {
++   spx_uint32_t in_rate;
++   spx_uint32_t out_rate;
++   spx_uint32_t num_rate;
++   spx_uint32_t den_rate;
++   
++   int    quality;
++   spx_uint32_t nb_channels;
++   spx_uint32_t filt_len;
++   spx_uint32_t mem_alloc_size;
++   spx_uint32_t buffer_size;
++   int          int_advance;
++   int          frac_advance;
++   float  cutoff;
++   spx_uint32_t oversample;
++   int          initialised;
++   int          started;
++   
++   /* These are per-channel */
++   spx_int32_t  *last_sample;
++   spx_uint32_t *samp_frac_num;
++   spx_uint32_t *magic_samples;
++   
++   spx_word16_t *mem;
++   spx_word16_t *sinc_table;
++   spx_uint32_t sinc_table_length;
++   resampler_basic_func resampler_ptr;
++         
++   int    in_stride;
++   int    out_stride;
++} ;
++
++static double kaiser12_table[68] = {
++   0.99859849, 1.00000000, 0.99859849, 0.99440475, 0.98745105, 0.97779076,
++   0.96549770, 0.95066529, 0.93340547, 0.91384741, 0.89213598, 0.86843014,
++   0.84290116, 0.81573067, 0.78710866, 0.75723148, 0.72629970, 0.69451601,
++   0.66208321, 0.62920216, 0.59606986, 0.56287762, 0.52980938, 0.49704014,
++   0.46473455, 0.43304576, 0.40211431, 0.37206735, 0.34301800, 0.31506490,
++   0.28829195, 0.26276832, 0.23854851, 0.21567274, 0.19416736, 0.17404546,
++   0.15530766, 0.13794294, 0.12192957, 0.10723616, 0.09382272, 0.08164178,
++   0.07063950, 0.06075685, 0.05193064, 0.04409466, 0.03718069, 0.03111947,
++   0.02584161, 0.02127838, 0.01736250, 0.01402878, 0.01121463, 0.00886058,
++   0.00691064, 0.00531256, 0.00401805, 0.00298291, 0.00216702, 0.00153438,
++   0.00105297, 0.00069463, 0.00043489, 0.00025272, 0.00013031, 0.0000527734,
++   0.00001000, 0.00000000};
++/*
++static double kaiser12_table[36] = {
++   0.99440475, 1.00000000, 0.99440475, 0.97779076, 0.95066529, 0.91384741,
++   0.86843014, 0.81573067, 0.75723148, 0.69451601, 0.62920216, 0.56287762,
++   0.49704014, 0.43304576, 0.37206735, 0.31506490, 0.26276832, 0.21567274,
++   0.17404546, 0.13794294, 0.10723616, 0.08164178, 0.06075685, 0.04409466,
++   0.03111947, 0.02127838, 0.01402878, 0.00886058, 0.00531256, 0.00298291,
++   0.00153438, 0.00069463, 0.00025272, 0.0000527734, 0.00000500, 0.00000000};
++*/
++static double kaiser10_table[36] = {
++   0.99537781, 1.00000000, 0.99537781, 0.98162644, 0.95908712, 0.92831446,
++   0.89005583, 0.84522401, 0.79486424, 0.74011713, 0.68217934, 0.62226347,
++   0.56155915, 0.50119680, 0.44221549, 0.38553619, 0.33194107, 0.28205962,
++   0.23636152, 0.19515633, 0.15859932, 0.12670280, 0.09935205, 0.07632451,
++   0.05731132, 0.04193980, 0.02979584, 0.02044510, 0.01345224, 0.00839739,
++   0.00488951, 0.00257636, 0.00115101, 0.00035515, 0.00000000, 0.00000000};
++
++static double kaiser8_table[36] = {
++   0.99635258, 1.00000000, 0.99635258, 0.98548012, 0.96759014, 0.94302200,
++   0.91223751, 0.87580811, 0.83439927, 0.78875245, 0.73966538, 0.68797126,
++   0.63451750, 0.58014482, 0.52566725, 0.47185369, 0.41941150, 0.36897272,
++   0.32108304, 0.27619388, 0.23465776, 0.19672670, 0.16255380, 0.13219758,
++   0.10562887, 0.08273982, 0.06335451, 0.04724088, 0.03412321, 0.02369490,
++   0.01563093, 0.00959968, 0.00527363, 0.00233883, 0.00050000, 0.00000000};
++   
++static double kaiser6_table[36] = {
++   0.99733006, 1.00000000, 0.99733006, 0.98935595, 0.97618418, 0.95799003,
++   0.93501423, 0.90755855, 0.87598009, 0.84068475, 0.80211977, 0.76076565,
++   0.71712752, 0.67172623, 0.62508937, 0.57774224, 0.53019925, 0.48295561,
++   0.43647969, 0.39120616, 0.34752997, 0.30580127, 0.26632152, 0.22934058,
++   0.19505503, 0.16360756, 0.13508755, 0.10953262, 0.08693120, 0.06722600,
++   0.05031820, 0.03607231, 0.02432151, 0.01487334, 0.00752000, 0.00000000};
++
++struct FuncDef {
++   double *table;
++   int oversample;
++};
++      
++static struct FuncDef _KAISER12 = {kaiser12_table, 64};
++#define KAISER12 (&_KAISER12)
++/*static struct FuncDef _KAISER12 = {kaiser12_table, 32};
++#define KAISER12 (&_KAISER12)*/
++static struct FuncDef _KAISER10 = {kaiser10_table, 32};
++#define KAISER10 (&_KAISER10)
++static struct FuncDef _KAISER8 = {kaiser8_table, 32};
++#define KAISER8 (&_KAISER8)
++static struct FuncDef _KAISER6 = {kaiser6_table, 32};
++#define KAISER6 (&_KAISER6)
++
++struct QualityMapping {
++   int base_length;
++   int oversample;
++   float downsample_bandwidth;
++   float upsample_bandwidth;
++   struct FuncDef *window_func;
++};
++
++
++/* This table maps conversion quality to internal parameters. There are two
++   reasons that explain why the up-sampling bandwidth is larger than the 
++   down-sampling bandwidth:
++   1) When up-sampling, we can assume that the spectrum is already attenuated
++      close to the Nyquist rate (from an A/D or a previous resampling filter)
++   2) Any aliasing that occurs very close to the Nyquist rate will be masked
++      by the sinusoids/noise just below the Nyquist rate (guaranteed only for
++      up-sampling).
++*/
++static const struct QualityMapping quality_map[11] = {
++   {  8,  4, 0.830f, 0.860f, KAISER6 }, /* Q0 */
++   { 16,  4, 0.850f, 0.880f, KAISER6 }, /* Q1 */
++   { 32,  4, 0.882f, 0.910f, KAISER6 }, /* Q2 */  /* 82.3% cutoff ( ~60 dB stop) 6  */
++   { 48,  8, 0.895f, 0.917f, KAISER8 }, /* Q3 */  /* 84.9% cutoff ( ~80 dB stop) 8  */
++   { 64,  8, 0.921f, 0.940f, KAISER8 }, /* Q4 */  /* 88.7% cutoff ( ~80 dB stop) 8  */
++   { 80, 16, 0.922f, 0.940f, KAISER10}, /* Q5 */  /* 89.1% cutoff (~100 dB stop) 10 */
++   { 96, 16, 0.940f, 0.945f, KAISER10}, /* Q6 */  /* 91.5% cutoff (~100 dB stop) 10 */
++   {128, 16, 0.950f, 0.950f, KAISER10}, /* Q7 */  /* 93.1% cutoff (~100 dB stop) 10 */
++   {160, 16, 0.960f, 0.960f, KAISER10}, /* Q8 */  /* 94.5% cutoff (~100 dB stop) 10 */
++   {192, 32, 0.968f, 0.968f, KAISER12}, /* Q9 */  /* 95.5% cutoff (~100 dB stop) 10 */
++   {256, 32, 0.975f, 0.975f, KAISER12}, /* Q10 */ /* 96.6% cutoff (~100 dB stop) 10 */
++};
++/*8,24,40,56,80,104,128,160,200,256,320*/
++static double compute_func(float x, struct FuncDef *func)
++{
++   float y, frac;
++   double interp[4];
++   int ind; 
++   y = x*func->oversample;
++   ind = (int)floor(y);
++   frac = (y-ind);
++   /* CSE with handle the repeated powers */
++   interp[3] =  -0.1666666667*frac + 0.1666666667*(frac*frac*frac);
++   interp[2] = frac + 0.5*(frac*frac) - 0.5*(frac*frac*frac);
++   /*interp[2] = 1.f - 0.5f*frac - frac*frac + 0.5f*frac*frac*frac;*/
++   interp[0] = -0.3333333333*frac + 0.5*(frac*frac) - 0.1666666667*(frac*frac*frac);
++   /* Just to make sure we don't have rounding problems */
++   interp[1] = 1.f-interp[3]-interp[2]-interp[0];
++   
++   /*sum = frac*accum[1] + (1-frac)*accum[2];*/
++   return interp[0]*func->table[ind] + interp[1]*func->table[ind+1] + interp[2]*func->table[ind+2] + interp[3]*func->table[ind+3];
++}
++
++#if 0
++#include <stdio.h>
++int main(int argc, char **argv)
++{
++   int i;
++   for (i=0;i<256;i++)
++   {
++      printf ("%f\n", compute_func(i/256., KAISER12));
++   }
++   return 0;
++}
++#endif
++
++#ifdef FIXED_POINT
++/* The slow way of computing a sinc for the table. Should improve that some day */
++static spx_word16_t sinc(float cutoff, float x, int N, struct FuncDef *window_func)
++{
++   /*fprintf (stderr, "%f ", x);*/
++   float xx = x * cutoff;
++   if (fabs(x)<1e-6f)
++      return WORD2INT(32768.*cutoff);
++   else if (fabs(x) > .5f*N)
++      return 0;
++   /*FIXME: Can it really be any slower than this? */
++   return WORD2INT(32768.*cutoff*sin(M_PI*xx)/(M_PI*xx) * compute_func(fabs(2.*x/N), window_func));
++}
++#else
++/* The slow way of computing a sinc for the table. Should improve that some day */
++static spx_word16_t sinc(float cutoff, float x, int N, struct FuncDef *window_func)
++{
++   /*fprintf (stderr, "%f ", x);*/
++   float xx = x * cutoff;
++   if (fabs(x)<1e-6)
++      return cutoff;
++   else if (fabs(x) > .5*N)
++      return 0;
++   /*FIXME: Can it really be any slower than this? */
++   return cutoff*sin(M_PI*xx)/(M_PI*xx) * compute_func(fabs(2.*x/N), window_func);
++}
++#endif
++
++#ifdef FIXED_POINT
++static void cubic_coef(spx_word16_t x, spx_word16_t interp[4])
++{
++   /* Compute interpolation coefficients. I'm not sure whether this corresponds to cubic interpolation
++   but I know it's MMSE-optimal on a sinc */
++   spx_word16_t x2, x3;
++   x2 = MULT16_16_P15(x, x);
++   x3 = MULT16_16_P15(x, x2);
++   interp[0] = PSHR32(MULT16_16(QCONST16(-0.16667f, 15),x) + MULT16_16(QCONST16(0.16667f, 15),x3),15);
++   interp[1] = EXTRACT16(EXTEND32(x) + SHR32(SUB32(EXTEND32(x2),EXTEND32(x3)),1));
++   interp[3] = PSHR32(MULT16_16(QCONST16(-0.33333f, 15),x) + MULT16_16(QCONST16(.5f,15),x2) - MULT16_16(QCONST16(0.16667f, 15),x3),15);
++   /* Just to make sure we don't have rounding problems */
++   interp[2] = Q15_ONE-interp[0]-interp[1]-interp[3];
++   if (interp[2]<32767)
++      interp[2]+=1;
++}
++#else
++static void cubic_coef(spx_word16_t frac, spx_word16_t interp[4])
++{
++   /* Compute interpolation coefficients. I'm not sure whether this corresponds to cubic interpolation
++   but I know it's MMSE-optimal on a sinc */
++   interp[0] =  -0.16667f*frac + 0.16667f*frac*frac*frac;
++   interp[1] = frac + 0.5f*frac*frac - 0.5f*frac*frac*frac;
++   /*interp[2] = 1.f - 0.5f*frac - frac*frac + 0.5f*frac*frac*frac;*/
++   interp[3] = -0.33333f*frac + 0.5f*frac*frac - 0.16667f*frac*frac*frac;
++   /* Just to make sure we don't have rounding problems */
++   interp[2] = 1.-interp[0]-interp[1]-interp[3];
++}
++#endif
++
++static int resampler_basic_direct_single(SpeexResamplerState *st, spx_uint32_t channel_index, const spx_word16_t *in, spx_uint32_t *in_len, spx_word16_t *out, spx_uint32_t *out_len)
++{
++   const int N = st->filt_len;
++   int out_sample = 0;
++   int last_sample = st->last_sample[channel_index];
++   spx_uint32_t samp_frac_num = st->samp_frac_num[channel_index];
++   const spx_word16_t *sinc_table = st->sinc_table;
++   const int out_stride = st->out_stride;
++   const int int_advance = st->int_advance;
++   const int frac_advance = st->frac_advance;
++   const spx_uint32_t den_rate = st->den_rate;
++   spx_word32_t sum;
++   int j;
++
++   while (!(last_sample >= (spx_int32_t)*in_len || out_sample >= (spx_int32_t)*out_len))
++   {
++      const spx_word16_t *sinc = & sinc_table[samp_frac_num*N];
++      const spx_word16_t *iptr = & in[last_sample];
++
++#ifndef OVERRIDE_INNER_PRODUCT_SINGLE
++      sum = 0;
++      for(j=0;j<N;j++) sum += MULT16_16(sinc[j], iptr[j]);
++
++/*    This code is slower on most DSPs which have only 2 accumulators.
++      Plus this this forces truncation to 32 bits and you lose the HW guard bits.
++      I think we can trust the compiler and let it vectorize and/or unroll itself.
++      spx_word32_t accum[4] = {0,0,0,0};
++      for(j=0;j<N;j+=4) {
++        accum[0] += MULT16_16(sinc[j], iptr[j]);
++        accum[1] += MULT16_16(sinc[j+1], iptr[j+1]);
++        accum[2] += MULT16_16(sinc[j+2], iptr[j+2]);
++        accum[3] += MULT16_16(sinc[j+3], iptr[j+3]);
++      }
++      sum = accum[0] + accum[1] + accum[2] + accum[3];
++*/
++#else
++      sum = inner_product_single(sinc, iptr, N);
++#endif
++
++      out[out_stride * out_sample++] = SATURATE32(PSHR32(sum, 15), 32767);
++      last_sample += int_advance;
++      samp_frac_num += frac_advance;
++      if (samp_frac_num >= den_rate)
++      {
++         samp_frac_num -= den_rate;
++         last_sample++;
++      }
++   }
++
++   st->last_sample[channel_index] = last_sample;
++   st->samp_frac_num[channel_index] = samp_frac_num;
++   return out_sample;
++}
++
++#ifdef FIXED_POINT
++#else
++/* This is the same as the previous function, except with a double-precision accumulator */
++static int resampler_basic_direct_double(SpeexResamplerState *st, spx_uint32_t channel_index, const spx_word16_t *in, spx_uint32_t *in_len, spx_word16_t *out, spx_uint32_t *out_len)
++{
++   const int N = st->filt_len;
++   int out_sample = 0;
++   int last_sample = st->last_sample[channel_index];
++   spx_uint32_t samp_frac_num = st->samp_frac_num[channel_index];
++   const spx_word16_t *sinc_table = st->sinc_table;
++   const int out_stride = st->out_stride;
++   const int int_advance = st->int_advance;
++   const int frac_advance = st->frac_advance;
++   const spx_uint32_t den_rate = st->den_rate;
++   double sum;
++   int j;
++
++   while (!(last_sample >= (spx_int32_t)*in_len || out_sample >= (spx_int32_t)*out_len))
++   {
++      const spx_word16_t *sinc = & sinc_table[samp_frac_num*N];
++      const spx_word16_t *iptr = & in[last_sample];
++
++#ifndef OVERRIDE_INNER_PRODUCT_DOUBLE
++      double accum[4] = {0,0,0,0};
++
++      for(j=0;j<N;j+=4) {
++        accum[0] += sinc[j]*iptr[j];
++        accum[1] += sinc[j+1]*iptr[j+1];
++        accum[2] += sinc[j+2]*iptr[j+2];
++        accum[3] += sinc[j+3]*iptr[j+3];
++      }
++      sum = accum[0] + accum[1] + accum[2] + accum[3];
++#else
++      sum = inner_product_double(sinc, iptr, N);
++#endif
++
++      out[out_stride * out_sample++] = PSHR32(sum, 15);
++      last_sample += int_advance;
++      samp_frac_num += frac_advance;
++      if (samp_frac_num >= den_rate)
++      {
++         samp_frac_num -= den_rate;
++         last_sample++;
++      }
++   }
++
++   st->last_sample[channel_index] = last_sample;
++   st->samp_frac_num[channel_index] = samp_frac_num;
++   return out_sample;
++}
++#endif
++
++static int resampler_basic_interpolate_single(SpeexResamplerState *st, spx_uint32_t channel_index, const spx_word16_t *in, spx_uint32_t *in_len, spx_word16_t *out, spx_uint32_t *out_len)
++{
++   const int N = st->filt_len;
++   int out_sample = 0;
++   int last_sample = st->last_sample[channel_index];
++   spx_uint32_t samp_frac_num = st->samp_frac_num[channel_index];
++   const int out_stride = st->out_stride;
++   const int int_advance = st->int_advance;
++   const int frac_advance = st->frac_advance;
++   const spx_uint32_t den_rate = st->den_rate;
++   int j;
++   spx_word32_t sum;
++
++   while (!(last_sample >= (spx_int32_t)*in_len || out_sample >= (spx_int32_t)*out_len))
++   {
++      const spx_word16_t *iptr = & in[last_sample];
++
++      const int offset = samp_frac_num*st->oversample/st->den_rate;
++#ifdef FIXED_POINT
++      const spx_word16_t frac = PDIV32(SHL32((samp_frac_num*st->oversample) % st->den_rate,15),st->den_rate);
++#else
++      const spx_word16_t frac = ((float)((samp_frac_num*st->oversample) % st->den_rate))/st->den_rate;
++#endif
++      spx_word16_t interp[4];
++
++
++#ifndef OVERRIDE_INTERPOLATE_PRODUCT_SINGLE
++      spx_word32_t accum[4] = {0,0,0,0};
++
++      for(j=0;j<N;j++) {
++        const spx_word16_t curr_in=iptr[j];
++        accum[0] += MULT16_16(curr_in,st->sinc_table[4+(j+1)*st->oversample-offset-2]);
++        accum[1] += MULT16_16(curr_in,st->sinc_table[4+(j+1)*st->oversample-offset-1]);
++        accum[2] += MULT16_16(curr_in,st->sinc_table[4+(j+1)*st->oversample-offset]);
++        accum[3] += MULT16_16(curr_in,st->sinc_table[4+(j+1)*st->oversample-offset+1]);
++      }
++
++      cubic_coef(frac, interp);
++      sum = MULT16_32_Q15(interp[0],SHR32(accum[0], 1)) + MULT16_32_Q15(interp[1],SHR32(accum[1], 1)) + MULT16_32_Q15(interp[2],SHR32(accum[2], 1)) + MULT16_32_Q15(interp[3],SHR32(accum[3], 1));
++#else
++      cubic_coef(frac, interp);
++      sum = interpolate_product_single(iptr, st->sinc_table + st->oversample + 4 - offset - 2, N, st->oversample, interp);
++#endif
++      
++      out[out_stride * out_sample++] = SATURATE32(PSHR32(sum, 14), 32767);
++      last_sample += int_advance;
++      samp_frac_num += frac_advance;
++      if (samp_frac_num >= den_rate)
++      {
++         samp_frac_num -= den_rate;
++         last_sample++;
++      }
++   }
++
++   st->last_sample[channel_index] = last_sample;
++   st->samp_frac_num[channel_index] = samp_frac_num;
++   return out_sample;
++}
++
++#ifdef FIXED_POINT
++#else
++/* This is the same as the previous function, except with a double-precision accumulator */
++static int resampler_basic_interpolate_double(SpeexResamplerState *st, spx_uint32_t channel_index, const spx_word16_t *in, spx_uint32_t *in_len, spx_word16_t *out, spx_uint32_t *out_len)
++{
++   const int N = st->filt_len;
++   int out_sample = 0;
++   int last_sample = st->last_sample[channel_index];
++   spx_uint32_t samp_frac_num = st->samp_frac_num[channel_index];
++   const int out_stride = st->out_stride;
++   const int int_advance = st->int_advance;
++   const int frac_advance = st->frac_advance;
++   const spx_uint32_t den_rate = st->den_rate;
++   int j;
++   spx_word32_t sum;
++
++   while (!(last_sample >= (spx_int32_t)*in_len || out_sample >= (spx_int32_t)*out_len))
++   {
++      const spx_word16_t *iptr = & in[last_sample];
++
++      const int offset = samp_frac_num*st->oversample/st->den_rate;
++#ifdef FIXED_POINT
++      const spx_word16_t frac = PDIV32(SHL32((samp_frac_num*st->oversample) % st->den_rate,15),st->den_rate);
++#else
++      const spx_word16_t frac = ((float)((samp_frac_num*st->oversample) % st->den_rate))/st->den_rate;
++#endif
++      spx_word16_t interp[4];
++
++
++#ifndef OVERRIDE_INTERPOLATE_PRODUCT_DOUBLE
++      double accum[4] = {0,0,0,0};
++
++      for(j=0;j<N;j++) {
++        const double curr_in=iptr[j];
++        accum[0] += MULT16_16(curr_in,st->sinc_table[4+(j+1)*st->oversample-offset-2]);
++        accum[1] += MULT16_16(curr_in,st->sinc_table[4+(j+1)*st->oversample-offset-1]);
++        accum[2] += MULT16_16(curr_in,st->sinc_table[4+(j+1)*st->oversample-offset]);
++        accum[3] += MULT16_16(curr_in,st->sinc_table[4+(j+1)*st->oversample-offset+1]);
++      }
++
++      cubic_coef(frac, interp);
++      sum = MULT16_32_Q15(interp[0],accum[0]) + MULT16_32_Q15(interp[1],accum[1]) + MULT16_32_Q15(interp[2],accum[2]) + MULT16_32_Q15(interp[3],accum[3]);
++#else
++      cubic_coef(frac, interp);
++      sum = interpolate_product_double(iptr, st->sinc_table + st->oversample + 4 - offset - 2, N, st->oversample, interp);
++#endif
++      
++      out[out_stride * out_sample++] = PSHR32(sum,15);
++      last_sample += int_advance;
++      samp_frac_num += frac_advance;
++      if (samp_frac_num >= den_rate)
++      {
++         samp_frac_num -= den_rate;
++         last_sample++;
++      }
++   }
++
++   st->last_sample[channel_index] = last_sample;
++   st->samp_frac_num[channel_index] = samp_frac_num;
++   return out_sample;
++}
++#endif
++
++static void update_filter(SpeexResamplerState *st)
++{
++   spx_uint32_t old_length;
++   
++   old_length = st->filt_len;
++   st->oversample = quality_map[st->quality].oversample;
++   st->filt_len = quality_map[st->quality].base_length;
++   
++   if (st->num_rate > st->den_rate)
++   {
++      /* down-sampling */
++      st->cutoff = quality_map[st->quality].downsample_bandwidth * st->den_rate / st->num_rate;
++      /* FIXME: divide the numerator and denominator by a certain amount if they're too large */
++      st->filt_len = st->filt_len*st->num_rate / st->den_rate;
++      /* Round down to make sure we have a multiple of 4 */
++      st->filt_len &= (~0x3);
++      if (2*st->den_rate < st->num_rate)
++         st->oversample >>= 1;
++      if (4*st->den_rate < st->num_rate)
++         st->oversample >>= 1;
++      if (8*st->den_rate < st->num_rate)
++         st->oversample >>= 1;
++      if (16*st->den_rate < st->num_rate)
++         st->oversample >>= 1;
++      if (st->oversample < 1)
++         st->oversample = 1;
++   } else {
++      /* up-sampling */
++      st->cutoff = quality_map[st->quality].upsample_bandwidth;
++   }
++   
++   /* Choose the resampling type that requires the least amount of memory */
++   if (st->den_rate <= st->oversample)
++   {
++      spx_uint32_t i;
++      if (!st->sinc_table)
++         st->sinc_table = (spx_word16_t *)speex_alloc(st->filt_len*st->den_rate*sizeof(spx_word16_t));
++      else if (st->sinc_table_length < st->filt_len*st->den_rate)
++      {
++         st->sinc_table = (spx_word16_t *)speex_realloc(st->sinc_table,st->filt_len*st->den_rate*sizeof(spx_word16_t));
++         st->sinc_table_length = st->filt_len*st->den_rate;
++      }
++      for (i=0;i<st->den_rate;i++)
++      {
++         spx_int32_t j;
++         for (j=0;j<st->filt_len;j++)
++         {
++            st->sinc_table[i*st->filt_len+j] = sinc(st->cutoff,((j-(spx_int32_t)st->filt_len/2+1)-((float)i)/st->den_rate), st->filt_len, quality_map[st->quality].window_func);
++         }
++      }
++#ifdef FIXED_POINT
++      st->resampler_ptr = resampler_basic_direct_single;
++#else
++      if (st->quality>8)
++         st->resampler_ptr = resampler_basic_direct_double;
++      else
++         st->resampler_ptr = resampler_basic_direct_single;
++#endif
++      /*fprintf (stderr, "resampler uses direct sinc table and normalised cutoff %f\n", cutoff);*/
++   } else {
++      spx_int32_t i;
++      if (!st->sinc_table)
++         st->sinc_table = (spx_word16_t *)speex_alloc((st->filt_len*st->oversample+8)*sizeof(spx_word16_t));
++      else if (st->sinc_table_length < st->filt_len*st->oversample+8)
++      {
++         st->sinc_table = (spx_word16_t *)speex_realloc(st->sinc_table,(st->filt_len*st->oversample+8)*sizeof(spx_word16_t));
++         st->sinc_table_length = st->filt_len*st->oversample+8;
++      }
++      for (i=-4;i<(spx_int32_t)(st->oversample*st->filt_len+4);i++)
++         st->sinc_table[i+4] = sinc(st->cutoff,(i/(float)st->oversample - st->filt_len/2), st->filt_len, quality_map[st->quality].window_func);
++#ifdef FIXED_POINT
++      st->resampler_ptr = resampler_basic_interpolate_single;
++#else
++      if (st->quality>8)
++         st->resampler_ptr = resampler_basic_interpolate_double;
++      else
++         st->resampler_ptr = resampler_basic_interpolate_single;
++#endif
++      /*fprintf (stderr, "resampler uses interpolated sinc table and normalised cutoff %f\n", cutoff);*/
++   }
++   st->int_advance = st->num_rate/st->den_rate;
++   st->frac_advance = st->num_rate%st->den_rate;
++
++   
++   /* Here's the place where we update the filter memory to take into account
++      the change in filter length. It's probably the messiest part of the code
++      due to handling of lots of corner cases. */
++   if (!st->mem)
++   {
++      spx_uint32_t i;
++      st->mem_alloc_size = st->filt_len-1 + st->buffer_size;
++      st->mem = (spx_word16_t*)speex_alloc(st->nb_channels*st->mem_alloc_size * sizeof(spx_word16_t));
++      for (i=0;i<st->nb_channels*st->mem_alloc_size;i++)
++         st->mem[i] = 0;
++      /*speex_warning("init filter");*/
++   } else if (!st->started)
++   {
++      spx_uint32_t i;
++      st->mem_alloc_size = st->filt_len-1 + st->buffer_size;
++      st->mem = (spx_word16_t*)speex_realloc(st->mem, st->nb_channels*st->mem_alloc_size * sizeof(spx_word16_t));
++      for (i=0;i<st->nb_channels*st->mem_alloc_size;i++)
++         st->mem[i] = 0;
++      /*speex_warning("reinit filter");*/
++   } else if (st->filt_len > old_length)
++   {
++      spx_int32_t i;
++      /* Increase the filter length */
++      /*speex_warning("increase filter size");*/
++      int old_alloc_size = st->mem_alloc_size;
++      if ((st->filt_len-1 + st->buffer_size) > st->mem_alloc_size)
++      {
++         st->mem_alloc_size = st->filt_len-1 + st->buffer_size;
++         st->mem = (spx_word16_t*)speex_realloc(st->mem, st->nb_channels*st->mem_alloc_size * sizeof(spx_word16_t));
++      }
++      for (i=st->nb_channels-1;i>=0;i--)
++      {
++         spx_int32_t j;
++         spx_uint32_t olen = old_length;
++         /*if (st->magic_samples[i])*/
++         {
++            /* Try and remove the magic samples as if nothing had happened */
++            
++            /* FIXME: This is wrong but for now we need it to avoid going over the array bounds */
++            olen = old_length + 2*st->magic_samples[i];
++            for (j=old_length-2+st->magic_samples[i];j>=0;j--)
++               st->mem[i*st->mem_alloc_size+j+st->magic_samples[i]] = st->mem[i*old_alloc_size+j];
++            for (j=0;j<st->magic_samples[i];j++)
++               st->mem[i*st->mem_alloc_size+j] = 0;
++            st->magic_samples[i] = 0;
++         }
++         if (st->filt_len > olen)
++         {
++            /* If the new filter length is still bigger than the "augmented" length */
++            /* Copy data going backward */
++            for (j=0;j<olen-1;j++)
++               st->mem[i*st->mem_alloc_size+(st->filt_len-2-j)] = st->mem[i*st->mem_alloc_size+(olen-2-j)];
++            /* Then put zeros for lack of anything better */
++            for (;j<st->filt_len-1;j++)
++               st->mem[i*st->mem_alloc_size+(st->filt_len-2-j)] = 0;
++            /* Adjust last_sample */
++            st->last_sample[i] += (st->filt_len - olen)/2;
++         } else {
++            /* Put back some of the magic! */
++            st->magic_samples[i] = (olen - st->filt_len)/2;
++            for (j=0;j<st->filt_len-1+st->magic_samples[i];j++)
++               st->mem[i*st->mem_alloc_size+j] = st->mem[i*st->mem_alloc_size+j+st->magic_samples[i]];
++         }
++      }
++   } else if (st->filt_len < old_length)
++   {
++      spx_uint32_t i;
++      /* Reduce filter length, this a bit tricky. We need to store some of the memory as "magic"
++         samples so they can be used directly as input the next time(s) */
++      for (i=0;i<st->nb_channels;i++)
++      {
++         spx_uint32_t j;
++         spx_uint32_t old_magic = st->magic_samples[i];
++         st->magic_samples[i] = (old_length - st->filt_len)/2;
++         /* We must copy some of the memory that's no longer used */
++         /* Copy data going backward */
++         for (j=0;j<st->filt_len-1+st->magic_samples[i]+old_magic;j++)
++            st->mem[i*st->mem_alloc_size+j] = st->mem[i*st->mem_alloc_size+j+st->magic_samples[i]];
++         st->magic_samples[i] += old_magic;
++      }
++   }
++
++}
++
++EXPORT SpeexResamplerState *speex_resampler_init(spx_uint32_t nb_channels, spx_uint32_t in_rate, spx_uint32_t out_rate, int quality, int *err)
++{
++   return speex_resampler_init_frac(nb_channels, in_rate, out_rate, in_rate, out_rate, quality, err);
++}
++
++EXPORT SpeexResamplerState *speex_resampler_init_frac(spx_uint32_t nb_channels, spx_uint32_t ratio_num, spx_uint32_t ratio_den, spx_uint32_t in_rate, spx_uint32_t out_rate, int quality, int *err)
++{
++   spx_uint32_t i;
++   SpeexResamplerState *st;
++   if (quality > 10 || quality < 0)
++   {
++      if (err)
++         *err = RESAMPLER_ERR_INVALID_ARG;
++      return NULL;
++   }
++   st = (SpeexResamplerState *)speex_alloc(sizeof(SpeexResamplerState));
++   st->initialised = 0;
++   st->started = 0;
++   st->in_rate = 0;
++   st->out_rate = 0;
++   st->num_rate = 0;
++   st->den_rate = 0;
++   st->quality = -1;
++   st->sinc_table_length = 0;
++   st->mem_alloc_size = 0;
++   st->filt_len = 0;
++   st->mem = 0;
++   st->resampler_ptr = 0;
++         
++   st->cutoff = 1.f;
++   st->nb_channels = nb_channels;
++   st->in_stride = 1;
++   st->out_stride = 1;
++   
++#ifdef FIXED_POINT
++   st->buffer_size = 160;
++#else
++   st->buffer_size = 160;
++#endif
++   
++   /* Per channel data */
++   st->last_sample = (spx_int32_t*)speex_alloc(nb_channels*sizeof(int));
++   st->magic_samples = (spx_uint32_t*)speex_alloc(nb_channels*sizeof(int));
++   st->samp_frac_num = (spx_uint32_t*)speex_alloc(nb_channels*sizeof(int));
++   for (i=0;i<nb_channels;i++)
++   {
++      st->last_sample[i] = 0;
++      st->magic_samples[i] = 0;
++      st->samp_frac_num[i] = 0;
++   }
++
++   speex_resampler_set_quality(st, quality);
++   speex_resampler_set_rate_frac(st, ratio_num, ratio_den, in_rate, out_rate);
++
++   
++   update_filter(st);
++   
++   st->initialised = 1;
++   if (err)
++      *err = RESAMPLER_ERR_SUCCESS;
++
++   return st;
++}
++
++EXPORT void speex_resampler_destroy(SpeexResamplerState *st)
++{
++   speex_free(st->mem);
++   speex_free(st->sinc_table);
++   speex_free(st->last_sample);
++   speex_free(st->magic_samples);
++   speex_free(st->samp_frac_num);
++   speex_free(st);
++}
++
++static int speex_resampler_process_native(SpeexResamplerState *st, spx_uint32_t channel_index, spx_uint32_t *in_len, spx_word16_t *out, spx_uint32_t *out_len)
++{
++   int j=0;
++   const int N = st->filt_len;
++   int out_sample = 0;
++   spx_word16_t *mem = st->mem + channel_index * st->mem_alloc_size;
++   spx_uint32_t ilen;
++   
++   st->started = 1;
++   
++   /* Call the right resampler through the function ptr */
++   out_sample = st->resampler_ptr(st, channel_index, mem, in_len, out, out_len);
++   
++   if (st->last_sample[channel_index] < (spx_int32_t)*in_len)
++      *in_len = st->last_sample[channel_index];
++   *out_len = out_sample;
++   st->last_sample[channel_index] -= *in_len;
++   
++   ilen = *in_len;
++
++   for(j=0;j<N-1;++j)
++     mem[j] = mem[j+ilen];
++
++   return RESAMPLER_ERR_SUCCESS;
++}
++
++static int speex_resampler_magic(SpeexResamplerState *st, spx_uint32_t channel_index, spx_word16_t **out, spx_uint32_t out_len) {
++   spx_uint32_t tmp_in_len = st->magic_samples[channel_index];
++   spx_word16_t *mem = st->mem + channel_index * st->mem_alloc_size;
++   const int N = st->filt_len;
++   
++   speex_resampler_process_native(st, channel_index, &tmp_in_len, *out, &out_len);
++
++   st->magic_samples[channel_index] -= tmp_in_len;
++   
++   /* If we couldn't process all "magic" input samples, save the rest for next time */
++   if (st->magic_samples[channel_index])
++   {
++      spx_uint32_t i;
++      for (i=0;i<st->magic_samples[channel_index];i++)
++         mem[N-1+i]=mem[N-1+i+tmp_in_len];
++   }
++   *out += out_len*st->out_stride;
++   return out_len;
++}
++
++#ifdef FIXED_POINT
++EXPORT int speex_resampler_process_int(SpeexResamplerState *st, spx_uint32_t channel_index, const spx_int16_t *in, spx_uint32_t *in_len, spx_int16_t *out, spx_uint32_t *out_len)
++#else
++EXPORT int speex_resampler_process_float(SpeexResamplerState *st, spx_uint32_t channel_index, const float *in, spx_uint32_t *in_len, float *out, spx_uint32_t *out_len)
++#endif
++{
++   int j;
++   spx_uint32_t ilen = *in_len;
++   spx_uint32_t olen = *out_len;
++   spx_word16_t *x = st->mem + channel_index * st->mem_alloc_size;
++   const int filt_offs = st->filt_len - 1;
++   const spx_uint32_t xlen = st->mem_alloc_size - filt_offs;
++   const int istride = st->in_stride;
++
++   if (st->magic_samples[channel_index]) 
++      olen -= speex_resampler_magic(st, channel_index, &out, olen);
++   if (! st->magic_samples[channel_index]) {
++      while (ilen && olen) {
++        spx_uint32_t ichunk = (ilen > xlen) ? xlen : ilen;
++        spx_uint32_t ochunk = olen;
++ 
++        if (in) {
++           for(j=0;j<ichunk;++j)
++              x[j+filt_offs]=in[j*istride];
++        } else {
++          for(j=0;j<ichunk;++j)
++            x[j+filt_offs]=0;
++        }
++        speex_resampler_process_native(st, channel_index, &ichunk, out, &ochunk);
++        ilen -= ichunk;
++        olen -= ochunk;
++        out += ochunk * st->out_stride;
++        if (in)
++           in += ichunk * istride;
++      }
++   }
++   *in_len -= ilen;
++   *out_len -= olen;
++   return RESAMPLER_ERR_SUCCESS;
++}
++
++#ifdef FIXED_POINT
++EXPORT int speex_resampler_process_float(SpeexResamplerState *st, spx_uint32_t channel_index, const float *in, spx_uint32_t *in_len, float *out, spx_uint32_t *out_len)
++#else
++EXPORT int speex_resampler_process_int(SpeexResamplerState *st, spx_uint32_t channel_index, const spx_int16_t *in, spx_uint32_t *in_len, spx_int16_t *out, spx_uint32_t *out_len)
++#endif
++{
++   int j;
++   const int istride_save = st->in_stride;
++   const int ostride_save = st->out_stride;
++   spx_uint32_t ilen = *in_len;
++   spx_uint32_t olen = *out_len;
++   spx_word16_t *x = st->mem + channel_index * st->mem_alloc_size;
++   const spx_uint32_t xlen = st->mem_alloc_size - (st->filt_len - 1);
++#ifdef VAR_ARRAYS
++   const unsigned int ylen = (olen < FIXED_STACK_ALLOC) ? olen : FIXED_STACK_ALLOC;
++   VARDECL(spx_word16_t *ystack);
++   ALLOC(ystack, ylen, spx_word16_t);
++#else
++   const unsigned int ylen = FIXED_STACK_ALLOC;
++   spx_word16_t ystack[FIXED_STACK_ALLOC];
++#endif
++
++   st->out_stride = 1;
++   
++   while (ilen && olen) {
++     spx_word16_t *y = ystack;
++     spx_uint32_t ichunk = (ilen > xlen) ? xlen : ilen;
++     spx_uint32_t ochunk = (olen > ylen) ? ylen : olen;
++     spx_uint32_t omagic = 0;
++
++     if (st->magic_samples[channel_index]) {
++       omagic = speex_resampler_magic(st, channel_index, &y, ochunk);
++       ochunk -= omagic;
++       olen -= omagic;
++     }
++     if (! st->magic_samples[channel_index]) {
++       if (in) {
++         for(j=0;j<ichunk;++j)
++#ifdef FIXED_POINT
++           x[j+st->filt_len-1]=WORD2INT(in[j*istride_save]);
++#else
++           x[j+st->filt_len-1]=in[j*istride_save];
++#endif
++       } else {
++         for(j=0;j<ichunk;++j)
++           x[j+st->filt_len-1]=0;
++       }
++
++       speex_resampler_process_native(st, channel_index, &ichunk, y, &ochunk);
++     } else {
++       ichunk = 0;
++       ochunk = 0;
++     }
++
++     for (j=0;j<ochunk+omagic;++j)
++#ifdef FIXED_POINT
++        out[j*ostride_save] = ystack[j];
++#else
++        out[j*ostride_save] = WORD2INT(ystack[j]);
++#endif
++     
++     ilen -= ichunk;
++     olen -= ochunk;
++     out += (ochunk+omagic) * ostride_save;
++     if (in)
++       in += ichunk * istride_save;
++   }
++   st->out_stride = ostride_save;
++   *in_len -= ilen;
++   *out_len -= olen;
++
++   return RESAMPLER_ERR_SUCCESS;
++}
++
++EXPORT int speex_resampler_process_interleaved_float(SpeexResamplerState *st, const float *in, spx_uint32_t *in_len, float *out, spx_uint32_t *out_len)
++{
++   spx_uint32_t i;
++   int istride_save, ostride_save;
++   spx_uint32_t bak_len = *out_len;
++   istride_save = st->in_stride;
++   ostride_save = st->out_stride;
++   st->in_stride = st->out_stride = st->nb_channels;
++   for (i=0;i<st->nb_channels;i++)
++   {
++      *out_len = bak_len;
++      if (in != NULL)
++         speex_resampler_process_float(st, i, in+i, in_len, out+i, out_len);
++      else
++         speex_resampler_process_float(st, i, NULL, in_len, out+i, out_len);
++   }
++   st->in_stride = istride_save;
++   st->out_stride = ostride_save;
++   return RESAMPLER_ERR_SUCCESS;
++}
++               
++EXPORT int speex_resampler_process_interleaved_int(SpeexResamplerState *st, const spx_int16_t *in, spx_uint32_t *in_len, spx_int16_t *out, spx_uint32_t *out_len)
++{
++   spx_uint32_t i;
++   int istride_save, ostride_save;
++   spx_uint32_t bak_len = *out_len;
++   istride_save = st->in_stride;
++   ostride_save = st->out_stride;
++   st->in_stride = st->out_stride = st->nb_channels;
++   for (i=0;i<st->nb_channels;i++)
++   {
++      *out_len = bak_len;
++      if (in != NULL)
++         speex_resampler_process_int(st, i, in+i, in_len, out+i, out_len);
++      else
++         speex_resampler_process_int(st, i, NULL, in_len, out+i, out_len);
++   }
++   st->in_stride = istride_save;
++   st->out_stride = ostride_save;
++   return RESAMPLER_ERR_SUCCESS;
++}
++
++EXPORT int speex_resampler_set_rate(SpeexResamplerState *st, spx_uint32_t in_rate, spx_uint32_t out_rate)
++{
++   return speex_resampler_set_rate_frac(st, in_rate, out_rate, in_rate, out_rate);
++}
++
++EXPORT void speex_resampler_get_rate(SpeexResamplerState *st, spx_uint32_t *in_rate, spx_uint32_t *out_rate)
++{
++   *in_rate = st->in_rate;
++   *out_rate = st->out_rate;
++}
++
++EXPORT int speex_resampler_set_rate_frac(SpeexResamplerState *st, spx_uint32_t ratio_num, spx_uint32_t ratio_den, spx_uint32_t in_rate, spx_uint32_t out_rate)
++{
++   spx_uint32_t fact;
++   spx_uint32_t old_den;
++   spx_uint32_t i;
++   if (st->in_rate == in_rate && st->out_rate == out_rate && st->num_rate == ratio_num && st->den_rate == ratio_den)
++      return RESAMPLER_ERR_SUCCESS;
++   
++   old_den = st->den_rate;
++   st->in_rate = in_rate;
++   st->out_rate = out_rate;
++   st->num_rate = ratio_num;
++   st->den_rate = ratio_den;
++   /* FIXME: This is terribly inefficient, but who cares (at least for now)? */
++   for (fact=2;fact<=IMIN(st->num_rate, st->den_rate);fact++)
++   {
++      while ((st->num_rate % fact == 0) && (st->den_rate % fact == 0))
++      {
++         st->num_rate /= fact;
++         st->den_rate /= fact;
++      }
++   }
++      
++   if (old_den > 0)
++   {
++      for (i=0;i<st->nb_channels;i++)
++      {
++         st->samp_frac_num[i]=st->samp_frac_num[i]*st->den_rate/old_den;
++         /* Safety net */
++         if (st->samp_frac_num[i] >= st->den_rate)
++            st->samp_frac_num[i] = st->den_rate-1;
++      }
++   }
++   
++   if (st->initialised)
++      update_filter(st);
++   return RESAMPLER_ERR_SUCCESS;
++}
++
++EXPORT void speex_resampler_get_ratio(SpeexResamplerState *st, spx_uint32_t *ratio_num, spx_uint32_t *ratio_den)
++{
++   *ratio_num = st->num_rate;
++   *ratio_den = st->den_rate;
++}
++
++EXPORT int speex_resampler_set_quality(SpeexResamplerState *st, int quality)
++{
++   if (quality > 10 || quality < 0)
++      return RESAMPLER_ERR_INVALID_ARG;
++   if (st->quality == quality)
++      return RESAMPLER_ERR_SUCCESS;
++   st->quality = quality;
++   if (st->initialised)
++      update_filter(st);
++   return RESAMPLER_ERR_SUCCESS;
++}
++
++EXPORT void speex_resampler_get_quality(SpeexResamplerState *st, int *quality)
++{
++   *quality = st->quality;
++}
++
++EXPORT void speex_resampler_set_input_stride(SpeexResamplerState *st, spx_uint32_t stride)
++{
++   st->in_stride = stride;
++}
++
++EXPORT void speex_resampler_get_input_stride(SpeexResamplerState *st, spx_uint32_t *stride)
++{
++   *stride = st->in_stride;
++}
++
++EXPORT void speex_resampler_set_output_stride(SpeexResamplerState *st, spx_uint32_t stride)
++{
++   st->out_stride = stride;
++}
++
++EXPORT void speex_resampler_get_output_stride(SpeexResamplerState *st, spx_uint32_t *stride)
++{
++   *stride = st->out_stride;
++}
++
++EXPORT int speex_resampler_get_input_latency(SpeexResamplerState *st)
++{
++  return st->filt_len / 2;
++}
++
++EXPORT int speex_resampler_get_output_latency(SpeexResamplerState *st)
++{
++  return ((st->filt_len / 2) * st->den_rate + (st->num_rate >> 1)) / st->num_rate;
++}
++
++EXPORT int speex_resampler_skip_zeros(SpeexResamplerState *st)
++{
++   spx_uint32_t i;
++   for (i=0;i<st->nb_channels;i++)
++      st->last_sample[i] = st->filt_len/2;
++   return RESAMPLER_ERR_SUCCESS;
++}
++
++EXPORT int speex_resampler_reset_mem(SpeexResamplerState *st)
++{
++   spx_uint32_t i;
++   for (i=0;i<st->nb_channels*(st->filt_len-1);i++)
++      st->mem[i] = 0;
++   return RESAMPLER_ERR_SUCCESS;
++}
++
++EXPORT const char *speex_resampler_strerror(int err)
++{
++   switch (err)
++   {
++      case RESAMPLER_ERR_SUCCESS:
++         return "Success.";
++      case RESAMPLER_ERR_ALLOC_FAILED:
++         return "Memory allocation failed.";
++      case RESAMPLER_ERR_BAD_STATE:
++         return "Bad resampler state.";
++      case RESAMPLER_ERR_INVALID_ARG:
++         return "Invalid argument.";
++      case RESAMPLER_ERR_PTR_OVERLAP:
++         return "Input and output buffers overlap.";
++      default:
++         return "Unknown error. Bad error code or strange version mismatch.";
++   }
++}
+diff --git a/src/speex/speex_config_types.h b/src/speex/speex_config_types.h
+new file mode 100755
+index 0000000..cea3628
+--- /dev/null
++++ b/src/speex/speex_config_types.h
+@@ -0,0 +1,10 @@
++#ifndef __SPEEX_TYPES_H__
++#define __SPEEX_TYPES_H__
++
++/* these are filled in by configure */
++typedef int16_t spx_int16_t;
++typedef uint16_t spx_uint16_t;
++typedef int32_t spx_int32_t;
++typedef uint32_t spx_uint32_t;
++
++ #endif
+diff --git a/src/speex/speex_resampler.h b/src/speex/speex_resampler.h
+new file mode 100755
+index 0000000..4d5913f
+--- /dev/null
++++ b/src/speex/speex_resampler.h
+@@ -0,0 +1,344 @@
++/* Copyright (C) 2007 Jean-Marc Valin
++      
++   File: speex_resampler.h
++   Resampling code
++      
++   The design goals of this code are:
++      - Very fast algorithm
++      - Low memory requirement
++      - Good *perceptual* quality (and not best SNR)
++
++   Redistribution and use in source and binary forms, with or without
++   modification, are permitted provided that the following conditions are
++   met:
++
++   1. Redistributions of source code must retain the above copyright notice,
++   this list of conditions and the following disclaimer.
++
++   2. Redistributions in binary form must reproduce the above copyright
++   notice, this list of conditions and the following disclaimer in the
++   documentation and/or other materials provided with the distribution.
++
++   3. The name of the author may not be used to endorse or promote products
++   derived from this software without specific prior written permission.
++
++   THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
++   IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
++   OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
++   DISCLAIMED. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT,
++   INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
++   (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
++   SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++   HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
++   STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
++   ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
++   POSSIBILITY OF SUCH DAMAGE.
++*/
++
++
++#ifndef SPEEX_RESAMPLER_H
++#define SPEEX_RESAMPLER_H
++
++#ifdef OUTSIDE_SPEEX
++
++/********* WARNING: MENTAL SANITY ENDS HERE *************/
++
++/* If the resampler is defined outside of Speex, we change the symbol names so that 
++   there won't be any clash if linking with Speex later on. */
++
++/* #define RANDOM_PREFIX your software name here */
++#ifndef RANDOM_PREFIX
++#error "Please define RANDOM_PREFIX (above) to something specific to your project to prevent symbol name clashes"
++#endif
++
++#define CAT_PREFIX2(a,b) a ## b
++#define CAT_PREFIX(a,b) CAT_PREFIX2(a, b)
++      
++#define speex_resampler_init CAT_PREFIX(RANDOM_PREFIX,_resampler_init)
++#define speex_resampler_init_frac CAT_PREFIX(RANDOM_PREFIX,_resampler_init_frac)
++#define speex_resampler_destroy CAT_PREFIX(RANDOM_PREFIX,_resampler_destroy)
++#define speex_resampler_process_float CAT_PREFIX(RANDOM_PREFIX,_resampler_process_float)
++#define speex_resampler_process_int CAT_PREFIX(RANDOM_PREFIX,_resampler_process_int)
++#define speex_resampler_process_interleaved_float CAT_PREFIX(RANDOM_PREFIX,_resampler_process_interleaved_float)
++#define speex_resampler_process_interleaved_int CAT_PREFIX(RANDOM_PREFIX,_resampler_process_interleaved_int)
++#define speex_resampler_set_rate CAT_PREFIX(RANDOM_PREFIX,_resampler_set_rate)
++#define speex_resampler_get_rate CAT_PREFIX(RANDOM_PREFIX,_resampler_get_rate)
++#define speex_resampler_set_rate_frac CAT_PREFIX(RANDOM_PREFIX,_resampler_set_rate_frac)
++#define speex_resampler_get_ratio CAT_PREFIX(RANDOM_PREFIX,_resampler_get_ratio)
++#define speex_resampler_set_quality CAT_PREFIX(RANDOM_PREFIX,_resampler_set_quality)
++#define speex_resampler_get_quality CAT_PREFIX(RANDOM_PREFIX,_resampler_get_quality)
++#define speex_resampler_set_input_stride CAT_PREFIX(RANDOM_PREFIX,_resampler_set_input_stride)
++#define speex_resampler_get_input_stride CAT_PREFIX(RANDOM_PREFIX,_resampler_get_input_stride)
++#define speex_resampler_set_output_stride CAT_PREFIX(RANDOM_PREFIX,_resampler_set_output_stride)
++#define speex_resampler_get_output_stride CAT_PREFIX(RANDOM_PREFIX,_resampler_get_output_stride)
++#define speex_resampler_get_input_latency CAT_PREFIX(RANDOM_PREFIX,_resampler_get_input_latency)
++#define speex_resampler_get_output_latency CAT_PREFIX(RANDOM_PREFIX,_resampler_get_output_latency)
++#define speex_resampler_skip_zeros CAT_PREFIX(RANDOM_PREFIX,_resampler_skip_zeros)
++#define speex_resampler_reset_mem CAT_PREFIX(RANDOM_PREFIX,_resampler_reset_mem)
++#define speex_resampler_strerror CAT_PREFIX(RANDOM_PREFIX,_resampler_strerror)
++
++#define spx_int16_t short
++#define spx_int32_t int
++#define spx_uint16_t unsigned short
++#define spx_uint32_t unsigned int
++      
++#else /* OUTSIDE_SPEEX */
++
++#ifdef _BUILD_SPEEX
++# include "speex_types.h"
++#else
++# include <speex/speex_types.h>
++#endif
++
++#endif /* OUTSIDE_SPEEX */
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++#define SPEEX_RESAMPLER_QUALITY_MAX 10
++#define SPEEX_RESAMPLER_QUALITY_MIN 0
++#define SPEEX_RESAMPLER_QUALITY_DEFAULT 4
++#define SPEEX_RESAMPLER_QUALITY_VOIP 3
++#define SPEEX_RESAMPLER_QUALITY_DESKTOP 5
++
++enum {
++   RESAMPLER_ERR_SUCCESS         = 0,
++   RESAMPLER_ERR_ALLOC_FAILED    = 1,
++   RESAMPLER_ERR_BAD_STATE       = 2,
++   RESAMPLER_ERR_INVALID_ARG     = 3,
++   RESAMPLER_ERR_PTR_OVERLAP     = 4,
++   
++   RESAMPLER_ERR_MAX_ERROR
++};
++
++struct SpeexResamplerState_;
++typedef struct SpeexResamplerState_ SpeexResamplerState;
++
++/** Create a new resampler with integer input and output rates.
++ * @param nb_channels Number of channels to be processed
++ * @param in_rate Input sampling rate (integer number of Hz).
++ * @param out_rate Output sampling rate (integer number of Hz).
++ * @param quality Resampling quality between 0 and 10, where 0 has poor quality
++ * and 10 has very high quality.
++ * @return Newly created resampler state
++ * @retval NULL Error: not enough memory
++ */
++SpeexResamplerState *speex_resampler_init(spx_uint32_t nb_channels, 
++                                          spx_uint32_t in_rate, 
++                                          spx_uint32_t out_rate, 
++                                          int quality,
++                                          int *err);
++
++/** Create a new resampler with fractional input/output rates. The sampling 
++ * rate ratio is an arbitrary rational number with both the numerator and 
++ * denominator being 32-bit integers.
++ * @param nb_channels Number of channels to be processed
++ * @param ratio_num Numerator of the sampling rate ratio
++ * @param ratio_den Denominator of the sampling rate ratio
++ * @param in_rate Input sampling rate rounded to the nearest integer (in Hz).
++ * @param out_rate Output sampling rate rounded to the nearest integer (in Hz).
++ * @param quality Resampling quality between 0 and 10, where 0 has poor quality
++ * and 10 has very high quality.
++ * @return Newly created resampler state
++ * @retval NULL Error: not enough memory
++ */
++SpeexResamplerState *speex_resampler_init_frac(spx_uint32_t nb_channels, 
++                                               spx_uint32_t ratio_num, 
++                                               spx_uint32_t ratio_den, 
++                                               spx_uint32_t in_rate, 
++                                               spx_uint32_t out_rate, 
++                                               int quality,
++                                               int *err);
++
++/** Destroy a resampler state.
++ * @param st Resampler state
++ */
++void speex_resampler_destroy(SpeexResamplerState *st);
++
++/** Resample a float array. The input and output buffers must *not* overlap.
++ * @param st Resampler state
++ * @param channel_index Index of the channel to process for the multi-channel 
++ * base (0 otherwise)
++ * @param in Input buffer
++ * @param in_len Number of input samples in the input buffer. Returns the 
++ * number of samples processed
++ * @param out Output buffer
++ * @param out_len Size of the output buffer. Returns the number of samples written
++ */
++int speex_resampler_process_float(SpeexResamplerState *st, 
++                                   spx_uint32_t channel_index, 
++                                   const float *in, 
++                                   spx_uint32_t *in_len, 
++                                   float *out, 
++                                   spx_uint32_t *out_len);
++
++/** Resample an int array. The input and output buffers must *not* overlap.
++ * @param st Resampler state
++ * @param channel_index Index of the channel to process for the multi-channel 
++ * base (0 otherwise)
++ * @param in Input buffer
++ * @param in_len Number of input samples in the input buffer. Returns the number
++ * of samples processed
++ * @param out Output buffer
++ * @param out_len Size of the output buffer. Returns the number of samples written
++ */
++int speex_resampler_process_int(SpeexResamplerState *st, 
++                                 spx_uint32_t channel_index, 
++                                 const spx_int16_t *in, 
++                                 spx_uint32_t *in_len, 
++                                 spx_int16_t *out, 
++                                 spx_uint32_t *out_len);
++
++/** Resample an interleaved float array. The input and output buffers must *not* overlap.
++ * @param st Resampler state
++ * @param in Input buffer
++ * @param in_len Number of input samples in the input buffer. Returns the number
++ * of samples processed. This is all per-channel.
++ * @param out Output buffer
++ * @param out_len Size of the output buffer. Returns the number of samples written.
++ * This is all per-channel.
++ */
++int speex_resampler_process_interleaved_float(SpeexResamplerState *st, 
++                                               const float *in, 
++                                               spx_uint32_t *in_len, 
++                                               float *out, 
++                                               spx_uint32_t *out_len);
++
++/** Resample an interleaved int array. The input and output buffers must *not* overlap.
++ * @param st Resampler state
++ * @param in Input buffer
++ * @param in_len Number of input samples in the input buffer. Returns the number
++ * of samples processed. This is all per-channel.
++ * @param out Output buffer
++ * @param out_len Size of the output buffer. Returns the number of samples written.
++ * This is all per-channel.
++ */
++int speex_resampler_process_interleaved_int(SpeexResamplerState *st, 
++                                             const spx_int16_t *in, 
++                                             spx_uint32_t *in_len, 
++                                             spx_int16_t *out, 
++                                             spx_uint32_t *out_len);
++
++/** Set (change) the input/output sampling rates (integer value).
++ * @param st Resampler state
++ * @param in_rate Input sampling rate (integer number of Hz).
++ * @param out_rate Output sampling rate (integer number of Hz).
++ */
++int speex_resampler_set_rate(SpeexResamplerState *st, 
++                              spx_uint32_t in_rate, 
++                              spx_uint32_t out_rate);
++
++/** Get the current input/output sampling rates (integer value).
++ * @param st Resampler state
++ * @param in_rate Input sampling rate (integer number of Hz) copied.
++ * @param out_rate Output sampling rate (integer number of Hz) copied.
++ */
++void speex_resampler_get_rate(SpeexResamplerState *st, 
++                              spx_uint32_t *in_rate, 
++                              spx_uint32_t *out_rate);
++
++/** Set (change) the input/output sampling rates and resampling ratio 
++ * (fractional values in Hz supported).
++ * @param st Resampler state
++ * @param ratio_num Numerator of the sampling rate ratio
++ * @param ratio_den Denominator of the sampling rate ratio
++ * @param in_rate Input sampling rate rounded to the nearest integer (in Hz).
++ * @param out_rate Output sampling rate rounded to the nearest integer (in Hz).
++ */
++int speex_resampler_set_rate_frac(SpeexResamplerState *st, 
++                                   spx_uint32_t ratio_num, 
++                                   spx_uint32_t ratio_den, 
++                                   spx_uint32_t in_rate, 
++                                   spx_uint32_t out_rate);
++
++/** Get the current resampling ratio. This will be reduced to the least
++ * common denominator.
++ * @param st Resampler state
++ * @param ratio_num Numerator of the sampling rate ratio copied
++ * @param ratio_den Denominator of the sampling rate ratio copied
++ */
++void speex_resampler_get_ratio(SpeexResamplerState *st, 
++                               spx_uint32_t *ratio_num, 
++                               spx_uint32_t *ratio_den);
++
++/** Set (change) the conversion quality.
++ * @param st Resampler state
++ * @param quality Resampling quality between 0 and 10, where 0 has poor 
++ * quality and 10 has very high quality.
++ */
++int speex_resampler_set_quality(SpeexResamplerState *st, 
++                                 int quality);
++
++/** Get the conversion quality.
++ * @param st Resampler state
++ * @param quality Resampling quality between 0 and 10, where 0 has poor 
++ * quality and 10 has very high quality.
++ */
++void speex_resampler_get_quality(SpeexResamplerState *st, 
++                                 int *quality);
++
++/** Set (change) the input stride.
++ * @param st Resampler state
++ * @param stride Input stride
++ */
++void speex_resampler_set_input_stride(SpeexResamplerState *st, 
++                                      spx_uint32_t stride);
++
++/** Get the input stride.
++ * @param st Resampler state
++ * @param stride Input stride copied
++ */
++void speex_resampler_get_input_stride(SpeexResamplerState *st, 
++                                      spx_uint32_t *stride);
++
++/** Set (change) the output stride.
++ * @param st Resampler state
++ * @param stride Output stride
++ */
++void speex_resampler_set_output_stride(SpeexResamplerState *st, 
++                                      spx_uint32_t stride);
++
++/** Get the output stride.
++ * @param st Resampler state copied
++ * @param stride Output stride
++ */
++void speex_resampler_get_output_stride(SpeexResamplerState *st, 
++                                      spx_uint32_t *stride);
++
++/** Get the latency introduced by the resampler measured in input samples.
++ * @param st Resampler state
++ */
++int speex_resampler_get_input_latency(SpeexResamplerState *st);
++
++/** Get the latency introduced by the resampler measured in output samples.
++ * @param st Resampler state
++ */
++int speex_resampler_get_output_latency(SpeexResamplerState *st);
++
++/** Make sure that the first samples to go out of the resamplers don't have 
++ * leading zeros. This is only useful before starting to use a newly created 
++ * resampler. It is recommended to use that when resampling an audio file, as
++ * it will generate a file with the same length. For real-time processing,
++ * it is probably easier not to use this call (so that the output duration
++ * is the same for the first frame).
++ * @param st Resampler state
++ */
++int speex_resampler_skip_zeros(SpeexResamplerState *st);
++
++/** Reset a resampler so a new (unrelated) stream can be processed.
++ * @param st Resampler state
++ */
++int speex_resampler_reset_mem(SpeexResamplerState *st);
++
++/** Returns the English meaning for an error code
++ * @param err Error code
++ * @return English string
++ */
++const char *speex_resampler_strerror(int err);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif
+diff --git a/src/speex/stack_alloc.h b/src/speex/stack_alloc.h
+new file mode 100755
+index 0000000..5264e66
+--- /dev/null
++++ b/src/speex/stack_alloc.h
+@@ -0,0 +1,115 @@
++/* Copyright (C) 2002 Jean-Marc Valin */
++/**
++   @file stack_alloc.h
++   @brief Temporary memory allocation on stack
++*/
++/*
++   Redistribution and use in source and binary forms, with or without
++   modification, are permitted provided that the following conditions
++   are met:
++   
++   - Redistributions of source code must retain the above copyright
++   notice, this list of conditions and the following disclaimer.
++   
++   - Redistributions in binary form must reproduce the above copyright
++   notice, this list of conditions and the following disclaimer in the
++   documentation and/or other materials provided with the distribution.
++   
++   - Neither the name of the Xiph.org Foundation nor the names of its
++   contributors may be used to endorse or promote products derived from
++   this software without specific prior written permission.
++   
++   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++   ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++   LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++   A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR
++   CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
++   EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
++   PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
++   PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
++   LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
++   NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
++   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++*/
++
++#ifndef STACK_ALLOC_H
++#define STACK_ALLOC_H
++
++#ifdef USE_ALLOCA
++# ifdef WIN32
++#  include <malloc.h>
++# else
++#  ifdef HAVE_ALLOCA_H
++#   include <alloca.h>
++#  else
++#   include <stdlib.h>
++#  endif
++# endif
++#endif
++
++/**
++ * @def ALIGN(stack, size)
++ *
++ * Aligns the stack to a 'size' boundary
++ *
++ * @param stack Stack
++ * @param size  New size boundary
++ */
++
++/**
++ * @def PUSH(stack, size, type)
++ *
++ * Allocates 'size' elements of type 'type' on the stack
++ *
++ * @param stack Stack
++ * @param size  Number of elements
++ * @param type  Type of element
++ */
++
++/**
++ * @def VARDECL(var)
++ *
++ * Declare variable on stack
++ *
++ * @param var Variable to declare
++ */
++
++/**
++ * @def ALLOC(var, size, type)
++ *
++ * Allocate 'size' elements of 'type' on stack
++ *
++ * @param var  Name of variable to allocate
++ * @param size Number of elements
++ * @param type Type of element
++ */
++
++#ifdef ENABLE_VALGRIND
++
++#include <valgrind/memcheck.h>
++
++#define ALIGN(stack, size) ((stack) += ((size) - (long)(stack)) & ((size) - 1))
++
++#define PUSH(stack, size, type) (VALGRIND_MAKE_NOACCESS(stack, 1000),ALIGN((stack),sizeof(type)),VALGRIND_MAKE_WRITABLE(stack, ((size)*sizeof(type))),(stack)+=((size)*sizeof(type)),(type*)((stack)-((size)*sizeof(type))))
++
++#else
++
++#define ALIGN(stack, size) ((stack) += ((size) - (long)(stack)) & ((size) - 1))
++
++#define PUSH(stack, size, type) (ALIGN((stack),sizeof(type)),(stack)+=((size)*sizeof(type)),(type*)((stack)-((size)*sizeof(type))))
++
++#endif
++
++#if defined(VAR_ARRAYS)
++#define VARDECL(var) 
++#define ALLOC(var, size, type) type var[size]
++#elif defined(USE_ALLOCA)
++#define VARDECL(var) var
++#define ALLOC(var, size, type) var = alloca(sizeof(type)*(size))
++#else
++#define VARDECL(var) var
++#define ALLOC(var, size, type) var = PUSH(stack, size, type)
++#endif
++
++
++#endif

@@ -1,8 +1,8 @@
 AUTOMAKE_OPTIONS = foreign 1.10 dist-bzip2 subdir-objects
 ACLOCAL_AMFLAGS = -I m4
 
-INCLUDES = -I$(top_srcdir)/include -I.
-AM_CFLAGS = -ansi -std=gnu99 -Wall -Wextra -Wno-long-long -O0 -Wno-unused -g
+INCLUDES = -I$(top_srcdir)/include -I. -I$(top_srcdir)/src -I$(top_srcdir)/src/speex
+AM_CFLAGS = -ansi -std=gnu99 -Wall -Wextra -Wno-long-long -O0 -Wno-unused -g 
 
 SUBDIRS = docs
 
@@ -35,6 +35,9 @@ endif
 if AUDIOQUEUE
 src_libcubeb_la_SOURCES += src/cubeb_audioqueue.c
 endif
+if WASAPI
+src_libcubeb_la_SOURCES += src/cubeb_wasapi.cpp src/speex/resample.c
+endif
 if WINMM
 src_libcubeb_la_SOURCES += src/cubeb_winmm.c
 endif
@@ -56,7 +59,8 @@ EXTRA_src_libcubeb_la_SOURCES = \
 	src/cubeb_alsa.c src/cubeb_pulse.c \
 	src/cubeb_audiounit.c src/cubeb_audioqueue.c \
 	src/cubeb_sndio.c src/cubeb_directsound.cpp \
-	src/cubeb_winmm.c src/cubeb_opensl.c src/cubeb_audiotrack.c
+	src/cubeb_winmm.c src/cubeb_wasapi.cpp src\speex_resampler\resample.c \
+  src/cubeb_opensl.c src/cubeb_audiotrack.c
 
 src_libcubeb_la_LDFLAGS = -pthread -export-symbols-regex '^cubeb_' $(platform_lib) -no-undefined
 

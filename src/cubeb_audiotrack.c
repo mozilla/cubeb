@@ -342,7 +342,7 @@ audiotrack_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_
 
   if (audiotrack_version_is_froyo(ctx)) {
     ctx->klass.ctor_froyo(stm->instance,
-                          params->stream_type,
+                          stm->params.stream_type,
                           stm->params.rate,
                           AUDIO_FORMAT_PCM_16_BIT,
                           channels,
@@ -353,7 +353,7 @@ audiotrack_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_
                           0);
   } else {
     ctx->klass.ctor(stm->instance,
-                    params->stream_type,
+                    stm->params.stream_type,
                     stm->params.rate,
                     AUDIO_FORMAT_PCM_16_BIT,
                     channels,
@@ -427,6 +427,7 @@ audiotrack_stream_get_position(cubeb_stream * stream, uint64_t * position)
 static struct cubeb_ops const audiotrack_ops = {
   .init = audiotrack_init,
   .get_backend_id = audiotrack_get_backend_id,
+  .get_max_channels_count = audiotrack_get_max_channel_count,
   .destroy = audiotrack_destroy,
   .stream_init = audiotrack_stream_init,
   .stream_destroy = audiotrack_stream_destroy,
