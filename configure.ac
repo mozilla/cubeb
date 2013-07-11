@@ -143,13 +143,14 @@ AM_CONDITIONAL([DIRECTSOUND], [test $HAVE_DIRECTSOUND -eq 1])
 AC_ARG_WITH([wasapi],
             AS_HELP_STRING([--with-wasapi], [with WASAPI @<:@default=check@:>@]))
 AS_IF([test "x$with_wasapi" != xno],
-      [AC_CHECK_HEADERS([Audioclient.h], [
+      [AC_CHECK_HEADERS([audioclient.h], [
        HAVE_WASAPI=1
        AC_DEFINE([USE_WASAPI], [], [Use WASAPI])
        AC_DEFINE([OUTSIDE_SPEEX], [], [Tell the speex resampler no to expect speex headers.])
        AC_DEFINE([RANDOM_PREFIX], [speex], [Required by the speex resampler.])
        AC_DEFINE([FLOATING_POINT], [], [Tell the resampler to only enable floating point support])
        AC_DEFINE([EXPORT], [], [Tell the resampler to export the symbols by default.])
+       WASAPI_LIBS="-lole32"
       ], [
        HAVE_WASAPI=0
        AS_IF([test "x$with_wasapi" = xyes], [AC_MSG_ERROR(WASAPI not detected)])
