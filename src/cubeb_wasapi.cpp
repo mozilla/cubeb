@@ -168,6 +168,9 @@ upmix(T * in, long inframes, T * out, int32_t in_channels, int32_t out_channels)
   for (long i = 0; i < inframes * in_channels; i+=in_channels) {
     for (int j = 0; j < in_channels; j++) {
       out[out_index + j] = in[i + j];
+      if (in_channels == 1) {
+        out[out_index + j + 1] = in[i + j];
+      }
     }
     for (int j = in_channels; j < out_channels; j++) {
       out[out_index + j] = 0.0;
