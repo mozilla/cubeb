@@ -514,12 +514,19 @@ void wasapi_stream_destroy(cubeb_stream * stm);
 static void
 handle_channel_layout(cubeb_stream * stm,  WAVEFORMATEX ** mix_format, const cubeb_stream_params * stream_params)
 {
-  assert((*mix_format)->wFormatTag == WAVE_FORMAT_EXTENSIBLE);
-
   /* Common case: the hardware supports stereo, and the stream is mono or
    * stereo. Easy. */
   if ((*mix_format)->nChannels == 2 &&
       stream_params->channels <= 2) {
+    return;
+  }
+
+  /* The docs say that GetMixFormat is always of type WAVEFORMATEXTENSIBLE [1],
+   * so the reinterpret_cast below should be safe. In practice, this is not
+   * true, and we just want to bail out and let the rest of the code find a good
+   * conversion path instead of trying to make WASAPI do it by itself.
+   * [1]: http://msdn.microsoft.com/en-us/library/windows/desktop/dd370811%28v=vs.85%29.aspx*/
+  if ((*mix_format)->wFormatTag != WAVE_FORMAT_EXTENSIBLE) {
     return;
   }
 
