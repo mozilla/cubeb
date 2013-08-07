@@ -184,7 +184,8 @@ upmix(T * in, long inframes, T * out, int32_t in_channels, int32_t out_channels)
 static size_t
 frame_to_bytes_before_upmix(cubeb_stream * stm, size_t frames)
 {
-  return stm->bytes_per_frame / (should_upmix(stm) ? 2 : 1) * frames;
+  size_t stream_frame_size = stm->stream_params.channels * sizeof(float);
+  return stream_frame_size * frames;
 }
 
 void
