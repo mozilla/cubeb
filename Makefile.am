@@ -2,7 +2,7 @@ AUTOMAKE_OPTIONS = foreign 1.10 dist-bzip2 subdir-objects
 ACLOCAL_AMFLAGS = -I m4
 
 INCLUDES = -I$(top_srcdir)/include -I. -I$(top_srcdir)/src -I$(top_srcdir)/src/speex
-AM_CFLAGS = -ansi -std=gnu99 -Wall -Wextra -Wno-long-long -O0 -Wno-unused -g 
+AM_CFLAGS = -ansi -std=gnu99 -Wall -Wextra -Wno-long-long -O0 -Wno-unused -g
 
 SUBDIRS = docs
 
@@ -69,7 +69,7 @@ noinst_PROGRAMS = test/test_sanity test/test_tone
 test_test_sanity_SOURCES = test/test_sanity.c
 test_test_sanity_LDADD = -lm src/libcubeb.la $(platform_lib)
 
-test_test_tone_SOURCES = test/test_tone.c
+test_test_tone_SOURCES = test/test_tone.c test/common.c
 test_test_tone_LDADD = -lm src/libcubeb.la $(platform_lib)
 
 TESTS = test/test_sanity
