@@ -26,6 +26,9 @@ src_libcubeb_la_SOURCES = src/cubeb.c
 if PULSE
 src_libcubeb_la_SOURCES += src/cubeb_pulse.c
 endif
+if JACK
+src_libcubeb_la_SOURCES += src/cubeb_jack.cpp src/speex/resample.c
+endif
 if ALSA
 src_libcubeb_la_SOURCES += src/cubeb_alsa.c
 endif
@@ -56,6 +59,7 @@ endif
 
 EXTRA_src_libcubeb_la_SOURCES = \
         src/cubeb.c \
+	src/cubeb_jack.cpp \
 	src/cubeb_alsa.c src/cubeb_pulse.c \
 	src/cubeb_audiounit.c src/cubeb_audioqueue.c \
 	src/cubeb_sndio.c src/cubeb_directsound.cpp \
