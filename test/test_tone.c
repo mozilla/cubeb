@@ -10,31 +10,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#if defined( _WIN32)
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#else
-#include <unistd.h>
-#endif
 
 #include "cubeb/cubeb.h"
+#include "common.h"
 
 #define SAMPLE_FREQUENCY 48000
-
-#if !defined(M_PI)
-#define M_PI 3.14159265358979323846
-#endif
-
-static void
-delay(unsigned int ms)
-{
-#if defined(_WIN32)
-	Sleep(ms);
-#else
-	sleep(ms / 1000);
-	usleep(ms % 1000 * 1000);
-#endif
-}
 
 /* store the phase of the generated waveform */
 struct cb_user_data {
