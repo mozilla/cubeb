@@ -23,8 +23,10 @@
 
 #include <speex/speex_resampler.h>
 
+#pragma GCC visibility push(default)
 #include <jack/jack.h>
 #include <jack/ringbuffer.h>
+#pragma GCC visibility pop
 
 static const int MAX_STREAMS = 16;
 static const int MAX_CHANNELS  = 8;
