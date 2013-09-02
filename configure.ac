@@ -65,10 +65,6 @@ AS_IF([test "x$with_jack" != xno],
        HAVE_JACK=1
        NEED_SPEEX=1
        AC_DEFINE([USE_JACK], [], [Use JACK])
-       AC_DEFINE([OUTSIDE_SPEEX], [], [Tell the speex resampler no to expect speex headers.])
-       AC_DEFINE([RANDOM_PREFIX], [speex], [Required by the speex resampler.])
-       AC_DEFINE([FLOATING_POINT], [], [Tell the resampler to only enable floating point support])
-       AC_DEFINE([EXPORT], [], [Tell the resampler to export the symbols by default.])
       ], [
        HAVE_JACK=0
        AS_IF([test "x$with_jack" = xyes], [AC_MSG_ERROR(JACK not detected)])])])
@@ -163,10 +159,6 @@ AS_IF([test "x$with_wasapi" != xno],
        HAVE_WASAPI=1
        NEED_SPEEX=1
        AC_DEFINE([USE_WASAPI], [], [Use WASAPI])
-       AC_DEFINE([OUTSIDE_SPEEX], [], [Tell the speex resampler no to expect speex headers.])
-       AC_DEFINE([RANDOM_PREFIX], [speex], [Required by the speex resampler.])
-       AC_DEFINE([FLOATING_POINT], [], [Tell the resampler to only enable floating point support])
-       AC_DEFINE([EXPORT], [], [Tell the resampler to export the symbols by default.])
        WASAPI_LIBS="-lole32"
       ], [
        HAVE_WASAPI=0
@@ -188,6 +180,14 @@ AS_IF([test "x$with_winmm" != xno],
 AM_CONDITIONAL([WINMM], [test $HAVE_WINMM -eq 1])
 
 AM_CONDITIONAL([SPEEX], [test $NEED_SPEEX -eq 1])
+
+AS_IF([test $NEED_SPEEX -eq 1],
+      [
+       AC_DEFINE([OUTSIDE_SPEEX], [], [Tell the speex resampler no to expect speex headers.])
+       AC_DEFINE([RANDOM_PREFIX], [speex], [Required by the speex resampler.])
+       AC_DEFINE([FLOATING_POINT], [], [Tell the resampler to only enable floating point support])
+       AC_DEFINE([EXPORT], [], [Tell the resampler to export the symbols by default.])
+      ])
 
 platform_lib="$PULSE_LIBS $JACK_LIBS $ALSA_LIBS $AUDIOUNIT_LIBS $AUDIOQUEUE_LIBS $SNDIO_LIBS $OPENSL_LIBS $DIRECTSOUND_LIBS $WINMM_LIBS $WASAPI_LIBS"
 
