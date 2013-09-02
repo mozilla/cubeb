@@ -63,6 +63,7 @@ AC_ARG_WITH([jack],
 AS_IF([test "x$with_jack" != xno],
       [PKG_CHECK_MODULES(JACK, jack >= 1.9.9, [
        HAVE_JACK=1
+       NEED_SPEEX=1
        AC_DEFINE([USE_JACK], [], [Use JACK])
        AC_DEFINE([OUTSIDE_SPEEX], [], [Tell the speex resampler no to expect speex headers.])
        AC_DEFINE([RANDOM_PREFIX], [speex], [Required by the speex resampler.])
@@ -160,6 +161,7 @@ AC_ARG_WITH([wasapi],
 AS_IF([test "x$with_wasapi" != xno],
       [AC_CHECK_HEADERS([audioclient.h], [
        HAVE_WASAPI=1
+       NEED_SPEEX=1
        AC_DEFINE([USE_WASAPI], [], [Use WASAPI])
        AC_DEFINE([OUTSIDE_SPEEX], [], [Tell the speex resampler no to expect speex headers.])
        AC_DEFINE([RANDOM_PREFIX], [speex], [Required by the speex resampler.])
@@ -184,6 +186,8 @@ AS_IF([test "x$with_winmm" != xno],
        AS_IF([test "x$with_winmm" = xyes], [AC_MSG_ERROR(WinMM not detected)])
       ], [#include <windows.h>])])
 AM_CONDITIONAL([WINMM], [test $HAVE_WINMM -eq 1])
+
+AM_CONDITIONAL([SPEEX], [test $NEED_SPEEX -eq 1])
 
 platform_lib="$PULSE_LIBS $JACK_LIBS $ALSA_LIBS $AUDIOUNIT_LIBS $AUDIOQUEUE_LIBS $SNDIO_LIBS $OPENSL_LIBS $DIRECTSOUND_LIBS $WINMM_LIBS $WASAPI_LIBS"
 

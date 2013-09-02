@@ -27,7 +27,7 @@ if PULSE
 src_libcubeb_la_SOURCES += src/cubeb_pulse.c
 endif
 if JACK
-src_libcubeb_la_SOURCES += src/cubeb_jack.cpp src/speex/resample.c
+src_libcubeb_la_SOURCES += src/cubeb_jack.cpp
 endif
 if ALSA
 src_libcubeb_la_SOURCES += src/cubeb_alsa.c
@@ -39,7 +39,7 @@ if AUDIOQUEUE
 src_libcubeb_la_SOURCES += src/cubeb_audioqueue.c
 endif
 if WASAPI
-src_libcubeb_la_SOURCES += src/cubeb_wasapi.cpp src/speex/resample.c
+src_libcubeb_la_SOURCES += src/cubeb_wasapi.cpp
 endif
 if WINMM
 src_libcubeb_la_SOURCES += src/cubeb_winmm.c
@@ -55,6 +55,9 @@ src_libcubeb_la_SOURCES += src/cubeb_opensl.c
 endif
 if AUDIOTRACK
 src_libcubeb_la_SOURCES += src/cubeb_audiotrack.c
+endif
+if SPEEX
+src_libcubeb_la_SOURCES += src/speex/resample.c
 endif
 
 EXTRA_src_libcubeb_la_SOURCES = \
