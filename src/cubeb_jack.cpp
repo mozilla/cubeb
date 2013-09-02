@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright © 2012 David Richards
  * Copyright © 2013 Sebastien Alaiwan
  *
@@ -9,6 +9,7 @@
 #define _BSD_SOURCE
 #define _POSIX_SOURCE
 #include <algorithm>
+#include <limits>
 #include <stdio.h>
 #include <pthread.h>
 #include <sys/time.h>
@@ -41,19 +42,21 @@ s16ne_to_float(float *dst, const int16_t *src, size_t n)
 }
 
 typedef enum {
-  STATE_INACTIVE = 0,
-  STATE_STARTING = 1,
-  STATE_STARTED = 2,
-  STATE_RUNNING = 3,
-  STATE_STOPPING = 4,
-  STATE_STOPPED = 5,
-  STATE_DRAINED = 6,
+  STATE_INACTIVE,
+  STATE_STARTING,
+  STATE_STARTED,
+  STATE_RUNNING,
+  STATE_DRAINING,
+  STATE_STOPPING,
+  STATE_STOPPED,
+  STATE_DRAINED,
 } play_state;
 
 bool is_running(play_state state)
 {
   return state == STATE_STARTING
     || state == STATE_STARTED
+    || state == STATE_DRAINING
     || state == STATE_RUNNING;
 }
 
@@ -152,7 +155,7 @@ struct cubeb {
 static void
 cbjack_connect_ports (cubeb_stream * stream)
 {
-  const char **physical_ports = jack_get_ports (stream->context->jack_client, 
+  const char **physical_ports = jack_get_ports (stream->context->jack_client,
       NULL, NULL, JackPortIsInput | JackPortIsPhysical);
   if (physical_ports == NULL) {
     return;
@@ -167,16 +170,16 @@ cbjack_connect_ports (cubeb_stream * stream)
   jack_free(physical_ports);
 }
 
-static int
-cbjack_stream_data_ready(cubeb_stream * stream, jack_nframes_t nframes)
+static jack_nframes_t
+cbjack_stream_data_ready(cubeb_stream * stream)
 {
+  jack_nframes_t max_num_frames = std::numeric_limits<jack_nframes_t>::max();
   for(unsigned int c = 0; c < stream->params.channels; c++) {
     size_t read_space = jack_ringbuffer_read_space(stream->ringbuffer[c]);
-    if (read_space < (nframes * sizeof(float))) {
-      return 0;
-    }
+    jack_nframes_t nframes = read_space / sizeof(float);
+    max_num_frames = std::min(nframes, max_num_frames);
   }
-  return 1;
+  return max_num_frames;
 }
 
 static unsigned int
@@ -228,8 +231,14 @@ cbjack_process(jack_nframes_t nframes, void *arg)
     if (!stm->ports_ready)
       continue;
 
-    if (is_running(stm->state) && cbjack_stream_data_ready(stm, nframes)) {
-      cbjack_stream_data_out(stm, nframes);
+    if (is_running(stm->state)) {
+      jack_nframes_t const max_read_frames = cbjack_stream_data_ready(stm);
+      jack_nframes_t const frames = std::min(nframes, max_read_frames);
+      cbjack_stream_data_out(stm, frames);
+
+      // occurs when draining
+      if(frames < nframes)
+        cbjack_stream_silence_out(stm, nframes-frames);
     } else {
       cbjack_stream_silence_out(stm, nframes);
     }
@@ -240,6 +249,10 @@ cbjack_process(jack_nframes_t nframes, void *arg)
 
     if (stm->state == STATE_STOPPING) {
       stm->state = STATE_STOPPED;
+    }
+
+    if (stm->state == STATE_DRAINING && cbjack_stream_data_ready(stm) == 0) {
+      stm->state = STATE_DRAINED;
     }
   }
 
@@ -257,6 +270,10 @@ cbjack_stream_refill(cubeb_stream * stream)
       stream->user_ptr,
       stream->context->input_buffer,
       max_num_frames);
+
+  // check for drain
+  if(num_frames < max_num_frames)
+    stream->state = STATE_DRAINING;
 
   float *interleaved_buffer;
 
@@ -325,7 +342,9 @@ stream_refill_thread (void *arg)
         continue;
 
       if (is_running(stream->state)) {
-        cbjack_stream_refill(stream);
+        if (stream->state != STATE_DRAINING) {
+          cbjack_stream_refill(stream);
+        }
       }
 
       if (stream->state == STATE_STARTED) {
