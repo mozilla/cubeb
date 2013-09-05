@@ -333,7 +333,6 @@ static void *
 stream_refill_thread (void *arg)
 {
   cubeb *ctx = (cubeb *)arg;
-  int s;
 
   while (ctx->active) {
     for(int s = 0; s < MAX_STREAMS; s++) {
