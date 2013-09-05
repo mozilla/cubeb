@@ -52,7 +52,8 @@ typedef enum {
   STATE_DRAINED,
 } play_state;
 
-bool is_running(play_state state)
+static bool
+is_running(play_state state)
 {
   return state == STATE_STARTING
     || state == STATE_STARTED
