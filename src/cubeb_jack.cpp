@@ -22,7 +22,7 @@
 #include "cubeb/cubeb.h"
 #include "cubeb-internal.h"
 
-#include <speex/speex_resampler.h>
+#include "cubeb-speex-resampler.h"
 
 #pragma GCC visibility push(default)
 #include <jack/jack.h>
