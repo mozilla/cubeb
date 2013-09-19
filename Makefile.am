@@ -26,6 +26,9 @@ src_libcubeb_la_SOURCES = src/cubeb.c
 if PULSE
 src_libcubeb_la_SOURCES += src/cubeb_pulse.c
 endif
+if JACK
+src_libcubeb_la_SOURCES += src/cubeb_jack.cpp
+endif
 if ALSA
 src_libcubeb_la_SOURCES += src/cubeb_alsa.c
 endif
@@ -36,7 +39,7 @@ if AUDIOQUEUE
 src_libcubeb_la_SOURCES += src/cubeb_audioqueue.c
 endif
 if WASAPI
-src_libcubeb_la_SOURCES += src/cubeb_wasapi.cpp src/speex/resample.c
+src_libcubeb_la_SOURCES += src/cubeb_wasapi.cpp
 endif
 if WINMM
 src_libcubeb_la_SOURCES += src/cubeb_winmm.c
@@ -53,9 +56,13 @@ endif
 if AUDIOTRACK
 src_libcubeb_la_SOURCES += src/cubeb_audiotrack.c
 endif
+if SPEEX
+src_libcubeb_la_SOURCES += src/speex/resample.c
+endif
 
 EXTRA_src_libcubeb_la_SOURCES = \
         src/cubeb.c \
+	src/cubeb_jack.cpp \
 	src/cubeb_alsa.c src/cubeb_pulse.c \
 	src/cubeb_audiounit.c src/cubeb_audioqueue.c \
 	src/cubeb_sndio.c src/cubeb_directsound.cpp \
@@ -66,7 +73,7 @@ src_libcubeb_la_LDFLAGS = -pthread -export-symbols-regex '^cubeb_' $(platform_li
 
 noinst_PROGRAMS = test/test_sanity test/test_tone test/test_audio
 
-test_test_sanity_SOURCES = test/test_sanity.c
+test_test_sanity_SOURCES = test/test_sanity.c test/common.c
 test_test_sanity_LDADD = -lm src/libcubeb.la $(platform_lib)
 
 test_test_tone_SOURCES = test/test_tone.c test/common.c
