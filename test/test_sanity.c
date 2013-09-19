@@ -406,6 +406,7 @@ test_drain(void)
   assert(r == 0);
   assert(got_drain);
 
+  // Disabled due to failures in the ALSA backend.
   //assert(position == total_frames_written);
 
   cubeb_stream_destroy(stream);
