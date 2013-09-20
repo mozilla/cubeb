@@ -91,6 +91,7 @@ static void cbjack_stream_destroy(cubeb_stream * stream);
 static int cbjack_stream_start(cubeb_stream * stream);
 static int cbjack_stream_stop(cubeb_stream * stream);
 static int cbjack_stream_get_position(cubeb_stream * stream, uint64_t * position);
+static int cbjack_stream_get_latency(cubeb_stream * stream, uint32_t * latency);
 
 static struct cubeb_ops const cbjack_ops = {
   .init = jack_init,
@@ -101,7 +102,8 @@ static struct cubeb_ops const cbjack_ops = {
   .stream_destroy = cbjack_stream_destroy,
   .stream_start = cbjack_stream_start,
   .stream_stop = cbjack_stream_stop,
-  .stream_get_position = cbjack_stream_get_position
+  .stream_get_position = cbjack_stream_get_position,
+  .stream_get_latency = cbjack_stream_get_latency
 };
 
 struct cubeb_stream {
@@ -590,5 +592,12 @@ cbjack_stream_get_position(cubeb_stream * stream, uint64_t * position)
   float const ratio = (float)stream->params.rate / (float)stream->context->jack_sample_rate;
   *position = stream->position * ratio;
   return CUBEB_OK;
+}
+
+static int
+cbjack_stream_get_latency(cubeb_stream * stream, uint32_t * latency)
+{
+  *latency = 0;
+  return CUBEB_ERROR;
 }
 
