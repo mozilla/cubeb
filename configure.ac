@@ -86,7 +86,7 @@ AC_ARG_WITH([audiounit],
 AS_IF([test "x$with_audiounit" != xno],
       [AC_CHECK_HEADER([AudioUnit/AudioUnit.h], [
        HAVE_AUDIOUNIT=1
-       AUDIOUNIT_LIBS="-framework CoreServices -framework AudioUnit"
+       AUDIOUNIT_LIBS="-framework CoreServices -framework AudioUnit -framework CoreAudio"
        AC_DEFINE([USE_AUDIOUNIT], [], [Use AudioUnit])
       ], [
        HAVE_AUDIOUNIT=0
