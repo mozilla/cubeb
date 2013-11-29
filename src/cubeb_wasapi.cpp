@@ -399,7 +399,7 @@ wasapi_stream_render_loop(LPVOID stream)
     default:
       LOG("case %d not handled in render loop.", waitResult);
       abort();
-    };
+    }
   }
 
   if (FAILED(hr)) {
@@ -461,6 +461,17 @@ int wasapi_init(cubeb ** context, char const * context_name)
     LOG("Could not init COM.");
     return CUBEB_ERROR;
   }
+
+  /* We don't use the device yet, but need to make sure we can initialize one
+     so that this backend is not incorrectly enabled on platforms that don't
+     support WASAPI. */
+  IMMDevice * device;
+  hr = get_default_endpoint(&device);
+  if (FAILED(hr)) {
+    LOG("Could not get device.");
+    return CUBEB_ERROR;
+  }
+  SafeRelease(device);
 
   cubeb * ctx = (cubeb *)calloc(1, sizeof(cubeb));
 
@@ -593,7 +604,7 @@ wasapi_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
   hr = get_default_endpoint(&device);
   if (FAILED(hr)) {
     return CUBEB_ERROR;
-  };
+  }
 
   hr = device->Activate(__uuidof(IAudioClient),
                         CLSCTX_INPROC_SERVER,
