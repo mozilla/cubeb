@@ -95,7 +95,6 @@ struct cubeb
   revert_mm_thread_characteristics_function revert_mm_thread_characteristics;
 };
 
-
 struct cubeb_stream
 {
   cubeb * context;
@@ -734,7 +733,6 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
     return CUBEB_ERROR;
   }
 
-
   if (!stm->refill_event) {
     SafeRelease(stm->shutdown_event);
     LOG("Can't create the refill event, error: %d.", GetLastError());
@@ -781,7 +779,6 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
 
   float resampling_rate = static_cast<float>(stm->stream_params.rate) /
                           stm->mix_params.rate;
-
 
   if (resampling_rate != 1.0) {
     /* If we are playing a mono stream, we only resample one channel,

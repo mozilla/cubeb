@@ -165,7 +165,6 @@ opensl_init(cubeb ** context, char const * context_name)
     return CUBEB_ERROR;
   }
 
-
   const SLEngineOption opt[] = {{SL_ENGINEOPTION_THREADSAFE, SL_BOOLEAN_TRUE}};
 
   SLresult res;
@@ -306,7 +305,6 @@ opensl_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
 
   return CUBEB_OK;
 }
-
 
 static void
 opensl_destroy(cubeb * ctx)
