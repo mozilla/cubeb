@@ -303,7 +303,7 @@ directsound_init(cubeb ** context, char const * context_name)
   }
 
   uintptr_t thread = _beginthreadex(NULL, 64 * 1024,
-				    cubeb_buffer_refill_thread, ctx, 0, NULL);
+				    cubeb_buffer_refill_thread, ctx, STACK_SIZE_PARAM_IS_A_RESERVATION, NULL);
   if (!thread) {
     directsound_destroy(ctx);
     return CUBEB_ERROR;
