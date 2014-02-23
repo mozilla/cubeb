@@ -84,7 +84,7 @@ int main(int argc, char *argv[])
   params.rate = SAMPLE_FREQUENCY;
   params.channels = 1;
 
-  user_data = malloc(sizeof(*user_data));
+  user_data = (cb_user_data *) malloc(sizeof(*user_data));
   if (user_data == NULL) {
     fprintf(stderr, "Error allocating user data\n");
     return CUBEB_ERROR;
