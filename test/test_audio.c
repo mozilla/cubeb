@@ -7,6 +7,9 @@
 
 /* libcubeb api/function exhaustive test. Plays a series of tones in different
  * conditions. */
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #define _XOPEN_SOURCE 500
 #include <stdio.h>
 #include <stdlib.h>
@@ -39,7 +42,7 @@ typedef struct {
 
 synth_state* synth_create(int num_channels, float sample_rate)
 {
-  synth_state* synth = malloc(sizeof(synth_state));
+  synth_state* synth = (synth_state *) malloc(sizeof(synth_state));
   for(int i=0;i < MAX_NUM_CHANNELS;++i)
     synth->phase[i] = 0.0f;
   synth->num_channels = num_channels;
@@ -142,8 +145,6 @@ cleanup:
 
 int main(int argc, char *argv[])
 {
-  int ret;
-
   int channel_values[] = {
     1,
     2,
