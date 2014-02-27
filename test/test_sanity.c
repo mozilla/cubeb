@@ -4,11 +4,15 @@
  * This program is made available under an ISC-style license.  See the
  * accompanying file LICENSE for details.
  */
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #define _XOPEN_SOURCE 500
 #include "cubeb/cubeb.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 #include "common.h"
 
 #define STREAM_LATENCY 100
@@ -395,9 +399,19 @@ test_drain(void)
   for (;;) {
     r = cubeb_stream_get_position(stream, &position);
     assert(r == 0);
-    assert(position <= total_frames_written);
     if (got_drain) {
       break;
+    } else {
+      // Latency passed to cubeb_stream_init is not really honored on OSX and
+      // winmm, skip this test.
+      const char * backend_id = cubeb_get_backend_id(ctx);
+      if (strcmp(backend_id, "audiounit") != 0 &&
+          strcmp(backend_id, "winmm") != 0) {
+        /* Position should roughly be equal to the number of written frames. We
+         * need to take the latency into account. */
+        int latency = (STREAM_LATENCY * STREAM_RATE) / 1000;
+        assert(position + latency <= total_frames_written);
+      }
     }
     delay(500);
   }

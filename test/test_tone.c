@@ -6,10 +6,14 @@
  */
 
 /* libcubeb api/function test. Plays a simple tone. */
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #define _XOPEN_SOURCE 500
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <assert.h>
 
 #include "cubeb/cubeb.h"
 #include "common.h"
@@ -84,7 +88,7 @@ int main(int argc, char *argv[])
   params.rate = SAMPLE_FREQUENCY;
   params.channels = 1;
 
-  user_data = malloc(sizeof(*user_data));
+  user_data = (struct cb_user_data *) malloc(sizeof(*user_data));
   if (user_data == NULL) {
     fprintf(stderr, "Error allocating user data\n");
     return CUBEB_ERROR;
@@ -104,6 +108,8 @@ int main(int argc, char *argv[])
 
   cubeb_stream_destroy(stream);
   cubeb_destroy(ctx);
+
+  assert(user_data->position);
 
   free(user_data);
 
