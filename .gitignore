@@ -39,6 +39,8 @@ stamp-h1
 test-driver
 test/test_audio
 test/test_audio.exe
+test/test_latency
+test/test_latency.exe
 test/test_sanity
 test/test_sanity.exe
 test/test_tone
