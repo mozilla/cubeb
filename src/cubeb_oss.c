@@ -182,13 +182,16 @@ oss_refill_stream(cubeb_stream * s)
 
       if (written > 0) {
         start += written;
+      } else {
+        if (errno == EINTR) {
+          continue;
+        } else {
+          s->pos += start / s->bpf;
+          pthread_mutex_unlock(&s->mutex);
+          return ERROR;
+        }
       }
-    } while (size > start && (written > 0 || (written < 0 && errno == EINTR)));
-
-    if (written < 0) {
-      pthread_mutex_unlock(&s->mutex);
-      return ERROR;
-    }
+    } while (size > start);
 
     s->pos += got;
     pthread_mutex_unlock(&s->mutex);
