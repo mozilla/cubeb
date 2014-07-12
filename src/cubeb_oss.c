@@ -398,16 +398,17 @@ oss_start(int * fd)
 static void
 oss_set_latency(const cubeb_stream * s, init_data * d)
 {
+  const int frag = 10;
   int i, tmp;
 
   /* size for single fragment */
-  tmp = d->rate * s->bpf * d->buf_latency / 1000;
+  tmp = d->rate * s->bpf * frag / 1000;
 
   /* minimum 2^N which can hold fragment */
   for (i = 0; (tmp >> i) != 0; ++i);
 
   /* number of fragments */
-  tmp = d->total_latency * tmp / ((1 << i) * d->buf_latency) + 1;
+  tmp = d->total_latency * tmp / ((1 << i) * frag) + 1;
 
   tmp = (tmp << 16) + i;
 
