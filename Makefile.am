@@ -56,13 +56,16 @@ endif
 if AUDIOTRACK
 src_libcubeb_la_SOURCES += src/cubeb_audiotrack.c
 endif
+if OSS
+src_libcubeb_la_SOURCES += src/cubeb_oss.c
+endif
 if SPEEX
 src_libcubeb_la_SOURCES += src/speex/resample.c
 endif
 
 EXTRA_src_libcubeb_la_SOURCES = \
         src/cubeb.c \
-	src/cubeb_jack.cpp \
+	src/cubeb_jack.cpp src/cubeb_oss.c \
 	src/cubeb_alsa.c src/cubeb_pulse.c \
 	src/cubeb_audiounit.c src/cubeb_audioqueue.c \
 	src/cubeb_sndio.c src/cubeb_directsound.cpp \

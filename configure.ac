@@ -179,6 +179,17 @@ AS_IF([test "x$with_winmm" != xno],
       ], [#include <windows.h>])])
 AM_CONDITIONAL([WINMM], [test $HAVE_WINMM -eq 1])
 
+AC_ARG_WITH([oss],
+            AS_HELP_STRING([--with-oss], [with OSS @<:@default=check@:>@]))
+AS_IF([test "x$with_oss" != xno],
+      [AC_CHECK_HEADER([sys/soundcard.h], [
+       HAVE_OSS=1
+       AC_DEFINE([USE_OSS], [], [Use OSS])
+      ], [
+       HAVE_OSS=0
+       AS_IF([test "x$with_oss" = xyes], [AC_MSG_ERROR(OSS not detected)])])])
+AM_CONDITIONAL([OSS], [test $HAVE_OSS -eq 1])
+
 AM_CONDITIONAL([SPEEX], [test $NEED_SPEEX -eq 1])
 
 AS_IF([test $NEED_SPEEX -eq 1],
