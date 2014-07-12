@@ -455,7 +455,8 @@ test_drain(void)
         "audiounit",
         "winmm",
         "audiotrack",
-        "opensl"
+        "opensl",
+        "oss"
       };
 
       for (i = 0; i < ARRAY_LENGTH(latency_not_honored_bakends); i++) {
