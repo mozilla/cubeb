@@ -28,6 +28,10 @@
 #define STREAM_CHANNELS 1
 #define STREAM_FORMAT CUBEB_SAMPLE_S16LE
 
+#define NCONTEXTS 4
+#define NSTREAMS 16
+#define NSTREAMS_IN_CONTEXT (NSTREAMS / NCONTEXTS)
+
 static int dummy;
 static uint64_t total_frames_written;
 static int delay_callback;
@@ -70,20 +74,20 @@ test_init_destroy_multiple_contexts(void)
 {
   int i;
   int r;
-  cubeb * ctx[4];
+  int destroy_order[NCONTEXTS] = { 2, 0, 3, 1 };
+  cubeb * ctx[NCONTEXTS];
 
   BEGIN_TEST
 
-  for (i = 0; i < 4; ++i) {
+  for (i = 0; i < NCONTEXTS; ++i) {
     r = cubeb_init(&ctx[i], NULL);
     assert(r == 0 && ctx[i]);
   }
 
   /* destroy in a different order */
-  cubeb_destroy(ctx[2]);
-  cubeb_destroy(ctx[0]);
-  cubeb_destroy(ctx[3]);
-  cubeb_destroy(ctx[1]);
+  for (i = 0; i < NCONTEXTS; ++i) {
+    cubeb_destroy(ctx[destroy_order[i]]);
+  }
 
   END_TEST
 }
@@ -121,7 +125,7 @@ test_init_destroy_multiple_streams(void)
   int i;
   int r;
   cubeb * ctx;
-  cubeb_stream * stream[16];
+  cubeb_stream * stream[NSTREAMS];
   cubeb_stream_params params;
 
   BEGIN_TEST
@@ -133,14 +137,14 @@ test_init_destroy_multiple_streams(void)
   params.rate = STREAM_RATE;
   params.channels = STREAM_CHANNELS;
 
-  for (i = 0; i < 16; ++i) {
+  for (i = 0; i < NSTREAMS; ++i) {
     r = cubeb_stream_init(ctx, &stream[i], "test", params, STREAM_LATENCY,
                           test_data_callback, test_state_callback, &dummy);
     assert(r == 0);
     assert(stream[i]);
   }
 
-  for (i = 0; i < 16; ++i) {
+  for (i = 0; i < NSTREAMS; ++i) {
     cubeb_stream_destroy(stream[i]);
   }
 
@@ -155,7 +159,7 @@ test_init_start_stop_destroy_multiple_streams(int early, int delay_ms)
   int i;
   int r;
   cubeb * ctx;
-  cubeb_stream * stream[16];
+  cubeb_stream * stream[NSTREAMS];
   cubeb_stream_params params;
 
   BEGIN_TEST
@@ -167,7 +171,7 @@ test_init_start_stop_destroy_multiple_streams(int early, int delay_ms)
   params.rate = STREAM_RATE;
   params.channels = STREAM_CHANNELS;
 
-  for (i = 0; i < 16; ++i) {
+  for (i = 0; i < NSTREAMS; ++i) {
     r = cubeb_stream_init(ctx, &stream[i], "test", params, STREAM_LATENCY,
                           test_data_callback, test_state_callback, &dummy);
     assert(r == 0);
@@ -180,7 +184,7 @@ test_init_start_stop_destroy_multiple_streams(int early, int delay_ms)
 
 
   if (!early) {
-    for (i = 0; i < 16; ++i) {
+    for (i = 0; i < NSTREAMS; ++i) {
       r = cubeb_stream_start(stream[i]);
       assert(r == 0);
     }
@@ -191,13 +195,13 @@ test_init_start_stop_destroy_multiple_streams(int early, int delay_ms)
   }
 
   if (!early) {
-    for (i = 0; i < 16; ++i) {
+    for (i = 0; i < NSTREAMS; ++i) {
       r = cubeb_stream_stop(stream[i]);
       assert(r == 0);
     }
   }
 
-  for (i = 0; i < 16; ++i) {
+  for (i = 0; i < NSTREAMS; ++i) {
     if (early) {
       r = cubeb_stream_stop(stream[i]);
       assert(r == 0);
@@ -215,8 +219,8 @@ test_init_destroy_multiple_contexts_and_streams(void)
 {
   int i, j;
   int r;
-  cubeb * ctx[4];
-  cubeb_stream * stream[16];
+  cubeb * ctx[NCONTEXTS];
+  cubeb_stream * stream[NSTREAMS];
   cubeb_stream_params params;
 
   BEGIN_TEST
@@ -225,21 +229,21 @@ test_init_destroy_multiple_contexts_and_streams(void)
   params.rate = STREAM_RATE;
   params.channels = STREAM_CHANNELS;
 
-  for (i = 0; i < 4; ++i) {
+  for (i = 0; i < NCONTEXTS; ++i) {
     r = cubeb_init(&ctx[i], "test_sanity");
     assert(r == 0 && ctx[i]);
 
-    for (j = 0; j < 4; ++j) {
-      r = cubeb_stream_init(ctx[i], &stream[i * 4 + j], "test", params, STREAM_LATENCY,
+    for (j = 0; j < NSTREAMS_IN_CONTEXT; ++j) {
+      r = cubeb_stream_init(ctx[i], &stream[i * NSTREAMS_IN_CONTEXT + j], "test", params, STREAM_LATENCY,
                             test_data_callback, test_state_callback, &dummy);
       assert(r == 0);
-      assert(stream[i * 4 + j]);
+      assert(stream[i * NSTREAMS_IN_CONTEXT + j]);
     }
   }
 
-  for (i = 0; i < 4; ++i) {
-    for (j = 0; j < 4; ++j) {
-      cubeb_stream_destroy(stream[i * 4 + j]);
+  for (i = 0; i < NCONTEXTS; ++i) {
+    for (j = 0; j < NSTREAMS_IN_CONTEXT; ++j) {
+      cubeb_stream_destroy(stream[i * NSTREAMS_IN_CONTEXT + j]);
     }
     cubeb_destroy(ctx[i]);
   }
