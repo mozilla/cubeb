@@ -648,7 +648,7 @@ oss_stream_destroy(cubeb_stream * s)
 {
   int ret;
 
-  assert(s && s->state != RUNNING);
+  assert(s && (s->state == INACTIVE || s->state == DRAINED || s->state == ERROR));
 
   unregister_stream(s);
 
