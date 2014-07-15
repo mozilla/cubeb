@@ -404,7 +404,7 @@ oss_set_latency(const cubeb_stream * s, init_data * d)
   /* size for single fragment */
   tmp = d->rate * s->bpf * frag / 1000;
 
-  /* minimum 2^N which can hold fragment */
+  /* minimum 2^i which can hold fragment */
   for (i = 0; (tmp >> i) != 0; ++i);
 
   /* number of fragments */
@@ -437,11 +437,9 @@ oss_conf_test(cubeb_stream * s, init_data * d)
     ret = CUBEB_ERROR;
     goto conf_failed;
   } else if (oss_params[0] != s->channels || oss_params[1] != d->format ||
-          10*oss_params[2] < 9*d->rate || 10*oss_params[2] > 11*d->rate) {
+             oss_params[2] != d->rate) {
     ret = CUBEB_ERROR_INVALID_FORMAT;
     goto conf_failed;
-  } else if (oss_params[2] != d->rate) {
-    d->rate = oss_params[2];
   }
 
   return CUBEB_OK;
@@ -488,6 +486,7 @@ oss_calc_trigger_level(cubeb_stream * s, init_data * d)
   if (ioctl(s->fd, SNDCTL_DSP_GETOSPACE, &bi) >= 0) {
     d->trigger_level = bi.fragsize * bi.fragstotal * 1000 / (d->rate * s->bpf);
     if (d->trigger_level >=  d->total_latency) {
+      d->buf_latency = d->total_latency / NBUFS;
       d->trigger_level -= d->total_latency - d->buf_latency;
     } else if (d->trigger_level >= NBUFS * MIN_LATENCY / (NBUFS - 1)) {
       d->trigger_level /= NBUFS;
@@ -560,9 +559,8 @@ oss_stream_init(cubeb * ctx, cubeb_stream ** stm, char const * stream_name,
   }
 
   d.disable_set_latency = 0;
-  d.total_latency = NBUFS * latency / (NBUFS - 1);
-  d.buf_latency = d.total_latency / NBUFS;
   d.rate = stream_params.rate;
+  d.total_latency = NBUFS * latency / (NBUFS - 1);
 
   if ((ret = oss_conf_test(s, &d)) != CUBEB_OK) {
     goto stream_init_failed;
