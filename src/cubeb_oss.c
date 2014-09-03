@@ -238,10 +238,8 @@ run_thread(void * context)
   int i, running;
   stream_state state;
   char dummy;
-  cubeb * ctx;
+  cubeb * ctx = (cubeb *) context;
   cubeb_stream * s;
-
-  ctx = (cubeb *)context;
 
   for (running = 0;;) {
     i = poll(ctx->fds, ctx->nfds, -1);
@@ -623,9 +621,7 @@ static void
 unregister_stream(cubeb_stream * s)
 {
   int i;
-  cubeb * ctx;
-
-  ctx = s->context;
+  cubeb * ctx = s->context;
 
   pthread_mutex_lock(&ctx->mutex);
   for (i = 0; i < CUBEB_STREAM_MAX; ++i) {
@@ -677,9 +673,7 @@ oss_stream_start(cubeb_stream * s)
 static int
 oss_stream_stop(cubeb_stream * s)
 {
-  cubeb * ctx;
-
-  ctx = s->context;
+  cubeb * ctx = s->context;
 
   pthread_mutex_lock(&ctx->mutex);
 
@@ -719,9 +713,7 @@ oss_stream_stop(cubeb_stream * s)
 static int
 check_value(const unsigned long call, const int value)
 {
-  int fd, tmp;
-
-  tmp = value;
+  int fd, tmp = value;
 
   if (oss_start(&fd) == CUBEB_OK) {
     if (ioctl(fd, call, &tmp) < 0) {
