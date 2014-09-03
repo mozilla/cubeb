@@ -104,7 +104,6 @@ set_stream_state(cubeb_stream * s, stream_state state)
 {
   int internal = 0;
   cubeb_state cb_state;
-  cubeb * ctx;
 
   switch (state) {
   case RUNNING:
@@ -134,7 +133,7 @@ set_stream_state(cubeb_stream * s, stream_state state)
   pthread_mutex_unlock(&s->mutex);
 
   if (!internal) {
-    ctx = s->context;
+    cubeb * ctx = s->context;
 
     if (ctx->rebuild != 1) {
       poll_wake(ctx);
@@ -678,7 +677,6 @@ oss_stream_start(cubeb_stream * s)
 static int
 oss_stream_stop(cubeb_stream * s)
 {
-  int ret;
   cubeb * ctx;
 
   ctx = s->context;
@@ -695,7 +693,7 @@ oss_stream_stop(cubeb_stream * s)
   } else {
     set_stream_state(s, STOPPING);
     while (s->state == STOPPING) {
-      ret = pthread_cond_wait(&ctx->cond, &ctx->mutex);
+      int ret = pthread_cond_wait(&ctx->cond, &ctx->mutex);
       assert(ret == 0);
     }
 
