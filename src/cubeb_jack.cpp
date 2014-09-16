@@ -97,13 +97,20 @@ static struct cubeb_ops const cbjack_ops = {
   .init = jack_init,
   .get_backend_id = cbjack_get_backend_id,
   .get_max_channel_count = cbjack_get_max_channel_count,
+  .get_min_latency = NULL,
+  .get_preferred_sample_rate = NULL,
   .destroy = cbjack_destroy,
   .stream_init = cbjack_stream_init,
   .stream_destroy = cbjack_stream_destroy,
   .stream_start = cbjack_stream_start,
   .stream_stop = cbjack_stream_stop,
   .stream_get_position = cbjack_stream_get_position,
-  .stream_get_latency = cbjack_stream_get_latency
+  .stream_get_latency = cbjack_stream_get_latency,
+  .stream_set_volume = NULL,
+  .stream_set_panning = NULL,
+  .stream_get_current_device = NULL,
+  .stream_device_destroy = NULL,
+  .stream_register_device_changed_callback = NULL
 };
 
 struct cubeb_stream {
