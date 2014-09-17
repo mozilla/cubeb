@@ -271,7 +271,7 @@ static int
 sndio_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * latency_ms)
 {
   // XXX Not yet implemented.
-  *latency_ms = 40;
+  latency_ms = 40;
 
   return CUBEB_OK;
 }
