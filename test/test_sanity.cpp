@@ -71,19 +71,20 @@ test_init_destroy_multiple_contexts(void)
   int i;
   int r;
   cubeb * ctx[4];
+  int order[4] = {2, 0, 3, 1};
+  assert(ARRAY_LENGTH(ctx) == ARRAY_LENGTH(order));
 
   BEGIN_TEST
 
-  for (i = 0; i < 4; ++i) {
+  for (i = 0; i < ARRAY_LENGTH(ctx); ++i) {
     r = cubeb_init(&ctx[i], NULL);
     assert(r == 0 && ctx[i]);
   }
 
   /* destroy in a different order */
-  cubeb_destroy(ctx[2]);
-  cubeb_destroy(ctx[0]);
-  cubeb_destroy(ctx[3]);
-  cubeb_destroy(ctx[1]);
+  for (i = 0; i < ARRAY_LENGTH(ctx); ++i) {
+    cubeb_destroy(ctx[order[i]]);
+  }
 
   END_TEST
 }
@@ -133,14 +134,14 @@ test_init_destroy_multiple_streams(void)
   params.rate = STREAM_RATE;
   params.channels = STREAM_CHANNELS;
 
-  for (i = 0; i < 8; ++i) {
+  for (i = 0; i < ARRAY_LENGTH(stream); ++i) {
     r = cubeb_stream_init(ctx, &stream[i], "test", params, STREAM_LATENCY,
                           test_data_callback, test_state_callback, &dummy);
     assert(r == 0);
     assert(stream[i]);
   }
 
-  for (i = 0; i < 8; ++i) {
+  for (i = 0; i < ARRAY_LENGTH(stream); ++i) {
     cubeb_stream_destroy(stream[i]);
   }
 
@@ -167,7 +168,7 @@ test_init_start_stop_destroy_multiple_streams(int early, int delay_ms)
   params.rate = STREAM_RATE;
   params.channels = STREAM_CHANNELS;
 
-  for (i = 0; i < 8; ++i) {
+  for (i = 0; i < ARRAY_LENGTH(stream); ++i) {
     r = cubeb_stream_init(ctx, &stream[i], "test", params, STREAM_LATENCY,
                           test_data_callback, test_state_callback, &dummy);
     assert(r == 0);
@@ -180,7 +181,7 @@ test_init_start_stop_destroy_multiple_streams(int early, int delay_ms)
 
 
   if (!early) {
-    for (i = 0; i < 8; ++i) {
+    for (i = 0; i < ARRAY_LENGTH(stream); ++i) {
       r = cubeb_stream_start(stream[i]);
       assert(r == 0);
     }
@@ -191,13 +192,13 @@ test_init_start_stop_destroy_multiple_streams(int early, int delay_ms)
   }
 
   if (!early) {
-    for (i = 0; i < 8; ++i) {
+    for (i = 0; i < ARRAY_LENGTH(stream); ++i) {
       r = cubeb_stream_stop(stream[i]);
       assert(r == 0);
     }
   }
 
-  for (i = 0; i < 8; ++i) {
+  for (i = 0; i < ARRAY_LENGTH(stream); ++i) {
     if (early) {
       r = cubeb_stream_stop(stream[i]);
       assert(r == 0);
@@ -218,6 +219,8 @@ test_init_destroy_multiple_contexts_and_streams(void)
   cubeb * ctx[2];
   cubeb_stream * stream[8];
   cubeb_stream_params params;
+  int streams_per_ctx = ARRAY_LENGTH(stream) / ARRAY_LENGTH(ctx);
+  assert(ARRAY_LENGTH(ctx) * streams_per_ctx == ARRAY_LENGTH(stream));
 
   BEGIN_TEST
 
@@ -225,21 +228,21 @@ test_init_destroy_multiple_contexts_and_streams(void)
   params.rate = STREAM_RATE;
   params.channels = STREAM_CHANNELS;
 
-  for (i = 0; i < 2; ++i) {
+  for (i = 0; i < ARRAY_LENGTH(ctx); ++i) {
     r = cubeb_init(&ctx[i], "test_sanity");
     assert(r == 0 && ctx[i]);
 
-    for (j = 0; j < 4; ++j) {
-      r = cubeb_stream_init(ctx[i], &stream[i * 4 + j], "test", params, STREAM_LATENCY,
+    for (j = 0; j < streams_per_ctx; ++j) {
+      r = cubeb_stream_init(ctx[i], &stream[i * streams_per_ctx + j], "test", params, STREAM_LATENCY,
                             test_data_callback, test_state_callback, &dummy);
       assert(r == 0);
-      assert(stream[i * 4 + j]);
+      assert(stream[i * streams_per_ctx + j]);
     }
   }
 
-  for (i = 0; i < 2; ++i) {
-    for (j = 0; j < 4; ++j) {
-      cubeb_stream_destroy(stream[i * 4 + j]);
+  for (i = 0; i < ARRAY_LENGTH(ctx); ++i) {
+    for (j = 0; j < streams_per_ctx; ++j) {
+      cubeb_stream_destroy(stream[i * streams_per_ctx + j]);
     }
     cubeb_destroy(ctx[i]);
   }
@@ -451,15 +454,15 @@ test_drain(void)
       /* Latency passed to cubeb_stream_init is not really honored on OSX,
          win32/winmm and android, skip this test. */
       const char * backend_id = cubeb_get_backend_id(ctx);
-      const char * latency_not_honored_bakends[] = {
+      const char * latency_not_honored_backends[] = {
         "audiounit",
         "winmm",
         "audiotrack",
         "opensl"
       };
 
-      for (i = 0; i < ARRAY_LENGTH(latency_not_honored_bakends); i++) {
-        if (!strcmp(backend_id, latency_not_honored_bakends[i])) {
+      for (i = 0; i < ARRAY_LENGTH(latency_not_honored_backends); i++) {
+        if (!strcmp(backend_id, latency_not_honored_backends[i])) {
           skip = 1;
         }
       }
