@@ -586,6 +586,12 @@ oss_stream_init(cubeb * ctx, cubeb_stream ** stm, char const * stream_name,
     goto stream_init_failed;
   }
 
+#ifndef SNDCTL_DSP_LOW_WATER
+  if (d.buf_latency > MIN_LATENCY / 2) {
+    d.buf_latency = MIN_LATENCY / 2;
+  }
+#endif
+
   s->nfr = d.rate * d.buf_latency / 1000;
   s->data_callback = data_cb;
   s->state_callback = state_cb;
