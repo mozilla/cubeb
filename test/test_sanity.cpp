@@ -491,7 +491,12 @@ test_drain(void)
 
 int is_windows_7()
 {
-#if (defined(_WIN32) || defined(__WIN32__))
+#ifdef __MINGW32__
+   printf("Warning: this test was built with MinGW.\n"
+   "MinGW does not contain necessary version checking infrastructure. Claiming to be Windows 7, even if we're not.\n");
+   return 1;
+#endif
+#if (defined(_WIN32) || defined(__WIN32__)) && ( !defined(__MINGW32__))
    OSVERSIONINFOEX osvi;
    DWORDLONG condition_mask = 0;
 
