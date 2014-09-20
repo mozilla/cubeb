@@ -9,7 +9,7 @@
 #undef WINVER
 #define WINVER 0x0501
 #undef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
+//#define WIN32_LEAN_AND_MEAN
 
 #include <malloc.h>
 #include <assert.h>
@@ -26,6 +26,10 @@
 #if !defined(MEMORY_ALLOCATION_ALIGNMENT)
 #define MEMORY_ALLOCATION_ALIGNMENT 16
 #endif
+
+/**This one is also missing.
+Warning: while this is in the windows headers, it is undocumented.*/
+#define WAVE_FORMAT_48S16      0x00008000       /* 48     kHz, Stereo, 16-bit */
 
 #define CUBEB_STREAM_MAX 32
 #define NBUFS 4
@@ -186,8 +190,8 @@ winmm_refill_stream(cubeb_stream * stm)
   LeaveCriticalSection(&stm->lock);
 }
 
-static unsigned __stdcall
-winmm_buffer_thread(void * user_ptr)
+DWORD WINAPI 
+winmm_buffer_thread(LPVOID user_ptr)
 {
   cubeb * ctx = (cubeb *) user_ptr;
   assert(ctx);
@@ -289,7 +293,7 @@ winmm_init(cubeb ** context, char const * context_name)
     return CUBEB_ERROR;
   }
 
-  ctx->thread = (HANDLE) _beginthreadex(NULL, 256 * 1024, winmm_buffer_thread, ctx, STACK_SIZE_PARAM_IS_A_RESERVATION, NULL);
+  ctx->thread = CreateThread(NULL, 0, winmm_buffer_thread, ctx, 0, NULL);
   if (!ctx->thread) {
     winmm_destroy(ctx);
     return CUBEB_ERROR;
