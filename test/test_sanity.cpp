@@ -491,7 +491,14 @@ test_drain(void)
 
 int is_windows_7()
 {
-#if (defined(_WIN32) || defined(__WIN32__))
+/**NOTE:
+Unfortunately, MinGW does not know about windows version verification, at all.  The only mailing list thread I could find:
+http://osdir.com/ml/gnu.mingw.user/2002-11/msg00059.html
+Is unresolved.  Since we might be on Windows 7 and the only point of this function is making sure we don't mistakenly break WASAPI, claim that we are.*/
+#ifdef __MINGW32__
+return 1;
+#endif
+#if (defined(_WIN32) || defined(__WIN32__)) && (!defined(__MINGW32__))
    OSVERSIONINFOEX osvi;
    DWORDLONG condition_mask = 0;
 
@@ -502,8 +509,8 @@ int is_windows_7()
    osvi.dwMajorVersion = 6;
    osvi.dwMinorVersion = 1;
 
-   VER_SET_CONDITION(condition_mask, VER_MAJORVERSION, VER_EQUAL);
-   VER_SET_CONDITION(condition_mask, VER_MINORVERSION, VER_GREATER_EQUAL);
+   VerSetConditionMask(condition_mask, VER_MAJORVERSION, VER_EQUAL);
+   VerSetConditionMask(condition_mask, VER_MINORVERSION, VER_GREATER_EQUAL);
 
    return VerifyVersionInfo(&osvi, VER_MAJORVERSION | VER_MINORVERSION, condition_mask);
 #else
