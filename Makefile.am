@@ -2,7 +2,7 @@ AUTOMAKE_OPTIONS = foreign 1.10 dist-bzip2 subdir-objects
 ACLOCAL_AMFLAGS = -I m4
 
 AM_CPPFLAGS = -I$(top_srcdir)/include -I. -I$(top_srcdir)/src
-AM_CFLAGS = -ansi -std=gnu99 -Wall -Wextra -Wno-long-long -O0 -Wno-unused -g
+AM_CFLAGS = -ansi -std=gnu99 -Wall -Wextra -Wno-long-long -O2 -Wno-unused-parameter
 
 SUBDIRS = docs
 
