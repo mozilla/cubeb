@@ -71,7 +71,7 @@ EXTRA_src_libcubeb_la_SOURCES = \
 
 src_libcubeb_la_LDFLAGS = -pthread -export-symbols-regex '^cubeb_' $(platform_lib) -no-undefined
 
-noinst_PROGRAMS = test/test_sanity test/test_tone test/test_audio test/test_latency
+check_PROGRAMS = test/test_sanity test/test_tone test/test_audio test/test_latency
 
 test_test_sanity_SOURCES = test/test_sanity.cpp
 test_test_sanity_LDADD = -lm src/libcubeb.la $(platform_lib)
