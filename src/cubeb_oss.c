@@ -272,7 +272,9 @@ run_thread(void * context)
 
           pthread_mutex_lock(&ctx->mutex);
           if (s->state == STOPPING) {
-            state = (state == RUNNING) ? INACTIVE : state;
+            if (state == RUNNING) {
+              state = INACTIVE;
+            }
             set_stream_state(s, state);
             pthread_cond_signal(&ctx->cond);
           } else {
@@ -770,7 +772,9 @@ oss_latency(cubeb_stream * s, uint32_t * latency)
   if (s->state == RUNNING || s->state == PROCESSING) {
     if (ioctl(s->fd, SNDCTL_DSP_GETODELAY, latency) >= 0) {
       *latency /= s->bpf;
-      *latency = (*latency > s->pos) ? s->pos : *latency;
+      if (*latency > s->pos) {
+        *latency = s->pos;
+      }
     } else {
       return CUBEB_ERROR;
     }
