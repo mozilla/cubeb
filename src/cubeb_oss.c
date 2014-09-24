@@ -159,7 +159,7 @@ static stream_state
 oss_refill_stream(cubeb_stream * s)
 {
   char buf[s->size];
-  long got, start, size, written;
+  long got;
 
   got = s->data_callback(s, s->arg, buf, s->nfr);
 
@@ -167,14 +167,16 @@ oss_refill_stream(cubeb_stream * s)
     return ERROR;
   }
 
-  start = 0;
-  size = got * s->bpf;
-
-  if (s->conv == 1) {
-    float_to_s16(buf, got*s->channels);
-  }
-
   if (got > 0) {
+    ssize_t start, written, size;
+
+    start = 0;
+    size = got * s->bpf;
+
+    if (s->conv == 1) {
+      float_to_s16(buf, got*s->channels);
+    }
+
     pthread_mutex_lock(&s->mutex);
     do {
       written = write(s->fd, buf + start, size - start);
