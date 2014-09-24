@@ -77,7 +77,8 @@ struct cubeb_stream {
   int conv;
   long nfr;
   pthread_mutex_t mutex;
-  uint64_t pos;
+  uint64_t last_position;
+  uint64_t write_position;
   unsigned int size;
   unsigned int bpf;
   unsigned int channels;
@@ -128,9 +129,7 @@ set_stream_state(cubeb_stream * s, stream_state state)
     assert(0);
   }
 
-  pthread_mutex_lock(&s->mutex);
   s->state = state;
-  pthread_mutex_unlock(&s->mutex);
 
   if (!internal) {
     cubeb * ctx = s->context;
@@ -187,14 +186,14 @@ oss_refill_stream(cubeb_stream * s)
         if (errno == EINTR) {
           continue;
         } else {
-          s->pos += start / s->bpf;
+          s->write_position += start / s->bpf;
           pthread_mutex_unlock(&s->mutex);
           return ERROR;
         }
       }
     } while (size > start);
 
-    s->pos += got;
+    s->write_position += got;
     pthread_mutex_unlock(&s->mutex);
   }
 
@@ -713,6 +712,11 @@ oss_stream_stop(cubeb_stream * s)
 
   pthread_mutex_unlock(&ctx->mutex);
 
+  pthread_mutex_lock(&s->mutex);
+  s->last_position += s->write_position;
+  s->write_position = 0;
+  pthread_mutex_unlock(&s->mutex);
+
 #ifdef SNDCTL_DSP_HALT
   if (ioctl(s->fd, SNDCTL_DSP_HALT, NULL) < 0) {
 #else
@@ -776,11 +780,11 @@ oss_get_min_latency(cubeb * ctx, cubeb_stream_params params,
 static int
 oss_latency(cubeb_stream * s, uint32_t * latency)
 {
-  if (s->state == RUNNING || s->state == PROCESSING) {
+  if (s->write_position != 0) {
     if (ioctl(s->fd, SNDCTL_DSP_GETODELAY, latency) >= 0) {
       *latency /= s->bpf;
-      if (*latency > s->pos) {
-        *latency = s->pos;
+      if (*latency > s->write_position) {
+        *latency = s->write_position;
       }
     } else {
       return CUBEB_ERROR;
@@ -800,7 +804,7 @@ oss_stream_get_position(cubeb_stream * s, uint64_t * p)
 
   pthread_mutex_lock(&s->mutex);
   if ((ret = oss_latency(s, &latency)) == CUBEB_OK) {
-    *p = s->pos - latency;
+    *p = s->last_position + s->write_position - latency;
   }
   pthread_mutex_unlock(&s->mutex);
 
