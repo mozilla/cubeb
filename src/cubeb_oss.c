@@ -669,17 +669,19 @@ oss_stream_destroy(cubeb_stream * s)
 static int
 oss_stream_start(cubeb_stream * s)
 {
+  int ret;
   cubeb * ctx = s->context;
 
-  if (s->state != INACTIVE) {
-    return CUBEB_ERROR;
-  }
-
   pthread_mutex_lock(&ctx->mutex);
-  set_stream_state(s, STARTED);
+  if (s->state == INACTIVE) {
+    set_stream_state(s, STARTED);
+    ret = CUBEB_OK;
+  } else {
+    ret = CUBEB_ERROR;
+  }
   pthread_mutex_unlock(&ctx->mutex);
 
-  return CUBEB_OK;
+  return ret;
 }
 
 static int
