@@ -649,7 +649,9 @@ oss_stream_destroy(cubeb_stream * s)
 {
   int ret;
 
-  assert(s && (s->state == INACTIVE || s->state == DRAINED || s->state == ERROR));
+  assert(s && (s->state == INACTIVE ||
+               s->state == DRAINED  ||
+               s->state == ERROR));
 
   unregister_stream(s);
 
@@ -755,7 +757,8 @@ oss_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
 }
 
 static int
-oss_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * latency_ms)
+oss_get_min_latency(cubeb * ctx, cubeb_stream_params params,
+                    uint32_t * latency_ms)
 {
   /* depends on max_intrate */
   *latency_ms = MIN_LATENCY;
