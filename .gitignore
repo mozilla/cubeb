@@ -46,3 +46,7 @@ test/test_sanity.exe
 test/test_tone
 test/test_tone.exe
 include/cubeb/cubeb-stdint.h
+test-suite.log
+test/test_sanity.log
+test/test_sanity.trs
+
