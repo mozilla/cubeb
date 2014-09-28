@@ -470,6 +470,7 @@ test_drain(void)
         /* Position should roughly be equal to the number of written frames. We
          * need to take the latency into account. */
         int latency = (STREAM_LATENCY * STREAM_RATE) / 1000;
+	printf("p=%llu l=%d tfw=%llu\n", (unsigned long long)position, latency, (unsigned long long)total_frames_written);
         assert(position + latency <= total_frames_written);
       }
     }
