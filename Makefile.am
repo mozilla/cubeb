@@ -21,7 +21,7 @@ cubebinclude_HEADERS = include/cubeb/cubeb.h include/cubeb/cubeb-stdint.h
 
 lib_LTLIBRARIES = src/libcubeb.la
 
-src_libcubeb_la_SOURCES = src/cubeb.c
+src_libcubeb_la_SOURCES = src/cubeb.c src/cubeb_panner.cpp
 
 if PULSE
 src_libcubeb_la_SOURCES += src/cubeb_pulse.c
