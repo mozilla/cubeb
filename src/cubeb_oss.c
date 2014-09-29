@@ -45,7 +45,6 @@ struct cubeb {
 
   /* fds are only updated by run_thread when rebuild is set. */
   struct pollfd fds[CUBEB_STREAM_MAX + 1];
-  nfds_t nfds;
   unsigned int rebuild;
 
   /* Control pipe for forcing poll to wake and rebuild fds */
@@ -243,10 +242,10 @@ run_thread(void * context)
   cubeb_stream * s;
 
   for (running = 0;;) {
-    i = poll(ctx->fds, ctx->nfds, -1);
+    i = poll(ctx->fds, CUBEB_STREAM_MAX + 1, -1);
 
     if (i > 0) {
-      if (ctx->fds[ctx->nfds - 1].revents & POLLIN) {
+      if (ctx->fds[CUBEB_STREAM_MAX].revents & POLLIN) {
         (void)read(ctx->control_fd_read, &dummy, 1);
 
         pthread_mutex_lock(&ctx->mutex);
@@ -328,11 +327,9 @@ oss_init(cubeb ** context, char const * context_name)
   ctx->control_fd_read = fd[0];
   ctx->control_fd_write = fd[1];
 
-  ctx->nfds = CUBEB_STREAM_MAX + 1;
-
   /* Include context's control pipe fd. */
-  ctx->fds[ctx->nfds - 1].fd = ctx->control_fd_read;
-  ctx->fds[ctx->nfds - 1].events = POLLIN;
+  ctx->fds[CUBEB_STREAM_MAX].fd = ctx->control_fd_read;
+  ctx->fds[CUBEB_STREAM_MAX].events = POLLIN;
 
   for (i = 0; i < CUBEB_STREAM_MAX; ++i) {
     ctx->fds[i].fd = -1;
