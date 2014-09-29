@@ -450,29 +450,7 @@ test_drain(void)
     if (got_drain) {
       break;
     } else {
-      uint32_t i, skip = 0;
-      /* Latency passed to cubeb_stream_init is not really honored on OSX,
-         win32/winmm and android, skip this test. */
-      const char * backend_id = cubeb_get_backend_id(ctx);
-      const char * latency_not_honored_backends[] = {
-        "audiounit",
-        "winmm",
-        "audiotrack",
-        "opensl"
-      };
-
-      for (i = 0; i < ARRAY_LENGTH(latency_not_honored_backends); i++) {
-        if (!strcmp(backend_id, latency_not_honored_backends[i])) {
-          skip = 1;
-        }
-      }
-      if (!skip) {
-        /* Position should roughly be equal to the number of written frames. We
-         * need to take the latency into account. */
-        int latency = (STREAM_LATENCY * STREAM_RATE) / 1000;
-	printf("p=%llu l=%d tfw=%llu\n", (unsigned long long)position, latency, (unsigned long long)total_frames_written);
-        assert(position + latency <= total_frames_written);
-      }
+      assert(position <= total_frames_written);
     }
     delay(500);
   }
@@ -481,8 +459,9 @@ test_drain(void)
   assert(r == 0);
   assert(got_drain);
 
-  // Disabled due to failures in the ALSA backend.
-  //assert(position == total_frames_written);
+  // Really, we should be able to rely on position reaching our final written frame, but
+  // for now let's make sure it doesn't continue beyond that point.
+  assert(position <= total_frames_written);
 
   cubeb_stream_destroy(stream);
   cubeb_destroy(ctx);
