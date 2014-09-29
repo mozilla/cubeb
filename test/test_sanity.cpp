@@ -68,7 +68,7 @@ test_init_destroy_context(void)
 static void
 test_init_destroy_multiple_contexts(void)
 {
-  int i;
+  size_t i;
   int r;
   cubeb * ctx[4];
   int order[4] = {2, 0, 3, 1};
@@ -119,7 +119,7 @@ test_init_destroy_stream(void)
 static void
 test_init_destroy_multiple_streams(void)
 {
-  int i;
+  size_t i;
   int r;
   cubeb * ctx;
   cubeb_stream * stream[8];
@@ -153,7 +153,7 @@ test_init_destroy_multiple_streams(void)
 static void
 test_init_start_stop_destroy_multiple_streams(int early, int delay_ms)
 {
-  int i;
+  size_t i;
   int r;
   cubeb * ctx;
   cubeb_stream * stream[8];
@@ -214,12 +214,12 @@ test_init_start_stop_destroy_multiple_streams(int early, int delay_ms)
 static void
 test_init_destroy_multiple_contexts_and_streams(void)
 {
-  int i, j;
+  size_t i, j;
   int r;
   cubeb * ctx[2];
   cubeb_stream * stream[8];
   cubeb_stream_params params;
-  int streams_per_ctx = ARRAY_LENGTH(stream) / ARRAY_LENGTH(ctx);
+  size_t streams_per_ctx = ARRAY_LENGTH(stream) / ARRAY_LENGTH(ctx);
   assert(ARRAY_LENGTH(ctx) * streams_per_ctx == ARRAY_LENGTH(stream));
 
   BEGIN_TEST
@@ -299,7 +299,7 @@ test_basic_stream_operations(void)
 static void
 test_stream_position(void)
 {
-  int i;
+  size_t i;
   int r;
   cubeb * ctx;
   cubeb_stream * stream;
