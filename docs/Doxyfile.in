@@ -8,5 +8,6 @@ SORT_MEMBER_DOCS       = NO
 QUIET                  = YES
 WARN_NO_PARAMDOC       = YES
 INPUT                  = @top_srcdir@/include/cubeb
+EXCLUDE                = @top_srcdir@/include/cubeb/cubeb-stdint.h
 GENERATE_LATEX         = NO
 
