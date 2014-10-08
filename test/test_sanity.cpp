@@ -68,7 +68,7 @@ test_init_destroy_context(void)
 static void
 test_init_destroy_multiple_contexts(void)
 {
-  int i;
+  size_t i;
   int r;
   cubeb * ctx[4];
   int order[4] = {2, 0, 3, 1};
@@ -119,7 +119,7 @@ test_init_destroy_stream(void)
 static void
 test_init_destroy_multiple_streams(void)
 {
-  int i;
+  size_t i;
   int r;
   cubeb * ctx;
   cubeb_stream * stream[8];
@@ -153,7 +153,7 @@ test_init_destroy_multiple_streams(void)
 static void
 test_init_start_stop_destroy_multiple_streams(int early, int delay_ms)
 {
-  int i;
+  size_t i;
   int r;
   cubeb * ctx;
   cubeb_stream * stream[8];
@@ -214,12 +214,12 @@ test_init_start_stop_destroy_multiple_streams(int early, int delay_ms)
 static void
 test_init_destroy_multiple_contexts_and_streams(void)
 {
-  int i, j;
+  size_t i, j;
   int r;
   cubeb * ctx[2];
   cubeb_stream * stream[8];
   cubeb_stream_params params;
-  int streams_per_ctx = ARRAY_LENGTH(stream) / ARRAY_LENGTH(ctx);
+  size_t streams_per_ctx = ARRAY_LENGTH(stream) / ARRAY_LENGTH(ctx);
   assert(ARRAY_LENGTH(ctx) * streams_per_ctx == ARRAY_LENGTH(stream));
 
   BEGIN_TEST
@@ -299,7 +299,7 @@ test_basic_stream_operations(void)
 static void
 test_stream_position(void)
 {
-  int i;
+  size_t i;
   int r;
   cubeb * ctx;
   cubeb_stream * stream;
@@ -450,29 +450,7 @@ test_drain(void)
     if (got_drain) {
       break;
     } else {
-      uint32_t i, skip = 0;
-      /* Latency passed to cubeb_stream_init is not really honored on OSX,
-         win32/winmm and android, skip this test. */
-      const char * backend_id = cubeb_get_backend_id(ctx);
-      const char * latency_not_honored_backends[] = {
-        "audiounit",
-        "winmm",
-        "audiotrack",
-        "opensl",
-        "oss"
-      };
-
-      for (i = 0; i < ARRAY_LENGTH(latency_not_honored_backends); i++) {
-        if (!strcmp(backend_id, latency_not_honored_backends[i])) {
-          skip = 1;
-        }
-      }
-      if (!skip) {
-        /* Position should roughly be equal to the number of written frames. We
-         * need to take the latency into account. */
-        int latency = (STREAM_LATENCY * STREAM_RATE) / 1000;
-        assert(position + latency <= total_frames_written);
-      }
+      assert(position <= total_frames_written);
     }
     delay(500);
   }
@@ -481,8 +459,9 @@ test_drain(void)
   assert(r == 0);
   assert(got_drain);
 
-  // Disabled due to failures in the ALSA backend.
-  //assert(position == total_frames_written);
+  // Really, we should be able to rely on position reaching our final written frame, but
+  // for now let's make sure it doesn't continue beyond that point.
+  //assert(position <= total_frames_written);
 
   cubeb_stream_destroy(stream);
   cubeb_destroy(ctx);
@@ -492,7 +471,12 @@ test_drain(void)
 
 int is_windows_7()
 {
-#if (defined(_WIN32) || defined(__WIN32__))
+#ifdef __MINGW32__
+   printf("Warning: this test was built with MinGW.\n"
+   "MinGW does not contain necessary version checking infrastructure. Claiming to be Windows 7, even if we're not.\n");
+   return 1;
+#endif
+#if (defined(_WIN32) || defined(__WIN32__)) && ( !defined(__MINGW32__))
    OSVERSIONINFOEX osvi;
    DWORDLONG condition_mask = 0;
 

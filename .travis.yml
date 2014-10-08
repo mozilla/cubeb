@@ -4,5 +4,5 @@ compiler:
   - clang
 before_install:
   - sudo apt-get update -qq
-  - sudo apt-get install -qq libpulse-dev libasound2-dev
-script: autoreconf -i && ./configure && make
+  - sudo apt-get install -y libpulse-dev libasound2-dev pulseaudio doxygen
+script: autoreconf -i && ./configure && make check

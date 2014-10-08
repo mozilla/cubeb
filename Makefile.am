@@ -2,7 +2,7 @@ AUTOMAKE_OPTIONS = foreign 1.10 dist-bzip2 subdir-objects
 ACLOCAL_AMFLAGS = -I m4
 
 AM_CPPFLAGS = -I$(top_srcdir)/include -I. -I$(top_srcdir)/src
-AM_CFLAGS = -ansi -std=gnu99 -Wall -Wextra -Wno-long-long -O0 -Wno-unused -g
+AM_CFLAGS = -ansi -std=gnu99 -Wall -Wextra -Wno-long-long -O2 -Wno-unused-parameter
 
 SUBDIRS = docs
 
@@ -21,7 +21,7 @@ cubebinclude_HEADERS = include/cubeb/cubeb.h include/cubeb/cubeb-stdint.h
 
 lib_LTLIBRARIES = src/libcubeb.la
 
-src_libcubeb_la_SOURCES = src/cubeb.c
+src_libcubeb_la_SOURCES = src/cubeb.c src/cubeb_panner.cpp
 
 if PULSE
 src_libcubeb_la_SOURCES += src/cubeb_pulse.c
@@ -74,7 +74,7 @@ EXTRA_src_libcubeb_la_SOURCES = \
 
 src_libcubeb_la_LDFLAGS = -pthread -export-symbols-regex '^cubeb_' $(platform_lib) -no-undefined
 
-noinst_PROGRAMS = test/test_sanity test/test_tone test/test_audio test/test_latency
+check_PROGRAMS = test/test_sanity test/test_tone test/test_audio test/test_latency
 
 test_test_sanity_SOURCES = test/test_sanity.cpp
 test_test_sanity_LDADD = -lm src/libcubeb.la $(platform_lib)
