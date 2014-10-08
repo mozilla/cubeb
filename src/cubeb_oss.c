@@ -9,6 +9,7 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <limits.h>
 #include <poll.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -334,6 +335,7 @@ oss_init(cubeb ** context, char const * context_name)
   cubeb * ctx;
   int i, ret;
   int fd[2];
+  pthread_attr_t attr;
 
   if ((ctx = calloc(1, sizeof(*ctx))) == NULL) {
     return CUBEB_ERROR;
@@ -367,8 +369,21 @@ oss_init(cubeb ** context, char const * context_name)
     ctx->fds[i].events = POLLOUT;
   }
 
-  ret = pthread_create(&ctx->thread, NULL, run_thread, ctx);
+  ret = pthread_attr_init(&attr);
   assert(ret == 0);
+
+  size_t stack_size = 256 * 1024;
+  if (stack_size < PTHREAD_STACK_MIN) {
+    stack_size = PTHREAD_STACK_MIN;
+  }
+  ret = pthread_attr_setstacksize(&attr, stack_size);
+  assert(ret == 0);
+
+  ret = pthread_create(&ctx->thread, &attr, run_thread, ctx);
+  assert(ret == 0);
+
+  ret = pthread_attr_destroy(&attr);
+  assert(r == 0);
 
   *context = ctx;
 
