@@ -164,13 +164,13 @@ oss_refill_stream(cubeb_stream * s)
   long got;
   cubeb * ctx = s->context;
 
-  if (ctx->size < s->size) {
+  if (ctx->buf_size < s->size) {
     free(ctx->buf);
     ctx->buf = malloc(s->size);
     if (ctx->buf) {
-      ctx->size = s->size;
+      ctx->buf_size = s->size;
     } else {
-      ctx->size = 0;
+      ctx->buf_size = 0;
       return ERROR;
     }
   }
@@ -247,13 +247,13 @@ rebuild(cubeb * ctx)
     }
   }
 
-  if (size != ctx->size) {
+  if (size != ctx->buf_size) {
     free(ctx->buf);
     ctx->buf = malloc(size);
     if (ctx->buf) {
-      ctx->size = size;
+      ctx->buf_size = size;
     } else {
-      ctx->size = 0;
+      ctx->buf_size = 0;
     }
   }
 
@@ -383,7 +383,7 @@ oss_init(cubeb ** context, char const * context_name)
   assert(ret == 0);
 
   ret = pthread_attr_destroy(&attr);
-  assert(r == 0);
+  assert(ret == 0);
 
   *context = ctx;
 
