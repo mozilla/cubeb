@@ -47,6 +47,10 @@ struct cubeb {
   struct pollfd fds[CUBEB_STREAM_MAX + 1];
   unsigned int rebuild;
 
+  /* Shared buffer for audio data */
+  char * buf;
+  unsigned int buf_size;
+
   /* Control pipe for forcing poll to wake and rebuild fds */
   int control_fd_read;
   int control_fd_write;
@@ -156,10 +160,21 @@ float_to_s16(void * ptr, long nsamp)
 static stream_state
 oss_refill_stream(cubeb_stream * s)
 {
-  char buf[s->size];
   long got;
+  cubeb * ctx = s->context;
 
-  got = s->data_callback(s, s->arg, buf, s->nfr);
+  if (ctx->size < s->size) {
+    free(ctx->buf);
+    ctx->buf = malloc(s->size);
+    if (ctx->buf) {
+      ctx->size = s->size;
+    } else {
+      ctx->size = 0;
+      return ERROR;
+    }
+  }
+
+  got = s->data_callback(s, s->arg, ctx->buf, s->nfr);
 
   if (got < 0) {
     return ERROR;
@@ -172,12 +187,12 @@ oss_refill_stream(cubeb_stream * s)
     size = got * s->bpf;
 
     if (s->conv == 1) {
-      float_to_s16(buf, got*s->channels);
+      float_to_s16(ctx->buf, got*s->channels);
     }
 
     pthread_mutex_lock(&s->mutex);
     do {
-      written = write(s->fd, buf + start, size - start);
+      written = write(s->fd, ctx->buf + start, size - start);
 
       if (written > 0) {
         start += written;
@@ -207,14 +222,20 @@ static int
 rebuild(cubeb * ctx)
 {
   int i, r, d;
+  unsigned int size;
   cubeb_stream * s[CUBEB_STREAM_MAX];
 
   assert(ctx->rebuild);
+
+  size = 0;
 
   memcpy(s, ctx->streams, CUBEB_STREAM_MAX * sizeof(cubeb_stream *));
 
   for (i = 0, r = 0, d = CUBEB_STREAM_MAX - 1; i != CUBEB_STREAM_MAX; ++i) {
     if (s[i] && s[i]->state == RUNNING) {
+      if (size < s[i]->size) {
+        size = s[i]->size;
+      }
       ctx->fds[r].fd = s[i]->fd;
       ctx->streams[r] = s[i];
       r += 1;
@@ -222,6 +243,16 @@ rebuild(cubeb * ctx)
       ctx->fds[d].fd = -1;
       ctx->streams[d] = s[i];
       d -= 1;
+    }
+  }
+
+  if (size != ctx->size) {
+    free(ctx->buf);
+    ctx->buf = malloc(size);
+    if (ctx->buf) {
+      ctx->size = size;
+    } else {
+      ctx->size = 0;
     }
   }
 
