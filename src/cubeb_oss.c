@@ -101,7 +101,9 @@ typedef struct {
 static void
 poll_wake(cubeb * ctx)
 {
-  (void)write(ctx->control_fd_write, "x", 1);
+  if (write(ctx->control_fd_write, "x", 1) < 0) {
+    /* ignore write error */
+  }
 }
 
 static void
@@ -278,7 +280,9 @@ run_thread(void * context)
 
     if (i > 0) {
       if (ctx->fds[CUBEB_STREAM_MAX].revents & POLLIN) {
-        (void)read(ctx->control_fd_read, &dummy, 1);
+        if (read(ctx->control_fd_read, &dummy, 1) < 0) {
+          /* ignore read error */
+        }
 
         pthread_mutex_lock(&ctx->mutex);
         if (ctx->active_streams == -1) {
