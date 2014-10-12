@@ -125,6 +125,8 @@ static int cbjack_stream_start(cubeb_stream * stream);
 static int cbjack_stream_stop(cubeb_stream * stream);
 static int cbjack_stream_get_position(cubeb_stream * stream, uint64_t * position);
 static int cbjack_stream_get_latency(cubeb_stream * stream, uint32_t * latency);
+static int cbjack_stream_set_volume(cubeb_stream * stm, float volume);
+static int cbjack_stream_set_panning(cubeb_stream * stream, float panning);
 
 static struct cubeb_ops const cbjack_ops = {
   .init = jack_init,
@@ -139,8 +141,8 @@ static struct cubeb_ops const cbjack_ops = {
   .stream_stop = cbjack_stream_stop,
   .stream_get_position = cbjack_stream_get_position,
   .stream_get_latency = cbjack_stream_get_latency,
-  .stream_set_volume = NULL,
-  .stream_set_panning = NULL,
+  .stream_set_volume = cbjack_stream_set_volume,
+  .stream_set_panning = cbjack_stream_set_panning,
   .stream_get_current_device = NULL,
   .stream_device_destroy = NULL,
   .stream_register_device_changed_callback = NULL
@@ -686,6 +688,18 @@ static int
 cbjack_stream_get_latency(cubeb_stream * stream, uint32_t * latency)
 {
   *latency = 0;
-  return CUBEB_ERROR;
+  return CUBEB_OK;
+}
+
+static int
+cbjack_stream_set_volume(cubeb_stream * stm, float volume)
+{
+  return CUBEB_OK;
+}
+
+static int
+cbjack_stream_set_panning(cubeb_stream * stream, float panning)
+{
+  return CUBEB_OK;
 }
 

@@ -137,6 +137,12 @@ test_init_destroy_stream(void)
                         test_data_callback, test_state_callback, &dummy);
   assert(r == 0 && stream);
 
+  r = cubeb_stream_set_volume(stream, 1.0f);
+  assert(r == 0);
+
+  r = cubeb_stream_set_panning(stream, 0.0f);
+  assert(r == 0);
+
   cubeb_stream_destroy(stream);
   cubeb_destroy(ctx);
 
