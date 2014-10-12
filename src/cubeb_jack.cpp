@@ -112,6 +112,8 @@ extern "C"
 }
 static char const * cbjack_get_backend_id(cubeb * context);
 static int cbjack_get_max_channel_count(cubeb * ctx, uint32_t * max_channels);
+static int cbjack_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * latency_ms);
+static int cbjack_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate);
 static void cbjack_destroy(cubeb * context);
 static int cbjack_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
                   cubeb_stream_params stream_params, unsigned int latency,
@@ -128,8 +130,8 @@ static struct cubeb_ops const cbjack_ops = {
   .init = jack_init,
   .get_backend_id = cbjack_get_backend_id,
   .get_max_channel_count = cbjack_get_max_channel_count,
-  .get_min_latency = NULL,
-  .get_preferred_sample_rate = NULL,
+  .get_min_latency = cbjack_get_min_latency,
+  .get_preferred_sample_rate = cbjack_get_preferred_sample_rate,
   .destroy = cbjack_destroy,
   .stream_init = cbjack_stream_init,
   .stream_destroy = cbjack_stream_destroy,
@@ -519,6 +521,20 @@ static int
 cbjack_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
 {
   *max_channels = MAX_CHANNELS;
+  return CUBEB_OK;
+}
+
+static int
+cbjack_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * latency_ms)
+{
+  *latency_ms = 0;
+  return CUBEB_OK;
+}
+
+static int
+cbjack_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
+{
+  *rate = ctx->jack_sample_rate;
   return CUBEB_OK;
 }
 

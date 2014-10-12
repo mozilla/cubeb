@@ -90,6 +90,33 @@ test_init_destroy_multiple_contexts(void)
 }
 
 static void
+test_context_variables(void)
+{
+  int r;
+  cubeb * ctx;
+  uint32_t value;
+  cubeb_stream_params params;
+
+  BEGIN_TEST
+
+  r = cubeb_init(&ctx, "test_context_variables");
+  assert(r == 0 && ctx);
+
+  params.channels = 2;
+  params.format = CUBEB_SAMPLE_S16LE;
+  params.rate = 44100;
+  r = cubeb_get_min_latency(ctx, params, &value);
+  assert(r == 0);
+
+  r = cubeb_get_preferred_sample_rate(ctx, &value);
+  assert(r == 0 && value > 0);
+
+  cubeb_destroy(ctx);
+
+  END_TEST
+}
+
+static void
 test_init_destroy_stream(void)
 {
   int r;
@@ -501,6 +528,7 @@ main(int argc, char * argv[])
 {
   test_init_destroy_context();
   test_init_destroy_multiple_contexts();
+  test_context_variables();
   test_init_destroy_stream();
   test_init_destroy_multiple_streams();
   test_basic_stream_operations();
