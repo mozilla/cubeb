@@ -63,6 +63,7 @@ AC_ARG_WITH([jack],
 AS_IF([test "x$with_jack" != xno],
       [PKG_CHECK_MODULES(JACK, jack >= 1.9.9, [
        HAVE_JACK=1
+       JACK_LIBS="-ldl"
        NEED_SPEEX=1
        AC_DEFINE([USE_JACK], [], [Use JACK])
       ], [
