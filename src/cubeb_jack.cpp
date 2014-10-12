@@ -527,7 +527,7 @@ cbjack_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
 static int
 cbjack_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * latency_ms)
 {
-  *latency_ms = 0;
+  *latency_ms = 40;
   return CUBEB_OK;
 }
 
