@@ -54,11 +54,18 @@ test_init_destroy_context(void)
 {
   int r;
   cubeb * ctx;
+  char const* backend_id;
 
   BEGIN_TEST
 
   r = cubeb_init(&ctx, "test_sanity");
   assert(r == 0 && ctx);
+
+
+  backend_id = cubeb_get_backend_id(ctx);
+  assert(backend_id);
+
+  fprintf(stderr, "Backend: %s\n", backend_id);
 
   cubeb_destroy(ctx);
 
