@@ -144,12 +144,6 @@ test_init_destroy_stream(void)
                         test_data_callback, test_state_callback, &dummy);
   assert(r == 0 && stream);
 
-  r = cubeb_stream_set_volume(stream, 1.0f);
-  assert(r == 0);
-
-  r = cubeb_stream_set_panning(stream, 0.0f);
-  assert(r == 0);
-
   cubeb_stream_destroy(stream);
   cubeb_destroy(ctx);
 
@@ -187,6 +181,38 @@ test_init_destroy_multiple_streams(void)
 
   cubeb_destroy(ctx);
 
+  END_TEST
+}
+
+static void
+test_configure_stream(void)
+{
+  int ret;
+  cubeb * ctx;
+  cubeb_stream * stream;
+  cubeb_stream_params params;
+
+  BEGIN_TEST
+
+  ret = cubeb_init(&ctx, "test_sanity");
+  assert(ret == 0 && ctx);
+
+  params.format = STREAM_FORMAT;
+  params.rate = STREAM_RATE;
+  params.channels = 2; // panning
+
+  ret = cubeb_stream_init(ctx, &stream, "test", params, STREAM_LATENCY,
+                        test_data_callback, test_state_callback, &dummy);
+  assert(ret == 0 && stream);
+
+  ret = cubeb_stream_set_volume(stream, 1.0f);
+  assert(ret == 0);
+
+  ret = cubeb_stream_set_panning(stream, 0.0f);
+  assert(ret == 0);
+
+  cubeb_stream_destroy(stream);
+  cubeb_destroy(ctx);
   END_TEST
 }
 
@@ -544,6 +570,7 @@ main(int argc, char * argv[])
   test_context_variables();
   test_init_destroy_stream();
   test_init_destroy_multiple_streams();
+  test_configure_stream();
   test_basic_stream_operations();
   test_stream_position();
 
