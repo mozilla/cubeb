@@ -166,6 +166,7 @@ struct cubeb_stream {
   char stream_name[256];
   jack_port_t *output_ports[MAX_CHANNELS];
   jack_ringbuffer_t *ringbuffer[MAX_CHANNELS];
+  float volume;
 };
 
 struct cubeb {
@@ -352,7 +353,7 @@ cbjack_stream_refill(cubeb_stream * stream)
   for(unsigned int c = 0; c < stream->params.channels; c++) {
     float* buffer = stream->context->buffer[c];
     for (long f = 0; f < num_frames; f++) {
-      buffer[f] = interleaved_buffer[(f * stream->params.channels) + c];
+      buffer[f] = interleaved_buffer[(f * stream->params.channels) + c] * stream->volume;
     }
   }
 
@@ -607,6 +608,7 @@ cbjack_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_
   stm->data_callback = data_callback;
   stm->state_callback = state_callback;
   stm->position = 0;
+  stm->volume = 1.0f;
 
   if (stm->params.rate != stm->context->jack_sample_rate) {
     int resampler_error;
@@ -694,6 +696,8 @@ cbjack_stream_get_latency(cubeb_stream * stream, uint32_t * latency)
 static int
 cbjack_stream_set_volume(cubeb_stream * stm, float volume)
 {
+  AutoLock lock(stm->context->mutex);
+  stm->volume = volume;
   return CUBEB_OK;
 }
 
