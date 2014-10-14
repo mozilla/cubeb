@@ -564,6 +564,20 @@ cbjack_destroy(cubeb * context)
   free(context);
 }
 
+static cubeb_stream*
+context_alloc_stream(cubeb * context, char const * stream_name)
+{
+  for(int i = 0; i < MAX_STREAMS; i++) {
+    if(!context->streams[i].in_use) {
+      cubeb_stream * stm = &context->streams[i];
+      stm->in_use = true;
+      snprintf(stm->stream_name, 255, "%s_%u", stream_name, i);
+      return stm;
+    }
+  }
+  return NULL;
+}
+
 static int
 cbjack_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
                   cubeb_stream_params stream_params, unsigned int latency,
@@ -586,21 +600,12 @@ cbjack_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_
   AutoLock lock(context->mutex);
 
   // Find a free stream.
-  cubeb_stream * stm = NULL;
-  int stream_number;
-  for(stream_number = 0; stream_number < MAX_STREAMS; stream_number++) {
-    if(!context->streams[stream_number].in_use) {
-      stm = &context->streams[stream_number];
-      break;
-    }
-  }
+  cubeb_stream * stm = context_alloc_stream(context, stream_name);
 
   // No free stream?
   if(stm == NULL) {
     return CUBEB_ERROR;
   }
-
-  snprintf(stm->stream_name, 255, "%s_%u", stream_name, stream_number);
 
   stm->user_ptr = user_ptr;
   stm->context = context;
@@ -618,6 +623,7 @@ cbjack_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_
                                            10,
                                            &resampler_error);
     if (resampler_error != 0) {
+      stm->in_use = false;
       return CUBEB_ERROR;
     }
   }
@@ -636,7 +642,6 @@ cbjack_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_
     cbjack_connect_ports(stm);
   }
 
-  stm->in_use = true;
   stm->ports_ready = true;
 
   *stream = stm;
