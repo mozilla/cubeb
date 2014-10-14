@@ -445,7 +445,7 @@ jack_init (cubeb ** context, char const * context_name)
   int r;
 
   if(context == NULL) {
-    return CUBEB_ERROR;
+    return CUBEB_ERROR_INVALID_PARAMETER;
   }
 
   *context = NULL;
@@ -591,7 +591,7 @@ cbjack_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_
   }
 
   if (stream == NULL) {
-    return CUBEB_ERROR;
+    return CUBEB_ERROR_INVALID_PARAMETER;
   }
 
   *stream = NULL;
