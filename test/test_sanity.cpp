@@ -54,11 +54,18 @@ test_init_destroy_context(void)
 {
   int r;
   cubeb * ctx;
+  char const* backend_id;
 
   BEGIN_TEST
 
   r = cubeb_init(&ctx, "test_sanity");
   assert(r == 0 && ctx);
+
+
+  backend_id = cubeb_get_backend_id(ctx);
+  assert(backend_id);
+
+  fprintf(stderr, "Backend: %s\n", backend_id);
 
   cubeb_destroy(ctx);
 
@@ -85,6 +92,33 @@ test_init_destroy_multiple_contexts(void)
   for (i = 0; i < ARRAY_LENGTH(ctx); ++i) {
     cubeb_destroy(ctx[order[i]]);
   }
+
+  END_TEST
+}
+
+static void
+test_context_variables(void)
+{
+  int r;
+  cubeb * ctx;
+  uint32_t value;
+  cubeb_stream_params params;
+
+  BEGIN_TEST
+
+  r = cubeb_init(&ctx, "test_context_variables");
+  assert(r == 0 && ctx);
+
+  params.channels = 2;
+  params.format = CUBEB_SAMPLE_S16LE;
+  params.rate = 44100;
+  r = cubeb_get_min_latency(ctx, params, &value);
+  assert(r == 0);
+
+  r = cubeb_get_preferred_sample_rate(ctx, &value);
+  assert(r == 0 && value > 0);
+
+  cubeb_destroy(ctx);
 
   END_TEST
 }
@@ -147,6 +181,38 @@ test_init_destroy_multiple_streams(void)
 
   cubeb_destroy(ctx);
 
+  END_TEST
+}
+
+static void
+test_configure_stream(void)
+{
+  int ret;
+  cubeb * ctx;
+  cubeb_stream * stream;
+  cubeb_stream_params params;
+
+  BEGIN_TEST
+
+  ret = cubeb_init(&ctx, "test_sanity");
+  assert(ret == 0 && ctx);
+
+  params.format = STREAM_FORMAT;
+  params.rate = STREAM_RATE;
+  params.channels = 2; // panning
+
+  ret = cubeb_stream_init(ctx, &stream, "test", params, STREAM_LATENCY,
+                        test_data_callback, test_state_callback, &dummy);
+  assert(ret == 0 && stream);
+
+  ret = cubeb_stream_set_volume(stream, 1.0f);
+  assert(ret == 0);
+
+  ret = cubeb_stream_set_panning(stream, 0.0f);
+  assert(ret == 0);
+
+  cubeb_stream_destroy(stream);
+  cubeb_destroy(ctx);
   END_TEST
 }
 
@@ -501,8 +567,10 @@ main(int argc, char * argv[])
 {
   test_init_destroy_context();
   test_init_destroy_multiple_contexts();
+  test_context_variables();
   test_init_destroy_stream();
   test_init_destroy_multiple_streams();
+  test_configure_stream();
   test_basic_stream_operations();
   test_stream_position();
 
