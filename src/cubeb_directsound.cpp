@@ -77,13 +77,13 @@ refill_stream(cubeb_stream * stm, int prefill)
 {
   VOID * p1, * p2;
   DWORD p1sz, p2sz;
-  HRESULT rv;
+  HRESULT r;
   long dt;
 
   /* calculate how much has played since last refill */
   DWORD play, write;
-  rv = stm->buffer->GetCurrentPosition(&play, &write);
-  assert(rv == DS_OK);
+  r = stm->buffer->GetCurrentPosition(&play, &write);
+  assert(r == DS_OK);
 
   long gap = write - play;
   if (gap < 0) {
@@ -144,12 +144,12 @@ refill_stream(cubeb_stream * stm, int prefill)
     XXX want prefill logic to work anytime as we will eventually call it from start()
   */
 
-  rv = stm->buffer->Lock(writepos, playsz, &p1, &p1sz, &p2, &p2sz, 0);
-  if (rv == DSERR_BUFFERLOST) {
+  r = stm->buffer->Lock(writepos, playsz, &p1, &p1sz, &p2, &p2sz, 0);
+  if (r == DSERR_BUFFERLOST) {
     stm->buffer->Restore();
-    rv = stm->buffer->Lock(writepos, playsz, &p1, &p1sz, &p2, &p2sz, 0);
+    r = stm->buffer->Lock(writepos, playsz, &p1, &p1sz, &p2, &p2sz, 0);
   }
-  assert(rv == DS_OK);
+  assert(r == DS_OK);
   assert(p1sz % bytes_per_frame(stm->params) == 0);
   assert(p2sz % bytes_per_frame(stm->params) == 0);
 
@@ -166,8 +166,8 @@ refill_stream(cubeb_stream * stm, int prefill)
   // XXX fix EOS/drain handling
   if (r == CUBEB_EOS) {
     LPDIRECTSOUNDNOTIFY notify;
-    rv = stm->buffer->QueryInterface(IID_IDirectSoundNotify, (LPVOID *) &notify);
-    assert(rv == DS_OK);
+    r = stm->buffer->QueryInterface(IID_IDirectSoundNotify, (LPVOID *) &notify);
+    assert(r == DS_OK);
 
     DSBPOSITIONNOTIFY note;
     note.dwOffset = (writepos + p1sz + p2sz) % stm->buffer_size;
@@ -184,8 +184,8 @@ refill_stream(cubeb_stream * stm, int prefill)
 
   stm->last_refill = GetTickCount();
   stm->written += p1sz + p2sz;
-  rv = stm->buffer->Unlock(p1, p1sz, p2, p2sz);
-  assert(rv == DS_OK);
+  r = stm->buffer->Unlock(p1, p1sz, p2, p2sz);
+  assert(r == DS_OK);
 }
 
 unsigned __stdcall
@@ -196,8 +196,8 @@ directsound_buffer_refill_thread(void * user_ptr)
   assert(ctx);
 
   while (!shutdown) {
-    DWORD rv = WaitForSingleObject(ctx->streams_event, INFINITE);
-    assert(rv == WAIT_OBJECT_0);
+    DWORD r = WaitForSingleObject(ctx->streams_event, INFINITE);
+    assert(r == WAIT_OBJECT_0);
     EnterCriticalSection(&ctx->lock);
     struct cubeb_list_node * node = ctx->streams;
     while (node) {
@@ -205,11 +205,11 @@ directsound_buffer_refill_thread(void * user_ptr)
       if (node->stream->draining) {
 	node->stream->state_callback(node->stream, node->stream->user_ptr, CUBEB_STATE_DRAINED);
 	node->stream->active = 0;
-	HRESULT rv = node->stream->buffer->Stop();
-	assert(rv == DS_OK);
+	HRESULT r = node->stream->buffer->Stop();
+	assert(r == DS_OK);
 	DWORD play, write;
-	rv = node->stream->buffer->GetCurrentPosition(&play, &write);
-	assert(rv == DS_OK);
+	r = node->stream->buffer->GetCurrentPosition(&play, &write);
+	assert(r == DS_OK);
 	fprintf(stderr, "stm %p drained (p=%u w=%u)\n", node->stream, play, write);
       }
       if (node->stream->active) {
@@ -333,8 +333,8 @@ directsound_destroy(cubeb * ctx)
     ctx->shutdown = 1;
     LeaveCriticalSection(&ctx->lock);
     SetEvent(ctx->streams_event);
-    HRESULT rv = WaitForSingleObject(ctx->refill_thread, INFINITE);
-    assert(rv == WAIT_OBJECT_0);
+    HRESULT r = WaitForSingleObject(ctx->refill_thread, INFINITE);
+    assert(r == WAIT_OBJECT_0);
 
     CloseHandle(ctx->refill_thread);
   }
@@ -521,15 +521,15 @@ directsound_stream_start(cubeb_stream * stm)
 {
   EnterCriticalSection(&stm->lock);
   stm->active = 1;
-  HRESULT rv = stm->buffer->Play(0, 0, DSBPLAY_LOOPING);
-  if (rv == DSERR_BUFFERLOST) {
+  HRESULT r = stm->buffer->Play(0, 0, DSBPLAY_LOOPING);
+  if (r == DSERR_BUFFERLOST) {
     stm->buffer->Restore();
-    rv = stm->buffer->Play(0, 0, DSBPLAY_LOOPING);
+    r = stm->buffer->Play(0, 0, DSBPLAY_LOOPING);
   }
-  assert(rv == DS_OK);
+  assert(r == DS_OK);
   DWORD play, write;
-  rv = stm->buffer->GetCurrentPosition(&play, &write);
-  assert(rv == DS_OK);
+  r = stm->buffer->GetCurrentPosition(&play, &write);
+  assert(r == DS_OK);
   LeaveCriticalSection(&stm->lock);
   fprintf(stderr, "stm %p started (p=%u w=%u)\n", stm, play, write);
   return CUBEB_OK;
@@ -540,11 +540,11 @@ directsound_stream_stop(cubeb_stream * stm)
 {
   EnterCriticalSection(&stm->lock);
   stm->active = 0;
-  HRESULT rv = stm->buffer->Stop();
-  assert(rv == DS_OK);
+  HRESULT r = stm->buffer->Stop();
+  assert(r == DS_OK);
   DWORD play, write;
-  rv = stm->buffer->GetCurrentPosition(&play, &write);
-  assert(rv == DS_OK);
+  r = stm->buffer->GetCurrentPosition(&play, &write);
+  assert(r == DS_OK);
   fprintf(stderr, "stm %p stopped (p=%u w=%u)\n", stm, play, write);
   LeaveCriticalSection(&stm->lock);
   return CUBEB_OK;
@@ -556,8 +556,8 @@ directsound_stream_get_position(cubeb_stream * stm, uint64_t * position)
   EnterCriticalSection(&stm->lock);
 
   DWORD play, write;
-  HRESULT rv = stm->buffer->GetCurrentPosition(&play, &write);
-  assert(rv == DS_OK);
+  HRESULT r = stm->buffer->GetCurrentPosition(&play, &write);
+  assert(r == DS_OK);
 
   // XXX upper limit on position is stm->written,
   // XXX then adjust by overflow timer

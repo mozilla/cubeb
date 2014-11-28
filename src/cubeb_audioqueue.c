@@ -135,7 +135,7 @@ audioqueue_stream_init(cubeb * context, cubeb_stream ** stream, char const * str
   case CUBEB_SAMPLE_S16BE:
     ss.mBitsPerChannel = 16;
     ss.mFormatFlags |= kAudioFormatFlagIsSignedInteger |
-                       kAudioFormatFlagIsBigEndian;
+      kAudioFormatFlagIsBigEndian;
     break;
   case CUBEB_SAMPLE_FLOAT32LE:
     ss.mBitsPerChannel = 32;
@@ -144,7 +144,7 @@ audioqueue_stream_init(cubeb * context, cubeb_stream ** stream, char const * str
   case CUBEB_SAMPLE_FLOAT32BE:
     ss.mBitsPerChannel = 32;
     ss.mFormatFlags |= kAudioFormatFlagIsFloat |
-                       kAudioFormatFlagIsBigEndian;
+      kAudioFormatFlagIsBigEndian;
     break;
   default:
     return CUBEB_ERROR_INVALID_FORMAT;

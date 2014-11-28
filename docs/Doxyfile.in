@@ -9,5 +9,5 @@ QUIET                  = YES
 WARN_NO_PARAMDOC       = YES
 INPUT                  = @top_srcdir@/include/cubeb
 EXCLUDE                = @top_srcdir@/include/cubeb/cubeb-stdint.h
+GENERATE_HTML          = YES
 GENERATE_LATEX         = NO
-

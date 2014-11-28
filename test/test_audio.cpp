@@ -114,15 +114,15 @@ int supports_channel_count(const char* backend_id, int nchannels)
 
 int run_test(int num_channels, int sampling_rate, int is_float)
 {
-  int ret = CUBEB_OK;
+  int r = CUBEB_OK;
 
   cubeb *ctx = NULL;
   synth_state* synth = NULL;
   cubeb_stream *stream = NULL;
   const char * backend_id = NULL;
 
-  ret = cubeb_init(&ctx, "Cubeb audio test: channels");
-  if (ret != CUBEB_OK) {
+  r = cubeb_init(&ctx, "Cubeb audio test: channels");
+  if (r != CUBEB_OK) {
     fprintf(stderr, "Error initializing cubeb library\n");
     goto cleanup;
   }
@@ -148,10 +148,10 @@ int run_test(int num_channels, int sampling_rate, int is_float)
     goto cleanup;
   }
 
-  ret = cubeb_stream_init(ctx, &stream, "test tone", params,
-                          100, is_float ? data_cb_float : data_cb_short, state_cb, synth);
-  if (ret != CUBEB_OK) {
-    fprintf(stderr, "Error initializing cubeb stream: %d\n", ret);
+  r = cubeb_stream_init(ctx, &stream, "test tone", params,
+                        100, is_float ? data_cb_float : data_cb_short, state_cb, synth);
+  if (r != CUBEB_OK) {
+    fprintf(stderr, "Error initializing cubeb stream: %d\n", r);
     goto cleanup;
   }
 
@@ -164,19 +164,19 @@ cleanup:
   cubeb_destroy(ctx);
   synth_destroy(synth);
 
-  return ret;
+  return r;
 }
 
 int run_panning_volume_test()
 {
-  int ret = CUBEB_OK;
+  int r = CUBEB_OK;
 
   cubeb *ctx = NULL;
   synth_state* synth = NULL;
   cubeb_stream *stream = NULL;
 
-  ret = cubeb_init(&ctx, "Cubeb audio test");
-  if (ret != CUBEB_OK) {
+  r = cubeb_init(&ctx, "Cubeb audio test");
+  if (r != CUBEB_OK) {
     fprintf(stderr, "Error initializing cubeb library\n");
     goto cleanup;
   }
@@ -192,10 +192,10 @@ int run_panning_volume_test()
     goto cleanup;
   }
 
-  ret = cubeb_stream_init(ctx, &stream, "test tone", params,
-                          100, data_cb_short, state_cb, synth);
-  if (ret != CUBEB_OK) {
-    fprintf(stderr, "Error initializing cubeb stream: %d\n", ret);
+  r = cubeb_stream_init(ctx, &stream, "test tone", params,
+                        100, data_cb_short, state_cb, synth);
+  if (r != CUBEB_OK) {
+    fprintf(stderr, "Error initializing cubeb stream: %d\n", r);
     goto cleanup;
   }
 
@@ -228,7 +228,7 @@ cleanup:
   cubeb_destroy(ctx);
   synth_destroy(synth);
 
-  return ret;
+  return r;
 }
 
 void run_channel_rate_test()
@@ -266,5 +266,3 @@ int main(int argc, char *argv[])
 
   return CUBEB_OK;
 }
-
-
