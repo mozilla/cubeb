@@ -664,6 +664,16 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
 
   assert(context && stream);
 
+  switch (stream_params.format) {
+  case CUBEB_SAMPLE_FLOAT32LE:
+    break;
+  case CUBEB_SAMPLE_S16LE:
+  case CUBEB_SAMPLE_S16BE:
+  case CUBEB_SAMPLE_FLOAT32BE:
+  default:
+    return CUBEB_ERROR_INVALID_FORMAT;
+  }
+
   cubeb_stream * stm = (cubeb_stream *)calloc(1, sizeof(cubeb_stream));
 
   assert(stm);
