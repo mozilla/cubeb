@@ -46,6 +46,8 @@ AM_PROG_CC_C_O
 AC_LIBTOOL_WIN32_DLL
 AM_PROG_LIBTOOL
 
+NEED_SPEEX=0
+
 AC_ARG_WITH([pulse],
             AS_HELP_STRING([--with-pulse], [with PulseAudio @<:@default=check@:>@]))
 AS_IF([test "x$with_pulse" != xno],
@@ -184,7 +186,7 @@ AM_CONDITIONAL([SPEEX], [test $NEED_SPEEX -eq 1])
 
 AS_IF([test $NEED_SPEEX -eq 1],
       [
-       AC_DEFINE([OUTSIDE_SPEEX], [], [Tell the speex resampler no to expect speex headers.])
+       AC_DEFINE([OUTSIDE_SPEEX], [], [Tell the speex resampler not to expect speex headers.])
        AC_DEFINE([RANDOM_PREFIX], [speex], [Required by the speex resampler.])
        AC_DEFINE([FLOATING_POINT], [], [Tell the resampler to only enable floating point support])
        AC_DEFINE([EXPORT], [], [Tell the resampler to export the symbols by default.])
