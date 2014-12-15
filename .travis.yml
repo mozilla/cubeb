@@ -3,13 +3,13 @@ matrix:
   include:
     - compiler: clang
     - compiler: gcc
-      env:
-        - HOST=
-        - HOST=i686-w64-mingw32
+      env: HOST=
+    - compiler: gcc
+      env: HOST=i686-w64-mingw32
 before_install:
   - sudo apt-get update -qq
   - sh -c "if [ -z '$HOST' ]; then sudo apt-get install -y libpulse-dev libasound2-dev pulseaudio doxygen; fi"
-  - sh -c "if [ ! -z '$HOST' ]; then sudo apt-get install -qq gcc-mingw-w64-i686 g++-mingw-w64-i686 binutils-mingw-w64-i686 mingw-w64-dev; wget http://mirrors.kernel.org/ubuntu/pool/universe/m/mingw-w64/mingw-w64-tools_3.1.0-1_amd64.deb; sudo dpkg -i mingw-w64-tools_3.1.0-1_amd64.deb; fi"
+  - sh -c "if [ ! -z '$HOST' ]; then sudo apt-get install -qq mingw-w64 mingw-w64-dev g++-mingw-w64 binutils-mingw-w64; wget http://mirrors.kernel.org/ubuntu/pool/universe/m/mingw-w64/mingw-w64-tools_3.1.0-1_amd64.deb; sudo dpkg -i mingw-w64-tools_3.1.0-1_amd64.deb; fi"
 script:
   - autoreconf -i && ./configure --host=$HOST && make
   - sh -c "if [ -z '$HOST' ]; then make check; fi"
