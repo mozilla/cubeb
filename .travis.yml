@@ -1,4 +1,4 @@
-language: c
+language: cpp
 matrix:
   include:
     - compiler: clang
@@ -8,21 +8,22 @@ matrix:
 before_install:
   - sudo apt-get update -qq
   - if [ -z "$HOST" ]; then
-      sudo apt-get install -y libpulse-dev libasound2-dev pulseaudio doxygen
+      sudo apt-get install -y libpulse-dev libasound2-dev pulseaudio doxygen;
     fi
   - if [ ! -z "$HOST" ]; then
-      sudo apt-get install -qq mingw-w64 mingw-w64-dev g++-mingw-w64 binutils-mingw-w64
-      wget http://mirrors.kernel.org/ubuntu/pool/universe/m/mingw-w64/mingw-w64-tools_3.1.0-1_amd64.deb
-      sudo dpkg -i mingw-w64-tools_3.1.0-1_amd64.deb
+      sudo apt-get install -qq mingw-w64 mingw-w64-dev g++-mingw-w64 binutils-mingw-w64;
+      wget http://mirrors.kernel.org/ubuntu/pool/universe/m/mingw-w64/mingw-w64-tools_3.1.0-1_amd64.deb;
+      sudo dpkg -i mingw-w64-tools_3.1.0-1_amd64.deb;
     fi
 before_script:
-  - if [ ! -z "$HOST" ];
-      then unset CC
+  - if [ ! -z "$HOST" ]; then
+      unset CC;
+      unset CXX;
     fi
   - autoreconf -i
   - ./configure --host=$HOST
 script:
   - make
   - if [ -z "$HOST" ]; then
-      make check
+      make check;
     fi
