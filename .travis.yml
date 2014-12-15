@@ -13,3 +13,4 @@ before_install:
 script:
   - autoreconf -i && ./configure --host=$HOST && make
   - sh -c "if [ -z '$HOST' ]; then make check; fi"
+  - cat config.log
