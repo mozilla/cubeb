@@ -3,7 +3,6 @@ matrix:
   include:
     - compiler: clang
     - compiler: gcc
-      env: HOST=
     - compiler: gcc
       env: HOST=i686-w64-mingw32
 before_install:

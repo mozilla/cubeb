@@ -69,7 +69,7 @@ EXTRA_src_libcubeb_la_SOURCES = \
 	src/cubeb_winmm.c src/cubeb_wasapi.cpp src/speex/resample.c \
 	src/cubeb_opensl.c src/cubeb_audiotrack.c
 
-src_libcubeb_la_LDFLAGS = -pthread -export-symbols-regex '^cubeb_' $(platform_lib) -no-undefined
+src_libcubeb_la_LDFLAGS = -export-symbols-regex '^cubeb_' $(platform_lib) -no-undefined
 
 check_PROGRAMS = test/test_sanity test/test_tone test/test_audio test/test_latency
 
