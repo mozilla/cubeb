@@ -15,7 +15,6 @@
 #include <audioclient.h>
 #include <process.h>
 #include <avrt.h>
-#include <winnt.h>
 #include "cubeb/cubeb.h"
 #include "cubeb-internal.h"
 #include "cubeb/cubeb-stdint.h"
