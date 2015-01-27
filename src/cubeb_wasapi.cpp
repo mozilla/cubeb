@@ -89,6 +89,26 @@ private:
   CRITICAL_SECTION * lock;
 };
 
+void clock_add(cubeb_stream * stm, LONG64 value)
+{
+#ifndef InterlockedAdd64
+  auto_lock lock(&stm->clock_lock);
+  stm->clock += value;
+#else
+  stm->clock = InterlockedAdd64(&stm->clock, value);
+#endif
+}
+
+LONG64 clock_get(cubeb_stream * stm)
+{
+#ifndef InterlockedAdd64
+  auto_lock lock(&stm->clock_lock);
+  return stm->clock;
+#else
+  return InterlockedAdd64(&stm->clock, 0);
+#endif
+}
+
 struct auto_com {
   auto_com()
   : need_uninit(true) {
@@ -183,9 +203,12 @@ struct cubeb_stream
   HANDLE refill_event;
   /* Each cubeb_stream has its own thread. */
   HANDLE thread;
-  /* We synthetize our clock from the callbacks. */
+  /* We synthesize our clock from the callbacks. */
   LONG64 clock;
   CRITICAL_SECTION stream_reset_lock;
+#ifndef InterlockedAdd64
+  CRITICAL_SECTION clock_lock;
+#endif
   /* Maximum number of frames we can be requested in a callback. */
   uint32_t buffer_frame_count;
   /* Resampler instance. Resampling will only happen if necessary. */
@@ -386,7 +409,7 @@ refill(cubeb_stream * stm, float * data, long frames_needed)
     dest = data;
   }
 
-  stm->clock = InterlockedAdd64(&stm->clock, frames_needed);
+  clock_add(stm, frames_needed);
 
   long out_frames = cubeb_resampler_fill(stm->resampler, dest, frames_needed);
 
@@ -980,6 +1003,9 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
   stm->latency = latency;
   stm->clock = 0;
   InitializeCriticalSection(&stm->stream_reset_lock);
+#ifndef InterlockedAdd64
+  InitializeCriticalSection(&stm->clock_lock);
+#endif
 
   stm->shutdown_event = CreateEvent(NULL, 0, 0, NULL);
   stm->refill_event = CreateEvent(NULL, 0, 0, NULL);
@@ -1040,6 +1066,9 @@ void wasapi_stream_destroy(cubeb_stream * stm)
   SafeRelease(stm->shutdown_event);
   SafeRelease(stm->refill_event);
   DeleteCriticalSection(&stm->stream_reset_lock);
+#ifndef InterlockedAdd64
+  DeleteCriticalSection(&stm->clock_lock);
+#endif
 
   close_wasapi_stream(stm);
 
@@ -1101,7 +1130,7 @@ int wasapi_stream_get_position(cubeb_stream * stm, uint64_t * position)
 {
   assert(stm && position);
 
-  *position = InterlockedAdd64(&stm->clock, 0);
+  *position = clock_get(stm);
 
   return CUBEB_OK;
 }
