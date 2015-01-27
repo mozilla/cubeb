@@ -89,26 +89,6 @@ private:
   CRITICAL_SECTION * lock;
 };
 
-void clock_add(cubeb_stream * stm, LONG64 value)
-{
-#ifndef InterlockedAdd64
-  auto_lock lock(&stm->clock_lock);
-  stm->clock += value;
-#else
-  stm->clock = InterlockedAdd64(&stm->clock, value);
-#endif
-}
-
-LONG64 clock_get(cubeb_stream * stm)
-{
-#ifndef InterlockedAdd64
-  auto_lock lock(&stm->clock_lock);
-  return stm->clock;
-#else
-  return InterlockedAdd64(&stm->clock, 0);
-#endif
-}
-
 struct auto_com {
   auto_com()
   : need_uninit(true) {
@@ -326,6 +306,26 @@ private:
 };
 
 namespace {
+void clock_add(cubeb_stream * stm, LONG64 value)
+{
+#ifndef InterlockedAdd64
+  auto_lock lock(&stm->clock_lock);
+  stm->clock += value;
+#else
+  stm->clock = InterlockedAdd64(&stm->clock, value);
+#endif
+}
+
+LONG64 clock_get(cubeb_stream * stm)
+{
+#ifndef InterlockedAdd64
+  auto_lock lock(&stm->clock_lock);
+  return stm->clock;
+#else
+  return InterlockedAdd64(&stm->clock, 0);
+#endif
+}
+
 bool should_upmix(cubeb_stream * stream)
 {
   return stream->mix_params.channels > stream->stream_params.channels;
