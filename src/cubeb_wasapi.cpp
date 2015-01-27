@@ -29,15 +29,15 @@
 // #define LOGGING_ENABLED
 
 #ifdef LOGGING_ENABLED
-#  define LOG(...) do {         \
-  fprintf(stdout, __VA_ARGS__); \
-  fprintf(stdout, "\n");        \
-} while(0);
+#define LOG(...) do {                           \
+    fprintf(stdout, __VA_ARGS__);               \
+    fprintf(stdout, "\n");                      \
+  } while(0)
 #else
-#  define LOG(...)
+#define LOG(...)
 #endif
 
-#define ARRAY_LENGTH(array_) \
+#define ARRAY_LENGTH(array_)                    \
   (sizeof(array_) / sizeof(array_[0]))
 
 namespace {
@@ -563,6 +563,7 @@ HRESULT unregister_notification_client(cubeb_stream * stm)
   return S_OK;
 }
 
+
 HRESULT get_default_endpoint(IMMDevice ** device)
 {
   IMMDeviceEnumerator * enumerator;
@@ -702,7 +703,7 @@ wasapi_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * laten
   IMMDevice * device;
   hr = get_default_endpoint(&device);
   if (FAILED(hr)) {
-    LOG("Could not get default endpoint:%x.", hr)
+    LOG("Could not get default endpoint:%x.", hr);
     return CUBEB_ERROR;
   }
 
@@ -711,7 +712,7 @@ wasapi_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * laten
                         NULL, (void **)&client);
   SafeRelease(device);
   if (FAILED(hr)) {
-    LOG("Could not activate device for latency: %x.", hr)
+    LOG("Could not activate device for latency: %x.", hr);
     return CUBEB_ERROR;
   }
 
@@ -719,11 +720,11 @@ wasapi_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * laten
   hr = client->GetDevicePeriod(&default_period, NULL);
   if (FAILED(hr)) {
     SafeRelease(client);
-    LOG("Could not get device period: %x.", hr)
+    LOG("Could not get device period: %x.", hr);
     return CUBEB_ERROR;
   }
 
-  LOG("default device period: %ld", default_period)
+  LOG("default device period: %ld", default_period);
 
   /* According to the docs, the best latency we can achieve is by synchronizing
    * the stream and the engine.
@@ -920,7 +921,7 @@ int setup_wasapi_stream(cubeb_stream * stm)
   }
 
   hr = stm->client->GetService(__uuidof(IAudioRenderClient),
-      (void **)&stm->render_client);
+                               (void **)&stm->render_client);
   if (FAILED(hr)) {
     LOG("Could not get the render client %x.", hr);
     wasapi_stream_destroy(stm);
@@ -928,7 +929,7 @@ int setup_wasapi_stream(cubeb_stream * stm)
   }
 
   hr = stm->client->GetService(__uuidof(IAudioStreamVolume),
-      (void **)&stm->audio_stream_volume);
+                               (void **)&stm->audio_stream_volume);
   if (FAILED(hr)) {
     LOG("Could not get the IAudioStreamVolume %x.", hr);
     wasapi_stream_destroy(stm);
@@ -1172,6 +1173,5 @@ cubeb_ops const wasapi_ops = {
   /*.stream_get_current_device =*/ NULL,
   /*.stream_device_destroy =*/ NULL,
   /*.stream_register_device_changed_callback =*/ NULL
- };
+};
 } // namespace anonymous
-
