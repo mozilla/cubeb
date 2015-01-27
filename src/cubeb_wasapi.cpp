@@ -224,7 +224,7 @@ public:
   HRESULT STDMETHODCALLTYPE
   QueryInterface(REFIID riid, VOID **ppvInterface)
   {
-    if (IID_IUnknown == riid) {
+    if (__uuidof(IUnknown) == riid) {
       AddRef();
       *ppvInterface = (IUnknown*)this;
     } else if (__uuidof(IMMNotificationClient) == riid) {
