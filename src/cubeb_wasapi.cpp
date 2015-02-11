@@ -91,31 +91,30 @@ private:
 
 struct auto_com {
   auto_com()
-  : need_uninit(true) {
-    HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
-    // This is for information purposes only, in anycase, COM is initialized
-    // at the end of the constructor.
-    if (hr == RPC_E_CHANGED_MODE) {
+    : need_uninit(false) {
+    result = CoInitializeEx(NULL, COINIT_MULTITHREADED);
+  }
+  ~auto_com() {
+    if (result == RPC_E_CHANGED_MODE) {
       // This is an error, COM was not initialized by this function, so it is
       // not necessary to uninit it.
       LOG("COM already initialized in STA.");
-      need_uninit = false;
-    } else if (hr == S_FALSE) {
+      return;
+    } else if (result == S_FALSE) {
       // This is not an error. We are allowed to call CoInitializeEx more than
       // once, as long as it is matches by an CoUninitialize call.
       // We do that in the dtor which is guaranteed to be called.
       LOG("COM already initialized in MTA");
-    } else if (hr == S_OK) {
+    } else if (result == S_OK) {
       LOG("COM initialized.");
     }
+    CoUninitialize();
   }
-  ~auto_com() {
-    if (need_uninit) {
-      CoUninitialize();
-    }
+  bool ok() {
+    return SUCCEEDED(result);
   }
 private:
-  bool need_uninit;
+  HRESULT result;
 };
 
 typedef HANDLE (WINAPI *set_mm_thread_characteristics_function)(
@@ -251,7 +250,10 @@ public:
       return S_OK;
     }
 
-    auto_com autocom;
+    auto_com com;
+    if (!com.ok()) {
+      return E_FAIL;
+    }
 
     /* Close the stream */
     wasapi_stream_stop(stm);
@@ -436,6 +438,10 @@ wasapi_stream_render_loop(LPVOID stream)
   bool first = true;
   DWORD mmcss_task_index = 0;
   auto_com com;
+  if (!com.ok()) {
+    LOG("COM initialization failed on render_loop thread.");
+    return 0;
+  }
 
   /* We could consider using "Pro Audio" here for WebAudio and
    * maybe WebRTC. */
@@ -606,6 +612,9 @@ int wasapi_init(cubeb ** context, char const * context_name)
 {
   HRESULT hr;
   auto_com com;
+  if (!com.ok()) {
+    return CUBEB_ERROR;
+  }
 
   /* We don't use the device yet, but need to make sure we can initialize one
      so that this backend is not incorrectly enabled on platforms that don't
@@ -671,6 +680,9 @@ wasapi_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
   IAudioClient * client;
   WAVEFORMATEX * mix_format;
   auto_com com;
+  if (!com.ok()) {
+    return CUBEB_ERROR;
+  }
 
   assert(ctx && max_channels);
 
@@ -709,6 +721,9 @@ wasapi_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * laten
   IAudioClient * client;
   REFERENCE_TIME default_period;
   auto_com com;
+  if (!com.ok()) {
+    return CUBEB_ERROR;
+  }
 
   IMMDevice * device;
   hr = get_default_endpoint(&device);
@@ -753,6 +768,9 @@ wasapi_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
   IAudioClient * client;
   WAVEFORMATEX * mix_format;
   auto_com com;
+  if (!com.ok()) {
+    return CUBEB_ERROR;
+  }
 
   IMMDevice * device;
   hr = get_default_endpoint(&device);
@@ -859,6 +877,9 @@ int setup_wasapi_stream(cubeb_stream * stm)
   WAVEFORMATEX * mix_format;
 
   auto_com com;
+  if (!com.ok()) {
+    return CUBEB_ERROR;
+  }
 
   hr = get_default_endpoint(&device);
   if (FAILED(hr)) {
@@ -974,6 +995,9 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
   HRESULT hr;
   int rv;
   auto_com com;
+  if (!com.ok()) {
+    return CUBEB_ERROR;
+  }
 
   assert(context && stream);
 
