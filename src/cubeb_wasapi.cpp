@@ -1102,12 +1102,12 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
   stm->clock = 0;
 
   /* Null out WASAPI-specific state */
-  stm->resampler = nullptr;
-  stm->client = nullptr;
-  stm->render_client = nullptr;
-  stm->audio_stream_volume = nullptr;
-  stm->device_enumerator = nullptr;
-  stm->notification_client = nullptr;
+  stm->resampler = NULL;
+  stm->client = NULL;
+  stm->render_client = NULL;
+  stm->audio_stream_volume = NULL;
+  stm->device_enumerator = NULL;
+  stm->notification_client = NULL;
 
   stm->stream_reset_lock = new owned_critical_section();
 
@@ -1157,18 +1157,18 @@ void close_wasapi_stream(cubeb_stream * stm)
   stm->stream_reset_lock->assert_current_thread_owns();
 
   SafeRelease(stm->client);
-  stm->client = nullptr;
+  stm->client = NULL;
 
   SafeRelease(stm->render_client);
-  stm->client = nullptr;
+  stm->client = NULL;
 
   if (stm->resampler) {
     cubeb_resampler_destroy(stm->resampler);
-    stm->resampler = nullptr;
+    stm->resampler = NULL;
   }
 
   free(stm->mix_buffer);
-  stm->mix_buffer = nullptr;
+  stm->mix_buffer = NULL;
 }
 
 void wasapi_stream_destroy(cubeb_stream * stm)
