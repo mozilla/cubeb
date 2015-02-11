@@ -186,9 +186,6 @@ struct cubeb_stream
   /* We synthesize our clock from the callbacks. */
   LONG64 clock;
   CRITICAL_SECTION stream_reset_lock;
-#ifndef InterlockedAdd64
-  CRITICAL_SECTION clock_lock;
-#endif
   /* Maximum number of frames we can be requested in a callback. */
   uint32_t buffer_frame_count;
   /* Resampler instance. Resampling will only happen if necessary. */
@@ -308,22 +305,12 @@ private:
 namespace {
 void clock_add(cubeb_stream * stm, LONG64 value)
 {
-#ifndef InterlockedAdd64
-  auto_lock lock(&stm->clock_lock);
-  stm->clock += value;
-#else
-  stm->clock = InterlockedAdd64(&stm->clock, value);
-#endif
+  InterlockedExchangeAdd64(&stm->clock, value);
 }
 
 LONG64 clock_get(cubeb_stream * stm)
 {
-#ifndef InterlockedAdd64
-  auto_lock lock(&stm->clock_lock);
-  return stm->clock;
-#else
-  return InterlockedAdd64(&stm->clock, 0);
-#endif
+  return InterlockedExchangeAdd64(&stm->clock, 0);
 }
 
 bool should_upmix(cubeb_stream * stream)
@@ -1003,9 +990,6 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
   stm->latency = latency;
   stm->clock = 0;
   InitializeCriticalSection(&stm->stream_reset_lock);
-#ifndef InterlockedAdd64
-  InitializeCriticalSection(&stm->clock_lock);
-#endif
 
   stm->shutdown_event = CreateEvent(NULL, 0, 0, NULL);
   stm->refill_event = CreateEvent(NULL, 0, 0, NULL);
@@ -1066,9 +1050,6 @@ void wasapi_stream_destroy(cubeb_stream * stm)
   SafeRelease(stm->shutdown_event);
   SafeRelease(stm->refill_event);
   DeleteCriticalSection(&stm->stream_reset_lock);
-#ifndef InterlockedAdd64
-  DeleteCriticalSection(&stm->clock_lock);
-#endif
 
   close_wasapi_stream(stm);
 
