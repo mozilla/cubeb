@@ -162,8 +162,7 @@ private:
 };
 
 struct auto_com {
-  auto_com()
-    : need_uninit(false) {
+  auto_com() {
     result = CoInitializeEx(NULL, COINIT_MULTITHREADED);
   }
   ~auto_com() {
