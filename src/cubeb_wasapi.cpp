@@ -950,7 +950,9 @@ int setup_wasapi_stream(cubeb_stream * stm)
   IMMDevice * device;
   WAVEFORMATEX * mix_format;
 
+#ifdef DEBUG
   stm->stream_reset_lock->assert_current_thread_owns();
+#endif
 
   auto_com com;
   if (!com.ok()) {
@@ -1154,7 +1156,9 @@ void close_wasapi_stream(cubeb_stream * stm)
 {
   assert(stm);
 
+#ifdef DEBUG
   stm->stream_reset_lock->assert_current_thread_owns();
+#endif
 
   SafeRelease(stm->client);
   stm->client = NULL;
