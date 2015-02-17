@@ -35,7 +35,7 @@
 
 #ifdef LOGGING_ENABLED
 #define LOG(...) do {                           \
-    fprintf(stdout, __VA_ARGS__);               \
+    fprintf(stderr, __VA_ARGS__);               \
   } while(0)
 #else
 #define LOG(...)
