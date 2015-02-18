@@ -192,7 +192,7 @@ typedef BOOL (WINAPI *revert_mm_thread_characteristics_function)(HANDLE handle);
 
 extern cubeb_ops const wasapi_ops;
 
-int stream_stop(cubeb_stream * stm);
+int stream_stop(cubeb_stream * stm, bool * was_running);
 int wasapi_stream_start(cubeb_stream * stm);
 void close_wasapi_stream(cubeb_stream * stm);
 int setup_wasapi_stream(cubeb_stream * stm);
@@ -584,7 +584,7 @@ wasapi_stream_render_loop(LPVOID stream)
       }
     }
     break;
-    case WM_TIMEOUT:
+    case WAIT_TIMEOUT:
       assert(GetThreadId(stm->thread) == GetCurrentThreadId() &&
              stm->shutdown_event == wait_array[0]);
       break;
