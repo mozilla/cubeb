@@ -26,14 +26,6 @@
 #define MEMORY_ALLOCATION_ALIGNMENT 16
 #endif
 
-#define FATAL(expr) do {                                                \
-    if (!(expr)) {                                                      \
-      fprintf(stderr, "%s:%s - fatal error: %s\n", __FILE__, __LINE__, #expr); \
-      *((volatile int *) NULL) = 0;                                     \
-      abort();                                                          \
-    }                                                                   \
-  } while (0)
-
 /**This is also missing from the MinGW headers. It  also appears to be undocumented by Microsoft.*/
 #ifndef WAVE_FORMAT_48S16
 #define WAVE_FORMAT_48S16      0x00008000       /* 48     kHz, Stereo, 16-bit */
@@ -102,7 +94,7 @@ bytes_per_frame(cubeb_stream_params params)
     bytes = sizeof(float);
     break;
   default:
-    FATAL(0);
+    XASSERT(0);
   }
 
   return bytes * params.channels;
@@ -113,10 +105,10 @@ winmm_get_next_buffer(cubeb_stream * stm)
 {
   WAVEHDR * hdr = NULL;
 
-  FATAL(stm->free_buffers > 0 && stm->free_buffers <= NBUFS);
+  XASSERT(stm->free_buffers > 0 && stm->free_buffers <= NBUFS);
   hdr = &stm->buffers[stm->next_buffer];
-  FATAL(hdr->dwFlags & WHDR_PREPARED ||
-        (hdr->dwFlags & WHDR_DONE && !(hdr->dwFlags & WHDR_INQUEUE)));
+  XASSERT(hdr->dwFlags & WHDR_PREPARED ||
+          (hdr->dwFlags & WHDR_DONE && !(hdr->dwFlags & WHDR_INQUEUE)));
   stm->next_buffer = (stm->next_buffer + 1) % NBUFS;
   stm->free_buffers -= 1;
 
@@ -133,7 +125,7 @@ winmm_refill_stream(cubeb_stream * stm)
 
   EnterCriticalSection(&stm->lock);
   stm->free_buffers += 1;
-  FATAL(stm->free_buffers > 0 && stm->free_buffers <= NBUFS);
+  XASSERT(stm->free_buffers > 0 && stm->free_buffers <= NBUFS);
 
   if (stm->draining) {
     LeaveCriticalSection(&stm->lock);
@@ -162,17 +154,17 @@ winmm_refill_stream(cubeb_stream * stm)
   if (got < 0) {
     LeaveCriticalSection(&stm->lock);
     /* XXX handle this case */
-    FATAL(0);
+    XASSERT(0);
     return;
   } else if (got < wanted) {
     stm->draining = 1;
   }
   stm->written += got;
 
-  FATAL(hdr->dwFlags & WHDR_PREPARED);
+  XASSERT(hdr->dwFlags & WHDR_PREPARED);
 
   hdr->dwBufferLength = got * bytes_per_frame(stm->params);
-  FATAL(hdr->dwBufferLength <= stm->buffer_size);
+  XASSERT(hdr->dwBufferLength <= stm->buffer_size);
 
   if (stm->soft_volume != -1.0) {
     if (stm->params.format == CUBEB_SAMPLE_FLOAT32NE) {
@@ -204,14 +196,14 @@ static unsigned __stdcall
 winmm_buffer_thread(void * user_ptr)
 {
   cubeb * ctx = (cubeb *) user_ptr;
-  FATAL(ctx);
+  XASSERT(ctx);
 
   for (;;) {
     DWORD r;
     PSLIST_ENTRY item;
 
     r = WaitForSingleObject(ctx->event, INFINITE);
-    FATAL(r == WAIT_OBJECT_0);
+    XASSERT(r == WAIT_OBJECT_0);
 
     /* Process work items in batches so that a single stream can't
        starve the others by continuously adding new work to the top of
@@ -243,7 +235,7 @@ winmm_buffer_callback(HWAVEOUT waveout, UINT msg, DWORD_PTR user_ptr, DWORD_PTR 
   }
 
   item = _aligned_malloc(sizeof(struct cubeb_stream_item), MEMORY_ALLOCATION_ALIGNMENT);
-  FATAL(item);
+  XASSERT(item);
   item->stream = stm;
   InterlockedPushEntrySList(stm->context->work, &item->head);
 
@@ -285,16 +277,16 @@ winmm_init(cubeb ** context, char const * context_name)
 {
   cubeb * ctx;
 
-  FATAL(context);
+  XASSERT(context);
   *context = NULL;
 
   ctx = calloc(1, sizeof(*ctx));
-  FATAL(ctx);
+  XASSERT(ctx);
 
   ctx->ops = &winmm_ops;
 
   ctx->work = _aligned_malloc(sizeof(*ctx->work), MEMORY_ALLOCATION_ALIGNMENT);
-  FATAL(ctx->work);
+  XASSERT(ctx->work);
   InitializeSListHead(ctx->work);
 
   ctx->event = CreateEvent(NULL, FALSE, FALSE, NULL);
@@ -332,8 +324,8 @@ winmm_destroy(cubeb * ctx)
 {
   DWORD r;
 
-  FATAL(ctx->active_streams == 0);
-  FATAL(!InterlockedPopEntrySList(ctx->work));
+  XASSERT(ctx->active_streams == 0);
+  XASSERT(!InterlockedPopEntrySList(ctx->work));
 
   DeleteCriticalSection(&ctx->lock);
 
@@ -341,7 +333,7 @@ winmm_destroy(cubeb * ctx)
     ctx->shutdown = 1;
     SetEvent(ctx->event);
     r = WaitForSingleObject(ctx->thread, INFINITE);
-    FATAL(r == WAIT_OBJECT_0);
+    XASSERT(r == WAIT_OBJECT_0);
     CloseHandle(ctx->thread);
   }
 
@@ -369,8 +361,8 @@ winmm_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   int i;
   size_t bufsz;
 
-  FATAL(context);
-  FATAL(stream);
+  XASSERT(context);
+  XASSERT(stream);
 
   *stream = NULL;
 
@@ -420,7 +412,7 @@ winmm_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   LeaveCriticalSection(&context->lock);
 
   stm = calloc(1, sizeof(*stm));
-  FATAL(stm);
+  XASSERT(stm);
 
   stm->context = context;
 
@@ -439,7 +431,7 @@ winmm_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   if (bufsz % bytes_per_frame(stm->params) != 0) {
     bufsz += bytes_per_frame(stm->params) - (bufsz % bytes_per_frame(stm->params));
   }
-  FATAL(bufsz % bytes_per_frame(stm->params) == 0);
+  XASSERT(bufsz % bytes_per_frame(stm->params) == 0);
 
   stm->buffer_size = bufsz;
 
@@ -474,7 +466,7 @@ winmm_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
     WAVEHDR * hdr = &stm->buffers[i];
 
     hdr->lpData = calloc(1, bufsz);
-    FATAL(hdr->lpData);
+    XASSERT(hdr->lpData);
     hdr->dwBufferLength = bufsz;
     hdr->dwFlags = 0;
 
@@ -511,7 +503,7 @@ winmm_stream_destroy(cubeb_stream * stm)
     /* Wait for all blocks to complete. */
     while (enqueued > 0) {
       r = WaitForSingleObject(stm->event, INFINITE);
-      FATAL(r == WAIT_OBJECT_0);
+      XASSERT(r == WAIT_OBJECT_0);
 
       EnterCriticalSection(&stm->lock);
       enqueued = NBUFS - stm->free_buffers;
@@ -542,7 +534,7 @@ winmm_stream_destroy(cubeb_stream * stm)
   }
 
   EnterCriticalSection(&stm->context->lock);
-  FATAL(stm->context->active_streams >= 1);
+  XASSERT(stm->context->active_streams >= 1);
   stm->context->active_streams -= 1;
   LeaveCriticalSection(&stm->context->lock);
 
@@ -552,7 +544,7 @@ winmm_stream_destroy(cubeb_stream * stm)
 static int
 winmm_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
 {
-  FATAL(ctx && max_channels);
+  XASSERT(ctx && max_channels);
 
   /* We don't support more than two channels in this backend. */
   *max_channels = 2;
