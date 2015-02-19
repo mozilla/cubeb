@@ -32,9 +32,11 @@
 #endif
 
 #define FATAL(expr) do {                                                \
-    fprintf(stderr, "%s:%s - fatal error: %s\n", __FILE__, __LINE__, #expr); \
-    *((volatile int *) NULL) = 0;                                       \
-    abort();                                                            \
+    if (!expr) {                                                        \
+      fprintf(stderr, "%s:%s - fatal error: %s\n", __FILE__, __LINE__, #expr); \
+      *((volatile int *) NULL) = 0;                                     \
+      abort();                                                          \
+    }                                                                   \
   } while (0)
 
 // #define LOGGING_ENABLED
