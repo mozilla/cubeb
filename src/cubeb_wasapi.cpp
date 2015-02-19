@@ -5,15 +5,9 @@
  * accompanying file LICENSE for details.
  */
 // This enables assert in release, and lets us have debug-only code
-#ifdef NDEBUG
-#define DEBUG
-#undef NDEBUG
-#endif // #ifdef NDEBUG
-
 #if defined(HAVE_CONFIG_H)
 #include "config.h"
 #endif
-#include <assert.h>
 #include <windows.h>
 #include <mmdeviceapi.h>
 #include <windef.h>
@@ -25,12 +19,23 @@
 #include "cubeb/cubeb-stdint.h"
 #include "cubeb_resampler.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <cmath>
+
+#ifndef DEBUG
+#define DEBUG
+#endif
 
 /**Taken from winbase.h, Not in MinGW.*/
 #ifndef STACK_SIZE_PARAM_IS_A_RESERVATION
 #define STACK_SIZE_PARAM_IS_A_RESERVATION   0x00010000    // Threads only
 #endif
+
+#define FATAL(expr) do {                                                \
+    fprintf(stderr, "%s:%s - fatal error: %s\n", __FILE__, __LINE__, #expr); \
+    *((volatile void *) NULL) = NULL;                                   \
+    abort();                                                            \
+  } while (0)
 
 // #define LOGGING_ENABLED
 
@@ -102,7 +107,7 @@ public:
   {
     EnterCriticalSection(&critical_section);
 #ifdef DEBUG
-    assert(owner != GetCurrentThreadId() && "recursive locking");
+    FATAL(owner != GetCurrentThreadId() && "recursive locking");
     owner = GetCurrentThreadId();
 #endif
   }
@@ -122,7 +127,7 @@ public:
   {
 #ifdef DEBUG
     /* This implies owner != 0, because GetCurrentThreadId cannot return 0. */
-    assert(owner == GetCurrentThreadId());
+    FATAL(owner == GetCurrentThreadId());
 #endif
   }
 
@@ -389,7 +394,7 @@ template<typename T>
 void
 upmix(T * in, long inframes, T * out, int32_t in_channels, int32_t out_channels)
 {
-  assert(out_channels >= in_channels);
+  FATAL(out_channels >= in_channels);
   /* If we are playing a mono stream over stereo speakers, copy the data over. */
   if (in_channels == 1 && out_channels == 2) {
     mono_to_stereo(in, inframes, out);
@@ -412,7 +417,7 @@ template<typename T>
 void
 downmix(T * in, long inframes, T * out, int32_t in_channels, int32_t out_channels)
 {
-  assert(in_channels >= out_channels);
+  FATAL(in_channels >= out_channels);
   /* We could use a downmix matrix here, applying mixing weight based on the
    * channel, but directsound and winmm simply drop the channels that cannot be
    * rendered by the hardware, so we do the same for consistency. */
@@ -452,7 +457,7 @@ refill(cubeb_stream * stm, float * data, long frames_needed)
 
   /* XXX: Handle this error. */
   if (out_frames < 0) {
-    assert(false);
+    FATAL(false);
   }
 
   /* Go in draining mode if we got fewer frames than requested. */
@@ -463,7 +468,7 @@ refill(cubeb_stream * stm, float * data, long frames_needed)
 
   /* If this is not true, there will be glitches.
    * It is alright to have produced less frames if we are draining, though. */
-  assert(out_frames == frames_needed || stm->draining);
+  FATAL(out_frames == frames_needed || stm->draining);
 
   if (should_upmix(stm)) {
     upmix(dest, out_frames, data,
@@ -539,7 +544,7 @@ wasapi_stream_render_loop(LPVOID stream)
         is_playing = false;
         continue;
       }
-      assert(padding <= stm->buffer_frame_count);
+      FATAL(padding <= stm->buffer_frame_count);
 
       if (stm->draining) {
         if (padding == 0) {
@@ -572,7 +577,7 @@ wasapi_stream_render_loop(LPVOID stream)
     }
       break;
     case WAIT_TIMEOUT:
-      assert(stm->shutdown_event == wait_array[0]);
+      FATAL(stm->shutdown_event == wait_array[0]);
       is_playing = false;
       hr = -1;
       break;
@@ -628,7 +633,7 @@ HRESULT register_notification_client(cubeb_stream * stm)
 
 HRESULT unregister_notification_client(cubeb_stream * stm)
 {
-  assert(stm);
+  FATAL(stm);
 
   if (!stm->device_enumerator) {
     return S_OK;
@@ -768,7 +773,7 @@ wasapi_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
     return CUBEB_ERROR;
   }
 
-  assert(ctx && max_channels);
+  FATAL(ctx && max_channels);
 
   IMMDevice * device;
   hr = get_default_endpoint(&device);
@@ -920,7 +925,7 @@ handle_channel_layout(cubeb_stream * stm,  WAVEFORMATEX ** mix_format, const cub
       format_pcm->dwChannelMask = KSAUDIO_SPEAKER_STEREO;
       break;
     default:
-      assert(false && "Channel layout not supported.");
+      FATAL(false && "Channel layout not supported.");
       break;
   }
   (*mix_format)->nChannels = stream_params->channels;
@@ -941,7 +946,7 @@ handle_channel_layout(cubeb_stream * stm,  WAVEFORMATEX ** mix_format, const cub
      * eventual upmix/downmix ourselves */
     LOG("Using WASAPI suggested format: channels: %d\n", closest->nChannels);
     WAVEFORMATEXTENSIBLE * closest_pcm = reinterpret_cast<WAVEFORMATEXTENSIBLE *>(closest);
-    assert(closest_pcm->SubFormat == format_pcm->SubFormat);
+    FATAL(closest_pcm->SubFormat == format_pcm->SubFormat);
     CoTaskMemFree(*mix_format);
     *mix_format = closest;
   } else if (hr == AUDCLNT_E_UNSUPPORTED_FORMAT) {
@@ -967,7 +972,7 @@ int setup_wasapi_stream(cubeb_stream * stm)
     return CUBEB_ERROR;
   }
 
-  assert(!stm->client && "WASAPI stream already setup, close it first.");
+  FATAL(!stm->client && "WASAPI stream already setup, close it first.");
 
   hr = get_default_endpoint(&device);
   if (FAILED(hr)) {
@@ -1096,11 +1101,11 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
     return CUBEB_ERROR;
   }
 
-  assert(context && stream);
+  FATAL(context && stream);
 
   cubeb_stream * stm = (cubeb_stream *)calloc(1, sizeof(cubeb_stream));
 
-  assert(stm);
+  FATAL(stm);
 
   stm->context = context;
   stm->data_callback = data_callback;
@@ -1160,7 +1165,7 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
 
 void close_wasapi_stream(cubeb_stream * stm)
 {
-  assert(stm);
+  FATAL(stm);
 
   stm->stream_reset_lock->assert_current_thread_owns();
 
@@ -1181,7 +1186,7 @@ void close_wasapi_stream(cubeb_stream * stm)
 
 void wasapi_stream_destroy(cubeb_stream * stm)
 {
-  assert(stm);
+  FATAL(stm);
 
   unregister_notification_client(stm);
 
@@ -1204,7 +1209,7 @@ int wasapi_stream_start(cubeb_stream * stm)
 {
   auto_lock lock(stm->stream_reset_lock);
 
-  assert(stm && !stm->thread && !stm->shutdown_event);
+  FATAL(stm && !stm->thread && !stm->shutdown_event);
 
   stm->shutdown_event = CreateEvent(NULL, 0, 0, NULL);
   if (!stm->shutdown_event) {
@@ -1231,7 +1236,7 @@ int wasapi_stream_start(cubeb_stream * stm)
 
 int wasapi_stream_stop(cubeb_stream * stm)
 {
-  assert(stm);
+  FATAL(stm);
 
   auto_lock lock(stm->stream_reset_lock);
 
@@ -1253,7 +1258,7 @@ int wasapi_stream_stop(cubeb_stream * stm)
 
 int wasapi_stream_get_position(cubeb_stream * stm, uint64_t * position)
 {
-  assert(stm && position);
+  FATAL(stm && position);
 
   *position = clock_get(stm);
 
@@ -1262,7 +1267,7 @@ int wasapi_stream_get_position(cubeb_stream * stm, uint64_t * position)
 
 int wasapi_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
 {
-  assert(stm && latency);
+  FATAL(stm && latency);
 
   auto_lock lock(stm->stream_reset_lock);
 
@@ -1295,7 +1300,7 @@ int wasapi_stream_set_volume(cubeb_stream * stm, float volume)
     return CUBEB_ERROR;
   }
 
-  assert(channels <= 10 && "bump the array size");
+  FATAL(channels <= 10 && "bump the array size");
 
   for (uint32_t i = 0; i < channels; i++) {
     volumes[i] = volume;
