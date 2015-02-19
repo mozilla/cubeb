@@ -28,7 +28,7 @@
 
 #define FATAL(expr) do {                                                \
     fprintf(stderr, "%s:%s - fatal error: %s\n", __FILE__, __LINE__, #expr); \
-    *((volatile void *) NULL) = NULL;                                   \
+    *((volatile int *) NULL) = 0;                                       \
     abort();                                                            \
   } while (0)
 
