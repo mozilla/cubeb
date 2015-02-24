@@ -585,7 +585,7 @@ wasapi_stream_render_loop(LPVOID stream)
   }
 
   if (FAILED(hr)) {
-    stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STOPPED);
+    stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
   }
 
   stm->context->revert_mm_thread_characteristics(mmcss_handle);
