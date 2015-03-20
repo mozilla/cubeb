@@ -1213,7 +1213,7 @@ int wasapi_stream_start(cubeb_stream * stm)
       LOG("could not start the stream after reconfig: %x\n", hr);
       return CUBEB_ERROR;
     }
- } else if (FAILED(hr)) {
+  } else if (FAILED(hr)) {
     LOG("could not start the stream.\n");
     return CUBEB_ERROR;
   }
