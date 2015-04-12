@@ -33,7 +33,7 @@ if ALSA
 src_libcubeb_la_SOURCES += src/cubeb_alsa.c
 endif
 if AUDIOUNIT
-src_libcubeb_la_SOURCES += src/cubeb_audiounit.c
+src_libcubeb_la_SOURCES += src/cubeb_audiounit.c src/cubeb_osx_run_loop.c
 endif
 if AUDIOQUEUE
 src_libcubeb_la_SOURCES += src/cubeb_audioqueue.c
