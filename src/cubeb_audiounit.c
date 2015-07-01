@@ -159,7 +159,10 @@ audiounit_output_callback(void * user_ptr, AudioUnitRenderActionFlags * flags,
   pthread_mutex_unlock(&stm->mutex);
 
   if (stm->sample_spec.mChannelsPerFrame == 2) {
-    cubeb_pan_stereo_buffer_float((float*)buf, got, panning);
+    if (stm->sample_spec.mFormatFlags & kAudioFormatFlagIsFloat)
+      cubeb_pan_stereo_buffer_float((float*)buf, got, panning);
+    else if (stm->sample_spec.mFormatFlags & kAudioFormatFlagIsSignedInteger)
+      cubeb_pan_stereo_buffer_int((short*)buf, got, panning);
   }
 
   return noErr;
