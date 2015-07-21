@@ -282,6 +282,9 @@ public:
     , reconfigure_event(event)
   { }
 
+  virtual ~wasapi_endpoint_notification_client()
+  { }
+
   HRESULT STDMETHODCALLTYPE
   OnDefaultDeviceChanged(EDataFlow flow, ERole role, LPCWSTR device_id)
   {
@@ -478,7 +481,6 @@ wasapi_stream_render_loop(LPVOID stream)
   HANDLE wait_array[3] = {stm->shutdown_event, stm->reconfigure_event, stm->refill_event};
   HANDLE mmcss_handle = NULL;
   HRESULT hr = 0;
-  bool first = true;
   DWORD mmcss_task_index = 0;
   auto_com com;
   if (!com.ok()) {
