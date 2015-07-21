@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <cmath>
+#include <intrin.h>
 
 /**Taken from winbase.h, Not in MinGW.*/
 #ifndef STACK_SIZE_PARAM_IS_A_RESERVATION
