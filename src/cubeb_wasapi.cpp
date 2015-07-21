@@ -49,13 +49,13 @@ ms_to_hns(uint32_t ms)
 }
 
 uint32_t
-hns_to_ms(uint32_t hns)
+hns_to_ms(REFERENCE_TIME hns)
 {
   return hns / 10000;
 }
 
 double
-hns_to_s(uint32_t hns)
+hns_to_s(REFERENCE_TIME hns)
 {
   return static_cast<double>(hns) / 10000000;
 }
@@ -536,7 +536,7 @@ wasapi_stream_render_loop(LPVOID stream)
           /* Don't destroy the stream here, since we expect the caller to do
              so after the error has propagated via the state callback. */
           is_playing = false;
-          hr = -1;
+          hr = E_FAIL;
           continue;
         }
       }
@@ -588,7 +588,7 @@ wasapi_stream_render_loop(LPVOID stream)
       XASSERT(stm->shutdown_event == wait_array[0]);
       if (++timeout_count >= timeout_limit) {
         is_playing = false;
-        hr = -1;
+        hr = E_FAIL;
       }
       break;
     default:
@@ -733,6 +733,9 @@ int wasapi_init(cubeb ** context, char const * context_name)
   }
 
   cubeb * ctx = (cubeb *)calloc(1, sizeof(cubeb));
+  if (!ctx) {
+    return CUBEB_ERROR;
+  }
 
   ctx->ops = &wasapi_ops;
 
@@ -1317,7 +1320,10 @@ int wasapi_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
   }
 
   REFERENCE_TIME latency_hns;
-  stm->client->GetStreamLatency(&latency_hns);
+  HRESULT hr = stm->client->GetStreamLatency(&latency_hns);
+  if (FAILED(hr)) {
+    return CUBEB_ERROR;
+  }
   double latency_s = hns_to_s(latency_hns);
   *latency = static_cast<uint32_t>(latency_s * stm->stream_params.rate);
 
