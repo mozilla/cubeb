@@ -4,7 +4,6 @@
  * This program is made available under an ISC-style license.  See the
  * accompanying file LICENSE for details.
  */
-// This enables assert in release, and lets us have debug-only code
 #if defined(HAVE_CONFIG_H)
 #include "config.h"
 #endif
