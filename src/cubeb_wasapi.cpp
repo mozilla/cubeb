@@ -21,7 +21,7 @@
 #include <stdlib.h>
 #include <cmath>
 
-/**Taken from winbase.h, Not in MinGW.*/
+/* Taken from winbase.h, Not in MinGW. */
 #ifndef STACK_SIZE_PARAM_IS_A_RESERVATION
 #define STACK_SIZE_PARAM_IS_A_RESERVATION   0x00010000    // Threads only
 #endif
@@ -221,13 +221,13 @@ struct cubeb_stream
   /* Interface pointer to use the stream audio clock. */
   IAudioClock * audio_clock;
   /* Frames written to the stream since it was opened. Reset on device
-   * change. Uses mix_params.rate. */
+     change. Uses mix_params.rate. */
   UINT64 frames_written;
   /* Frames written to the (logical) stream since it was first
-   * created. Updated on device change. Uses stream_params.rate. */
+     created. Updated on device change. Uses stream_params.rate. */
   UINT64 total_frames_written;
   /* Last valid reported stream position.  Used to ensure the position
-   * reported by stream_get_position increases monotonically. */
+     reported by stream_get_position increases monotonically. */
   UINT64 prev_position;
   /* Device enumerator to be able to be notified when the default
      device change. */
@@ -1189,7 +1189,7 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
   hr = register_notification_client(stm);
   if (FAILED(hr)) {
     /* this is not fatal, we can still play audio, but we won't be able
-     * to keep using the default audio endpoint if it changes. */
+       to keep using the default audio endpoint if it changes. */
     LOG("failed to register notification client, %x\n", hr);
   }
 
