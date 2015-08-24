@@ -318,7 +318,7 @@ public:
 
     BOOL ok = SetEvent(reconfigure_event);
     if (!ok) {
-      LOG("SetEvent on reconfigure_event failed: %x", GetLastError());
+      LOG("SetEvent on reconfigure_event failed: %x\n", GetLastError());
     }
 
     return S_OK;
@@ -1101,7 +1101,7 @@ int setup_wasapi_stream(cubeb_stream * stm)
   hr = stm->client->GetService(__uuidof(IAudioStreamVolume),
                                (void **)&stm->audio_stream_volume);
   if (FAILED(hr)) {
-    LOG("Could not get the IAudioStreamVolume %x.\n", hr);
+    LOG("Could not get the IAudioStreamVolume: %x\n", hr);
     return CUBEB_ERROR;
   }
 
@@ -1109,7 +1109,7 @@ int setup_wasapi_stream(cubeb_stream * stm)
   hr = stm->client->GetService(__uuidof(IAudioClock),
                                (void **)&stm->audio_clock);
   if (FAILED(hr)) {
-    LOG("Could not get the IAudioClock %x.\n", hr);
+    LOG("Could not get the IAudioClock: %x\n", hr);
     return CUBEB_ERROR;
   }
 
