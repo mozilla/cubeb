@@ -191,7 +191,8 @@ if test "_$ac_cv_header_stdint_o" = "_" ; then
 AX_CHECK_HEADER_STDINT_U(dnl,
    sys/types.h inttypes.h sys/inttypes.h $inttype_headers,
    ac_cv_stdint_result="(seen u_int32_t$and64 in $i)")
-fi fi
+fi
+fi
 
 dnl if there was no good C99 header file, do some typedef checks...
 if test "_$ac_cv_header_stdint_x" = "_" ; then
@@ -290,7 +291,8 @@ echo "" >>$ac_stdint
 if test "_$ac_header" != "_" ; then if test "$ac_header" != "stddef.h" ; then
   echo "#include <$ac_header>" >>$ac_stdint
   echo "" >>$ac_stdint
-fi fi
+fi
+fi
 
 echo "/* which 64bit typedef has been found */" >>$ac_stdint
 if test "$ac_cv_type_uint64_t" = "yes" ; then
