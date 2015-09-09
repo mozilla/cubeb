@@ -205,7 +205,7 @@ stream_request_callback(pa_stream * s, size_t nbytes, void * u)
     if (stm->volume != PULSE_NO_GAIN) {
       uint32_t samples =  size * stm->sample_spec.channels / frame_size ;
 
-      if (stm->sample_spec.format == PA_SAMPLE_S16LE ||
+      if (stm->sample_spec.format == PA_SAMPLE_S16BE ||
           stm->sample_spec.format == PA_SAMPLE_S16LE) {
         short * b = buffer;
         for (uint32_t i = 0; i < samples; i++) {
