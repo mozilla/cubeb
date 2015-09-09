@@ -1185,6 +1185,10 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
 
   XASSERT(context && stream);
 
+  if (stream_params.format != CUBEB_SAMPLE_FLOAT32NE) {
+    return CUBEB_ERROR_INVALID_FORMAT;
+  }
+
   cubeb_stream * stm = (cubeb_stream *)calloc(1, sizeof(cubeb_stream));
 
   XASSERT(stm);
