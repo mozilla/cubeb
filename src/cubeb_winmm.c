@@ -8,12 +8,12 @@
 #undef WINVER
 #define WINVER 0x0501
 #undef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
 
 #include <malloc.h>
 #include <windows.h>
 #include <mmreg.h>
 #include <mmsystem.h>
+#include <mmddk.h>
 #include <process.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,8 +27,29 @@
 #endif
 
 /**This is also missing from the MinGW headers. It  also appears to be undocumented by Microsoft.*/
+#ifndef WAVE_FORMAT_48M08
+#define WAVE_FORMAT_48M08      0x00001000       /* 48     kHz, Mono, 8-bit */
+#endif
+#ifndef WAVE_FORMAT_48M16
+#define WAVE_FORMAT_48M16      0x00002000       /* 48     kHz, Mono, 16-bit */
+#endif
+#ifndef WAVE_FORMAT_48S08
+#define WAVE_FORMAT_48S08      0x00004000       /* 48     kHz, Stereo, 8-bit */
+#endif
 #ifndef WAVE_FORMAT_48S16
 #define WAVE_FORMAT_48S16      0x00008000       /* 48     kHz, Stereo, 16-bit */
+#endif
+#ifndef WAVE_FORMAT_96M08
+#define WAVE_FORMAT_96M08      0x00010000       /* 96     kHz, Mono, 8-bit */
+#endif
+#ifndef WAVE_FORMAT_96M16
+#define WAVE_FORMAT_96M16      0x00020000       /* 96     kHz, Mono, 16-bit */
+#endif
+#ifndef WAVE_FORMAT_96S08
+#define WAVE_FORMAT_96S08      0x00040000       /* 96     kHz, Stereo, 8-bit */
+#endif
+#ifndef WAVE_FORMAT_96S16
+#define WAVE_FORMAT_96S16      0x00080000       /* 96     kHz, Stereo, 16-bit */
 #endif
 
 /**Taken from winbase.h, also not in MinGW.*/
@@ -671,15 +692,298 @@ winmm_stream_set_volume(cubeb_stream * stm, float volume)
   return CUBEB_OK;
 }
 
+#define MM_11025HZ_MASK (WAVE_FORMAT_1M08 | WAVE_FORMAT_1M16 | WAVE_FORMAT_1S08 | WAVE_FORMAT_1S16)
+#define MM_22050HZ_MASK (WAVE_FORMAT_2M08 | WAVE_FORMAT_2M16 | WAVE_FORMAT_2S08 | WAVE_FORMAT_2S16)
+#define MM_44100HZ_MASK (WAVE_FORMAT_4M08 | WAVE_FORMAT_4M16 | WAVE_FORMAT_4S08 | WAVE_FORMAT_4S16)
+#define MM_48000HZ_MASK (WAVE_FORMAT_48M08 | WAVE_FORMAT_48M16 | WAVE_FORMAT_48S08 | WAVE_FORMAT_48S16)
+#define MM_96000HZ_MASK (WAVE_FORMAT_96M08 | WAVE_FORMAT_96M16 | WAVE_FORMAT_96S08 | WAVE_FORMAT_96S16)
+static void
+winmm_calculate_device_rate(cubeb_device_info * info, DWORD formats)
+{
+  if (formats & MM_11025HZ_MASK) {
+    info->min_rate = 11025;
+    info->default_rate = 11025;
+    info->max_rate = 11025;
+  }
+  if (formats & MM_22050HZ_MASK) {
+    if (info->min_rate == 0) info->min_rate = 22050;
+    info->max_rate = 22050;
+    info->default_rate = 22050;
+  }
+  if (formats & MM_44100HZ_MASK) {
+    if (info->min_rate == 0) info->min_rate = 44100;
+    info->max_rate = 44100;
+    info->default_rate = 44100;
+  }
+  if (formats & MM_48000HZ_MASK) {
+    if (info->min_rate == 0) info->min_rate = 48000;
+    info->max_rate = 48000;
+    info->default_rate = 48000;
+  }
+  if (formats & MM_96000HZ_MASK) {
+    if (info->min_rate == 0) {
+      info->min_rate = 96000;
+      info->default_rate = 96000;
+    }
+    info->max_rate = 96000;
+  }
+}
+
+
+#define MM_S16_MASK (WAVE_FORMAT_1M16 | WAVE_FORMAT_1S16 | WAVE_FORMAT_2M16 | WAVE_FORMAT_2S16 | WAVE_FORMAT_4M16 | \
+    WAVE_FORMAT_4S16 | WAVE_FORMAT_48M16 | WAVE_FORMAT_48S16 | WAVE_FORMAT_96M16 | WAVE_FORMAT_96S16)
+static int
+winmm_query_supported_formats (UINT devid, DWORD formats,
+    cubeb_device_fmt * supfmt, cubeb_device_fmt * deffmt)
+{
+  WAVEFORMATEXTENSIBLE wfx;
+
+  if (formats & MM_S16_MASK)
+    *deffmt = *supfmt = CUBEB_DEVICE_FMT_S16LE;
+  else
+    *deffmt = *supfmt = 0;
+
+  ZeroMemory(&wfx, sizeof(WAVEFORMATEXTENSIBLE));
+  wfx.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
+  wfx.Format.nChannels = 2;
+  wfx.Format.nSamplesPerSec = 44100;
+  wfx.Format.wBitsPerSample = 32;
+  wfx.Format.nBlockAlign = (wfx.Format.wBitsPerSample * wfx.Format.nChannels) / 8;
+  wfx.Format.nAvgBytesPerSec = wfx.Format.nSamplesPerSec * wfx.Format.nBlockAlign;
+  wfx.Format.cbSize = 22;
+  wfx.Samples.wValidBitsPerSample = wfx.Format.wBitsPerSample;
+  wfx.dwChannelMask = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT;
+  wfx.SubFormat = KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
+  if (waveOutOpen(NULL, devid, &wfx.Format, 0, 0, WAVE_FORMAT_QUERY) == MMSYSERR_NOERROR)
+    *supfmt = (cubeb_device_fmt)(*supfmt | CUBEB_DEVICE_FMT_F32LE);
+
+  return (*deffmt != 0) ? CUBEB_OK : CUBEB_ERROR;
+}
+
+static char *
+guid_to_cstr(LPGUID guid)
+{
+  char * ret = malloc(sizeof(char) * 40);
+  snprintf(ret, sizeof(char) * 40,
+      "{%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}",
+      guid->Data1, guid->Data2, guid->Data3,
+      guid->Data4[0], guid->Data4[1], guid->Data4[2], guid->Data4[3],
+      guid->Data4[4], guid->Data4[5], guid->Data4[6], guid->Data4[7]);
+  return ret;
+}
+
+static cubeb_device_pref
+winmm_query_preferred_out_device(UINT devid)
+{
+  DWORD mmpref = WAVE_MAPPER, compref = WAVE_MAPPER, status;
+  cubeb_device_pref ret = CUBEB_DEVICE_PREF_NONE;
+
+  if (waveOutMessage((HWAVEOUT)(size_t)WAVE_MAPPER, DRVM_MAPPER_PREFERRED_GET,
+        (DWORD_PTR)&mmpref, (DWORD_PTR)&status) == MMSYSERR_NOERROR &&
+      devid == mmpref)
+    ret |= CUBEB_DEVICE_PREF_MULTIMEDIA | CUBEB_DEVICE_PREF_NOTIFICATION;
+
+  if (waveOutMessage((HWAVEOUT)(size_t)WAVE_MAPPER, DRVM_MAPPER_CONSOLEVOICECOM_GET,
+        (DWORD_PTR)&compref, (DWORD_PTR)&status) == MMSYSERR_NOERROR &&
+      devid == compref)
+    ret |= CUBEB_DEVICE_PREF_VOICE;
+
+  return ret;
+}
+
+static cubeb_device_entry *
+winmm_create_device_from_outcaps2(LPWAVEOUTCAPS2A caps, UINT devid)
+{
+  cubeb_device_entry * ret;
+
+  ret = calloc(1, sizeof(cubeb_device_entry));
+  ZeroMemory(ret, sizeof(cubeb_device_entry));
+  ret->device.device_id = (cubeb_devid)(size_t)devid;
+  ret->device.friendly_name = _strdup(caps->szPname);
+  ret->device.group_id = guid_to_cstr(&caps->ProductGuid);
+  ret->device.vendor_name = guid_to_cstr(&caps->ManufacturerGuid);
+
+  ret->device.type = CUBEB_DEVICE_TYPE_OUTPUT;
+  ret->device.state = CUBEB_DEVICE_STATE_ENABLED;
+  ret->device.preferred = winmm_query_preferred_out_device(devid);
+
+  ret->device.max_channels = caps->wChannels;
+  winmm_calculate_device_rate(&ret->device, caps->dwFormats);
+  winmm_query_supported_formats(devid, caps->dwFormats,
+      &ret->device.format, &ret->device.default_format);
+
+  /* Hardcoed latency estimates... */
+  ret->device.latency_lo_ms = 100;
+  ret->device.latency_hi_ms = 200;
+
+  return ret;
+}
+
+static cubeb_device_entry *
+winmm_create_device_from_outcaps(LPWAVEOUTCAPSA caps, UINT devid)
+{
+  cubeb_device_entry * ret;
+
+  ret = calloc(1, sizeof(cubeb_device_entry));
+  ZeroMemory(ret, sizeof(cubeb_device_entry));
+  ret->device.device_id = (cubeb_devid)(size_t)devid;
+  ret->device.friendly_name = _strdup(caps->szPname);
+  ret->device.group_id = NULL;
+  ret->device.vendor_name = NULL;
+
+  ret->device.type = CUBEB_DEVICE_TYPE_OUTPUT;
+  ret->device.state = CUBEB_DEVICE_STATE_ENABLED;
+  ret->device.preferred = winmm_query_preferred_out_device(devid);
+
+  ret->device.max_channels = caps->wChannels;
+  winmm_calculate_device_rate(&ret->device, caps->dwFormats);
+  winmm_query_supported_formats(devid, caps->dwFormats,
+      &ret->device.format, &ret->device.default_format);
+
+  /* Hardcoed latency estimates... */
+  ret->device.latency_lo_ms = 100;
+  ret->device.latency_hi_ms = 200;
+
+  return ret;
+}
+
+static cubeb_device_pref
+winmm_query_preferred_in_device(UINT devid)
+{
+  DWORD mmpref = WAVE_MAPPER, compref = WAVE_MAPPER, status;
+  cubeb_device_pref ret = CUBEB_DEVICE_PREF_NONE;
+
+  if (waveInMessage((HWAVEIN)(size_t)WAVE_MAPPER, DRVM_MAPPER_PREFERRED_GET,
+        (DWORD_PTR)&mmpref, (DWORD_PTR)&status) == MMSYSERR_NOERROR &&
+      devid == mmpref)
+    ret |= CUBEB_DEVICE_PREF_MULTIMEDIA | CUBEB_DEVICE_PREF_NOTIFICATION;
+
+  if (waveInMessage((HWAVEIN)(size_t)WAVE_MAPPER, DRVM_MAPPER_CONSOLEVOICECOM_GET,
+        (DWORD_PTR)&compref, (DWORD_PTR)&status) == MMSYSERR_NOERROR &&
+      devid == compref)
+    ret |= CUBEB_DEVICE_PREF_VOICE;
+
+  return ret;
+}
+
+static cubeb_device_entry *
+winmm_create_device_from_incaps2(LPWAVEINCAPS2A caps, UINT devid)
+{
+  cubeb_device_entry * ret;
+
+  ret = calloc(1, sizeof(cubeb_device_entry));
+  ZeroMemory(ret, sizeof(cubeb_device_entry));
+  ret->device.device_id = (cubeb_devid)(size_t)devid;
+  ret->device.friendly_name = _strdup(caps->szPname);
+  ret->device.group_id = guid_to_cstr(&caps->ProductGuid);
+  ret->device.vendor_name = guid_to_cstr(&caps->ManufacturerGuid);
+
+  ret->device.type = CUBEB_DEVICE_TYPE_INPUT;
+  ret->device.state = CUBEB_DEVICE_STATE_ENABLED;
+  ret->device.preferred = winmm_query_preferred_in_device(devid);
+
+  ret->device.max_channels = caps->wChannels;
+  winmm_calculate_device_rate(&ret->device, caps->dwFormats);
+  winmm_query_supported_formats(devid, caps->dwFormats,
+      &ret->device.format, &ret->device.default_format);
+
+  /* Hardcoed latency estimates... */
+  ret->device.latency_lo_ms = 100;
+  ret->device.latency_hi_ms = 200;
+
+  return ret;
+}
+
+static cubeb_device_entry *
+winmm_create_device_from_incaps(LPWAVEINCAPSA caps, UINT devid)
+{
+  cubeb_device_entry * ret;
+
+  ret = calloc(1, sizeof(cubeb_device_entry));
+  ZeroMemory(ret, sizeof(cubeb_device_entry));
+  ret->device.device_id = (cubeb_devid)(size_t)devid;
+  ret->device.friendly_name = _strdup(caps->szPname);
+  ret->device.group_id = NULL;
+  ret->device.vendor_name = NULL;
+
+  ret->device.type = CUBEB_DEVICE_TYPE_INPUT;
+  ret->device.state = CUBEB_DEVICE_STATE_ENABLED;
+  ret->device.preferred = winmm_query_preferred_in_device(devid);
+
+  ret->device.max_channels = caps->wChannels;
+  winmm_calculate_device_rate(&ret->device, caps->dwFormats);
+  winmm_query_supported_formats(devid, caps->dwFormats,
+      &ret->device.format, &ret->device.default_format);
+
+  /* Hardcoed latency estimates... */
+  ret->device.latency_lo_ms = 100;
+  ret->device.latency_hi_ms = 200;
+
+  return ret;
+}
+
+static int
+winmm_enumerate_devices(cubeb * context, cubeb_device_type type,
+                        cubeb_device_list ** devices, uint32_t * count)
+{
+  UINT i;
+  cubeb_device_entry * cur;
+
+  *devices = NULL;
+  if (count) *count = 0;
+
+  if (type & CUBEB_DEVICE_TYPE_OUTPUT) {
+    WAVEOUTCAPSA woc;
+    WAVEOUTCAPS2A woc2;
+
+    ZeroMemory(&woc, sizeof(woc));
+    ZeroMemory(&woc2, sizeof(woc2));
+
+    for (i = waveOutGetNumDevs(); i > 0; i--) {
+      if ((waveOutGetDevCapsA(i-1, (LPWAVEOUTCAPSA)&woc2, sizeof(woc2)) == MMSYSERR_NOERROR &&
+            (cur = winmm_create_device_from_outcaps2(&woc2, i-1)) != NULL) ||
+          (waveOutGetDevCapsA(i-1, &woc, sizeof(woc)) == MMSYSERR_NOERROR &&
+            (cur = winmm_create_device_from_outcaps(&woc, i-1)) != NULL)
+          ) {
+        cur->next = *devices;
+        *devices = cur;
+        if (count) (*count)++;
+      }
+    }
+  }
+
+  if (type & CUBEB_DEVICE_TYPE_INPUT) {
+    WAVEINCAPSA wic;
+    WAVEINCAPS2A wic2;
+
+    ZeroMemory(&wic, sizeof(wic));
+    ZeroMemory(&wic2, sizeof(wic2));
+
+    for (i = waveInGetNumDevs(); i > 0; i--) {
+      if ((waveInGetDevCapsA(i-1, (LPWAVEINCAPSA)&wic2, sizeof(wic2)) == MMSYSERR_NOERROR &&
+            (cur = winmm_create_device_from_incaps2(&wic2, i-1)) != NULL) ||
+          (waveInGetDevCapsA(i-1, &wic, sizeof(wic)) == MMSYSERR_NOERROR &&
+            (cur = winmm_create_device_from_incaps(&wic, i-1)) != NULL)
+          ) {
+        cur->next = *devices;
+        *devices = cur;
+        if (count) (*count)++;
+      }
+    }
+  }
+
+  return CUBEB_OK;
+}
+
 static struct cubeb_ops const winmm_ops = {
   /*.init =*/ winmm_init,
   /*.get_backend_id =*/ winmm_get_backend_id,
   /*.get_max_channel_count=*/ winmm_get_max_channel_count,
   /*.get_min_latency=*/ winmm_get_min_latency,
   /*.get_preferred_sample_rate =*/ winmm_get_preferred_sample_rate,
-  /*.enumerate_devices =*/ NULL,
-  /*.device_info_destroy */= NULL,
-  /*.device_id_to_str */= NULL,
+  /*.enumerate_devices =*/ winmm_enumerate_devices,
+  /*.device_info_destroy =*/ cubeb_device_info_destroy_no_devid,
+  /*.device_id_to_str =*/ cubeb_device_id_idx,
   /*.destroy =*/ winmm_destroy,
   /*.stream_init =*/ winmm_stream_init,
   /*.stream_destroy =*/ winmm_stream_destroy,
