@@ -45,6 +45,8 @@ test/test_sanity
 test/test_sanity.exe
 test/test_tone
 test/test_tone.exe
+test/test_devices
+test/test_devices.exe
 include/cubeb/cubeb-stdint.h
 test-suite.log
 test/test_sanity.log

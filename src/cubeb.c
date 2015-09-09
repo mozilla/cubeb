@@ -7,6 +7,7 @@
 #undef NDEBUG
 #include <assert.h>
 #include <stddef.h>
+#include <stdlib.h>
 #if defined(HAVE_CONFIG_H)
 #include "config.h"
 #endif
@@ -362,3 +363,58 @@ int cubeb_stream_register_device_changed_callback(cubeb_stream * stream,
 
   return stream->context->ops->stream_register_device_changed_callback(stream, device_changed_callback);
 }
+
+int cubeb_enumerate_devices(cubeb * context,
+                            cubeb_device_type devtype,
+                            cubeb_device_list ** list,
+                            uint32_t * count)
+{
+  if ((devtype & (CUBEB_DEVICE_TYPE_INPUT | CUBEB_DEVICE_TYPE_OUTPUT)) == 0)
+    return CUBEB_ERROR_INVALID_PARAMETER;
+  if (list == NULL)
+    return CUBEB_ERROR_INVALID_PARAMETER;
+  if (!context->ops->enumerate_devices)
+    return CUBEB_ERROR_NOT_SUPPORTED;
+
+  return context->ops->enumerate_devices(context, devtype, list, count);
+}
+
+int cubeb_device_list_destroy(cubeb * context, cubeb_device_list * list)
+{
+  cubeb_device_list * cur;
+
+  if (context == NULL)
+    return CUBEB_ERROR_INVALID_PARAMETER;
+
+  while (list != NULL) {
+    cur = list;
+    list = list->next;
+    context->ops->device_info_destroy(context, &cur->device);
+    free(cur);
+  }
+
+  return CUBEB_OK;
+}
+
+int cubeb_device_id_to_str(cubeb * context, const cubeb_devid devid, char ** str)
+{
+  if (context == NULL || str == NULL)
+    return CUBEB_ERROR_INVALID_PARAMETER;
+
+  return context->ops->device_id_to_str(context, devid, str);
+}
+
+int cubeb_register_device_list_changed(cubeb * context,
+                                       cubeb_device_list_changed_callback callback,
+                                       void * user_ptr)
+{
+  return CUBEB_ERROR_NOT_SUPPORTED;
+}
+
+int cubeb_deregister_device_list_changed(cubeb * context,
+                                         cubeb_device_list_changed_callback callback,
+                                         void * user_ptr)
+{
+  return CUBEB_ERROR_NOT_SUPPORTED;
+}
+

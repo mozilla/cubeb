@@ -8,6 +8,8 @@
 #define CUBEB_INTERNAL_0eb56756_4e20_4404_a76d_42bf88cd15a5
 
 #include "cubeb/cubeb.h"
+#include <stdio.h>
+#include <string.h>
 
 struct cubeb_ops {
   int (* init)(cubeb ** context, char const * context_name);
@@ -17,6 +19,10 @@ struct cubeb_ops {
                           cubeb_stream_params params,
                           uint32_t * latency_ms);
   int (* get_preferred_sample_rate)(cubeb * context, uint32_t * rate);
+  int (* enumerate_devices)(cubeb * context, cubeb_device_type type,
+                            cubeb_device_list ** devices, uint32_t * count);
+  int (* device_info_destroy)(cubeb * context, cubeb_device_info * info);
+  int (* device_id_to_str)(cubeb * context, const cubeb_devid devid, char ** str);
   void (* destroy)(cubeb * context);
   int (* stream_init)(cubeb * context, cubeb_stream ** stream, char const * stream_name,
                       cubeb_stream_params stream_params, unsigned int latency,
@@ -36,7 +42,6 @@ struct cubeb_ops {
                                 cubeb_device * device);
   int (* stream_register_device_changed_callback)(cubeb_stream * stream,
                                                   cubeb_device_changed_callback device_changed_callback);
-
 };
 
 #define XASSERT(expr) do {                                              \
@@ -46,5 +51,51 @@ struct cubeb_ops {
       abort();                                                          \
     }                                                                   \
   } while (0)
+
+static inline int
+cubeb_device_info_destroy (cubeb * context, cubeb_device_info * info)
+{
+  free(info->device_id);
+  free(info->friendly_name);
+  free(info->group_id);
+  free(info->vendor_name);
+
+  return CUBEB_OK;
+}
+
+static inline int
+cubeb_device_info_destroy_no_devid (cubeb * context, cubeb_device_info * info)
+{
+  free(info->friendly_name);
+  free(info->group_id);
+  free(info->vendor_name);
+
+  return CUBEB_OK;
+}
+
+static inline int
+cubeb_device_id_str (cubeb * context, cubeb_devid devid, char ** str)
+{
+  size_t size = strlen((const char *)devid);
+  *str = (char *)malloc(size + 1);
+  strncpy(*str, (const char *)devid, size);
+  return CUBEB_OK;
+}
+
+static inline int
+cubeb_device_id_idx (cubeb * context, cubeb_devid devid, char ** str)
+{
+  *str = (char *)malloc(sizeof(char)*16);
+  snprintf(*str, 16, "%u", (unsigned int)(size_t)devid);
+  return CUBEB_OK;
+}
+
+static inline int
+cubeb_device_id_ptr (cubeb * context, cubeb_devid devid, char ** str)
+{
+  *str = (char *)malloc(sizeof(char)*16);
+  snprintf(*str, 16, "%p", (const char *)devid);
+  return CUBEB_OK;
+}
 
 #endif /* CUBEB_INTERNAL_0eb56756_4e20_4404_a76d_42bf88cd15a5 */
