@@ -182,6 +182,19 @@ AS_IF([test "x$with_winmm" != xno],
       ], [#include <windows.h>])])
 AM_CONDITIONAL([WINMM], [test $HAVE_WINMM -eq 1])
 
+AC_ARG_WITH([kai],
+            AS_HELP_STRING([--with-kai], [with KAI @<:@default=check@:>@]))
+AS_IF([test "x$with_kai" != xno],
+      [AC_CHECK_HEADERS([kai.h], [
+       HAVE_KAI=1
+       KAI_LIBS="-lkai"
+       AC_DEFINE([USE_KAI], [], [Use K Audio Interface])
+      ], [
+       HAVE_KAI=0
+       AS_IF([test "x$with_kai" = xyes], [AC_MSG_ERROR(KAI not detected)])
+      ])])
+AM_CONDITIONAL([KAI], [test $HAVE_KAI -eq 1])
+
 AM_CONDITIONAL([SPEEX], [test $NEED_SPEEX -eq 1])
 
 AS_IF([test $NEED_SPEEX -eq 1],
@@ -192,7 +205,7 @@ AS_IF([test $NEED_SPEEX -eq 1],
        AC_DEFINE([EXPORT], [], [Tell the resampler to export the symbols by default.])
       ])
 
-platform_lib="$PULSE_LIBS $JACK_LIBS $ALSA_LIBS $AUDIOUNIT_LIBS $AUDIOQUEUE_LIBS $SNDIO_LIBS $OPENSL_LIBS $DIRECTSOUND_LIBS $WINMM_LIBS $WASAPI_LIBS"
+platform_lib="$PULSE_LIBS $JACK_LIBS $ALSA_LIBS $AUDIOUNIT_LIBS $AUDIOQUEUE_LIBS $SNDIO_LIBS $OPENSL_LIBS $DIRECTSOUND_LIBS $WINMM_LIBS $WASAPI_LIBS $KAI_LIBS"
 
 dnl Check for doxygen
 AC_ARG_ENABLE([doc],

@@ -56,6 +56,9 @@ endif
 if AUDIOTRACK
 src_libcubeb_la_SOURCES += src/cubeb_audiotrack.c
 endif
+if KAI
+src_libcubeb_la_SOURCES += src/cubeb_kai.c
+endif
 if SPEEX
 src_libcubeb_la_SOURCES += src/cubeb_resampler.cpp src/speex/resample.c
 endif
