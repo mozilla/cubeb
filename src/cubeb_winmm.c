@@ -13,7 +13,6 @@
 #include <windows.h>
 #include <mmreg.h>
 #include <mmsystem.h>
-#include <mmddk.h>
 #include <process.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -55,6 +54,16 @@
 /**Taken from winbase.h, also not in MinGW.*/
 #ifndef STACK_SIZE_PARAM_IS_A_RESERVATION
 #define STACK_SIZE_PARAM_IS_A_RESERVATION   0x00010000    // Threads only
+#endif
+
+#ifndef DRVM_MAPPER
+#define DRVM_MAPPER             (0x2000)
+#endif
+#ifndef DRVM_MAPPER_PREFERRED_GET
+#define DRVM_MAPPER_PREFERRED_GET                 (DRVM_MAPPER+21)
+#endif
+#ifndef DRVM_MAPPER_CONSOLEVOICECOM_GET
+#define DRVM_MAPPER_CONSOLEVOICECOM_GET           (DRVM_MAPPER+23)
 #endif
 
 #define CUBEB_STREAM_MAX 32

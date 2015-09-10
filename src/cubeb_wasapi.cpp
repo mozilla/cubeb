@@ -13,7 +13,6 @@
 #include <windef.h>
 #include <audioclient.h>
 #include <devicetopology.h>
-#include <functiondiscoverykeys.h>
 #include <process.h>
 #include <avrt.h>
 #include "cubeb/cubeb.h"
@@ -27,6 +26,13 @@
 /* Taken from winbase.h, Not in MinGW. */
 #ifndef STACK_SIZE_PARAM_IS_A_RESERVATION
 #define STACK_SIZE_PARAM_IS_A_RESERVATION   0x00010000    // Threads only
+#endif
+
+#ifndef PKEY_Device_FriendlyName
+DEFINE_PROPERTYKEY(PKEY_Device_FriendlyName,    0xa45c254e, 0xdf1c, 0x4efd, 0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0, 14);    // DEVPROP_TYPE_STRING
+#endif
+#ifndef PKEY_Device_InstanceId
+DEFINE_PROPERTYKEY(PKEY_Device_InstanceId,      0x78c34fc8, 0x104a, 0x4aca, 0x9e, 0xa4, 0x52, 0x4d, 0x52, 0x99, 0x6e, 0x57, 0x00000100); //    VT_LPWSTR
 #endif
 
 // #define LOGGING_ENABLED
