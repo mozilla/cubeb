@@ -271,21 +271,6 @@ kai_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
 }
 
 static int
-kai_enumerate_devices(cubeb * context, cubeb_device_type type,
-                      cubeb_device_list ** devices, uint32_t * count)
-{
-  (void)context;
-  (void)type;
-
-  *devices = NULL;
-  if (count != NULL)
-    *count = 0;
-
-  return CUBEB_ERROR_NOT_SUPPORTED;
-}
-
-
-static int
 kai_stream_start(cubeb_stream * stm)
 {
   if (kaiPlay(stm->hkai))
@@ -344,9 +329,9 @@ static struct cubeb_ops const kai_ops = {
   /*.get_max_channel_count=*/ kai_get_max_channel_count,
   /*.get_min_latency=*/ kai_get_min_latency,
   /*.get_preferred_sample_rate =*/ kai_get_preferred_sample_rate,
-  /*.enumerate_devices =*/ kai_enumerate_devices,
-  /*.device_info_destroy =*/ cubeb_device_info_destroy_no_devid,
-  /*.device_id_to_str =*/ cubeb_device_id_idx,
+  /*.enumerate_devices =*/ NULL,
+  /*.device_info_destroy =*/ NULL,
+  /*.device_id_to_str =*/ NULL,
   /*.destroy =*/ kai_destroy,
   /*.stream_init =*/ kai_stream_init,
   /*.stream_destroy =*/ kai_stream_destroy,
