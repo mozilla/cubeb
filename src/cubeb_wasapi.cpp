@@ -1441,10 +1441,10 @@ wstr_to_utf8(LPCWSTR str)
   char * ret = NULL;
   int size;
 
-  size = ::WideCharToMultiByte (CP_UTF8, 0, str, -1, ret, 0, NULL, NULL);
+  size = ::WideCharToMultiByte(CP_UTF8, 0, str, -1, ret, 0, NULL, NULL);
   if (size > 0) {
-    ret = (char*)malloc (size);
-    ::WideCharToMultiByte (CP_UTF8, 0, str, -1, ret, size, NULL, NULL);
+    ret = (char *)malloc(size);
+    ::WideCharToMultiByte(CP_UTF8, 0, str, -1, ret, size, NULL, NULL);
   }
 
   return ret;

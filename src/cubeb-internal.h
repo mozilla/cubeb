@@ -53,7 +53,7 @@ struct cubeb_ops {
   } while (0)
 
 static inline int
-cubeb_device_info_destroy (cubeb * context, cubeb_device_info * info)
+cubeb_device_info_destroy(cubeb * context, cubeb_device_info * info)
 {
   free(info->device_id);
   free(info->friendly_name);
@@ -64,7 +64,7 @@ cubeb_device_info_destroy (cubeb * context, cubeb_device_info * info)
 }
 
 static inline int
-cubeb_device_info_destroy_no_devid (cubeb * context, cubeb_device_info * info)
+cubeb_device_info_destroy_no_devid(cubeb * context, cubeb_device_info * info)
 {
   free(info->friendly_name);
   free(info->group_id);
@@ -74,7 +74,7 @@ cubeb_device_info_destroy_no_devid (cubeb * context, cubeb_device_info * info)
 }
 
 static inline int
-cubeb_device_id_str (cubeb * context, cubeb_devid devid, char ** str)
+cubeb_device_id_str(cubeb * context, cubeb_devid devid, char ** str)
 {
   size_t size = strlen((const char *)devid);
   *str = (char *)malloc(size + 1);
@@ -83,7 +83,7 @@ cubeb_device_id_str (cubeb * context, cubeb_devid devid, char ** str)
 }
 
 static inline int
-cubeb_device_id_idx (cubeb * context, cubeb_devid devid, char ** str)
+cubeb_device_id_idx(cubeb * context, cubeb_devid devid, char ** str)
 {
   *str = (char *)malloc(sizeof(char)*16);
   snprintf(*str, 16, "%u", (unsigned int)(size_t)devid);
@@ -91,7 +91,7 @@ cubeb_device_id_idx (cubeb * context, cubeb_devid devid, char ** str)
 }
 
 static inline int
-cubeb_device_id_ptr (cubeb * context, cubeb_devid devid, char ** str)
+cubeb_device_id_ptr(cubeb * context, cubeb_devid devid, char ** str)
 {
   *str = (char *)malloc(sizeof(char)*16);
   snprintf(*str, 16, "%p", (const char *)devid);

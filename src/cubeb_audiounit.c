@@ -1201,7 +1201,7 @@ audiounit_create_device_from_hwdev(AudioObjectID devid, cubeb_device_type type)
       adr.mSelector = kAudioDevicePropertyDataSourceNameForIDCFString;
       size = sizeof(AudioValueTranslation);
       if (AudioObjectGetPropertyData(devid, &adr, 0, NULL, &size, &trl) == noErr) {
-        CFStringRef fullstr = CFStringCreateWithFormat (NULL, NULL,
+        CFStringRef fullstr = CFStringCreateWithFormat(NULL, NULL,
             CFSTR("%@ (%@)"), str, dsname);
         CFRelease(dsname);
         if (fullstr != NULL) {

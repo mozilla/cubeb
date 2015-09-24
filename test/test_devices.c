@@ -125,7 +125,7 @@ run_enumerate_devices(void)
   }
 
   fprintf(stdout, "Enumerating input devices for backend %s\n",
-      cubeb_get_backend_id (ctx));
+      cubeb_get_backend_id(ctx));
 
   r = cubeb_enumerate_devices(ctx, CUBEB_DEVICE_TYPE_INPUT, &devices, &count);
   if (r != CUBEB_OK) {
@@ -134,11 +134,11 @@ run_enumerate_devices(void)
   }
 
   fprintf(stdout, "Found %u input devices\n", count);
-  print_device_list (ctx, devices, stdout);
-  cubeb_device_list_destroy (ctx, devices);
+  print_device_list(ctx, devices, stdout);
+  cubeb_device_list_destroy(ctx, devices);
 
   fprintf(stdout, "Enumerating output devices for backend %s\n",
-          cubeb_get_backend_id (ctx));
+          cubeb_get_backend_id(ctx));
 
   r = cubeb_enumerate_devices(ctx, CUBEB_DEVICE_TYPE_OUTPUT, &devices, &count);
   if (r != CUBEB_OK) {
@@ -147,8 +147,8 @@ run_enumerate_devices(void)
   }
 
   fprintf(stdout, "Found %u output devices\n", count);
-  print_device_list (ctx, devices, stdout);
-  cubeb_device_list_destroy (ctx, devices);
+  print_device_list(ctx, devices, stdout);
+  cubeb_device_list_destroy(ctx, devices);
 
 cleanup:
   cubeb_destroy(ctx);

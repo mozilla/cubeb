@@ -742,7 +742,7 @@ winmm_calculate_device_rate(cubeb_device_info * info, DWORD formats)
 #define MM_S16_MASK (WAVE_FORMAT_1M16 | WAVE_FORMAT_1S16 | WAVE_FORMAT_2M16 | WAVE_FORMAT_2S16 | WAVE_FORMAT_4M16 | \
     WAVE_FORMAT_4S16 | WAVE_FORMAT_48M16 | WAVE_FORMAT_48S16 | WAVE_FORMAT_96M16 | WAVE_FORMAT_96S16)
 static int
-winmm_query_supported_formats (UINT devid, DWORD formats,
+winmm_query_supported_formats(UINT devid, DWORD formats,
     cubeb_device_fmt * supfmt, cubeb_device_fmt * deffmt)
 {
   WAVEFORMATEXTENSIBLE wfx;
