@@ -1528,7 +1528,7 @@ wasapi_create_device(IMMDeviceEnumerator * enumerator, IMMDevice * dev)
   ret = (cubeb_device_entry *)calloc(1, sizeof(cubeb_device_entry));
   ZeroMemory(ret, sizeof(cubeb_device_entry));
 
-  ret->device.device_id = wstr_to_utf8(device_id);
+  ret->device.devid = ret->device.device_id = wstr_to_utf8(device_id);
   hr = propstore->GetValue(PKEY_Device_FriendlyName, &propvar);
   if (SUCCEEDED(hr))
     ret->device.friendly_name = wstr_to_utf8(propvar.pwszVal);
@@ -1675,8 +1675,6 @@ cubeb_ops const wasapi_ops = {
   /*.get_min_latency =*/ wasapi_get_min_latency,
   /*.get_preferred_sample_rate =*/ wasapi_get_preferred_sample_rate,
   /*.enumerate_devices =*/ wasapi_enumerate_devices,
-  /*.device_info_destroy =*/ cubeb_device_info_destroy,
-  /*.device_id_to_str =*/ cubeb_device_id_str,
   /*.destroy =*/ wasapi_destroy,
   /*.stream_init =*/ wasapi_stream_init,
   /*.stream_destroy =*/ wasapi_stream_destroy,

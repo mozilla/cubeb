@@ -1185,6 +1185,7 @@ audiounit_create_device_from_hwdev(AudioObjectID devid, cubeb_device_type type)
   adr.mSelector = kAudioDevicePropertyDeviceUID;
   if (AudioObjectGetPropertyData(devid, &adr, 0, NULL, &size, &str) == noErr && str != NULL) {
     ret->device.device_id = audiounit_strref_to_cstr_utf8(str);
+    ret->device.devid = (cubeb_devid)ret->device.device_id;
     ret->device.group_id = strdup(ret->device.device_id);
     CFRelease(str);
   }
@@ -1299,8 +1300,6 @@ static struct cubeb_ops const audiounit_ops = {
   .get_min_latency = audiounit_get_min_latency,
   .get_preferred_sample_rate = audiounit_get_preferred_sample_rate,
   .enumerate_devices = audiounit_enumerate_devices,
-  .device_info_destroy = cubeb_device_info_destroy,
-  .device_id_to_str = cubeb_device_id_str,
   .destroy = audiounit_destroy,
   .stream_init = audiounit_stream_init,
   .stream_destroy = audiounit_stream_destroy,

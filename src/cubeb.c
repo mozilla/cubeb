@@ -389,19 +389,24 @@ int cubeb_device_list_destroy(cubeb * context, cubeb_device_list * list)
   while (list != NULL) {
     cur = list;
     list = list->next;
-    context->ops->device_info_destroy(context, &cur->device);
+    cubeb_device_info_destroy(context, &cur->device);
     free(cur);
   }
 
   return CUBEB_OK;
 }
 
-int cubeb_device_id_to_str(cubeb * context, const cubeb_devid devid, char ** str)
+int cubeb_device_info_destroy(cubeb * context, cubeb_device_info * info)
 {
-  if (context == NULL || str == NULL)
+  if (context == NULL)
     return CUBEB_ERROR_INVALID_PARAMETER;
 
-  return context->ops->device_id_to_str(context, devid, str);
+  free(info->device_id);
+  free(info->friendly_name);
+  free(info->group_id);
+  free(info->vendor_name);
+
+  return CUBEB_OK;
 }
 
 int cubeb_register_device_list_changed(cubeb * context,

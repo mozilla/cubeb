@@ -21,13 +21,11 @@
 static void
 print_device_list(cubeb * context, cubeb_device_list * devices, FILE * f)
 {
-  char * devid = NULL, devfmts[64] = "";
+  char devfmts[64] = "";
   const char * devtype, * devstate, * devdeffmt;
 
   if (devices == NULL)
     return;
-
-  cubeb_device_id_to_str(context, devices->device.device_id, &devid);
 
   switch (devices->device.type) {
     case CUBEB_DEVICE_TYPE_INPUT:
@@ -95,7 +93,7 @@ print_device_list(cubeb * context, cubeb_device_list * devices, FILE * f)
       "\tFormat:  %s (0x%x) (default: %s)\n"
       "\tRate:    %u - %u (default: %u)\n"
       "\tLatency: lo %ums, hi %ums\n",
-      devid, devices->device.preferred ? " (PREFERRED)" : "",
+      devices->device.device_id, devices->device.preferred ? " (PREFERRED)" : "",
       devices->device.friendly_name, devices->device.group_id,
       devices->device.vendor_name, devtype, devstate,
       devices->device.max_channels,
@@ -104,8 +102,6 @@ print_device_list(cubeb * context, cubeb_device_list * devices, FILE * f)
       devices->device.min_rate, devices->device.max_rate,
       devices->device.default_rate,
       devices->device.latency_lo_ms, devices->device.latency_hi_ms);
-
-  free(devid);
 
   print_device_list(context, devices->next, f);
 }

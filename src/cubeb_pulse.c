@@ -780,6 +780,7 @@ pulse_sink_info_cb(pa_context * context, const pa_sink_info * info,
   entry = calloc(1, sizeof(cubeb_device_entry));
 
   entry->device.device_id = strdup(info->name);
+  entry->device.devid = (cubeb_devid)entry->device.device_id;
   entry->device.friendly_name = strdup(info->description);
   prop = WRAP(pa_proplist_gets)(info->proplist, "sysfs.path");
   if (prop)
@@ -837,6 +838,7 @@ pulse_source_info_cb(pa_context * context, const pa_source_info * info,
   entry = calloc(1, sizeof(cubeb_device_entry));
 
   entry->device.device_id = strdup(info->name);
+  entry->device.devid = (cubeb_devid)entry->device.device_id;
   entry->device.friendly_name = strdup(info->description);
   prop = WRAP(pa_proplist_gets)(info->proplist, "sysfs.path");
   if (prop)
@@ -924,8 +926,6 @@ static struct cubeb_ops const pulse_ops = {
   .get_min_latency = pulse_get_min_latency,
   .get_preferred_sample_rate = pulse_get_preferred_sample_rate,
   .enumerate_devices = pulse_enumerate_devices,
-  .device_info_destroy = cubeb_device_info_destroy,
-  .device_id_to_str = cubeb_device_id_str,
   .destroy = pulse_destroy,
   .stream_init = pulse_stream_init,
   .stream_destroy = pulse_stream_destroy,

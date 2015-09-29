@@ -193,7 +193,8 @@ typedef enum {
 } cubeb_device_pref;
 
 typedef struct {
-  cubeb_devid device_id;      /* Device identifier */
+  cubeb_devid devid;          /* Device identifier handle */
+  char * device_id;           /* Device identifier which might be presented in a UI */
   char * friendly_name;       /* Friendly device name which might be presented in a UI */
   char * group_id;            /* Two devices have the same group identifier if they belong to the same physical device; for example a headset and microphone. */
   char * vendor_name;         /* Optional vendor name, may be NULL */
@@ -431,13 +432,11 @@ int cubeb_enumerate_devices(cubeb * context,
     @retval CUBEB_OK */
 int cubeb_device_list_destroy(cubeb * context, cubeb_device_list * list);
 
-/** Retrieves the device id as string.
-    The string must be free()ed by the caller.
+/** Destroy a cubeb_device_info structure.
     @param context
-    @param devid device id
-    @param str pointer to string
+    @param info pointer device info structure to destroy
     @retval CUBEB_OK */
-int cubeb_device_id_to_str(cubeb * context, const cubeb_devid devid, char ** str);
+int cubeb_device_info_destroy(cubeb * context, cubeb_device_info * info);
 
 /** Registers a callback which is called when device list changes..
     @param context
