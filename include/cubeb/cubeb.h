@@ -214,12 +214,11 @@ typedef struct {
   unsigned int latency_hi_ms; /* Higest possible latency in milliseconds  */
 } cubeb_device_info;
 
-typedef struct _cubeb_device_entry cubeb_device_entry;
-struct _cubeb_device_entry {
-  cubeb_device_info device;
-  cubeb_device_entry * next;
-};
-typedef struct _cubeb_device_entry cubeb_device_list;
+/** Device collection. */
+typedef struct {
+  uint32_t count;                 /**< Device count in collection. */
+  cubeb_device_info * device[0];  /**< Array of pointers to device info. */
+} cubeb_device_collection;
 
 /** User supplied data callback.
     @param stream
@@ -415,28 +414,25 @@ int cubeb_stream_register_device_changed_callback(cubeb_stream * stream,
 /** Returns enumerated devices.
     @param context
     @param devtype device type to include
-    @param list output list. Must be destroyed with cubeb_device_list_destroy
-    @param count optional parameter which will return number of devices in list
+    @param collection output collection. Must be destroyed with cubeb_device_collection_destroy
     @retval CUBEB_OK in case of success
-    @retval CUBEB_ERROR_INVALID_PARAMETER if list is an invalid pointer
+    @retval CUBEB_ERROR_INVALID_PARAMETER if collection is an invalid pointer
     @retval CUBEB_ERROR_NOT_SUPPORTED */
 int cubeb_enumerate_devices(cubeb * context,
                             cubeb_device_type devtype,
-                            cubeb_device_list ** list,
-                            uint32_t * count);
+                            cubeb_device_collection ** collection);
 
-/** Destroy a cubeb_device_list list.
-    The whole list is destroyed.
-    @param context
-    @param list list to destroy
-    @retval CUBEB_OK */
-int cubeb_device_list_destroy(cubeb * context, cubeb_device_list * list);
+/** Destroy a cubeb_device_collection.
+    @param collection collection to destroy
+    @retval CUBEB_OK
+    @retval CUBEB_ERROR_INVALID_PARAMETER if collection is an invalid pointer */
+int cubeb_device_collection_destroy(cubeb_device_collection * collection);
 
 /** Destroy a cubeb_device_info structure.
-    @param context
-    @param info pointer device info structure to destroy
-    @retval CUBEB_OK */
-int cubeb_device_info_destroy(cubeb * context, cubeb_device_info * info);
+    @param info pointer to device info structure
+    @retval CUBEB_OK
+    @retval CUBEB_ERROR_INVALID_PARAMETER if info is an invalid pointer */
+int cubeb_device_info_destroy(cubeb_device_info * info);
 
 /** Registers a callback which is called when device list changes..
     @param context

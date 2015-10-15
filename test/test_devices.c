@@ -19,15 +19,12 @@
 
 
 static void
-print_device_list(cubeb * context, cubeb_device_list * devices, FILE * f)
+print_device_info(cubeb_device_info * info, FILE * f)
 {
   char devfmts[64] = "";
   const char * devtype, * devstate, * devdeffmt;
 
-  if (devices == NULL)
-    return;
-
-  switch (devices->device.type) {
+  switch (info->type) {
     case CUBEB_DEVICE_TYPE_INPUT:
       devtype = "input";
       break;
@@ -40,7 +37,7 @@ print_device_list(cubeb * context, cubeb_device_list * devices, FILE * f)
       break;
   };
 
-  switch (devices->device.state) {
+  switch (info->state) {
     case CUBEB_DEVICE_STATE_DISABLED:
       devstate = "disabled";
       break;
@@ -55,7 +52,7 @@ print_device_list(cubeb * context, cubeb_device_list * devices, FILE * f)
       break;
   };
 
-  switch (devices->device.default_format) {
+  switch (info->default_format) {
     case CUBEB_DEVICE_FMT_S16LE:
       devdeffmt = "S16LE";
       break;
@@ -73,13 +70,13 @@ print_device_list(cubeb * context, cubeb_device_list * devices, FILE * f)
       break;
   };
 
-  if (devices->device.format & CUBEB_DEVICE_FMT_S16LE)
+  if (info->format & CUBEB_DEVICE_FMT_S16LE)
     strcat(devfmts, " S16LE");
-  if (devices->device.format & CUBEB_DEVICE_FMT_S16BE)
+  if (info->format & CUBEB_DEVICE_FMT_S16BE)
     strcat(devfmts, " S16BE");
-  if (devices->device.format & CUBEB_DEVICE_FMT_F32LE)
+  if (info->format & CUBEB_DEVICE_FMT_F32LE)
     strcat(devfmts, " F32LE");
-  if (devices->device.format & CUBEB_DEVICE_FMT_F32BE)
+  if (info->format & CUBEB_DEVICE_FMT_F32BE)
     strcat(devfmts, " F32BE");
 
   fprintf(f,
@@ -93,17 +90,22 @@ print_device_list(cubeb * context, cubeb_device_list * devices, FILE * f)
       "\tFormat:  %s (0x%x) (default: %s)\n"
       "\tRate:    %u - %u (default: %u)\n"
       "\tLatency: lo %ums, hi %ums\n",
-      devices->device.device_id, devices->device.preferred ? " (PREFERRED)" : "",
-      devices->device.friendly_name, devices->device.group_id,
-      devices->device.vendor_name, devtype, devstate,
-      devices->device.max_channels,
+      info->device_id, info->preferred ? " (PREFERRED)" : "",
+      info->friendly_name, info->group_id, info->vendor_name,
+      devtype, devstate, info->max_channels,
       (devfmts[0] == ' ') ? &devfmts[1] : devfmts,
-      (unsigned int)devices->device.format, devdeffmt,
-      devices->device.min_rate, devices->device.max_rate,
-      devices->device.default_rate,
-      devices->device.latency_lo_ms, devices->device.latency_hi_ms);
+      (unsigned int)info->format, devdeffmt,
+      info->min_rate, info->max_rate, info->default_rate,
+      info->latency_lo_ms, info->latency_hi_ms);
+}
 
-  print_device_list(context, devices->next, f);
+static void
+print_device_collection(cubeb_device_collection * collection, FILE * f)
+{
+  uint32_t i;
+
+  for (i = 0; i < collection->count; i++)
+    print_device_info(collection->device[i], f);
 }
 
 static int
@@ -111,8 +113,7 @@ run_enumerate_devices(void)
 {
   int r = CUBEB_OK;
   cubeb * ctx = NULL;
-  cubeb_device_list * devices = NULL;
-  uint32_t count = 0;
+  cubeb_device_collection * collection = NULL;
 
   r = cubeb_init(&ctx, "Cubeb audio test");
   if (r != CUBEB_OK) {
@@ -123,28 +124,28 @@ run_enumerate_devices(void)
   fprintf(stdout, "Enumerating input devices for backend %s\n",
       cubeb_get_backend_id(ctx));
 
-  r = cubeb_enumerate_devices(ctx, CUBEB_DEVICE_TYPE_INPUT, &devices, &count);
+  r = cubeb_enumerate_devices(ctx, CUBEB_DEVICE_TYPE_INPUT, &collection);
   if (r != CUBEB_OK) {
     fprintf(stderr, "Error enumerating devices %d\n", r);
     goto cleanup;
   }
 
-  fprintf(stdout, "Found %u input devices\n", count);
-  print_device_list(ctx, devices, stdout);
-  cubeb_device_list_destroy(ctx, devices);
+  fprintf(stdout, "Found %u input devices\n", collection->count);
+  print_device_collection(collection, stdout);
+  cubeb_device_collection_destroy(collection);
 
   fprintf(stdout, "Enumerating output devices for backend %s\n",
           cubeb_get_backend_id(ctx));
 
-  r = cubeb_enumerate_devices(ctx, CUBEB_DEVICE_TYPE_OUTPUT, &devices, &count);
+  r = cubeb_enumerate_devices(ctx, CUBEB_DEVICE_TYPE_OUTPUT, &collection);
   if (r != CUBEB_OK) {
     fprintf(stderr, "Error enumerating devices %d\n", r);
     goto cleanup;
   }
 
-  fprintf(stdout, "Found %u output devices\n", count);
-  print_device_list(ctx, devices, stdout);
-  cubeb_device_list_destroy(ctx, devices);
+  fprintf(stdout, "Found %u output devices\n", collection->count);
+  print_device_collection(collection, stdout);
+  cubeb_device_collection_destroy(collection);
 
 cleanup:
   cubeb_destroy(ctx);

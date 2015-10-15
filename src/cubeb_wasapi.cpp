@@ -1443,7 +1443,7 @@ wstr_to_utf8(LPCWSTR str)
 
   size = ::WideCharToMultiByte(CP_UTF8, 0, str, -1, ret, 0, NULL, NULL);
   if (size > 0) {
-    ret = (char *)malloc(size);
+    ret = (char *) malloc(size);
     ::WideCharToMultiByte(CP_UTF8, 0, str, -1, ret, size, NULL, NULL);
   }
 
@@ -1493,13 +1493,13 @@ wasapi_is_default_device(EDataFlow flow, ERole role, LPCWSTR device_id,
   return ret;
 }
 
-static cubeb_device_entry *
+static cubeb_device_info *
 wasapi_create_device(IMMDeviceEnumerator * enumerator, IMMDevice * dev)
 {
   IMMEndpoint * endpoint = NULL;
   IMMDevice * devnode;
   IAudioClient * client = NULL;
-  cubeb_device_entry * ret = NULL;
+  cubeb_device_info * ret = NULL;
   EDataFlow flow;
   LPWSTR device_id = NULL;
   DWORD state = DEVICE_STATE_NOTPRESENT;
@@ -1525,13 +1525,12 @@ wasapi_create_device(IMMDeviceEnumerator * enumerator, IMMDevice * dev)
   hr = dev->GetState(&state);
   if (FAILED(hr)) goto done;
 
-  ret = (cubeb_device_entry *)calloc(1, sizeof(cubeb_device_entry));
-  ZeroMemory(ret, sizeof(cubeb_device_entry));
+  ret = (cubeb_device_info *)calloc(1, sizeof(cubeb_device_info));
 
-  ret->device.devid = ret->device.device_id = wstr_to_utf8(device_id);
+  ret->devid = ret->device_id = wstr_to_utf8(device_id);
   hr = propstore->GetValue(PKEY_Device_FriendlyName, &propvar);
   if (SUCCEEDED(hr))
-    ret->device.friendly_name = wstr_to_utf8(propvar.pwszVal);
+    ret->friendly_name = wstr_to_utf8(propvar.pwszVal);
 
   devnode = wasapi_get_device_node(enumerator, dev);
   if (devnode != NULL) {
@@ -1542,61 +1541,61 @@ wasapi_create_device(IMMDeviceEnumerator * enumerator, IMMDevice * dev)
     PropVariantClear(&propvar);
     hr = ps->GetValue(PKEY_Device_InstanceId, &propvar);
     if (SUCCEEDED(hr)) {
-      ret->device.group_id = wstr_to_utf8(propvar.pwszVal);
+      ret->group_id = wstr_to_utf8(propvar.pwszVal);
     }
     SafeRelease(ps);
   }
 
-  ret->device.preferred = CUBEB_DEVICE_PREF_NONE;
+  ret->preferred = CUBEB_DEVICE_PREF_NONE;
   if (wasapi_is_default_device(flow, eMultimedia, device_id, enumerator))
-    ret->device.preferred = (cubeb_device_pref)(ret->device.preferred | CUBEB_DEVICE_PREF_MULTIMEDIA);
+    ret->preferred = (cubeb_device_pref)(ret->preferred | CUBEB_DEVICE_PREF_MULTIMEDIA);
   if (wasapi_is_default_device(flow, eCommunications, device_id, enumerator))
-    ret->device.preferred = (cubeb_device_pref)(ret->device.preferred | CUBEB_DEVICE_PREF_VOICE);
+    ret->preferred = (cubeb_device_pref)(ret->preferred | CUBEB_DEVICE_PREF_VOICE);
   if (wasapi_is_default_device(flow, eConsole, device_id, enumerator))
-    ret->device.preferred = (cubeb_device_pref)(ret->device.preferred | CUBEB_DEVICE_PREF_NOTIFICATION);
+    ret->preferred = (cubeb_device_pref)(ret->preferred | CUBEB_DEVICE_PREF_NOTIFICATION);
 
-  if (flow == eRender) ret->device.type = CUBEB_DEVICE_TYPE_OUTPUT;
-  else if (flow == eCapture) ret->device.type = CUBEB_DEVICE_TYPE_INPUT;
+  if (flow == eRender) ret->type = CUBEB_DEVICE_TYPE_OUTPUT;
+  else if (flow == eCapture) ret->type = CUBEB_DEVICE_TYPE_INPUT;
   switch (state) {
     case DEVICE_STATE_ACTIVE:
-      ret->device.state = CUBEB_DEVICE_STATE_ENABLED;
+      ret->state = CUBEB_DEVICE_STATE_ENABLED;
       break;
     case DEVICE_STATE_UNPLUGGED:
-      ret->device.state = CUBEB_DEVICE_STATE_UNPLUGGED;
+      ret->state = CUBEB_DEVICE_STATE_UNPLUGGED;
       break;
     default:
-      ret->device.state = CUBEB_DEVICE_STATE_DISABLED;
+      ret->state = CUBEB_DEVICE_STATE_DISABLED;
       break;
   };
 
-  ret->device.format = CUBEB_DEVICE_FMT_F32NE; /* cubeb only supports 32bit float at the moment */
-  ret->device.default_format = CUBEB_DEVICE_FMT_F32NE;
+  ret->format = CUBEB_DEVICE_FMT_F32NE; /* cubeb only supports 32bit float at the moment */
+  ret->default_format = CUBEB_DEVICE_FMT_F32NE;
   PropVariantClear(&propvar);
   hr = propstore->GetValue(PKEY_AudioEngine_DeviceFormat, &propvar);
   if (SUCCEEDED(hr) && propvar.vt == VT_BLOB) {
     if (propvar.blob.cbSize == sizeof(PCMWAVEFORMAT)) {
       const PCMWAVEFORMAT * pcm = reinterpret_cast<const PCMWAVEFORMAT *>(propvar.blob.pBlobData);
 
-      ret->device.max_rate = ret->device.min_rate = ret->device.default_rate = pcm->wf.nSamplesPerSec;
-      ret->device.max_channels = pcm->wf.nChannels;
+      ret->max_rate = ret->min_rate = ret->default_rate = pcm->wf.nSamplesPerSec;
+      ret->max_channels = pcm->wf.nChannels;
     } else if (propvar.blob.cbSize >= sizeof(WAVEFORMATEX)) {
       LPCWAVEFORMATEX wfx = reinterpret_cast<LPCWAVEFORMATEX>(propvar.blob.pBlobData);
 
       if (propvar.blob.cbSize >= sizeof(WAVEFORMATEX) + wfx->cbSize ||
           wfx->wFormatTag == WAVE_FORMAT_PCM) {
-        ret->device.max_rate = ret->device.min_rate = ret->device.default_rate = wfx->nSamplesPerSec;
-        ret->device.max_channels = wfx->nChannels;
+        ret->max_rate = ret->min_rate = ret->default_rate = wfx->nSamplesPerSec;
+        ret->max_channels = wfx->nChannels;
       }
     }
   }
 
   if (SUCCEEDED(dev->Activate(__uuidof(IAudioClient), CLSCTX_INPROC_SERVER, NULL, (void**)&client)) &&
       SUCCEEDED(client->GetDevicePeriod(&def_period, &min_period))) {
-    ret->device.latency_lo_ms = hns_to_ms(min_period);
-    ret->device.latency_hi_ms = hns_to_ms(def_period);
+    ret->latency_lo_ms = hns_to_ms(min_period);
+    ret->latency_hi_ms = hns_to_ms(def_period);
   } else {
-    ret->device.latency_lo_ms = 0;
-    ret->device.latency_hi_ms = 0;
+    ret->latency_lo_ms = 0;
+    ret->latency_hi_ms = 0;
   }
   SafeRelease(client);
 
@@ -1612,19 +1611,18 @@ done:
 
 static int
 wasapi_enumerate_devices(cubeb * context, cubeb_device_type type,
-                         cubeb_device_list ** devices, uint32_t * count)
+                         cubeb_device_collection ** out)
 {
   auto_com com;
   IMMDeviceEnumerator * enumerator;
   IMMDeviceCollection * collection;
   IMMDevice * dev;
-  cubeb_device_entry * cur;
+  cubeb_device_info * cur;
   HRESULT hr;
   UINT cc, i;
   EDataFlow flow;
 
-  *devices = NULL;
-  if (count) *count = 0;
+  *out = NULL;
 
   if (!com.ok())
     return CUBEB_ERROR;
@@ -1652,14 +1650,15 @@ wasapi_enumerate_devices(cubeb * context, cubeb_device_type type,
     LOG("IMMDeviceCollection::GetCount() failed: %x\n", hr);
     return CUBEB_ERROR;
   }
-  for (i = cc; i > 0; i--) {
-    hr = collection->Item(i-1, &dev);
+  *out = (cubeb_device_collection *) malloc(sizeof(cubeb_device_collection) +
+      sizeof(cubeb_device_info*) * cc);
+  (*out)->count = 0;
+  for (i = 0; i < cc; i++) {
+    hr = collection->Item(i, &dev);
     if (FAILED(hr)) {
       LOG("IMMDeviceCollection::Item(%u) failed: %x\n", i-1, hr);
     } else if ((cur = wasapi_create_device(enumerator, dev)) != NULL) {
-      cur->next = *devices;
-      *devices = cur;
-      if (count) (*count)++;
+      (*out)->device[(*out)->count++] = cur;
     }
   }
 

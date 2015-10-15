@@ -1159,12 +1159,12 @@ audiounit_get_device_presentation_latency(AudioObjectID devid, AudioObjectProper
   return dev + stream + offset;
 }
 
-static cubeb_device_entry *
+static cubeb_device_info *
 audiounit_create_device_from_hwdev(AudioObjectID devid, cubeb_device_type type)
 {
   AudioObjectPropertyAddress adr = { 0, 0, kAudioObjectPropertyElementMaster };
   UInt32 size, ch, latency;
-  cubeb_device_entry * ret;
+  cubeb_device_info * ret;
   CFStringRef str = NULL;
   AudioValueRange range;
 
@@ -1179,14 +1179,14 @@ audiounit_create_device_from_hwdev(AudioObjectID devid, cubeb_device_type type)
   if ((ch = audiounit_get_channel_count(devid, adr.mScope)) == 0)
     return NULL;
 
-  ret = calloc(1, sizeof(cubeb_device_entry));
+  ret = calloc(1, sizeof(cubeb_device_info));
 
   size = sizeof(CFStringRef);
   adr.mSelector = kAudioDevicePropertyDeviceUID;
   if (AudioObjectGetPropertyData(devid, &adr, 0, NULL, &size, &str) == noErr && str != NULL) {
-    ret->device.device_id = audiounit_strref_to_cstr_utf8(str);
-    ret->device.devid = (cubeb_devid)ret->device.device_id;
-    ret->device.group_id = strdup(ret->device.device_id);
+    ret->device_id = audiounit_strref_to_cstr_utf8(str);
+    ret->devid = (cubeb_devid)ret->device_id;
+    ret->group_id = strdup(ret->device_id);
     CFRelease(str);
   }
 
@@ -1212,39 +1212,39 @@ audiounit_create_device_from_hwdev(AudioObjectID devid, cubeb_device_type type)
       }
     }
 
-    ret->device.friendly_name = audiounit_strref_to_cstr_utf8(str);
+    ret->friendly_name = audiounit_strref_to_cstr_utf8(str);
     CFRelease(str);
   }
 
   size = sizeof(CFStringRef);
   adr.mSelector = kAudioObjectPropertyManufacturer;
   if (AudioObjectGetPropertyData(devid, &adr, 0, NULL, &size, &str) == noErr && str != NULL) {
-    ret->device.vendor_name = audiounit_strref_to_cstr_utf8(str);
+    ret->vendor_name = audiounit_strref_to_cstr_utf8(str);
     CFRelease(str);
   }
 
-  ret->device.type = type;
-  ret->device.state = CUBEB_DEVICE_STATE_ENABLED;
-  ret->device.preferred = (devid == audiounit_get_default_device_id(type)) ?
+  ret->type = type;
+  ret->state = CUBEB_DEVICE_STATE_ENABLED;
+  ret->preferred = (devid == audiounit_get_default_device_id(type)) ?
     CUBEB_DEVICE_PREF_ALL : CUBEB_DEVICE_PREF_NONE;
 
-  ret->device.max_channels = ch;
-  ret->device.format = CUBEB_DEVICE_FMT_ALL; /* CoreAudio supports All! */
+  ret->max_channels = ch;
+  ret->format = CUBEB_DEVICE_FMT_ALL; /* CoreAudio supports All! */
   /* kAudioFormatFlagsAudioUnitCanonical is deprecated, prefer floating point */
-  ret->device.default_format = CUBEB_DEVICE_FMT_F32NE;
+  ret->default_format = CUBEB_DEVICE_FMT_F32NE;
   audiounit_get_available_samplerate(devid, adr.mScope,
-      &ret->device.min_rate, &ret->device.max_rate, &ret->device.default_rate);
+      &ret->min_rate, &ret->max_rate, &ret->default_rate);
 
   latency = audiounit_get_device_presentation_latency(devid, adr.mScope);
 
   adr.mSelector = kAudioDevicePropertyBufferFrameSizeRange;
   size = sizeof(AudioValueRange);
   if (AudioObjectGetPropertyData(devid, &adr, 0, NULL, &size, &range) == noErr) {
-    ret->device.latency_lo_ms = ((latency + range.mMinimum) * 1000) / ret->device.default_rate;
-    ret->device.latency_hi_ms = ((latency + range.mMaximum) * 1000) / ret->device.default_rate;
+    ret->latency_lo_ms = ((latency + range.mMinimum) * 1000) / ret->default_rate;
+    ret->latency_hi_ms = ((latency + range.mMaximum) * 1000) / ret->default_rate;
   } else {
-    ret->device.latency_lo_ms = 10;  /* Default to  10ms */
-    ret->device.latency_hi_ms = 100; /* Default to 100ms */
+    ret->latency_lo_ms = 10;  /* Default to  10ms */
+    ret->latency_hi_ms = 100; /* Default to 100ms */
   }
 
   return ret;
@@ -1252,7 +1252,7 @@ audiounit_create_device_from_hwdev(AudioObjectID devid, cubeb_device_type type)
 
 static int
 audiounit_enumerate_devices(cubeb * context, cubeb_device_type type,
-                            cubeb_device_list ** devices, uint32_t * count)
+                            cubeb_device_collection ** collection)
 {
   AudioObjectID * hwdevs = NULL;
   uint32_t i, hwdevcount = 0;
@@ -1261,29 +1261,24 @@ audiounit_enumerate_devices(cubeb * context, cubeb_device_type type,
   if ((err = audiounit_get_devices(&hwdevs, &hwdevcount)) != noErr)
     return CUBEB_ERROR;
 
-  if (count) *count = 0;
-  *devices = NULL;
+  *collection = malloc(sizeof(cubeb_device_collection) +
+      sizeof(cubeb_device_info*) * hwdevcount);
+  (*collection)->count = 0;
 
   if (hwdevcount > 0) {
-    cubeb_device_entry * cur;
+    cubeb_device_info * cur;
 
     if (type & CUBEB_DEVICE_TYPE_OUTPUT) {
-      for (i = hwdevcount; i > 0 ; i--) {
-        if ((cur = audiounit_create_device_from_hwdev(hwdevs[i-1], CUBEB_DEVICE_TYPE_OUTPUT)) != NULL) {
-          cur->next = *devices;
-          *devices = cur;
-          if (count) (*count)++;
-        }
+      for (i = 0; i < hwdevcount; i++) {
+        if ((cur = audiounit_create_device_from_hwdev(hwdevs[i], CUBEB_DEVICE_TYPE_OUTPUT)) != NULL)
+          (*collection)->device[(*collection)->count++] = cur;
       }
     }
 
     if (type & CUBEB_DEVICE_TYPE_INPUT) {
-      for (i = hwdevcount; i > 0 ; i--) {
-        if ((cur = audiounit_create_device_from_hwdev(hwdevs[i-1], CUBEB_DEVICE_TYPE_INPUT)) != NULL) {
-          cur->next = *devices;
-          *devices = cur;
-          if (count) (*count)++;
-        }
+      for (i = 0; i < hwdevcount; i++) {
+        if ((cur = audiounit_create_device_from_hwdev(hwdevs[i], CUBEB_DEVICE_TYPE_INPUT)) != NULL)
+          (*collection)->device[(*collection)->count++] = cur;
       }
     }
   }
