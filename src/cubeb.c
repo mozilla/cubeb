@@ -403,16 +403,9 @@ int cubeb_device_info_destroy(cubeb_device_info * info)
   return CUBEB_OK;
 }
 
-int cubeb_register_device_list_changed(cubeb * context,
-                                       cubeb_device_list_changed_callback callback,
-                                       void * user_ptr)
-{
-  return CUBEB_ERROR_NOT_SUPPORTED;
-}
-
-int cubeb_deregister_device_list_changed(cubeb * context,
-                                         cubeb_device_list_changed_callback callback,
-                                         void * user_ptr)
+int cubeb_register_device_collection_changed(cubeb * context,
+                                             cubeb_device_collection_changed_callback callback,
+                                             void * user_ptr)
 {
   return CUBEB_ERROR_NOT_SUPPORTED;
 }

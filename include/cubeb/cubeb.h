@@ -248,10 +248,10 @@ typedef void (* cubeb_state_callback)(cubeb_stream * stream,
 typedef void (* cubeb_device_changed_callback)(void * user_ptr);
 
 /**
- * User supplied callback called when the underlying device list changed.
+ * User supplied callback called when the underlying device collection changed.
  * @param context
  * @param user_ptr */
-typedef void (* cubeb_device_list_changed_callback)(cubeb * context, void * user_ptr);
+typedef void (* cubeb_device_collection_changed_callback)(cubeb * context, void * user_ptr);
 
 /** Initialize an application context.  This will perform any library or
     application scoped initialization.
@@ -434,23 +434,17 @@ int cubeb_device_collection_destroy(cubeb_device_collection * collection);
     @retval CUBEB_ERROR_INVALID_PARAMETER if info is an invalid pointer */
 int cubeb_device_info_destroy(cubeb_device_info * info);
 
-/** Registers a callback which is called when device list changes..
+/** Registers a callback which is called when the system detects
+    a new device or a device is removed.
     @param context
-    @param callback
-    @param user_ptr
+    @param callback a function called whenever the system device list changes.
+           Passing NULL allow to unregister a function
+    @param user_ptr pointer to user specified data which will be present in
+           subsequent callbacks.
     @retval CUBEB_ERROR_NOT_SUPPORTED */
-int cubeb_register_device_list_changed(cubeb * context,
-                                       cubeb_device_list_changed_callback callback,
+int cubeb_register_device_collection_changed(cubeb * context,
+                                       cubeb_device_collection_changed_callback callback,
                                        void * user_ptr);
-
-/** Removes a already registered callback/user_ptr pair.
-    @param context
-    @param callback
-    @param user_ptr
-    @retval CUBEB_ERROR_NOT_SUPPORTED */
-int cubeb_deregister_device_list_changed(cubeb * context,
-                                         cubeb_device_list_changed_callback callback,
-                                         void * user_ptr);
 
 #if defined(__cplusplus)
 }
