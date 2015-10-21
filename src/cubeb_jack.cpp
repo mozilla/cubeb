@@ -132,6 +132,7 @@ static struct cubeb_ops const cbjack_ops = {
   .get_max_channel_count = cbjack_get_max_channel_count,
   .get_min_latency = cbjack_get_min_latency,
   .get_preferred_sample_rate = cbjack_get_preferred_sample_rate,
+  .enumerate_devices = NULL,
   .destroy = cbjack_destroy,
   .stream_init = cbjack_stream_init,
   .stream_destroy = cbjack_stream_destroy,

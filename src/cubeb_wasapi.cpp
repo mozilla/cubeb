@@ -7,14 +7,17 @@
 #if defined(HAVE_CONFIG_H)
 #include "config.h"
 #endif
+#include <initguid.h>
 #include <windows.h>
 #include <mmdeviceapi.h>
 #include <windef.h>
 #include <audioclient.h>
+#include <devicetopology.h>
 #include <process.h>
 #include <avrt.h>
 #include "cubeb/cubeb.h"
 #include "cubeb-internal.h"
+#include "cubeb_devicetopology.h"
 #include "cubeb/cubeb-stdint.h"
 #include "cubeb_resampler.h"
 #include <stdio.h>
@@ -24,6 +27,13 @@
 /* Taken from winbase.h, Not in MinGW. */
 #ifndef STACK_SIZE_PARAM_IS_A_RESERVATION
 #define STACK_SIZE_PARAM_IS_A_RESERVATION   0x00010000    // Threads only
+#endif
+
+#ifndef PKEY_Device_FriendlyName
+DEFINE_PROPERTYKEY(PKEY_Device_FriendlyName,    0xa45c254e, 0xdf1c, 0x4efd, 0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0, 14);    // DEVPROP_TYPE_STRING
+#endif
+#ifndef PKEY_Device_InstanceId
+DEFINE_PROPERTYKEY(PKEY_Device_InstanceId,      0x78c34fc8, 0x104a, 0x4aca, 0x9e, 0xa4, 0x52, 0x4d, 0x52, 0x99, 0x6e, 0x57, 0x00000100); //    VT_LPWSTR
 #endif
 
 // #define LOGGING_ENABLED
@@ -1425,12 +1435,245 @@ int wasapi_stream_set_volume(cubeb_stream * stm, float volume)
   return CUBEB_OK;
 }
 
+static char *
+wstr_to_utf8(LPCWSTR str)
+{
+  char * ret = NULL;
+  int size;
+
+  size = ::WideCharToMultiByte(CP_UTF8, 0, str, -1, ret, 0, NULL, NULL);
+  if (size > 0) {
+    ret = (char *) malloc(size);
+    ::WideCharToMultiByte(CP_UTF8, 0, str, -1, ret, size, NULL, NULL);
+  }
+
+  return ret;
+}
+
+static IMMDevice *
+wasapi_get_device_node(IMMDeviceEnumerator * enumerator, IMMDevice * dev)
+{
+  IMMDevice * ret = NULL;
+  IDeviceTopology * devtopo = NULL;
+  IConnector * connector = NULL;
+
+  if (SUCCEEDED(dev->Activate(__uuidof(IDeviceTopology), CLSCTX_ALL, NULL, (void**)&devtopo)) &&
+      SUCCEEDED(devtopo->GetConnector(0, &connector))) {
+    LPWSTR filterid;
+    if (SUCCEEDED(connector->GetDeviceIdConnectedTo(&filterid))) {
+      if (FAILED(enumerator->GetDevice(filterid, &ret)))
+        ret = NULL;
+      CoTaskMemFree(filterid);
+    }
+  }
+
+  SafeRelease(connector);
+  SafeRelease(devtopo);
+  return ret;
+}
+
+static BOOL
+wasapi_is_default_device(EDataFlow flow, ERole role, LPCWSTR device_id,
+    IMMDeviceEnumerator * enumerator)
+{
+  BOOL ret = FALSE;
+  IMMDevice * dev;
+  HRESULT hr;
+
+  hr = enumerator->GetDefaultAudioEndpoint(flow, role, &dev);
+  if (SUCCEEDED(hr)) {
+    LPWSTR defdevid = NULL;
+    if (SUCCEEDED(dev->GetId(&defdevid)))
+      ret = (wcscmp(defdevid, device_id) == 0);
+    if (defdevid != NULL)
+      CoTaskMemFree(defdevid);
+    SafeRelease(dev);
+  }
+
+  return ret;
+}
+
+static cubeb_device_info *
+wasapi_create_device(IMMDeviceEnumerator * enumerator, IMMDevice * dev)
+{
+  IMMEndpoint * endpoint = NULL;
+  IMMDevice * devnode;
+  IAudioClient * client = NULL;
+  cubeb_device_info * ret = NULL;
+  EDataFlow flow;
+  LPWSTR device_id = NULL;
+  DWORD state = DEVICE_STATE_NOTPRESENT;
+  IPropertyStore * propstore = NULL;
+  PROPVARIANT propvar;
+  REFERENCE_TIME def_period, min_period;
+  HRESULT hr;
+
+  PropVariantInit(&propvar);
+
+  hr = dev->QueryInterface(IID_PPV_ARGS(&endpoint));
+  if (FAILED(hr)) goto done;
+
+  hr = endpoint->GetDataFlow(&flow);
+  if (FAILED(hr)) goto done;
+
+  hr = dev->GetId(&device_id);
+  if (FAILED(hr)) goto done;
+
+  hr = dev->OpenPropertyStore(STGM_READ, &propstore);
+  if (FAILED(hr)) goto done;
+
+  hr = dev->GetState(&state);
+  if (FAILED(hr)) goto done;
+
+  ret = (cubeb_device_info *)calloc(1, sizeof(cubeb_device_info));
+
+  ret->devid = ret->device_id = wstr_to_utf8(device_id);
+  hr = propstore->GetValue(PKEY_Device_FriendlyName, &propvar);
+  if (SUCCEEDED(hr))
+    ret->friendly_name = wstr_to_utf8(propvar.pwszVal);
+
+  devnode = wasapi_get_device_node(enumerator, dev);
+  if (devnode != NULL) {
+    IPropertyStore * ps = NULL;
+    hr = devnode->OpenPropertyStore(STGM_READ, &ps);
+    if (FAILED(hr)) goto done;
+
+    PropVariantClear(&propvar);
+    hr = ps->GetValue(PKEY_Device_InstanceId, &propvar);
+    if (SUCCEEDED(hr)) {
+      ret->group_id = wstr_to_utf8(propvar.pwszVal);
+    }
+    SafeRelease(ps);
+  }
+
+  ret->preferred = CUBEB_DEVICE_PREF_NONE;
+  if (wasapi_is_default_device(flow, eMultimedia, device_id, enumerator))
+    ret->preferred = (cubeb_device_pref)(ret->preferred | CUBEB_DEVICE_PREF_MULTIMEDIA);
+  if (wasapi_is_default_device(flow, eCommunications, device_id, enumerator))
+    ret->preferred = (cubeb_device_pref)(ret->preferred | CUBEB_DEVICE_PREF_VOICE);
+  if (wasapi_is_default_device(flow, eConsole, device_id, enumerator))
+    ret->preferred = (cubeb_device_pref)(ret->preferred | CUBEB_DEVICE_PREF_NOTIFICATION);
+
+  if (flow == eRender) ret->type = CUBEB_DEVICE_TYPE_OUTPUT;
+  else if (flow == eCapture) ret->type = CUBEB_DEVICE_TYPE_INPUT;
+  switch (state) {
+    case DEVICE_STATE_ACTIVE:
+      ret->state = CUBEB_DEVICE_STATE_ENABLED;
+      break;
+    case DEVICE_STATE_UNPLUGGED:
+      ret->state = CUBEB_DEVICE_STATE_UNPLUGGED;
+      break;
+    default:
+      ret->state = CUBEB_DEVICE_STATE_DISABLED;
+      break;
+  };
+
+  ret->format = CUBEB_DEVICE_FMT_F32NE; /* cubeb only supports 32bit float at the moment */
+  ret->default_format = CUBEB_DEVICE_FMT_F32NE;
+  PropVariantClear(&propvar);
+  hr = propstore->GetValue(PKEY_AudioEngine_DeviceFormat, &propvar);
+  if (SUCCEEDED(hr) && propvar.vt == VT_BLOB) {
+    if (propvar.blob.cbSize == sizeof(PCMWAVEFORMAT)) {
+      const PCMWAVEFORMAT * pcm = reinterpret_cast<const PCMWAVEFORMAT *>(propvar.blob.pBlobData);
+
+      ret->max_rate = ret->min_rate = ret->default_rate = pcm->wf.nSamplesPerSec;
+      ret->max_channels = pcm->wf.nChannels;
+    } else if (propvar.blob.cbSize >= sizeof(WAVEFORMATEX)) {
+      LPCWAVEFORMATEX wfx = reinterpret_cast<LPCWAVEFORMATEX>(propvar.blob.pBlobData);
+
+      if (propvar.blob.cbSize >= sizeof(WAVEFORMATEX) + wfx->cbSize ||
+          wfx->wFormatTag == WAVE_FORMAT_PCM) {
+        ret->max_rate = ret->min_rate = ret->default_rate = wfx->nSamplesPerSec;
+        ret->max_channels = wfx->nChannels;
+      }
+    }
+  }
+
+  if (SUCCEEDED(dev->Activate(__uuidof(IAudioClient), CLSCTX_INPROC_SERVER, NULL, (void**)&client)) &&
+      SUCCEEDED(client->GetDevicePeriod(&def_period, &min_period))) {
+    ret->latency_lo_ms = hns_to_ms(min_period);
+    ret->latency_hi_ms = hns_to_ms(def_period);
+  } else {
+    ret->latency_lo_ms = 0;
+    ret->latency_hi_ms = 0;
+  }
+  SafeRelease(client);
+
+done:
+  SafeRelease(devnode);
+  SafeRelease(endpoint);
+  SafeRelease(propstore);
+  if (device_id != NULL)
+    CoTaskMemFree(device_id);
+  PropVariantClear(&propvar);
+  return ret;
+}
+
+static int
+wasapi_enumerate_devices(cubeb * context, cubeb_device_type type,
+                         cubeb_device_collection ** out)
+{
+  auto_com com;
+  IMMDeviceEnumerator * enumerator;
+  IMMDeviceCollection * collection;
+  IMMDevice * dev;
+  cubeb_device_info * cur;
+  HRESULT hr;
+  UINT cc, i;
+  EDataFlow flow;
+
+  *out = NULL;
+
+  if (!com.ok())
+    return CUBEB_ERROR;
+
+  hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), NULL,
+      CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&enumerator));
+  if (FAILED(hr)) {
+    LOG("Could not get device enumerator: %x\n", hr);
+    return CUBEB_ERROR;
+  }
+
+  if (type == CUBEB_DEVICE_TYPE_OUTPUT) flow = eRender;
+  else if (type == CUBEB_DEVICE_TYPE_INPUT)  flow = eCapture;
+  else if (type & (CUBEB_DEVICE_TYPE_INPUT | CUBEB_DEVICE_TYPE_INPUT)) flow = eAll;
+  else return CUBEB_ERROR;
+
+  hr = enumerator->EnumAudioEndpoints(flow, DEVICE_STATEMASK_ALL, &collection);
+  if (FAILED(hr)) {
+    LOG("Could not enumerate audio endpoints: %x\n", hr);
+    return CUBEB_ERROR;
+  }
+
+  hr = collection->GetCount(&cc);
+  if (FAILED(hr)) {
+    LOG("IMMDeviceCollection::GetCount() failed: %x\n", hr);
+    return CUBEB_ERROR;
+  }
+  *out = (cubeb_device_collection *) malloc(sizeof(cubeb_device_collection) +
+      sizeof(cubeb_device_info*) * cc);
+  (*out)->count = 0;
+  for (i = 0; i < cc; i++) {
+    hr = collection->Item(i, &dev);
+    if (FAILED(hr)) {
+      LOG("IMMDeviceCollection::Item(%u) failed: %x\n", i-1, hr);
+    } else if ((cur = wasapi_create_device(enumerator, dev)) != NULL) {
+      (*out)->device[(*out)->count++] = cur;
+    }
+  }
+
+  SafeRelease(collection);
+  SafeRelease(enumerator);
+  return CUBEB_OK;
+}
+
 cubeb_ops const wasapi_ops = {
   /*.init =*/ wasapi_init,
   /*.get_backend_id =*/ wasapi_get_backend_id,
   /*.get_max_channel_count =*/ wasapi_get_max_channel_count,
   /*.get_min_latency =*/ wasapi_get_min_latency,
   /*.get_preferred_sample_rate =*/ wasapi_get_preferred_sample_rate,
+  /*.enumerate_devices =*/ wasapi_enumerate_devices,
   /*.destroy =*/ wasapi_destroy,
   /*.stream_init =*/ wasapi_stream_init,
   /*.stream_destroy =*/ wasapi_stream_destroy,

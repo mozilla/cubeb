@@ -64,17 +64,23 @@ src_libcubeb_la_SOURCES += src/cubeb_resampler.cpp src/speex/resample.c
 endif
 
 EXTRA_src_libcubeb_la_SOURCES = \
-        src/cubeb.c \
+	src/cubeb.c \
 	src/cubeb_jack.cpp \
 	src/cubeb_alsa.c src/cubeb_pulse.c \
 	src/cubeb_audiounit.c src/cubeb_audioqueue.c \
 	src/cubeb_sndio.c src/cubeb_directsound.cpp \
 	src/cubeb_winmm.c src/cubeb_wasapi.cpp src/speex/resample.c \
-	src/cubeb_opensl.c src/cubeb_audiotrack.c
+	src/cubeb_opensl.c src/cubeb_audiotrack.c \
+	$(NULL)
 
 src_libcubeb_la_LDFLAGS = -export-symbols-regex '^cubeb_' $(platform_lib) -no-undefined
 
-check_PROGRAMS = test/test_sanity test/test_tone test/test_audio test/test_latency
+check_PROGRAMS = test/test_sanity \
+								 test/test_tone \
+								 test/test_audio \
+								 test/test_latency \
+								 test/test_devices \
+								 $(NULL)
 
 test_test_sanity_SOURCES = test/test_sanity.cpp
 test_test_sanity_LDADD = -lm src/libcubeb.la $(platform_lib)
@@ -87,6 +93,9 @@ test_test_audio_LDADD = -lm src/libcubeb.la $(platform_lib)
 
 test_test_latency_SOURCES = test/test_latency.cpp
 test_test_latency_LDADD = -lm src/libcubeb.la $(platform_lib)
+
+test_test_devices_SOURCES = test/test_devices.cpp
+test_test_devices_LDADD = -lm src/libcubeb.la $(platform_lib)
 
 TESTS = test/test_sanity
 

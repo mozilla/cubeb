@@ -329,6 +329,7 @@ static struct cubeb_ops const kai_ops = {
   /*.get_max_channel_count=*/ kai_get_max_channel_count,
   /*.get_min_latency=*/ kai_get_min_latency,
   /*.get_preferred_sample_rate =*/ kai_get_preferred_sample_rate,
+  /*.enumerate_devices =*/ NULL,
   /*.destroy =*/ kai_destroy,
   /*.stream_init =*/ kai_stream_init,
   /*.stream_destroy =*/ kai_stream_destroy,
