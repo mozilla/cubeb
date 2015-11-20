@@ -486,11 +486,14 @@ pulse_destroy(cubeb * ctx)
 static void pulse_stream_destroy(cubeb_stream * stm);
 
 static int
-pulse_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
+pulse_stream_init(cubeb * context,
+                  cubeb_stream ** stream,
+                  char const * stream_name,
                   cubeb_stream_params * input_stream_params,
                   cubeb_stream_params * output_stream_params,
                   unsigned int latency,
-                  cubeb_data_callback data_callback, cubeb_state_callback state_callback,
+                  cubeb_data_callback data_callback,
+                  cubeb_state_callback state_callback,
                   void * user_ptr)
 {
   pa_sample_spec ss;
@@ -500,7 +503,6 @@ pulse_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   int r;
 
   assert(context);
-  assert(!input_stream_params && "not supported.");
 
   *stream = NULL;
 
