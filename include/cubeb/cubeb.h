@@ -223,7 +223,8 @@ typedef struct {
 /** User supplied data callback.
     @param stream
     @param user_ptr
-    @param buffer
+    @param input_buffer
+	@param output_buffer
     @param nframes
     @retval Number of frames written to buffer, which must equal nframes except
             at end of stream.
@@ -231,7 +232,8 @@ typedef struct {
             and the stream will enter a shutdown state. */
 typedef long (* cubeb_data_callback)(cubeb_stream * stream,
                                      void * user_ptr,
-                                     void * buffer,
+                                     void * input_buffer,
+									 void * output_buffer,
                                      long nframes);
 
 /** User supplied state callback.
@@ -319,7 +321,8 @@ void cubeb_destroy(cubeb * context);
 int cubeb_stream_init(cubeb * context,
                       cubeb_stream ** stream,
                       char const * stream_name,
-                      cubeb_stream_params stream_params,
+                      cubeb_stream_params* input_stream_params,
+                      cubeb_stream_params* output_stream_params,
                       unsigned int latency,
                       cubeb_data_callback data_callback,
                       cubeb_state_callback state_callback,
