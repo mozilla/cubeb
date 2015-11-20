@@ -1075,7 +1075,8 @@ static uint32_t
 audiounit_get_channel_count(AudioObjectID devid, AudioObjectPropertyScope scope)
 {
   AudioObjectPropertyAddress adr = { 0, scope, kAudioObjectPropertyElementMaster };
-  uint32_t size = 0, i, ret = 0;
+  UInt32 size = 0;
+  uint32_t i, ret = 0;
 
   adr.mSelector = kAudioDevicePropertyStreamConfiguration;
 
@@ -1098,7 +1099,7 @@ audiounit_get_available_samplerate(AudioObjectID devid, AudioObjectPropertyScope
 
   adr.mSelector = kAudioDevicePropertyNominalSampleRate;
   if (AudioObjectHasProperty(devid, &adr)) {
-    uint32_t size = sizeof(Float64);
+    UInt32 size = sizeof(Float64);
     Float64 fvalue = 0.0;
     if (AudioObjectGetPropertyData(devid, &adr, 0, NULL, &size, &fvalue) == noErr)
       *def = fvalue;
@@ -1106,7 +1107,7 @@ audiounit_get_available_samplerate(AudioObjectID devid, AudioObjectPropertyScope
 
   adr.mSelector = kAudioDevicePropertyAvailableNominalSampleRates;
   if (AudioObjectHasProperty(devid, &adr)) {
-    uint32_t size = 0;
+    UInt32 size = 0;
     AudioValueRange range;
     if (AudioObjectGetPropertyDataSize(devid, &adr, 0, NULL, &size) == noErr) {
       uint32_t i, count = size / sizeof(AudioValueRange);
