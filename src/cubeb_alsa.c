@@ -85,7 +85,9 @@ struct cubeb_stream {
   snd_pcm_uframes_t write_position;
   snd_pcm_uframes_t last_position;
   snd_pcm_uframes_t buffer_size;
-  cubeb_stream_params params;
+  snd_pcm_uframes_t period_size;
+  cubeb_stream_params input_params;
+  cubeb_stream_params output_params;
 
   /* Every member after this comment is protected by the owning context's
      mutex rather than the stream's mutex, or is only used on the context's
@@ -316,14 +318,14 @@ alsa_refill_stream(cubeb_stream * stm)
   if (got > 0) {
     snd_pcm_sframes_t wrote;
 
-    if (stm->params.format == CUBEB_SAMPLE_FLOAT32NE) {
+    if (stm->output_params.format == CUBEB_SAMPLE_FLOAT32NE) {
       float * b = (float *) p;
-      for (uint32_t i = 0; i < got * stm->params.channels; i++) {
+      for (uint32_t i = 0; i < got * stm->output_params.channels; i++) {
         b[i] *= stm->volume;
       }
     } else {
       short * b = (short *) p;
-      for (uint32_t i = 0; i < got * stm->params.channels; i++) {
+      for (uint32_t i = 0; i < got * stm->output_params.channels; i++) {
         b[i] *= stm->volume;
       }
     }
@@ -338,7 +340,7 @@ alsa_refill_stream(cubeb_stream * stm)
   }
   if (got != avail) {
     long buffer_fill = stm->buffer_size - (avail - got);
-    double buffer_time = (double) buffer_fill / stm->params.rate;
+    double buffer_time = (double) buffer_fill / stm->output_params.rate;
 
     /* Fill the remaining buffer with silence to guarantee one full period
        has been written. */
@@ -780,17 +782,19 @@ alsa_destroy(cubeb * ctx)
 static void alsa_stream_destroy(cubeb_stream * stm);
 
 static int
-alsa_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
+alsa_stream_init(cubeb * ctx,
+                 cubeb_stream ** stream,
+                 char const * stream_name,
                  cubeb_stream_params * input_stream_params,
                  cubeb_stream_params * output_stream_params,
                  unsigned int latency,
-                 cubeb_data_callback data_callback, cubeb_state_callback state_callback,
+                 cubeb_data_callback data_callback,
+                 cubeb_state_callback state_callback,
                  void * user_ptr)
 {
   cubeb_stream * stm;
   int r;
   snd_pcm_format_t format;
-  snd_pcm_uframes_t period_size;
 
   assert(ctx && stream);
 
@@ -830,7 +834,8 @@ alsa_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
   stm->data_callback = data_callback;
   stm->state_callback = state_callback;
   stm->user_ptr = user_ptr;
-  stm->params = *output_stream_params;
+  stm->input_params = *input_stream_params;
+  stm->output_params = *output_stream_params;
   stm->state = INACTIVE;
   stm->volume = 1.0;
 
@@ -854,14 +859,14 @@ alsa_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
   }
 
   r = snd_pcm_set_params(stm->pcm, format, SND_PCM_ACCESS_RW_INTERLEAVED,
-                         stm->params.channels, stm->params.rate, 1,
+                         stm->output_params.channels, stm->output_params.rate, 1,
                          latency * 1000);
   if (r < 0) {
     alsa_stream_destroy(stm);
     return CUBEB_ERROR_INVALID_FORMAT;
   }
 
-  r = snd_pcm_get_params(stm->pcm, &stm->buffer_size, &period_size);
+  r = snd_pcm_get_params(stm->pcm, &stm->buffer_size, &stm->period_size);
   assert(r == 0);
 
   stm->nfds = snd_pcm_poll_descriptors_count(stm->pcm);
