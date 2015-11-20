@@ -63,14 +63,14 @@ int kai_init(cubeb ** context, char const * context_name);
 
 int
 validate_stream_params(cubeb_stream_params * input_stream_params,
-					   cubeb_stream_params * output_stream_params)
+                       cubeb_stream_params * output_stream_params)
 {
   // Rate and sample format must be the same for input and output.
   if (output_stream_params->rate < 1000 || output_stream_params->rate > 192000 ||
       output_stream_params->channels < 1 || output_stream_params->channels > 8 ||
-	  (input_stream_params && input_stream_params &&
-	  (input_stream_params->rate != output_stream_params->rate  ||
-	  input_stream_params->format != output_stream_params->format))) {
+      (input_stream_params && input_stream_params &&
+       (input_stream_params->rate != output_stream_params->rate  ||
+        input_stream_params->format != output_stream_params->format))) {
     return CUBEB_ERROR_INVALID_FORMAT;
   }
 
@@ -223,9 +223,9 @@ cubeb_destroy(cubeb * context)
 
 int
 cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
-				  cubeb_stream_params * input_stream_params,
-				  cubeb_stream_params * output_stream_params,
-				  unsigned int latency,
+                  cubeb_stream_params * input_stream_params,
+                  cubeb_stream_params * output_stream_params,
+                  unsigned int latency,
                   cubeb_data_callback data_callback,
                   cubeb_state_callback state_callback,
                   void * user_ptr)

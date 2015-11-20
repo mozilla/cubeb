@@ -224,7 +224,7 @@ typedef struct {
     @param stream
     @param user_ptr
     @param input_buffer
-	@param output_buffer
+    @param output_buffer
     @param nframes
     @retval Number of frames written to buffer, which must equal nframes except
             at end of stream.
@@ -233,7 +233,7 @@ typedef struct {
 typedef long (* cubeb_data_callback)(cubeb_stream * stream,
                                      void * user_ptr,
                                      void * input_buffer,
-									 void * output_buffer,
+                                     void * output_buffer,
                                      long nframes);
 
 /** User supplied state callback.
