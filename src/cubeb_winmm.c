@@ -773,7 +773,7 @@ static char *
 guid_to_cstr(LPGUID guid)
 {
   char * ret = malloc(sizeof(char) * 40);
-  snprintf(ret, sizeof(char) * 40,
+  _snprintf(ret, sizeof(char) * 40,
       "{%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}",
       guid->Data1, guid->Data2, guid->Data3,
       guid->Data4[0], guid->Data4[1], guid->Data4[2], guid->Data4[3],
@@ -800,11 +800,11 @@ winmm_query_preferred_out_device(UINT devid)
   return ret;
 }
 
-static inline char *
-_device_id_idx(UINT devid)
+static char *
+device_id_idx(UINT devid)
 {
   char * ret = (char *)malloc(sizeof(char)*16);
-  snprintf(ret, 16, "%u", devid);
+  _snprintf(ret, 16, "%u", devid);
   return ret;
 }
 
@@ -815,7 +815,7 @@ winmm_create_device_from_outcaps2(LPWAVEOUTCAPS2A caps, UINT devid)
 
   ret = calloc(1, sizeof(cubeb_device_info));
   ret->devid = (cubeb_devid)(size_t)devid;
-  ret->device_id = _device_id_idx(devid);
+  ret->device_id = device_id_idx(devid);
   ret->friendly_name = _strdup(caps->szPname);
   ret->group_id = guid_to_cstr(&caps->ProductGuid);
   ret->vendor_name = guid_to_cstr(&caps->ManufacturerGuid);
@@ -843,7 +843,7 @@ winmm_create_device_from_outcaps(LPWAVEOUTCAPSA caps, UINT devid)
 
   ret = calloc(1, sizeof(cubeb_device_info));
   ret->devid = (cubeb_devid)(size_t)devid;
-  ret->device_id = _device_id_idx(devid);
+  ret->device_id = device_id_idx(devid);
   ret->friendly_name = _strdup(caps->szPname);
   ret->group_id = NULL;
   ret->vendor_name = NULL;
@@ -890,7 +890,7 @@ winmm_create_device_from_incaps2(LPWAVEINCAPS2A caps, UINT devid)
 
   ret = calloc(1, sizeof(cubeb_device_info));
   ret->devid = (cubeb_devid)(size_t)devid;
-  ret->device_id = _device_id_idx(devid);
+  ret->device_id = device_id_idx(devid);
   ret->friendly_name = _strdup(caps->szPname);
   ret->group_id = guid_to_cstr(&caps->ProductGuid);
   ret->vendor_name = guid_to_cstr(&caps->ManufacturerGuid);
@@ -918,7 +918,7 @@ winmm_create_device_from_incaps(LPWAVEINCAPSA caps, UINT devid)
 
   ret = calloc(1, sizeof(cubeb_device_info));
   ret->devid = (cubeb_devid)(size_t)devid;
-  ret->device_id = _device_id_idx(devid);
+  ret->device_id = device_id_idx(devid);
   ret->friendly_name = _strdup(caps->szPname);
   ret->group_id = NULL;
   ret->vendor_name = NULL;
