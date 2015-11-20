@@ -767,9 +767,11 @@ static cubeb_device_state
 pulse_get_state_from_sink_port(pa_sink_port_info * info)
 {
   if (info != NULL) {
+#if PA_CHECK_VERSION(2, 0, 0)
     if (info->available == PA_PORT_AVAILABLE_NO)
       return CUBEB_DEVICE_STATE_UNPLUGGED;
     else /*if (info->available == PA_PORT_AVAILABLE_YES) + UNKNOWN */
+#endif
       return CUBEB_DEVICE_STATE_ENABLED;
   }
 
@@ -823,9 +825,11 @@ static cubeb_device_state
 pulse_get_state_from_source_port(pa_source_port_info * info)
 {
   if (info != NULL) {
+#if PA_CHECK_VERSION(2, 0, 0)
     if (info->available == PA_PORT_AVAILABLE_NO)
       return CUBEB_DEVICE_STATE_UNPLUGGED;
     else /*if (info->available == PA_PORT_AVAILABLE_YES) + UNKNOWN */
+#endif
       return CUBEB_DEVICE_STATE_ENABLED;
   }
 
