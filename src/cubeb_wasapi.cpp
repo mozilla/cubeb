@@ -1666,7 +1666,7 @@ wasapi_enumerate_devices(cubeb * context, cubeb_device_type type,
     return CUBEB_ERROR;
   }
   *out = (cubeb_device_collection *) malloc(sizeof(cubeb_device_collection) +
-      sizeof(cubeb_device_info*) * cc);
+      sizeof(cubeb_device_info*) * (cc > 0 ? cc - 1 : 0));
   (*out)->count = 0;
   for (i = 0; i < cc; i++) {
     hr = collection->Item(i, &dev);

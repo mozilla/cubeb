@@ -943,13 +943,17 @@ static int
 winmm_enumerate_devices(cubeb * context, cubeb_device_type type,
                         cubeb_device_collection ** collection)
 {
-  UINT i, incount, outcount;
+  UINT i, incount, outcount, total;
   cubeb_device_info * cur;
 
   outcount = waveOutGetNumDevs();
   incount = waveInGetNumDevs();
+  total = outcount + incount;
+  if (total > 0) {
+    total -= 1;
+  }
   *collection = malloc(sizeof(cubeb_device_collection) +
-      sizeof(cubeb_device_info*) * (outcount + incount));
+      sizeof(cubeb_device_info*) * total);
   (*collection)->count = 0;
 
   if (type & CUBEB_DEVICE_TYPE_OUTPUT) {

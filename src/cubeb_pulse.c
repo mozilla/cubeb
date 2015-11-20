@@ -926,7 +926,7 @@ pulse_enumerate_devices(cubeb * context, cubeb_device_type type,
   }
 
   *collection = malloc(sizeof(cubeb_device_collection) +
-      sizeof(cubeb_device_info*) * user_data.count);
+      sizeof(cubeb_device_info*) * (user_data.count > 0 ? user_data.count - 1 : 0));
   (*collection)->count = user_data.count;
   for (i = 0; i < user_data.count; i++)
     (*collection)->device[i] = user_data.devinfo[i];

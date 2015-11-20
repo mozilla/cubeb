@@ -217,7 +217,7 @@ typedef struct {
 /** Device collection. */
 typedef struct {
   uint32_t count;                 /**< Device count in collection. */
-  cubeb_device_info * device[0];  /**< Array of pointers to device info. */
+  cubeb_device_info * device[1];   /**< Array of pointers to device info. */
 } cubeb_device_collection;
 
 /** User supplied data callback.

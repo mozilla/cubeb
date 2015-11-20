@@ -1263,7 +1263,7 @@ audiounit_enumerate_devices(cubeb * context, cubeb_device_type type,
     return CUBEB_ERROR;
 
   *collection = malloc(sizeof(cubeb_device_collection) +
-      sizeof(cubeb_device_info*) * hwdevcount);
+      sizeof(cubeb_device_info*) * (hwdevcount > 0 ? hwdevcount - 1 : 0));
   (*collection)->count = 0;
 
   if (hwdevcount > 0) {
