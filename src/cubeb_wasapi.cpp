@@ -17,12 +17,16 @@
 #include <avrt.h>
 #include "cubeb/cubeb.h"
 #include "cubeb-internal.h"
-#include "cubeb_devicetopology.h"
 #include "cubeb/cubeb-stdint.h"
 #include "cubeb_resampler.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <cmath>
+
+/* devicetopology.h missing in MinGW. */
+#ifndef __devicetopology_h__
+#include "cubeb_devicetopology.h"
+#endif
 
 /* Taken from winbase.h, Not in MinGW. */
 #ifndef STACK_SIZE_PARAM_IS_A_RESERVATION
@@ -1594,7 +1598,7 @@ wasapi_create_device(IMMDeviceEnumerator * enumerator, IMMDevice * dev)
       ret->max_rate = ret->min_rate = ret->default_rate = pcm->wf.nSamplesPerSec;
       ret->max_channels = pcm->wf.nChannels;
     } else if (propvar.blob.cbSize >= sizeof(WAVEFORMATEX)) {
-      LPCWAVEFORMATEX wfx = reinterpret_cast<LPCWAVEFORMATEX>(propvar.blob.pBlobData);
+      WAVEFORMATEX* wfx = reinterpret_cast<WAVEFORMATEX*>(propvar.blob.pBlobData);
 
       if (propvar.blob.cbSize >= sizeof(WAVEFORMATEX) + wfx->cbSize ||
           wfx->wFormatTag == WAVE_FORMAT_PCM) {
