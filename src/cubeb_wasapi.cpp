@@ -925,6 +925,10 @@ wasapi_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * laten
     return CUBEB_ERROR;
   }
 
+  if (params.format != CUBEB_SAMPLE_FLOAT32NE) {
+    return CUBEB_ERROR_INVALID_FORMAT;
+  }
+
   IMMDevice * device;
   hr = get_default_endpoint(&device);
   if (FAILED(hr)) {
