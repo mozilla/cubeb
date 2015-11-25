@@ -19,6 +19,11 @@
 #include "common.h"
 
 #define SAMPLE_FREQUENCY 48000
+#if (defined(_WIN32) || defined(__WIN32__))
+#define STREAM_FORMAT CUBEB_SAMPLE_FLOAT32LE
+#else
+#define STREAM_FORMAT CUBEB_SAMPLE_S16LE
+#endif
 
 /* store the phase of the generated waveform */
 struct cb_user_data {
@@ -28,7 +33,12 @@ struct cb_user_data {
 long data_cb(cubeb_stream *stream, void *user, void *buffer, long nframes)
 {
   struct cb_user_data *u = (struct cb_user_data *)user;
+#if STREAM_FORMAT == CUBEB_SAMPLE_FLOAT32LE
   short *b = (short *)buffer;
+#else
+  float *b = (float *)buffer;
+#endif
+  float t1, t2;
   int i;
 
   if (stream == NULL || u == NULL)
@@ -37,10 +47,24 @@ long data_cb(cubeb_stream *stream, void *user, void *buffer, long nframes)
   /* generate our test tone on the fly */
   for (i = 0; i < nframes; i++) {
     /* North American dial tone */
-    b[i]  = 16000*sin(2*M_PI*(i + u->position)*350/SAMPLE_FREQUENCY);
-    b[i] += 16000*sin(2*M_PI*(i + u->position)*440/SAMPLE_FREQUENCY);
+    t1 = sin(2*M_PI*(i + u->position)*350/SAMPLE_FREQUENCY);
+    t2 = sin(2*M_PI*(i + u->position)*440/SAMPLE_FREQUENCY);
+#if STREAM_FORMAT == CUBEB_SAMPLE_FLOAT32LE
+    b[i]  = 0.5 * t1;
+    b[i] += 0.5 * t2;
+#else
+    b[i]  = (SHRT_MAX / 2) * t1;
+    b[i] += (SHRT_MAX / 2) * t2;
+#endif
     /* European dial tone */
-    /*b[i]  = 30000*sin(2*M_PI*(i + u->position)*425/SAMPLE_FREQUENCY);*/
+    /*
+    t1 = sin(2*M_PI*(i + u->position)*425/SAMPLE_FREQUENCY);
+#if STREAM_FORMAT == CUBEB_SAMPLE_FLOAT32LE
+    b[i] = t1;
+#else
+    b[i]  = SHRT_MAX * t1;
+#endif
+    */
   }
   /* remember our phase to avoid clicking on buffer transitions */
   /* we'll still click if position overflows */
@@ -84,7 +108,7 @@ int main(int argc, char *argv[])
     return r;
   }
 
-  params.format = CUBEB_SAMPLE_S16NE;
+  params.format = STREAM_FORMAT;
   params.rate = SAMPLE_FREQUENCY;
   params.channels = 1;
 
