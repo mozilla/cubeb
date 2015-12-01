@@ -38,9 +38,9 @@ long data_cb(cubeb_stream *stream, void *user, void *buffer, long nframes)
 {
   struct cb_user_data *u = (struct cb_user_data *)user;
 #if (defined(_WIN32) || defined(__WIN32__))
-  short *b = (short *)buffer;
-#else
   float *b = (float *)buffer;
+#else
+  short *b = (short *)buffer;
 #endif
   float t1, t2;
   int i;
