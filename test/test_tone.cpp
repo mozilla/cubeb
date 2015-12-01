@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <assert.h>
+#include <limits.h>
 
 #include "cubeb/cubeb.h"
 #include "common.h"
@@ -36,7 +37,7 @@ struct cb_user_data {
 long data_cb(cubeb_stream *stream, void *user, void *buffer, long nframes)
 {
   struct cb_user_data *u = (struct cb_user_data *)user;
-#if STREAM_FORMAT == CUBEB_SAMPLE_FLOAT32LE
+#if (defined(_WIN32) || defined(__WIN32__))
   short *b = (short *)buffer;
 #else
   float *b = (float *)buffer;
@@ -52,7 +53,7 @@ long data_cb(cubeb_stream *stream, void *user, void *buffer, long nframes)
     /* North American dial tone */
     t1 = sin(2*M_PI*(i + u->position)*350/SAMPLE_FREQUENCY);
     t2 = sin(2*M_PI*(i + u->position)*440/SAMPLE_FREQUENCY);
-#if STREAM_FORMAT == CUBEB_SAMPLE_FLOAT32LE
+#if (defined(_WIN32) || defined(__WIN32__))
     b[i]  = 0.5 * t1;
     b[i] += 0.5 * t2;
 #else
@@ -62,7 +63,7 @@ long data_cb(cubeb_stream *stream, void *user, void *buffer, long nframes)
     /* European dial tone */
     /*
     t1 = sin(2*M_PI*(i + u->position)*425/SAMPLE_FREQUENCY);
-#if STREAM_FORMAT == CUBEB_SAMPLE_FLOAT32LE
+#if (defined(_WIN32) || defined(__WIN32__))
     b[i] = t1;
 #else
     b[i]  = SHRT_MAX * t1;

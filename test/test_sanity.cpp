@@ -43,7 +43,7 @@ static long
 test_data_callback(cubeb_stream * stm, void * user_ptr, void * p, long nframes)
 {
   assert(stm && user_ptr == &dummy && p && nframes > 0);
-#if STREAM_FORMAT == CUBEB_SAMPLE_FLOAT32LE
+#if (defined(_WIN32) || defined(__WIN32__))
   memset(p, 0, nframes * sizeof(float));
 #else
   memset(p, 0, nframes * sizeof(short));
