@@ -61,28 +61,44 @@ int audiotrack_init(cubeb ** context, char const * context_name);
 int kai_init(cubeb ** context, char const * context_name);
 #endif
 
-int
-validate_stream_params(cubeb_stream_params * input_stream_params,
-                       cubeb_stream_params * output_stream_params)
+int validate_stream_param(cubeb_stream_params * params)
 {
-  // Rate and sample format must be the same for input and output.
-  if (output_stream_params->rate < 1000 || output_stream_params->rate > 192000 ||
-      output_stream_params->channels < 1 || output_stream_params->channels > 8 ||
-      (input_stream_params && input_stream_params &&
-       (input_stream_params->rate != output_stream_params->rate  ||
-        input_stream_params->format != output_stream_params->format))) {
-    return CUBEB_ERROR_INVALID_FORMAT;
+  assert(params);
+  if (params &&
+      (params->rate < 1000 || params->rate > 192000 ||
+      params->channels < 1 ||params->channels > 8) ) {
+    return -1;
   }
 
-  switch (output_stream_params->format) {
+  switch (params->format) {
   case CUBEB_SAMPLE_S16LE:
   case CUBEB_SAMPLE_S16BE:
   case CUBEB_SAMPLE_FLOAT32LE:
   case CUBEB_SAMPLE_FLOAT32BE:
-    return CUBEB_OK;
+    return 0;
+  }
+  return -1;
+}
+
+int
+validate_stream_params(cubeb_stream_params * input_stream_params,
+                       cubeb_stream_params * output_stream_params)
+{
+  if (output_stream_params && validate_stream_param(output_stream_params) < 0){
+    return CUBEB_ERROR_INVALID_FORMAT;
   }
 
-  return CUBEB_ERROR_INVALID_FORMAT;
+  if (input_stream_params && validate_stream_param(input_stream_params) < 0) {
+    return CUBEB_ERROR_INVALID_FORMAT;
+  }
+  // Rate and sample format must be the same for input and output.
+  if (input_stream_params && output_stream_params &&
+       (input_stream_params->rate != output_stream_params->rate  ||
+        input_stream_params->format != output_stream_params->format)) {
+    return CUBEB_ERROR_INVALID_FORMAT;
+  }
+
+  return CUBEB_OK;
 }
 
 int

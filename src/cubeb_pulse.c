@@ -76,6 +76,7 @@
   X(pa_stream_peek)                             \
   X(pa_stream_drop)                             \
   X(pa_stream_writable_size)                    \
+  X(pa_stream_trigger)                          \
 
 #define MAKE_TYPEDEF(x) static typeof(x) * cubeb_##x;
 LIBPULSE_API_VISIT(MAKE_TYPEDEF);
@@ -178,25 +179,14 @@ stream_state_callback(pa_stream * s, void * u)
 }
 
 static void
-stream_request_callback(pa_stream * s, size_t nbytes, void * u)
+write_to_output(pa_stream * s, void* input_data, size_t nbytes, cubeb_stream * stm)
 {
-}
-
-static void
-write_input_to_output(pa_stream * s, void* input_data, size_t nbytes, void * u)
-{
-  cubeb_stream * stm;
   void * buffer;
   size_t size;
   int r;
   long got;
   size_t towrite;
   size_t frame_size;
-
-  stm = u;
-
-  if (stm->shutdown)
-    return;
 
   frame_size = WRAP(pa_frame_size)(&stm->sample_spec);
   assert(nbytes % frame_size == 0);
@@ -209,6 +199,7 @@ write_input_to_output(pa_stream * s, void* input_data, size_t nbytes, void * u)
     assert(size > 0);
     assert(size % frame_size == 0);
 
+    printf("data cb buffer size %zd\n", size);
     got = stm->data_callback(stm, stm->user_ptr, input_data, buffer, size / frame_size);
     if (got < 0) {
       WRAP(pa_stream_cancel_write)(s);
@@ -258,30 +249,73 @@ write_input_to_output(pa_stream * s, void* input_data, size_t nbytes, void * u)
 }
 
 static void
+stream_request_callback(pa_stream * s, size_t nbytes, void * u)
+{
+  printf("-- write size %zd -->\n", nbytes);
+  cubeb_stream * stm;
+  stm = u;
+  if (stm->shutdown) {
+    return;
+  }
+
+  // input/capture + output/record operation
+  // return here it is handled by read callback
+  if (stm->input_stream) {
+    return;
+  }
+
+  // Output/record only operation
+  assert(!stm->input_stream && stm->output_stream);
+  write_to_output(s, NULL, nbytes, stm);
+}
+
+static void
 stream_read_callback(pa_stream * s, size_t nbytes, void * u)
 {
+  printf("<-- read size %zd -- ", nbytes);
+  cubeb_stream * stm;
+  stm = u;
+  if (stm->shutdown) {
+    return;
+  }
+
   while (WRAP(pa_stream_readable_size)(s) > 0) {
     const void *data;
-    size_t length;
-    if (WRAP(pa_stream_peek)(s, &data, &length) < 0) {
+    size_t read_size;
+    if (WRAP(pa_stream_peek)(s, &data, &read_size) < 0) {
       return;
     }
 
     const pa_sample_spec* in_ss =  WRAP(pa_stream_get_sample_spec)(s);
     size_t in_frame_size = WRAP(pa_frame_size)(in_ss);
-    size_t read_frames = length / in_frame_size;
+    size_t read_frames = read_size / in_frame_size;
 
     cubeb_stream* stm = u;
-    size_t out_frame_size = WRAP(pa_frame_size)(&stm->sample_spec);
-    size_t write_size = read_frames * out_frame_size;
-    size_t writable_size = WRAP(pa_stream_writable_size)(stm->output_stream);
-    if (writable_size< write_size) {
-      // Trancate read
-      write_size = writable_size;
-    }
+    if (stm->output_stream) {
+      // input/capture + output/record operation
+      size_t out_frame_size = WRAP(pa_frame_size)(&stm->sample_spec);
+      size_t write_size = read_frames * out_frame_size;
+      size_t writable_size = WRAP(pa_stream_writable_size)(stm->output_stream);
+      printf("writable size %zd\n", writable_size);
+      if (writable_size< write_size) {
+        // Trancate read
+        write_size = writable_size;
+      }
+      void* read_buffer = (void*)data;
+      write_to_output(stm->output_stream, read_buffer, write_size, stm);
 
-    void* read_buffer = (void*)data;
-    write_input_to_output(stm->output_stream, read_buffer, write_size, u);
+      // Trigger to play output stream. Forse it here to be sure that input
+      // and output are in sync. Do not check for result to avoid delay
+      //WRAP(pa_stream_trigger)(stm->output_stream, NULL, NULL);
+    } else {
+      // input/capture only operation. Call callback directly
+      void* read_buffer = (void*)data;
+      if (stm->data_callback(stm, stm->user_ptr, read_buffer, NULL, read_frames) < 0) {
+        WRAP(pa_stream_cancel_write)(s);
+        stm->shutdown = 1;
+        return;
+      }
+    }
 
     WRAP(pa_stream_drop)(s);
   }
@@ -321,8 +355,12 @@ wait_until_io_stream_ready(pa_stream * stream, pa_threaded_mainloop * mainloop)
 static int
 wait_until_stream_ready(cubeb_stream * stm)
 {
-  if (wait_until_io_stream_ready(stm->output_stream, stm->context->mainloop) == -1 ||
-       wait_until_io_stream_ready(stm->input_stream, stm->context->mainloop) == -1) {
+  if (stm->output_stream &&
+      wait_until_io_stream_ready(stm->output_stream, stm->context->mainloop) == -1) {
+    return -1;
+  }
+  if(stm->input_stream &&
+     wait_until_io_stream_ready(stm->input_stream, stm->context->mainloop) == -1) {
     return -1;
   }
   return 0;
@@ -376,20 +414,26 @@ stream_update_timing_info(cubeb_stream * stm)
 {
   int r = -1;
   pa_operation * o = NULL;
-  o = WRAP(pa_stream_update_timing_info)(stm->output_stream, stream_success_callback, stm);
-  if (o) {
-    r = operation_wait(stm->context, stm->output_stream, o);
-    WRAP(pa_operation_unref)(o);
+  if (stm->output_stream) {
+    o = WRAP(pa_stream_update_timing_info)(stm->output_stream, stream_success_callback, stm);
+    if (o) {
+      r = operation_wait(stm->context, stm->output_stream, o);
+      WRAP(pa_operation_unref)(o);
+    }
+    // if this fail abort
+    if (r!=0){
+      return r;
+    }
   }
-  // if this fail abort
-  if (r!=0){
-    return r;
+
+  if (stm->input_stream) {
+    o = WRAP(pa_stream_update_timing_info)(stm->input_stream, stream_success_callback, stm);
+    if (o) {
+      r = operation_wait(stm->context, stm->input_stream, o);
+      WRAP(pa_operation_unref)(o);
+    }
   }
-  o = WRAP(pa_stream_update_timing_info)(stm->input_stream, stream_success_callback, stm);
-  if (o) {
-    r = operation_wait(stm->context, stm->input_stream, o);
-    WRAP(pa_operation_unref)(o);
-  }
+
   return r;
 }
 
@@ -583,7 +627,7 @@ cube_to_pulse_format(cubeb_sample_format format)
   case CUBEB_SAMPLE_FLOAT32BE:
     return PA_SAMPLE_FLOAT32BE;
   default:
-    return CUBEB_ERROR_INVALID_FORMAT;
+    return PA_SAMPLE_INVALID;
   }
 }
 
@@ -611,10 +655,6 @@ pulse_stream_init(cubeb * context,
 
   *stream = NULL;
 
-  ss.format = cube_to_pulse_format(output_stream_params->format);
-  ss.rate = output_stream_params->rate;
-  ss.channels = output_stream_params->channels;
-
   stm = calloc(1, sizeof(*stm));
   assert(stm);
 
@@ -622,44 +662,57 @@ pulse_stream_init(cubeb * context,
   stm->data_callback = data_callback;
   stm->state_callback = state_callback;
   stm->user_ptr = user_ptr;
-  stm->sample_spec = ss;
   stm->volume = PULSE_NO_GAIN;
 
   battr.maxlength = -1;
-  battr.tlength = WRAP(pa_usec_to_bytes)(latency * PA_USEC_PER_MSEC, &stm->sample_spec);
+  battr.tlength = -1;
   battr.prebuf = -1;
-  battr.minreq = battr.tlength / 4;
+  battr.minreq = -1;
   battr.fragsize = -1;
 
   WRAP(pa_threaded_mainloop_lock)(stm->context->mainloop);
-  stm->output_stream = WRAP(pa_stream_new)(stm->context->context, stream_name, &ss, NULL);
-  if (!stm->output_stream) {
-    WRAP(pa_threaded_mainloop_unlock)(stm->context->mainloop);
-    pulse_stream_destroy(stm);
-    return CUBEB_ERROR;
+  if (output_stream_params) {
+    ss.format = cube_to_pulse_format(output_stream_params->format);
+    ss.rate = output_stream_params->rate;
+    ss.channels = output_stream_params->channels;
+
+    // update buffer attributes
+    stm->sample_spec = ss;
+    battr.tlength = WRAP(pa_usec_to_bytes)(latency * PA_USEC_PER_MSEC, &stm->sample_spec);
+    battr.minreq = battr.tlength / 4;
+    battr.fragsize = battr.minreq;
+
+    stm->output_stream = WRAP(pa_stream_new)(stm->context->context, stream_name, &ss, NULL);
+    if (!stm->output_stream) {
+      WRAP(pa_threaded_mainloop_unlock)(stm->context->mainloop);
+      pulse_stream_destroy(stm);
+      return CUBEB_ERROR;
+    }
+    WRAP(pa_stream_set_state_callback)(stm->output_stream, stream_state_callback, stm);
+    WRAP(pa_stream_set_write_callback)(stm->output_stream, stream_request_callback, stm);
+    WRAP(pa_stream_connect_playback)(stm->output_stream, NULL, &battr,
+                                     PA_STREAM_AUTO_TIMING_UPDATE | PA_STREAM_INTERPOLATE_TIMING |
+                                     PA_STREAM_START_CORKED,
+                                     NULL, NULL);
   }
-  WRAP(pa_stream_set_state_callback)(stm->output_stream, stream_state_callback, stm);
-  WRAP(pa_stream_set_write_callback)(stm->output_stream, stream_request_callback, stm);
-  WRAP(pa_stream_connect_playback)(stm->output_stream, NULL, &battr,
-                                   PA_STREAM_AUTO_TIMING_UPDATE | PA_STREAM_INTERPOLATE_TIMING |
-                                   PA_STREAM_START_CORKED,
-                                   NULL, NULL);
 
   // Set up input stream
-  pa_sample_spec in_ss;
-  in_ss.channels = input_stream_params->channels;
-  in_ss.rate = input_stream_params->rate;
-  in_ss.format = cube_to_pulse_format(input_stream_params->format);
-  stm->input_stream = WRAP(pa_stream_new)(stm->context->context, "input stream", &in_ss, NULL);
-  if (!stm->input_stream) {
-    WRAP(pa_threaded_mainloop_unlock)(stm->context->mainloop);
-    pulse_stream_destroy(stm);
-    return CUBEB_ERROR;
+  if (input_stream_params){
+    pa_sample_spec in_ss;
+    in_ss.channels = input_stream_params->channels;
+    in_ss.rate = input_stream_params->rate;
+    in_ss.format = cube_to_pulse_format(input_stream_params->format);
+    stm->input_stream = WRAP(pa_stream_new)(stm->context->context, "input stream", &in_ss, NULL);
+    if (!stm->input_stream) {
+      WRAP(pa_threaded_mainloop_unlock)(stm->context->mainloop);
+      pulse_stream_destroy(stm);
+      return CUBEB_ERROR;
+    }
+    WRAP(pa_stream_set_state_callback)(stm->input_stream, stream_state_callback, stm);
+    WRAP(pa_stream_set_read_callback)(stm->input_stream, stream_read_callback, stm);
+    WRAP(pa_stream_connect_record)(stm->input_stream, NULL, &battr,
+                                   PA_STREAM_START_CORKED);
   }
-  WRAP(pa_stream_set_state_callback)(stm->input_stream, stream_state_callback, stm);
-  WRAP(pa_stream_set_read_callback)(stm->input_stream, stream_read_callback, stm);
-  WRAP(pa_stream_connect_record)(stm->input_stream, NULL, &battr,
-      PA_STREAM_START_CORKED);
 
   r = wait_until_stream_ready(stm);
   if (r == 0) {
@@ -682,10 +735,10 @@ pulse_stream_init(cubeb * context,
 static void
 pulse_stream_destroy(cubeb_stream * stm)
 {
-  if (stm->output_stream) {
-    stream_cork(stm, CORK);
+  stream_cork(stm, CORK);
 
-    WRAP(pa_threaded_mainloop_lock)(stm->context->mainloop);
+  WRAP(pa_threaded_mainloop_lock)(stm->context->mainloop);
+  if (stm->output_stream) {
 
     if (stm->drain_timer) {
       /* there's no pa_rttime_free, so use this instead. */
@@ -695,13 +748,14 @@ pulse_stream_destroy(cubeb_stream * stm)
     WRAP(pa_stream_set_state_callback)(stm->output_stream, NULL, NULL);
     WRAP(pa_stream_disconnect)(stm->output_stream);
     WRAP(pa_stream_unref)(stm->output_stream);
+  }
 
+  if (stm->input_stream) {
     WRAP(pa_stream_set_state_callback)(stm->input_stream, NULL, NULL);
     WRAP(pa_stream_disconnect)(stm->input_stream);
     WRAP(pa_stream_unref)(stm->input_stream);
-
-    WRAP(pa_threaded_mainloop_unlock)(stm->context->mainloop);
   }
+  WRAP(pa_threaded_mainloop_unlock)(stm->context->mainloop);
 
   free(stm);
 }
@@ -726,6 +780,10 @@ pulse_stream_get_position(cubeb_stream * stm, uint64_t * position)
   int r, in_thread;
   pa_usec_t r_usec;
   uint64_t bytes;
+
+  if (!stm->output_stream) {
+    return CUBEB_ERROR;
+  }
 
   in_thread = WRAP(pa_threaded_mainloop_in_thread)(stm->context->mainloop);
 
@@ -752,6 +810,10 @@ pulse_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
 {
   pa_usec_t r_usec;
   int negative, r;
+
+  if (!stm->output_stream) {
+    return CUBEB_ERROR;
+  }
 
   if (!stm) {
     return CUBEB_ERROR;
@@ -782,6 +844,10 @@ pulse_stream_set_volume(cubeb_stream * stm, float volume)
   pa_volume_t vol;
   pa_cvolume cvol;
   const pa_sample_spec * ss;
+
+  if (!stm->output_stream) {
+    return CUBEB_ERROR;
+  }
 
   WRAP(pa_threaded_mainloop_lock)(stm->context->mainloop);
 
@@ -820,6 +886,10 @@ pulse_stream_set_panning(cubeb_stream * stream, float panning)
 {
   const pa_channel_map * map;
   pa_cvolume vol;
+
+  if (!stream->output_stream) {
+    return CUBEB_ERROR;
+  }
 
   map = WRAP(pa_stream_get_channel_map)(stream->output_stream);
 
