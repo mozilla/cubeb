@@ -83,6 +83,8 @@ LIBPULSE_API_VISIT(MAKE_TYPEDEF);
 #undef MAKE_TYPEDEF
 #endif
 
+#define MIN_LATENCY_MS 30
+
 static struct cubeb_ops const pulse_ops;
 
 struct cubeb {
@@ -103,7 +105,7 @@ struct cubeb_stream {
   cubeb_state_callback state_callback;
   void * user_ptr;
   pa_time_event * drain_timer;
-  pa_sample_spec sample_spec;
+  pa_sample_spec output_sample_spec;
   int shutdown;
   float volume;
 };
@@ -188,7 +190,7 @@ write_to_output(pa_stream * s, void* input_data, size_t nbytes, cubeb_stream * s
   size_t towrite;
   size_t frame_size;
 
-  frame_size = WRAP(pa_frame_size)(&stm->sample_spec);
+  frame_size = WRAP(pa_frame_size)(&stm->output_sample_spec);
   assert(nbytes % frame_size == 0);
 
   towrite = nbytes;
@@ -199,7 +201,7 @@ write_to_output(pa_stream * s, void* input_data, size_t nbytes, cubeb_stream * s
     assert(size > 0);
     assert(size % frame_size == 0);
 
-    printf("data cb buffer size %zd\n", size);
+//    printf("data cb buffer size %zd\n", size);
     got = stm->data_callback(stm, stm->user_ptr, input_data, buffer, size / frame_size);
     if (got < 0) {
       WRAP(pa_stream_cancel_write)(s);
@@ -208,10 +210,10 @@ write_to_output(pa_stream * s, void* input_data, size_t nbytes, cubeb_stream * s
     }
 
     if (stm->volume != PULSE_NO_GAIN) {
-      uint32_t samples =  size * stm->sample_spec.channels / frame_size ;
+      uint32_t samples =  size * stm->output_sample_spec.channels / frame_size ;
 
-      if (stm->sample_spec.format == PA_SAMPLE_S16BE ||
-          stm->sample_spec.format == PA_SAMPLE_S16LE) {
+      if (stm->output_sample_spec.format == PA_SAMPLE_S16BE ||
+          stm->output_sample_spec.format == PA_SAMPLE_S16LE) {
         short * b = buffer;
         for (uint32_t i = 0; i < samples; i++) {
           b[i] *= stm->volume;
@@ -251,7 +253,7 @@ write_to_output(pa_stream * s, void* input_data, size_t nbytes, cubeb_stream * s
 static void
 stream_request_callback(pa_stream * s, size_t nbytes, void * u)
 {
-  printf("-- write size %zd -->\n", nbytes);
+//  printf("-- write size %zd -->\n", nbytes);
   cubeb_stream * stm;
   stm = u;
   if (stm->shutdown) {
@@ -272,7 +274,7 @@ stream_request_callback(pa_stream * s, size_t nbytes, void * u)
 static void
 stream_read_callback(pa_stream * s, size_t nbytes, void * u)
 {
-  printf("<-- read size %zd -- ", nbytes);
+//  printf("<-- read size %zd -- ", nbytes);
   cubeb_stream * stm;
   stm = u;
   if (stm->shutdown) {
@@ -293,21 +295,21 @@ stream_read_callback(pa_stream * s, size_t nbytes, void * u)
     cubeb_stream* stm = u;
     if (stm->output_stream) {
       // input/capture + output/record operation
-      size_t out_frame_size = WRAP(pa_frame_size)(&stm->sample_spec);
+      size_t out_frame_size = WRAP(pa_frame_size)(&stm->output_sample_spec);
       size_t write_size = read_frames * out_frame_size;
       size_t writable_size = WRAP(pa_stream_writable_size)(stm->output_stream);
-      printf("writable size %zd\n", writable_size);
+
+//      printf("writable size %zd\n", writable_size);
+      void* read_buffer = (void*)data;
       if (writable_size< write_size) {
         // Trancate read
-        write_size = writable_size;
+        write_to_output(stm->output_stream, read_buffer, writable_size, stm);
+        // Trigger to play output stream.
+        WRAP(pa_stream_trigger)(stm->output_stream, NULL, NULL);
       }
-      void* read_buffer = (void*)data;
       write_to_output(stm->output_stream, read_buffer, write_size, stm);
-
-      // Trigger to play output stream. Forse it here to be sure that input
-      // and output are in sync. Do not check for result to avoid delay
-      //WRAP(pa_stream_trigger)(stm->output_stream, NULL, NULL);
     } else {
+//      printf("\n");
       // input/capture only operation. Call callback directly
       void* read_buffer = (void*)data;
       if (stm->data_callback(stm, stm->user_ptr, read_buffer, NULL, read_frames) < 0) {
@@ -677,8 +679,9 @@ pulse_stream_init(cubeb * context,
     ss.channels = output_stream_params->channels;
 
     // update buffer attributes
-    stm->sample_spec = ss;
-    battr.tlength = WRAP(pa_usec_to_bytes)(latency * PA_USEC_PER_MSEC, &stm->sample_spec);
+    stm->output_sample_spec = ss;
+    unsigned int latency_min = (latency < MIN_LATENCY_MS)? MIN_LATENCY_MS: latency;
+    battr.tlength = WRAP(pa_usec_to_bytes)(latency_min * PA_USEC_PER_MSEC, &stm->output_sample_spec);
     battr.minreq = battr.tlength / 4;
     battr.fragsize = battr.minreq;
 
@@ -781,7 +784,7 @@ pulse_stream_get_position(cubeb_stream * stm, uint64_t * position)
   pa_usec_t r_usec;
   uint64_t bytes;
 
-  if (!stm->output_stream) {
+  if (!stm || !stm->output_stream) {
     return CUBEB_ERROR;
   }
 
@@ -799,8 +802,8 @@ pulse_stream_get_position(cubeb_stream * stm, uint64_t * position)
     return CUBEB_ERROR;
   }
 
-  bytes = WRAP(pa_usec_to_bytes)(r_usec, &stm->sample_spec);
-  *position = bytes / WRAP(pa_frame_size)(&stm->sample_spec);
+  bytes = WRAP(pa_usec_to_bytes)(r_usec, &stm->output_sample_spec);
+  *position = bytes / WRAP(pa_frame_size)(&stm->output_sample_spec);
 
   return CUBEB_OK;
 }
@@ -811,11 +814,7 @@ pulse_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
   pa_usec_t r_usec;
   int negative, r;
 
-  if (!stm->output_stream) {
-    return CUBEB_ERROR;
-  }
-
-  if (!stm) {
+  if (!stm || !stm->output_stream) {
     return CUBEB_ERROR;
   }
 
@@ -825,7 +824,7 @@ pulse_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
     return CUBEB_ERROR;
   }
 
-  *latency = r_usec * stm->sample_spec.rate / PA_USEC_PER_SEC;
+  *latency = r_usec * stm->output_sample_spec.rate / PA_USEC_PER_SEC;
   return CUBEB_OK;
 }
 

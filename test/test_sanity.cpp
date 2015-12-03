@@ -146,7 +146,7 @@ test_init_destroy_stream(void)
   params.rate = STREAM_RATE;
   params.channels = STREAM_CHANNELS;
 
-  r = cubeb_stream_init(ctx, &stream, "test", nullptr, &params, STREAM_LATENCY,
+  r = cubeb_stream_init(ctx, &stream, "test", NULL, &params, STREAM_LATENCY,
                         test_data_callback, test_state_callback, &dummy);
   assert(r == 0 && stream);
 
