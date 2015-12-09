@@ -118,26 +118,6 @@ typedef enum {
 } cubeb_stream_type;
 #endif
 
-typedef void * cubeb_devid;
-
-/** Stream format initialization parameters. */
-typedef struct {
-  cubeb_sample_format format; /**< Requested sample format.  One of
-                                   #cubeb_sample_format. */
-  unsigned int rate;          /**< Requested sample rate.  Valid range is [1000, 192000]. */
-  unsigned int channels;      /**< Requested channel count.  Valid range is [1, 8]. */
-#if defined(__ANDROID__)
-  cubeb_stream_type stream_type; /**< Used to map Android audio stream types */
-#endif
-  cubeb_devid devid;
-} cubeb_stream_params;
-
-/** Output device description */
-typedef struct {
-  char * output_name; /**< The name of the output device */
-  char * input_name; /**< The name of the input device */
-} cubeb_device;
-
 /** Stream states signaled via state_callback. */
 typedef enum {
   CUBEB_STATE_STARTED, /**< Stream started. */
@@ -167,6 +147,8 @@ typedef enum {
   CUBEB_DEVICE_STATE_ENABLED
 } cubeb_device_state;
 
+typedef void * cubeb_devid;
+
 typedef enum {
   CUBEB_DEVICE_FMT_S16LE          = 0x0010,
   CUBEB_DEVICE_FMT_S16BE          = 0x0020,
@@ -193,6 +175,24 @@ typedef enum {
   CUBEB_DEVICE_PREF_ALL           = 0x0F
 } cubeb_device_pref;
 
+/** Stream format initialization parameters. */
+typedef struct {
+  cubeb_devid devid;          /* Device identifier handle -- NULL means default */
+  cubeb_sample_format format; /**< Requested sample format.  One of
+                                   #cubeb_sample_format. */
+  unsigned int rate;          /**< Requested sample rate.  Valid range is [1000, 192000]. */
+  unsigned int channels;      /**< Requested channel count.  Valid range is [1, 8]. */
+#if defined(__ANDROID__)
+  cubeb_stream_type stream_type; /**< Used to map Android audio stream types */
+#endif
+} cubeb_stream_params;
+
+/** Output device description */
+typedef struct {
+  char * output_name; /**< The name of the output device */
+  char * input_name; /**< The name of the input device */
+} cubeb_device;
+
 typedef struct {
   cubeb_devid devid;          /* Device identifier handle */
   char * device_id;           /* Device identifier which might be presented in a UI */
@@ -218,7 +218,7 @@ typedef struct {
 /** Device collection. */
 typedef struct {
   uint32_t count;                 /**< Device count in collection. */
-  cubeb_device_info * device[0];  /**< Array of pointers to device info. */
+  cubeb_device_info * device[1];   /**< Array of pointers to device info. */
 } cubeb_device_collection;
 
 /** User supplied data callback.
