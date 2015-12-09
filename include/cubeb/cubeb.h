@@ -118,6 +118,8 @@ typedef enum {
 } cubeb_stream_type;
 #endif
 
+typedef void * cubeb_devid;
+
 /** Stream format initialization parameters. */
 typedef struct {
   cubeb_sample_format format; /**< Requested sample format.  One of
@@ -127,6 +129,7 @@ typedef struct {
 #if defined(__ANDROID__)
   cubeb_stream_type stream_type; /**< Used to map Android audio stream types */
 #endif
+  cubeb_devid devid;
 } cubeb_stream_params;
 
 /** Output device description */
@@ -172,8 +175,6 @@ typedef enum {
 
 /** An opaque handle used to refer a particular input or output device
  *  accross calls. */
-typedef void * cubeb_devid;
-
 /**
  * Architecture specific sample type.
  */

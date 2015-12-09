@@ -306,8 +306,9 @@ stream_read_callback(pa_stream * s, size_t nbytes, void * u)
         write_to_output(stm->output_stream, read_buffer, writable_size, stm);
         // Trigger to play output stream.
         WRAP(pa_stream_trigger)(stm->output_stream, NULL, NULL);
+      } else {
+        write_to_output(stm->output_stream, read_buffer, write_size, stm);
       }
-      write_to_output(stm->output_stream, read_buffer, write_size, stm);
     } else {
 //      printf("\n");
       // input/capture only operation. Call callback directly
@@ -693,7 +694,9 @@ pulse_stream_init(cubeb * context,
     }
     WRAP(pa_stream_set_state_callback)(stm->output_stream, stream_state_callback, stm);
     WRAP(pa_stream_set_write_callback)(stm->output_stream, stream_request_callback, stm);
-    WRAP(pa_stream_connect_playback)(stm->output_stream, NULL, &battr,
+    WRAP(pa_stream_connect_playback)(stm->output_stream,
+                                     output_stream_params->devid,
+                                     &battr,
                                      PA_STREAM_AUTO_TIMING_UPDATE | PA_STREAM_INTERPOLATE_TIMING |
                                      PA_STREAM_START_CORKED,
                                      NULL, NULL);
@@ -713,7 +716,9 @@ pulse_stream_init(cubeb * context,
     }
     WRAP(pa_stream_set_state_callback)(stm->input_stream, stream_state_callback, stm);
     WRAP(pa_stream_set_read_callback)(stm->input_stream, stream_read_callback, stm);
-    WRAP(pa_stream_connect_record)(stm->input_stream, NULL, &battr,
+    WRAP(pa_stream_connect_record)(stm->input_stream,
+                                   input_stream_params->devid,
+                                   &battr,
                                    PA_STREAM_START_CORKED);
   }
 
