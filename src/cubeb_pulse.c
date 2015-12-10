@@ -77,13 +77,14 @@
   X(pa_stream_drop)                             \
   X(pa_stream_writable_size)                    \
   X(pa_stream_trigger)                          \
+  X(pa_stream_get_buffer_attr)\
 
 #define MAKE_TYPEDEF(x) static typeof(x) * cubeb_##x;
 LIBPULSE_API_VISIT(MAKE_TYPEDEF);
 #undef MAKE_TYPEDEF
 #endif
 
-#define MIN_LATENCY_MS 30
+#define MIN_LATENCY_MS 20
 
 static struct cubeb_ops const pulse_ops;
 
@@ -253,7 +254,7 @@ write_to_output(pa_stream * s, void* input_data, size_t nbytes, cubeb_stream * s
 static void
 stream_request_callback(pa_stream * s, size_t nbytes, void * u)
 {
-//  printf("-- write size %zd -->\n", nbytes);
+  printf("-- write size %zd -->\n", nbytes);
   cubeb_stream * stm;
   stm = u;
   if (stm->shutdown) {
@@ -266,15 +267,17 @@ stream_request_callback(pa_stream * s, size_t nbytes, void * u)
     return;
   }
 
+  void* input_data = NULL;
+//  input_data = calloc(nbytes, 1);
   // Output/record only operation
-  assert(!stm->input_stream && stm->output_stream);
-  write_to_output(s, NULL, nbytes, stm);
+  //assert(!stm->input_stream && stm->output_stream);
+  write_to_output(s, input_data, nbytes, stm);
 }
 
 static void
 stream_read_callback(pa_stream * s, size_t nbytes, void * u)
 {
-//  printf("<-- read size %zd -- ", nbytes);
+  printf("<-- read size %zd -- ", nbytes);
   cubeb_stream * stm;
   stm = u;
   if (stm->shutdown) {
@@ -299,23 +302,27 @@ stream_read_callback(pa_stream * s, size_t nbytes, void * u)
       size_t write_size = read_frames * out_frame_size;
       size_t writable_size = WRAP(pa_stream_writable_size)(stm->output_stream);
 
-//      printf("writable size %zd\n", writable_size);
+      printf("writable size %zd", writable_size);
       void* read_buffer = (void*)data;
       if (writable_size< write_size) {
         // Trancate read
         write_to_output(stm->output_stream, read_buffer, writable_size, stm);
         // Trigger to play output stream.
+        printf(" - trigger\n");
         WRAP(pa_stream_trigger)(stm->output_stream, NULL, NULL);
       } else {
+    	  printf("\n");
         write_to_output(stm->output_stream, read_buffer, write_size, stm);
+        //WRAP(pa_stream_drop)(s);
       }
     } else {
-//      printf("\n");
+      printf("\n");
       // input/capture only operation. Call callback directly
       void* read_buffer = (void*)data;
       if (stm->data_callback(stm, stm->user_ptr, read_buffer, NULL, read_frames) < 0) {
         WRAP(pa_stream_cancel_write)(s);
         stm->shutdown = 1;
+        //WRAP(pa_stream_drop)(s);
         return;
       }
     }
@@ -686,6 +693,9 @@ pulse_stream_init(cubeb * context,
     battr.minreq = battr.tlength / 4;
     battr.fragsize = battr.minreq;
 
+    printf("requested buff maxlength %u, tlength %u, prebuf %u, minreq %u, fragsize %u\n",battr.maxlength, battr.tlength,
+    		battr.prebuf, battr.minreq, battr.fragsize);
+
     stm->output_stream = WRAP(pa_stream_new)(stm->context->context, stream_name, &ss, NULL);
     if (!stm->output_stream) {
       WRAP(pa_threaded_mainloop_unlock)(stm->context->mainloop);
@@ -719,6 +729,7 @@ pulse_stream_init(cubeb * context,
     WRAP(pa_stream_connect_record)(stm->input_stream,
     							   input_stream_params->devid,
 								   &battr,
+								   PA_STREAM_AUTO_TIMING_UPDATE | PA_STREAM_INTERPOLATE_TIMING |
                                    PA_STREAM_START_CORKED);
   }
 
@@ -728,6 +739,16 @@ pulse_stream_init(cubeb * context,
        until some point after initialization has completed. */
     r = stream_update_timing_info(stm);
   }
+  const pa_buffer_attr* input_att;
+  const pa_buffer_attr* output_att;
+
+  input_att = WRAP(pa_stream_get_buffer_attr)(stm->input_stream);
+  output_att = WRAP(pa_stream_get_buffer_attr)(stm->output_stream);
+  printf("input buff maxlength %u, tlength %u, prebuf %u, minreq %u, fragsize %u\n",input_att->maxlength, input_att->tlength,
+		  input_att->prebuf, input_att->minreq, input_att->fragsize);
+  printf("output buff maxlength %u, tlength %u, prebuf %u, minreq %u, fragsize %u\n",output_att->maxlength, output_att->tlength,
+		  output_att->prebuf, output_att->minreq, output_att->fragsize);
+
   WRAP(pa_threaded_mainloop_unlock)(stm->context->mainloop);
 
   if (r != 0) {
