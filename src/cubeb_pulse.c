@@ -75,16 +75,20 @@
   X(pa_stream_readable_size)                    \
   X(pa_stream_peek)                             \
   X(pa_stream_drop)                             \
-  X(pa_stream_writable_size)                    \
-  X(pa_stream_trigger)                          \
   X(pa_stream_get_buffer_attr)                  \
-  X(pa_xmalloc0)                                \
-  X(pa_xfree)                                   \
-  X(pa_xrealloc)                                \
 
 #define MAKE_TYPEDEF(x) static typeof(x) * cubeb_##x;
 LIBPULSE_API_VISIT(MAKE_TYPEDEF);
 #undef MAKE_TYPEDEF
+#endif
+
+//#define LOGGING_ENABLED
+#ifdef LOGGING_ENABLED
+#define LOG(...) do {                           \
+    fprintf(stderr, __VA_ARGS__);               \
+  } while(0)
+#else
+#define LOG(...)
 #endif
 
 static struct cubeb_ops const pulse_ops;
@@ -108,6 +112,7 @@ struct cubeb_stream {
   void * user_ptr;
   pa_time_event * drain_timer;
   pa_sample_spec output_sample_spec;
+  pa_sample_spec input_sample_spec;
   int shutdown;
   float volume;
 };
@@ -189,13 +194,14 @@ write_to_output(pa_stream * s, void* input_data, size_t nbytes, cubeb_stream * s
   size_t size;
   int r;
   long got;
-  size_t towrite;
+  size_t towrite, read_offset;
   size_t frame_size;
 
   frame_size = WRAP(pa_frame_size)(&stm->output_sample_spec);
   assert(nbytes % frame_size == 0);
 
   towrite = nbytes;
+  read_offset = 0;
   while (towrite) {
     size = towrite;
     r = WRAP(pa_stream_begin_write)(s, &buffer, &size);
@@ -203,12 +209,17 @@ write_to_output(pa_stream * s, void* input_data, size_t nbytes, cubeb_stream * s
     assert(size > 0);
     assert(size % frame_size == 0);
 
-//    printf(" data cb buffer size %zd\n", size);
-    got = stm->data_callback(stm, stm->user_ptr, input_data, buffer, size / frame_size);
+    LOG("Data callback offered output buffer size %zd, read_offset=%zd\n", size, read_offset);
+    got = stm->data_callback(stm, stm->user_ptr, (uint8_t*)input_data + read_offset, buffer, size / frame_size);
     if (got < 0) {
       WRAP(pa_stream_cancel_write)(s);
       stm->shutdown = 1;
       return;
+    }
+    // If more iterations move offset of read buffer
+    if (input_data){
+      size_t in_frame_size = WRAP(pa_frame_size)(&stm->input_sample_spec);
+      read_offset += (size / frame_size) * in_frame_size;
     }
 
     if (stm->volume != PULSE_NO_GAIN) {
@@ -263,40 +274,10 @@ read_from_input(pa_stream* s, const void** buffer, size_t* size)
   return WRAP(pa_stream_readable_size)(s);
 }
 
-void* remaining_read_bf = NULL;
-size_t remaining_read_sz = 0;
-
-static void
-store_remaining_data(void* buffer, size_t size)
-{
-  if (remaining_read_sz == 0){
-    remaining_read_sz = size;
-    remaining_read_bf = WRAP(pa_xmalloc0)(remaining_read_sz);
-    memcpy(remaining_read_bf, buffer, remaining_read_sz);
-  } else {
-    remaining_read_bf = WRAP(pa_xrealloc)(remaining_read_bf, remaining_read_sz + size);
-    memcpy(remaining_read_bf + remaining_read_sz, buffer, size);
-    remaining_read_sz += size;
-  }
-}
-
-static void
-clean_remaining_data()
-{
-  if (remaining_read_sz > 0){
-    WRAP(pa_xfree)(remaining_read_bf);
-    remaining_read_bf = NULL;
-    remaining_read_sz = 0;
-  }
-}
-
-static void* remaining_data(){return remaining_read_bf;}
-static size_t remainig_data_size(){return remaining_read_sz;}
-
 static void
 stream_write_callback(pa_stream * s, size_t nbytes, void * u)
 {
-//  printf("-- write cb: size %zd -->", nbytes);
+  LOG("Output callback to be written buffer size %zd\n", nbytes);
   cubeb_stream * stm;
   stm = u;
   if (stm->shutdown) {
@@ -304,28 +285,17 @@ stream_write_callback(pa_stream * s, size_t nbytes, void * u)
   }
 
   if (!stm->input_stream){
-//    printf(" output only");
     // Output/record only operation.
     // Write directly to output
     assert(!stm->input_stream && stm->output_stream);
     write_to_output(s, NULL, nbytes, stm);
-    return;
-  } else if (remainig_data_size() > 0) {
-//    printf(" from global buffer %zd", remainig_data_size());
-    // Output/record + input/capture operation.
-    // Remaining data exist write it to output
-    assert(stm->input_stream && stm->output_stream);
-    write_to_output(s, remaining_data(), remainig_data_size(), stm);
-    clean_remaining_data();
   }
-
-//  printf("\n");
 }
 
 static void
 stream_read_callback(pa_stream * s, size_t nbytes, void * u)
 {
-//  printf("<-- read cd: size %zd -- ", nbytes);
+  LOG("Input callback buffer size %zd\n", nbytes);
 
   cubeb_stream * stm;
   stm = u;
@@ -344,33 +314,12 @@ stream_read_callback(pa_stream * s, size_t nbytes, void * u)
     if (stm->output_stream) {
       // input/capture + output/record operation
       void* read_buffer = (void*)read_data;
-      if (remainig_data_size() > 0) {
-        // Remains data for writing, append this also
-//        printf(" append reading\n");
-        store_remaining_data(read_buffer, read_size);
-        WRAP(pa_stream_trigger)(stm->output_stream, NULL, NULL);
-      } else {
-        // Write directly to output if possible
-        size_t out_frame_size = WRAP(pa_frame_size)(&stm->output_sample_spec);
-        size_t write_size = read_frames * out_frame_size;
-        size_t writable_size = WRAP(pa_stream_writable_size)(stm->output_stream);
-
-//        printf("writable size %zd", writable_size);
-        if (writable_size < write_size) {
-          // Not available space in write buffer.
-          // Store input in remaining data buffer.
-          store_remaining_data(read_buffer, read_size);
-          // Trigger to play output stream.
-//          printf(" - trigger\n");
-          WRAP(pa_stream_trigger)(stm->output_stream, NULL, NULL);
-        } else {
-          // Write input buffer directly to output
-//          printf("\n");
-          write_to_output(stm->output_stream, read_buffer, write_size, stm);
-        }
-      }
+      // Write directly to output
+      size_t out_frame_size = WRAP(pa_frame_size)(&stm->output_sample_spec);
+      size_t write_size = read_frames * out_frame_size;
+      // Write input buffer directly to output
+      write_to_output(stm->output_stream, read_buffer, write_size, stm);
     } else {
-//      printf("\n");
       // input/capture only operation. Call callback directly
       void* read_buffer = (void*)read_data;
       if (stm->data_callback(stm, stm->user_ptr, read_buffer, NULL, read_frames) < 0) {
@@ -379,8 +328,11 @@ stream_read_callback(pa_stream * s, size_t nbytes, void * u)
         break;
       }
     }
-
     WRAP(pa_stream_drop)(s);
+
+    if (stm->shutdown) {
+      return;
+    }
   }
 }
 
@@ -743,10 +695,10 @@ pulse_stream_init(cubeb * context,
     // update buffer attributes
     battr.tlength = WRAP(pa_usec_to_bytes)(latency * PA_USEC_PER_MSEC, &stm->output_sample_spec);
     battr.minreq = battr.tlength / 4;
-    battr.fragsize = battr.minreq / 2;
+    battr.fragsize = battr.minreq;
 
-//    printf("requested buff maxlength %u, tlength %u, prebuf %u, minreq %u, fragsize %u\n",battr.maxlength, battr.tlength,
-//    		battr.prebuf, battr.minreq, battr.fragsize);
+    LOG("Stream init requested buffer attributes maxlength %u, tlength %u, prebuf %u, minreq %u, fragsize %u\n",battr.maxlength, battr.tlength,
+    		battr.prebuf, battr.minreq, battr.fragsize);
 
     stm->output_stream = WRAP(pa_stream_new)(stm->context->context, stream_name, &ss, NULL);
     if (!stm->output_stream) {
@@ -770,6 +722,8 @@ pulse_stream_init(cubeb * context,
     in_ss.channels = input_stream_params->channels;
     in_ss.rate = input_stream_params->rate;
     in_ss.format = cube_to_pulse_format(input_stream_params->format);
+    stm->input_sample_spec = in_ss;
+
     stm->input_stream = WRAP(pa_stream_new)(stm->context->context, "input stream", &in_ss, NULL);
     if (!stm->input_stream) {
       WRAP(pa_threaded_mainloop_unlock)(stm->context->mainloop);
@@ -793,19 +747,21 @@ pulse_stream_init(cubeb * context,
     r = stream_update_timing_info(stm);
   }
 
-//  if (output_stream_params){
-//    const pa_buffer_attr* output_att;
-//    output_att = WRAP(pa_stream_get_buffer_attr)(stm->output_stream);
-//    printf("output buff maxlength %u, tlength %u, prebuf %u, minreq %u, fragsize %u\n",output_att->maxlength, output_att->tlength,
-//        output_att->prebuf, output_att->minreq, output_att->fragsize);
-//  }
+#ifdef LOGGING_ENABLED
+  if (output_stream_params){
+    const pa_buffer_attr* output_att;
+    output_att = WRAP(pa_stream_get_buffer_attr)(stm->output_stream);
+    LOG("Output buffer attributes maxlength %u, tlength %u, prebuf %u, minreq %u, fragsize %u\n",output_att->maxlength, output_att->tlength,
+        output_att->prebuf, output_att->minreq, output_att->fragsize);
+  }
 
-//  if (input_stream_params){
-//    const pa_buffer_attr* input_att;
-//    input_att = WRAP(pa_stream_get_buffer_attr)(stm->input_stream);
-//    printf("input buff maxlength %u, tlength %u, prebuf %u, minreq %u, fragsize %u\n",input_att->maxlength, input_att->tlength,
-//        input_att->prebuf, input_att->minreq, input_att->fragsize);
-//  }
+  if (input_stream_params){
+    const pa_buffer_attr* input_att;
+    input_att = WRAP(pa_stream_get_buffer_attr)(stm->input_stream);
+    LOG("Input buffer attributes maxlength %u, tlength %u, prebuf %u, minreq %u, fragsize %u\n",input_att->maxlength, input_att->tlength,
+        input_att->prebuf, input_att->minreq, input_att->fragsize);
+  }
+#endif
 
   WRAP(pa_threaded_mainloop_unlock)(stm->context->mainloop);
 
@@ -858,8 +814,6 @@ static int
 pulse_stream_stop(cubeb_stream * stm)
 {
   stream_cork(stm, CORK | NOTIFY);
-  // Free the remaining buffer
-  clean_remaining_data();
   return CUBEB_OK;
 }
 
