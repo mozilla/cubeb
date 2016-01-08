@@ -205,7 +205,13 @@ write_to_output(pa_stream * s, void* input_data, size_t nbytes, cubeb_stream * s
   while (towrite) {
     size = towrite;
     r = WRAP(pa_stream_begin_write)(s, &buffer, &size);
-    assert(r == 0);
+    if (r < 0) {
+      // Never get here in normal scenario
+      LOG("Unexpected error. Debugging with rr causes it\n");
+      WRAP(pa_stream_cancel_write)(s);
+      stm->shutdown = 1;
+      return;
+    }
     assert(size > 0);
     assert(size % frame_size == 0);
 
@@ -217,7 +223,7 @@ write_to_output(pa_stream * s, void* input_data, size_t nbytes, cubeb_stream * s
       return;
     }
     // If more iterations move offset of read buffer
-    if (input_data){
+    if (input_data) {
       size_t in_frame_size = WRAP(pa_frame_size)(&stm->input_sample_spec);
       read_offset += (size / frame_size) * in_frame_size;
     }
@@ -285,7 +291,7 @@ stream_write_callback(pa_stream * s, size_t nbytes, void * u)
   }
 
   if (!stm->input_stream){
-    // Output/record only operation.
+    // Output/playback only operation.
     // Write directly to output
     assert(!stm->input_stream && stm->output_stream);
     write_to_output(s, NULL, nbytes, stm);
@@ -312,12 +318,11 @@ stream_read_callback(pa_stream * s, size_t nbytes, void * u)
 
     cubeb_stream* stm = u;
     if (stm->output_stream) {
-      // input/capture + output/record operation
+      // input/capture + output/playback operation
       void* read_buffer = (void*)read_data;
-      // Write directly to output
       size_t out_frame_size = WRAP(pa_frame_size)(&stm->output_sample_spec);
       size_t write_size = read_frames * out_frame_size;
-      // Write input buffer directly to output
+      // Offer full duplex data for writing
       write_to_output(stm->output_stream, read_buffer, write_size, stm);
     } else {
       // input/capture only operation. Call callback directly
@@ -436,7 +441,7 @@ stream_update_timing_info(cubeb_stream * stm)
       WRAP(pa_operation_unref)(o);
     }
     // if this fail abort
-    if (r!=0){
+    if (r != 0){
       return r;
     }
   }
@@ -698,7 +703,7 @@ pulse_stream_init(cubeb * context,
     battr.fragsize = battr.minreq;
 
     LOG("Stream init requested buffer attributes maxlength %u, tlength %u, prebuf %u, minreq %u, fragsize %u\n",battr.maxlength, battr.tlength,
-    		battr.prebuf, battr.minreq, battr.fragsize);
+        battr.prebuf, battr.minreq, battr.fragsize);
 
     stm->output_stream = WRAP(pa_stream_new)(stm->context->context, stream_name, &ss, NULL);
     if (!stm->output_stream) {
@@ -717,12 +722,17 @@ pulse_stream_init(cubeb * context,
   }
 
   // Set up input stream
-  if (input_stream_params){
+  if (input_stream_params) {
     pa_sample_spec in_ss;
     in_ss.channels = input_stream_params->channels;
     in_ss.rate = input_stream_params->rate;
     in_ss.format = cube_to_pulse_format(input_stream_params->format);
     stm->input_sample_spec = in_ss;
+
+    // update buffer attributes
+    battr.tlength = WRAP(pa_usec_to_bytes)(latency * PA_USEC_PER_MSEC, &stm->input_sample_spec);
+    battr.minreq = battr.tlength / 4;
+    battr.fragsize = battr.minreq;
 
     stm->input_stream = WRAP(pa_stream_new)(stm->context->context, "input stream", &in_ss, NULL);
     if (!stm->input_stream) {

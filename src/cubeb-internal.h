@@ -22,7 +22,9 @@ struct cubeb_ops {
   int (* enumerate_devices)(cubeb * context, cubeb_device_type type,
                             cubeb_device_collection ** collection);
   void (* destroy)(cubeb * context);
-  int (* stream_init)(cubeb * context, cubeb_stream ** stream, char const * stream_name,
+  int (* stream_init)(cubeb * context,
+                      cubeb_stream ** stream,
+                      char const * stream_name,
                       cubeb_stream_params * input_stream_params,
                       cubeb_stream_params * output_stream_params,
                       unsigned int latency,
