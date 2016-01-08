@@ -166,9 +166,6 @@ cubeb_resampler_speex::~cubeb_resampler_speex()
 long
 cubeb_resampler_speex::fill(void * input_buffer, void * output_buffer, long frames_needed)
 {
-	if (input_buffer) {
-		return 0;
-	}
   // Use more input frames than strictly necessary, so in the worst case,
   // we have leftover unresampled frames at the end, that we can use
   // during the next iteration.
