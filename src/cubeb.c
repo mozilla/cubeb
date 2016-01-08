@@ -61,23 +61,44 @@ int audiotrack_init(cubeb ** context, char const * context_name);
 int kai_init(cubeb ** context, char const * context_name);
 #endif
 
-int
-validate_stream_params(cubeb_stream_params stream_params)
+int validate_stream_param(cubeb_stream_params * params)
 {
-  if (stream_params.rate < 1000 || stream_params.rate > 192000 ||
-      stream_params.channels < 1 || stream_params.channels > 8) {
-    return CUBEB_ERROR_INVALID_FORMAT;
+  assert(params);
+  if (params &&
+      (params->rate < 1000 || params->rate > 192000 ||
+      params->channels < 1 ||params->channels > 8) ) {
+    return -1;
   }
 
-  switch (stream_params.format) {
+  switch (params->format) {
   case CUBEB_SAMPLE_S16LE:
   case CUBEB_SAMPLE_S16BE:
   case CUBEB_SAMPLE_FLOAT32LE:
   case CUBEB_SAMPLE_FLOAT32BE:
-    return CUBEB_OK;
+    return 0;
+  }
+  return -1;
+}
+
+int
+validate_stream_params(cubeb_stream_params * input_stream_params,
+                       cubeb_stream_params * output_stream_params)
+{
+  if (output_stream_params && validate_stream_param(output_stream_params) < 0){
+    return CUBEB_ERROR_INVALID_FORMAT;
   }
 
-  return CUBEB_ERROR_INVALID_FORMAT;
+  if (input_stream_params && validate_stream_param(input_stream_params) < 0) {
+    return CUBEB_ERROR_INVALID_FORMAT;
+  }
+  // Rate and sample format must be the same for input and output.
+  if (input_stream_params && output_stream_params &&
+       (input_stream_params->rate != output_stream_params->rate  ||
+        input_stream_params->format != output_stream_params->format)) {
+    return CUBEB_ERROR_INVALID_FORMAT;
+  }
+
+  return CUBEB_OK;
 }
 
 int
@@ -218,7 +239,9 @@ cubeb_destroy(cubeb * context)
 
 int
 cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
-                  cubeb_stream_params stream_params, unsigned int latency,
+                  cubeb_stream_params * input_stream_params,
+                  cubeb_stream_params * output_stream_params,
+                  unsigned int latency,
                   cubeb_data_callback data_callback,
                   cubeb_state_callback state_callback,
                   void * user_ptr)
@@ -229,13 +252,13 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
     return CUBEB_ERROR_INVALID_PARAMETER;
   }
 
-  if ((r = validate_stream_params(stream_params)) != CUBEB_OK ||
+  if ((r = validate_stream_params(input_stream_params, output_stream_params)) != CUBEB_OK ||
       (r = validate_latency(latency)) != CUBEB_OK) {
     return r;
   }
 
   return context->ops->stream_init(context, stream, stream_name,
-                                   stream_params, latency,
+                                   input_stream_params, output_stream_params, latency,
                                    data_callback,
                                    state_callback,
                                    user_ptr);

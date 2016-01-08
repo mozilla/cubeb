@@ -43,6 +43,7 @@ int main(int argc, char * argv[])
   }
 
   cubeb_stream_params params = {
+    NULL,
     CUBEB_SAMPLE_FLOAT32NE,
     preferred_rate,
     max_channels
