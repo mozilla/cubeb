@@ -118,23 +118,6 @@ typedef enum {
 } cubeb_stream_type;
 #endif
 
-/** Stream format initialization parameters. */
-typedef struct {
-  cubeb_sample_format format; /**< Requested sample format.  One of
-                                   #cubeb_sample_format. */
-  unsigned int rate;          /**< Requested sample rate.  Valid range is [1000, 192000]. */
-  unsigned int channels;      /**< Requested channel count.  Valid range is [1, 8]. */
-#if defined(__ANDROID__)
-  cubeb_stream_type stream_type; /**< Used to map Android audio stream types */
-#endif
-} cubeb_stream_params;
-
-/** Output device description */
-typedef struct {
-  char * output_name; /**< The name of the output device */
-  char * input_name; /**< The name of the input device */
-} cubeb_device;
-
 /** Stream states signaled via state_callback. */
 typedef enum {
   CUBEB_STATE_STARTED, /**< Stream started. */
@@ -192,6 +175,24 @@ typedef enum {
   CUBEB_DEVICE_PREF_ALL           = 0x0F
 } cubeb_device_pref;
 
+/** Stream format initialization parameters. */
+typedef struct {
+  cubeb_devid devid;          /* Device identifier handle -- NULL means default */
+  cubeb_sample_format format; /**< Requested sample format.  One of
+                                   #cubeb_sample_format. */
+  unsigned int rate;          /**< Requested sample rate.  Valid range is [1000, 192000]. */
+  unsigned int channels;      /**< Requested channel count.  Valid range is [1, 8]. */
+#if defined(__ANDROID__)
+  cubeb_stream_type stream_type; /**< Used to map Android audio stream types */
+#endif
+} cubeb_stream_params;
+
+/** Output device description */
+typedef struct {
+  char * output_name; /**< The name of the output device */
+  char * input_name; /**< The name of the input device */
+} cubeb_device;
+
 typedef struct {
   cubeb_devid devid;          /* Device identifier handle */
   char * device_id;           /* Device identifier which might be presented in a UI */
@@ -223,7 +224,8 @@ typedef struct {
 /** User supplied data callback.
     @param stream
     @param user_ptr
-    @param buffer
+    @param input_buffer
+    @param output_buffer
     @param nframes
     @retval Number of frames written to buffer, which must equal nframes except
             at end of stream.
@@ -231,7 +233,8 @@ typedef struct {
             and the stream will enter a shutdown state. */
 typedef long (* cubeb_data_callback)(cubeb_stream * stream,
                                      void * user_ptr,
-                                     void * buffer,
+                                     void * input_buffer,
+                                     void * output_buffer,
                                      long nframes);
 
 /** User supplied state callback.
@@ -319,7 +322,8 @@ void cubeb_destroy(cubeb * context);
 int cubeb_stream_init(cubeb * context,
                       cubeb_stream ** stream,
                       char const * stream_name,
-                      cubeb_stream_params stream_params,
+                      cubeb_stream_params * input_stream_params,
+                      cubeb_stream_params * output_stream_params,
                       unsigned int latency,
                       cubeb_data_callback data_callback,
                       cubeb_state_callback state_callback,
