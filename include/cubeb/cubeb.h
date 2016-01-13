@@ -221,17 +221,21 @@ typedef struct {
 } cubeb_device_collection;
 
 /** User supplied data callback.
-    @param stream
-    @param user_ptr
-    @param buffer
-    @param nframes
-    @retval Number of frames written to buffer, which must equal nframes except
-            at end of stream.
+    @param stream The stream for which this callback fired
+    @param user_ptr The pointer passed to cubeb_stream_create
+    @param input_buffer A pointer containing the input data, or nullptr
+                        if this is an output-only stream.
+    @param output_buffer A pointer containing the output data, or nullptr
+                         if this is an input -only stream.
+    @param nframes The number of frames of the two buffer.
+    @retval Number of frames written to the output buffer, which must equal
+            nframes except at end of stream.
     @retval CUBEB_ERROR on error, in which case the data callback will stop
             and the stream will enter a shutdown state. */
 typedef long (* cubeb_data_callback)(cubeb_stream * stream,
                                      void * user_ptr,
-                                     void * buffer,
+                                     void * input_buffer,
+                                     void * output_buffer,
                                      long nframes);
 
 /** User supplied state callback.
@@ -319,7 +323,8 @@ void cubeb_destroy(cubeb * context);
 int cubeb_stream_init(cubeb * context,
                       cubeb_stream ** stream,
                       char const * stream_name,
-                      cubeb_stream_params stream_params,
+                      cubeb_stream_params * input_stream_params,
+                      cubeb_stream_params * output_stream_params,
                       unsigned int latency,
                       cubeb_data_callback data_callback,
                       cubeb_state_callback state_callback,

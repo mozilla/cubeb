@@ -173,7 +173,9 @@ static int
 sndio_stream_init(cubeb *context,
                   cubeb_stream **stream,
                   char const *stream_name,
-                  cubeb_stream_params stream_params, unsigned int latency,
+                  cubeb_stream_params * input_stream_params,
+                  cubeb_stream_params * output_stream_params,
+                  unsigned int latency,
                   cubeb_data_callback data_callback,
                   cubeb_state_callback state_callback,
                   void *user_ptr)
@@ -196,7 +198,7 @@ sndio_stream_init(cubeb *context,
   sio_initpar(&wpar);
   wpar.sig = 1;
   wpar.bits = 16;
-  switch (stream_params.format) {
+  switch (output_stream_params->format) {
   case CUBEB_SAMPLE_S16LE:
     wpar.le = 1;
     break;
@@ -210,8 +212,8 @@ sndio_stream_init(cubeb *context,
     DPR("sndio_stream_init() unsupported format\n");
     return CUBEB_ERROR_INVALID_FORMAT;
   }
-  wpar.rate = stream_params.rate;
-  wpar.pchan = stream_params.channels;
+  wpar.rate = output_stream_params->rate;
+  wpar.pchan = output_stream_params->channels;
   wpar.appbufsz = latency * wpar.rate / 1000;
   if (!sio_setpar(s->hdl, &wpar) || !sio_getpar(s->hdl, &rpar)) {
     sio_close(s->hdl);
@@ -237,7 +239,7 @@ sndio_stream_init(cubeb *context,
   s->arg = user_ptr;
   s->mtx = PTHREAD_MUTEX_INITIALIZER;
   s->rdpos = s->wrpos = 0;
-  if (stream_params.format == CUBEB_SAMPLE_FLOAT32LE) {
+  if (output_stream_params->format == CUBEB_SAMPLE_FLOAT32LE) {
     s->conv = 1;
     size = rpar.round * rpar.pchan * sizeof(float);
   } else {

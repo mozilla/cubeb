@@ -198,7 +198,7 @@ stream_request_callback(pa_stream * s, size_t nbytes, void * u)
     assert(size > 0);
     assert(size % frame_size == 0);
 
-    got = stm->data_callback(stm, stm->user_ptr, buffer, size / frame_size);
+    got = stm->data_callback(stm, stm->user_ptr, NULL, buffer, size / frame_size);
     if (got < 0) {
       WRAP(pa_stream_cancel_write)(s);
       stm->shutdown = 1;
@@ -487,7 +487,9 @@ static void pulse_stream_destroy(cubeb_stream * stm);
 
 static int
 pulse_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
-                  cubeb_stream_params stream_params, unsigned int latency,
+                  cubeb_stream_params * input_stream_params,
+                  cubeb_stream_params * output_stream_params,
+                  unsigned int latency,
                   cubeb_data_callback data_callback, cubeb_state_callback state_callback,
                   void * user_ptr)
 {
@@ -498,10 +500,11 @@ pulse_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   int r;
 
   assert(context);
+  assert(!input_stream_params && "not supported.");
 
   *stream = NULL;
 
-  switch (stream_params.format) {
+  switch (output_stream_params->format) {
   case CUBEB_SAMPLE_S16LE:
     ss.format = PA_SAMPLE_S16LE;
     break;
@@ -523,8 +526,8 @@ pulse_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
     return CUBEB_ERROR;
   }
 
-  ss.rate = stream_params.rate;
-  ss.channels = stream_params.channels;
+  ss.rate = output_stream_params->rate;
+  ss.channels = output_stream_params->channels;
 
   stm = calloc(1, sizeof(*stm));
   assert(stm);
