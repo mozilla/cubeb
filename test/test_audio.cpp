@@ -160,7 +160,7 @@ int run_test(int num_channels, int sampling_rate, int is_float)
     goto cleanup;
   }
 
-  r = cubeb_stream_init(ctx, &stream, "test tone", nullptr, &params,
+  r = cubeb_stream_init(ctx, &stream, "test tone", NULL, &params,
                         100, is_float ? data_cb_float : data_cb_short, state_cb, synth);
   if (r != CUBEB_OK) {
     fprintf(stderr, "Error initializing cubeb stream: %d\n", r);
