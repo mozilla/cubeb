@@ -152,38 +152,61 @@ enum {
   CUBEB_ERROR_NOT_SUPPORTED = -4      /**< Optional function not implemented in current backend. */
 };
 
+/**
+ * Whether a particular device is an input device (e.g. a microphone), or an
+ * output device (e.g. headphones). */
 typedef enum {
   CUBEB_DEVICE_TYPE_UNKNOWN,
   CUBEB_DEVICE_TYPE_INPUT,
   CUBEB_DEVICE_TYPE_OUTPUT
 } cubeb_device_type;
 
+/**
+ * The state of a device.
+ */
 typedef enum {
-  CUBEB_DEVICE_STATE_DISABLED,
-  CUBEB_DEVICE_STATE_UNPLUGGED,
-  CUBEB_DEVICE_STATE_ENABLED
+  CUBEB_DEVICE_STATE_DISABLED, /**< The device has been disabled at the system level. */
+  CUBEB_DEVICE_STATE_UNPLUGGED, /**< The device is enabled, but nothing is plugged into it. */
+  CUBEB_DEVICE_STATE_ENABLED /**< The device is enabled. */
 } cubeb_device_state;
 
+/** An opaque handle used to refer a particular input or output device
+ *  accross calls. */
 typedef void * cubeb_devid;
 
+/**
+ * Architecture specific sample type.
+ */
 typedef enum {
-  CUBEB_DEVICE_FMT_S16LE          = 0x0010,
-  CUBEB_DEVICE_FMT_S16BE          = 0x0020,
-  CUBEB_DEVICE_FMT_F32LE          = 0x1000,
-  CUBEB_DEVICE_FMT_F32BE          = 0x2000
+  CUBEB_DEVICE_FMT_S16LE          = 0x0010, /**< 16-bit integers, Little Endian. */
+  CUBEB_DEVICE_FMT_S16BE          = 0x0020, /**< 16-bit integers, Big Endian. */
+  CUBEB_DEVICE_FMT_F32LE          = 0x1000, /**< 32-bit floating point, Little Endian. */
+  CUBEB_DEVICE_FMT_F32BE          = 0x2000  /**< 32-bit floating point, Big Endian. */
 } cubeb_device_fmt;
 
 #if defined(WORDS_BIGENDIAN) || defined(__BIG_ENDIAN__)
+/** 16-bit integers, native endianess, when on a Big Endian environment. */
 #define CUBEB_DEVICE_FMT_S16NE     CUBEB_DEVICE_FMT_S16BE
+/** 32-bit floating points, native endianess, when on a Big Endian environment. */
 #define CUBEB_DEVICE_FMT_F32NE     CUBEB_DEVICE_FMT_F32BE
 #else
+/** 16-bit integers, native endianess, when on a Little Endian environment. */
 #define CUBEB_DEVICE_FMT_S16NE     CUBEB_DEVICE_FMT_S16LE
+/** 32-bit floating points, native endianess, when on a Little Endian
+ *  environment. */
 #define CUBEB_DEVICE_FMT_F32NE     CUBEB_DEVICE_FMT_F32LE
 #endif
+/** All the 16-bit integers types. */
 #define CUBEB_DEVICE_FMT_S16_MASK  (CUBEB_DEVICE_FMT_S16LE | CUBEB_DEVICE_FMT_S16BE)
+/** All the 32-bit floating points types. */
 #define CUBEB_DEVICE_FMT_F32_MASK  (CUBEB_DEVICE_FMT_F32LE | CUBEB_DEVICE_FMT_F32BE)
+/** All the device formats types. */
 #define CUBEB_DEVICE_FMT_ALL       (CUBEB_DEVICE_FMT_S16_MASK | CUBEB_DEVICE_FMT_F32_MASK)
 
+/** Channel type for a `cubeb_stream`. Depending on the backend and platform
+ * used, this can control inter-stream interruption, ducking, and volume
+ * control.
+ */
 typedef enum {
   CUBEB_DEVICE_PREF_NONE          = 0x00,
   CUBEB_DEVICE_PREF_MULTIMEDIA    = 0x01,
@@ -192,26 +215,30 @@ typedef enum {
   CUBEB_DEVICE_PREF_ALL           = 0x0F
 } cubeb_device_pref;
 
+/** This structure holds the characteristics
+ *  of an input or output audio device. It can be obtained using
+ *  `cubeb_enumerate_devices`, and must be destroyed using
+ *  `cubeb_device_info_destroy`. */
 typedef struct {
-  cubeb_devid devid;          /* Device identifier handle */
-  char * device_id;           /* Device identifier which might be presented in a UI */
-  char * friendly_name;       /* Friendly device name which might be presented in a UI */
-  char * group_id;            /* Two devices have the same group identifier if they belong to the same physical device; for example a headset and microphone. */
-  char * vendor_name;         /* Optional vendor name, may be NULL */
+  cubeb_devid devid;          /**< Device identifier handle. */
+  char * device_id;           /**< Device identifier which might be presented in a UI. */
+  char * friendly_name;       /**< Friendly device name which might be presented in a UI. */
+  char * group_id;            /**< Two devices have the same group identifier if they belong to the same physical device; for example a headset and microphone. */
+  char * vendor_name;         /**< Optional vendor name, may be NULL. */
 
-  cubeb_device_type type;     /* Type of device (Input/Output) */
-  cubeb_device_state state;   /* State of device disabled/enabled/unplugged */
-  cubeb_device_pref preferred;/* Preferred device */
+  cubeb_device_type type;     /**< Type of device (Input/Output). */
+  cubeb_device_state state;   /**< State of device disabled/enabled/unplugged. */
+  cubeb_device_pref preferred;/**< Preferred device. */
 
-  cubeb_device_fmt format;    /* Sample format supported */
-  cubeb_device_fmt default_format;
-  unsigned int max_channels;  /* Channels */
-  unsigned int default_rate;  /* Default/Preferred sample rate */
-  unsigned int max_rate;      /* Maximum sample rate supported */
-  unsigned int min_rate;      /* Minimum sample rate supported */
+  cubeb_device_fmt format;    /**< Sample format supported. */
+  cubeb_device_fmt default_format; /**< The default sample format for this device. */
+  unsigned int max_channels;  /**< Channels. */
+  unsigned int default_rate;  /**< Default/Preferred sample rate. */
+  unsigned int max_rate;      /**< Maximum sample rate supported. */
+  unsigned int min_rate;      /**< Minimum sample rate supported. */
 
-  unsigned int latency_lo_ms; /* Lowest possible latency in milliseconds  */
-  unsigned int latency_hi_ms; /* Higest possible latency in milliseconds  */
+  unsigned int latency_lo_ms; /**< Lowest possible latency in milliseconds. */
+  unsigned int latency_hi_ms; /**< Higest possible latency in milliseconds. */
 } cubeb_device_info;
 
 /** Device collection. */
@@ -310,7 +337,10 @@ void cubeb_destroy(cubeb * context);
     @param context
     @param stream
     @param stream_name
-    @param stream_params
+    @param input_stream_params Parameters for the input side of the stream, or
+                               NULL if this stream is output only.
+    @param output_stream_params Parameters for the output side of the stream, or
+                                NULL if this stream is input only.
     @param latency Approximate stream latency in milliseconds.  Valid range
                    is [1, 2000].
     @param data_callback Will be called to preroll data before playback is
@@ -427,7 +457,7 @@ int cubeb_enumerate_devices(cubeb * context,
                             cubeb_device_type devtype,
                             cubeb_device_collection ** collection);
 
-/** Destroy a cubeb_device_collection.
+/** Destroy a cubeb_device_collection, and its `cubeb_device_info`.
     @param collection collection to destroy
     @retval CUBEB_OK
     @retval CUBEB_ERROR_INVALID_PARAMETER if collection is an invalid pointer */
