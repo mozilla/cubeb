@@ -242,9 +242,9 @@ cubeb_resampler_create(cubeb_stream * stream,
 
 long
 cubeb_resampler_fill(cubeb_resampler * resampler,
-					 void * input_buffer,
+                     void * input_buffer,
                      void * output_buffer,
-					 long frames_needed)
+                     long frames_needed)
 {
   return resampler->fill(input_buffer, output_buffer, frames_needed);
 }
