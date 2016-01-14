@@ -179,7 +179,7 @@ winmm_refill_stream(cubeb_stream * stm)
   /* It is assumed that the caller is holding this lock.  It must be dropped
      during the callback to avoid deadlocks. */
   LeaveCriticalSection(&stm->lock);
-  got = stm->data_callback(stm, stm->user_ptr, NULL, NULL, hdr->lpData, wanted);
+  got = stm->data_callback(stm, stm->user_ptr, NULL, hdr->lpData, wanted);
   EnterCriticalSection(&stm->lock);
   if (got < 0) {
     LeaveCriticalSection(&stm->lock);
