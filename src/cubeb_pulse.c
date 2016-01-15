@@ -212,13 +212,13 @@ trigger_user_callback(pa_stream * s, void * input_data, size_t nbytes, cubeb_str
       stm->shutdown = 1;
       return;
     }
+    assert(r == 0);
     assert(size > 0);
     assert(size % frame_size == 0);
 
-    LOG("Data callback offered output buffer size %zd, read_offset=%zd\n", size, read_offset);
+    LOG("Trigger user callback with output buffer size %zd, read_offset=%zd\n", size, read_offset);
     got = stm->data_callback(stm, stm->user_ptr, (uint8_t *)input_data + read_offset, buffer, size / frame_size);
-    size_t u_got = got;
-    if (got < 0 || u_got != (size / frame_size)) {
+    if (got < 0) {
       WRAP(pa_stream_cancel_write)(s);
       stm->shutdown = 1;
       return;
