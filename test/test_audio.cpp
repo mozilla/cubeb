@@ -153,6 +153,7 @@ int run_test(int num_channels, int sampling_rate, int is_float)
   params.format = is_float ? CUBEB_SAMPLE_FLOAT32NE : CUBEB_SAMPLE_S16NE;
   params.rate = sampling_rate;
   params.channels = num_channels;
+  params.devid = NULL;
 
   synth = synth_create(params.channels, params.rate);
   if (synth == NULL) {
@@ -205,6 +206,7 @@ int run_panning_volume_test(int is_float)
   params.format = is_float ? CUBEB_SAMPLE_FLOAT32NE : CUBEB_SAMPLE_S16NE;
   params.rate = 44100;
   params.channels = 2;
+  params.devid = NULL;
 
   synth = synth_create(params.channels, params.rate);
   if (synth == NULL) {

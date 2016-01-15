@@ -159,6 +159,7 @@ test_init_destroy_stream(void)
   params.format = STREAM_FORMAT;
   params.rate = STREAM_RATE;
   params.channels = STREAM_CHANNELS;
+  params.devid = NULL;
 
   r = cubeb_stream_init(ctx, &stream, "test", NULL, &params, STREAM_LATENCY,
                         test_data_callback, test_state_callback, &dummy);
