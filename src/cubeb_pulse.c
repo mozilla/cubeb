@@ -188,7 +188,7 @@ stream_state_callback(pa_stream * s, void * u)
 }
 
 static void
-write_to_output(pa_stream * s, void* input_data, size_t nbytes, cubeb_stream * stm)
+trigger_user_callback(pa_stream * s, void * input_data, size_t nbytes, cubeb_stream * stm)
 {
   void * buffer;
   size_t size;
@@ -207,7 +207,7 @@ write_to_output(pa_stream * s, void* input_data, size_t nbytes, cubeb_stream * s
     r = WRAP(pa_stream_begin_write)(s, &buffer, &size);
     if (r < 0) {
       // Never get here in normal scenario
-      LOG("Unexpected error. Debugging with rr causes it\n");
+      LOG("Unexpected error. Debugging with rr causes this\n");
       WRAP(pa_stream_cancel_write)(s);
       stm->shutdown = 1;
       return;
@@ -216,8 +216,9 @@ write_to_output(pa_stream * s, void* input_data, size_t nbytes, cubeb_stream * s
     assert(size % frame_size == 0);
 
     LOG("Data callback offered output buffer size %zd, read_offset=%zd\n", size, read_offset);
-    got = stm->data_callback(stm, stm->user_ptr, (uint8_t*)input_data + read_offset, buffer, size / frame_size);
-    if (got < 0) {
+    got = stm->data_callback(stm, stm->user_ptr, (uint8_t *)input_data + read_offset, buffer, size / frame_size);
+    size_t u_got = got;
+    if (got < 0 || u_got != (size / frame_size)) {
       WRAP(pa_stream_cancel_write)(s);
       stm->shutdown = 1;
       return;
@@ -270,7 +271,7 @@ write_to_output(pa_stream * s, void* input_data, size_t nbytes, cubeb_stream * s
 }
 
 static int
-read_from_input(pa_stream* s, const void** buffer, size_t* size)
+read_from_input(pa_stream * s, const void ** buffer, size_t * size)
 {
   if (WRAP(pa_stream_readable_size)(s) > 0) {
     if (WRAP(pa_stream_peek)(s, buffer, size) < 0) {
@@ -294,7 +295,7 @@ stream_write_callback(pa_stream * s, size_t nbytes, void * u)
     // Output/playback only operation.
     // Write directly to output
     assert(!stm->input_stream && stm->output_stream);
-    write_to_output(s, NULL, nbytes, stm);
+    trigger_user_callback(s, NULL, nbytes, stm);
   }
 }
 
@@ -312,22 +313,23 @@ stream_read_callback(pa_stream * s, size_t nbytes, void * u)
   const void *read_data=NULL;
   size_t read_size;
   while (read_from_input(s, &read_data, &read_size) > 0) {
-    const pa_sample_spec* in_ss =  WRAP(pa_stream_get_sample_spec)(s);
-    size_t in_frame_size = WRAP(pa_frame_size)(in_ss);
+    size_t in_frame_size = WRAP(pa_frame_size)(&stm->input_sample_spec);
     size_t read_frames = read_size / in_frame_size;
 
-    cubeb_stream* stm = u;
+    cubeb_stream * stm = u;
     if (stm->output_stream) {
       // input/capture + output/playback operation
-      void* read_buffer = (void*)read_data;
+      void * read_buffer = (void*)read_data;
       size_t out_frame_size = WRAP(pa_frame_size)(&stm->output_sample_spec);
       size_t write_size = read_frames * out_frame_size;
       // Offer full duplex data for writing
-      write_to_output(stm->output_stream, read_buffer, write_size, stm);
+      trigger_user_callback(stm->output_stream, read_buffer, write_size, stm);
     } else {
       // input/capture only operation. Call callback directly
-      void* read_buffer = (void*)read_data;
-      if (stm->data_callback(stm, stm->user_ptr, read_buffer, NULL, read_frames) < 0) {
+      void * read_buffer = (void*)read_data;
+      long got = stm->data_callback(stm, stm->user_ptr, read_buffer, NULL, read_frames);
+      size_t u_got = got;
+      if ( got < 0 || u_got != read_frames) {
         WRAP(pa_stream_cancel_write)(s);
         stm->shutdown = 1;
         break;
@@ -402,7 +404,7 @@ operation_wait(cubeb * ctx, pa_stream * stream, pa_operation * o)
 }
 
 static void
-cork_io_stream(cubeb_stream * stm, pa_stream* io_stream, enum cork_state state)
+cork_io_stream(cubeb_stream * stm, pa_stream * io_stream, enum cork_state state)
 {
   pa_operation * o = NULL;
   if (!io_stream) {
@@ -441,7 +443,7 @@ stream_update_timing_info(cubeb_stream * stm)
       WRAP(pa_operation_unref)(o);
     }
     // if this fail abort
-    if (r != 0){
+    if (r != 0) {
       return r;
     }
   }
@@ -651,6 +653,35 @@ cube_to_pulse_format(cubeb_sample_format format)
   }
 }
 
+static pa_stream *
+create_pa_stream(cubeb_stream * stm, cubeb_stream_params * stream_params, char const * stream_name)
+{
+  assert(stm || stream_params);
+  pa_sample_spec ss;
+  ss.format = cube_to_pulse_format(stream_params->format);
+  ss.rate = stream_params->rate;
+  ss.channels = stream_params->channels;
+
+  return WRAP(pa_stream_new)(stm->context->context, stream_name, &ss, NULL);
+}
+
+static pa_buffer_attr
+set_buffering_attribute(unsigned int latency, pa_sample_spec * sample_spec)
+{
+  pa_buffer_attr battr;
+  battr.maxlength = -1;
+  battr.prebuf    = -1;
+  battr.tlength   = WRAP(pa_usec_to_bytes)(latency * PA_USEC_PER_MSEC, sample_spec);
+  battr.minreq    = battr.tlength / 4;
+  battr.fragsize  = battr.minreq;
+
+  LOG("Requested buffer attributes maxlength %u, tlength %u, prebuf %u, minreq %u, fragsize %u\n",
+      battr.maxlength, battr.tlength, battr.prebuf, battr.minreq, battr.fragsize);
+
+  return battr;
+}
+
+
 static int
 pulse_stream_init(cubeb * context,
                   cubeb_stream ** stream,
@@ -662,7 +693,6 @@ pulse_stream_init(cubeb * context,
                   cubeb_state_callback state_callback,
                   void * user_ptr)
 {
-  pa_sample_spec ss;
   cubeb_stream * stm;
   pa_buffer_attr battr;
   int r;
@@ -684,35 +714,21 @@ pulse_stream_init(cubeb * context,
   stm->user_ptr = user_ptr;
   stm->volume = PULSE_NO_GAIN;
 
-  battr.maxlength = -1;
-  battr.tlength = -1;
-  battr.prebuf = -1;
-  battr.minreq = -1;
-  battr.fragsize = -1;
-
   WRAP(pa_threaded_mainloop_lock)(stm->context->mainloop);
   if (output_stream_params) {
-    ss.format = cube_to_pulse_format(output_stream_params->format);
-    ss.rate = output_stream_params->rate;
-    ss.channels = output_stream_params->channels;
-    stm->output_sample_spec = ss;
-
-    // update buffer attributes
-    battr.tlength = WRAP(pa_usec_to_bytes)(latency * PA_USEC_PER_MSEC, &stm->output_sample_spec);
-    battr.minreq = battr.tlength / 4;
-    battr.fragsize = battr.minreq;
-
-    LOG("Stream init requested buffer attributes maxlength %u, tlength %u, prebuf %u, minreq %u, fragsize %u\n",battr.maxlength, battr.tlength,
-        battr.prebuf, battr.minreq, battr.fragsize);
-
-    stm->output_stream = WRAP(pa_stream_new)(stm->context->context, stream_name, &ss, NULL);
+    stm->output_stream = create_pa_stream(stm, output_stream_params, stream_name);
     if (!stm->output_stream) {
       WRAP(pa_threaded_mainloop_unlock)(stm->context->mainloop);
       pulse_stream_destroy(stm);
       return CUBEB_ERROR;
     }
+
+    stm->output_sample_spec = *(WRAP(pa_stream_get_sample_spec)(stm->output_stream));
+
     WRAP(pa_stream_set_state_callback)(stm->output_stream, stream_state_callback, stm);
     WRAP(pa_stream_set_write_callback)(stm->output_stream, stream_write_callback, stm);
+
+    battr = set_buffering_attribute(latency, &stm->output_sample_spec);
     WRAP(pa_stream_connect_playback)(stm->output_stream,
                                      output_stream_params->devid,
                                      &battr,
@@ -723,25 +739,19 @@ pulse_stream_init(cubeb * context,
 
   // Set up input stream
   if (input_stream_params) {
-    pa_sample_spec in_ss;
-    in_ss.channels = input_stream_params->channels;
-    in_ss.rate = input_stream_params->rate;
-    in_ss.format = cube_to_pulse_format(input_stream_params->format);
-    stm->input_sample_spec = in_ss;
-
-    // update buffer attributes
-    battr.tlength = WRAP(pa_usec_to_bytes)(latency * PA_USEC_PER_MSEC, &stm->input_sample_spec);
-    battr.minreq = battr.tlength / 4;
-    battr.fragsize = battr.minreq;
-
-    stm->input_stream = WRAP(pa_stream_new)(stm->context->context, "input stream", &in_ss, NULL);
+    stm->input_stream = create_pa_stream(stm, input_stream_params, "cubeb input");
     if (!stm->input_stream) {
       WRAP(pa_threaded_mainloop_unlock)(stm->context->mainloop);
       pulse_stream_destroy(stm);
       return CUBEB_ERROR;
     }
+
+    stm->input_sample_spec = *(WRAP(pa_stream_get_sample_spec)(stm->input_stream));
+
     WRAP(pa_stream_set_state_callback)(stm->input_stream, stream_state_callback, stm);
     WRAP(pa_stream_set_read_callback)(stm->input_stream, stream_read_callback, stm);
+
+    battr = set_buffering_attribute(latency, &stm->input_sample_spec);
     WRAP(pa_stream_connect_record)(stm->input_stream,
                                    input_stream_params->devid,
                                    &battr,
@@ -759,14 +769,14 @@ pulse_stream_init(cubeb * context,
 
 #ifdef LOGGING_ENABLED
   if (output_stream_params){
-    const pa_buffer_attr* output_att;
+    const pa_buffer_attr * output_att;
     output_att = WRAP(pa_stream_get_buffer_attr)(stm->output_stream);
     LOG("Output buffer attributes maxlength %u, tlength %u, prebuf %u, minreq %u, fragsize %u\n",output_att->maxlength, output_att->tlength,
         output_att->prebuf, output_att->minreq, output_att->fragsize);
   }
 
   if (input_stream_params){
-    const pa_buffer_attr* input_att;
+    const pa_buffer_attr * input_att;
     input_att = WRAP(pa_stream_get_buffer_attr)(stm->input_stream);
     LOG("Input buffer attributes maxlength %u, tlength %u, prebuf %u, minreq %u, fragsize %u\n",input_att->maxlength, input_att->tlength,
         input_att->prebuf, input_att->minreq, input_att->fragsize);
@@ -1150,7 +1160,7 @@ pulse_enumerate_devices(cubeb * context, cubeb_device_type type,
   }
 
   *collection = malloc(sizeof(cubeb_device_collection) +
-      sizeof(cubeb_device_info*) * (user_data.count > 0 ? user_data.count - 1 : 0));
+      sizeof(cubeb_device_info *) * (user_data.count > 0 ? user_data.count - 1 : 0));
   (*collection)->count = user_data.count;
   for (i = 0; i < user_data.count; i++)
     (*collection)->device[i] = user_data.devinfo[i];
