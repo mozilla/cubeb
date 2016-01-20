@@ -781,7 +781,9 @@ static void alsa_stream_destroy(cubeb_stream * stm);
 
 static int
 alsa_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
+                 char const * input_device_name,
                  cubeb_stream_params * input_stream_params,
+                 char const * output_device_name,
                  cubeb_stream_params * output_stream_params,
                  unsigned int latency,
                  cubeb_data_callback data_callback, cubeb_state_callback state_callback,
@@ -937,7 +939,7 @@ alsa_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
 
   assert(ctx);
 
-  r = alsa_stream_init(ctx, &stm, "", NULL, &params, 100, NULL, NULL, NULL);
+  r = alsa_stream_init(ctx, &stm, "", NULL, NULL, NULL, &params, 100, NULL, NULL, NULL);
   if (r != CUBEB_OK) {
     return CUBEB_ERROR;
   }
