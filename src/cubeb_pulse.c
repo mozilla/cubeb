@@ -187,6 +187,22 @@ stream_state_callback(pa_stream * s, void * u)
   WRAP(pa_threaded_mainloop_signal)(stm->context->mainloop, 0);
 }
 
+static int
+check_long_oveflow(size_t val)
+{
+  if (val > LONG_MAX)
+    return 1;
+  return 0;
+}
+
+static size_t
+prevent_size_overflow(size_t size, size_t frame_size)
+{
+  if (check_long_oveflow(size / frame_size))
+    size = LONG_MAX * frame_size;
+  return size;
+}
+
 static void
 trigger_user_callback(pa_stream * s, void * input_data, size_t nbytes, cubeb_stream * stm)
 {
@@ -214,9 +230,11 @@ trigger_user_callback(pa_stream * s, void * input_data, size_t nbytes, cubeb_str
     }
     assert(r == 0);
     assert(size > 0);
+
+    size = prevent_size_overflow(size, frame_size);
     assert(size % frame_size == 0);
 
-    LOG("Trigger user callback with output buffer size %zd, read_offset=%zd\n", size, read_offset);
+    LOG("Trigger user callback with output buffer size=%zd, read_offset=%zd\n", size, read_offset);
     got = stm->data_callback(stm, stm->user_ptr, (uint8_t *)input_data + read_offset, buffer, size / frame_size);
     if (got < 0) {
       WRAP(pa_stream_cancel_write)(s);
@@ -273,12 +291,13 @@ trigger_user_callback(pa_stream * s, void * input_data, size_t nbytes, cubeb_str
 static int
 read_from_input(pa_stream * s, const void ** buffer, size_t * size)
 {
-  if (WRAP(pa_stream_readable_size)(s) > 0) {
+  size_t readable_size = WRAP(pa_stream_readable_size)(s);
+  if (readable_size > 0) {
     if (WRAP(pa_stream_peek)(s, buffer, size) < 0) {
       return -1;
     }
   }
-  return WRAP(pa_stream_readable_size)(s);
+  return readable_size;
 }
 
 static void
@@ -310,29 +329,37 @@ stream_read_callback(pa_stream * s, size_t nbytes, void * u)
     return;
   }
 
-  const void *read_data=NULL;
+  const void * read_data=NULL;
   size_t read_size;
   while (read_from_input(s, &read_data, &read_size) > 0) {
-    size_t in_frame_size = WRAP(pa_frame_size)(&stm->input_sample_spec);
-    size_t read_frames = read_size / in_frame_size;
+    /*read buffer can be NULL in case of a hole*/
+    if (read_data) {
+      size_t in_frame_size = WRAP(pa_frame_size)(&stm->input_sample_spec);
+      size_t read_frames = read_size / in_frame_size;
 
-    cubeb_stream * stm = u;
-    if (stm->output_stream) {
-      // input/capture + output/playback operation
-      void * read_buffer = (void*)read_data;
-      size_t out_frame_size = WRAP(pa_frame_size)(&stm->output_sample_spec);
-      size_t write_size = read_frames * out_frame_size;
-      // Offer full duplex data for writing
-      trigger_user_callback(stm->output_stream, read_buffer, write_size, stm);
-    } else {
-      // input/capture only operation. Call callback directly
-      void * read_buffer = (void*)read_data;
-      long got = stm->data_callback(stm, stm->user_ptr, read_buffer, NULL, read_frames);
-      size_t u_got = got;
-      if ( got < 0 || u_got != read_frames) {
-        WRAP(pa_stream_cancel_write)(s);
-        stm->shutdown = 1;
-        break;
+      cubeb_stream * stm = u;
+      if (stm->output_stream) {
+        // input/capture + output/playback operation
+        void * read_buffer = (void *)read_data; //XXX
+        size_t out_frame_size = WRAP(pa_frame_size)(&stm->output_sample_spec);
+        size_t write_size = read_frames * out_frame_size;
+        // Offer full duplex data for writing
+        trigger_user_callback(stm->output_stream, read_buffer, write_size, stm);
+      } else {
+        // input/capture only operation. Call callback directly
+        void * read_buffer = (void *)read_data; //XXX
+        while (read_size) {
+          size_t toread = prevent_size_overflow(read_size, in_frame_size);
+          long got = stm->data_callback(stm, stm->user_ptr, read_buffer, NULL, toread / in_frame_size);
+          size_t u_got = got;
+          if (got < 0 || u_got != read_frames) {
+            WRAP(pa_stream_cancel_write)(s);
+            stm->shutdown = 1;
+            break;
+          }
+          read_size -= toread;
+        }
+        assert(read_size == 0);
       }
     }
     WRAP(pa_stream_drop)(s);
@@ -406,7 +433,7 @@ operation_wait(cubeb * ctx, pa_stream * stream, pa_operation * o)
 static void
 cork_io_stream(cubeb_stream * stm, pa_stream * io_stream, enum cork_state state)
 {
-  pa_operation * o = NULL;
+  pa_operation * o;
   if (!io_stream) {
     return;
   }
@@ -442,7 +469,6 @@ stream_update_timing_info(cubeb_stream * stm)
       r = operation_wait(stm->context, stm->output_stream, o);
       WRAP(pa_operation_unref)(o);
     }
-    // if this fail abort
     if (r != 0) {
       return r;
     }
@@ -637,7 +663,7 @@ pulse_destroy(cubeb * ctx)
 static void pulse_stream_destroy(cubeb_stream * stm);
 
 pa_sample_format_t
-cube_to_pulse_format(cubeb_sample_format format)
+cubeb_to_pulse_format(cubeb_sample_format format)
 {
   switch (format) {
   case CUBEB_SAMPLE_S16LE:
@@ -656,9 +682,9 @@ cube_to_pulse_format(cubeb_sample_format format)
 static pa_stream *
 create_pa_stream(cubeb_stream * stm, cubeb_stream_params * stream_params, char const * stream_name)
 {
-  assert(stm || stream_params);
+  assert(stm && stream_params);
   pa_sample_spec ss;
-  ss.format = cube_to_pulse_format(stream_params->format);
+  ss.format = cubeb_to_pulse_format(stream_params->format);
   ss.rate = stream_params->rate;
   ss.channels = stream_params->channels;
 
@@ -767,6 +793,13 @@ pulse_stream_init(cubeb * context,
     r = stream_update_timing_info(stm);
   }
 
+  WRAP(pa_threaded_mainloop_unlock)(stm->context->mainloop);
+
+  if (r != 0) {
+    pulse_stream_destroy(stm);
+    return CUBEB_ERROR;
+  }
+
 #ifdef LOGGING_ENABLED
   if (output_stream_params){
     const pa_buffer_attr * output_att;
@@ -782,13 +815,6 @@ pulse_stream_init(cubeb * context,
         input_att->prebuf, input_att->minreq, input_att->fragsize);
   }
 #endif
-
-  WRAP(pa_threaded_mainloop_unlock)(stm->context->mainloop);
-
-  if (r != 0) {
-    pulse_stream_destroy(stm);
-    return CUBEB_ERROR;
-  }
 
   *stream = stm;
 
