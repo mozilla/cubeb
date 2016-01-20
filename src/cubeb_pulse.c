@@ -714,7 +714,6 @@ set_buffering_attribute(unsigned int latency, pa_sample_spec * sample_spec)
   return battr;
 }
 
-
 static int
 pulse_stream_init(cubeb * context,
                   cubeb_stream ** stream,
@@ -772,7 +771,7 @@ pulse_stream_init(cubeb * context,
 
   // Set up input stream
   if (input_stream_params) {
-    r = create_pa_stream(stm, &stm->input_stream, input_stream_params, "cubeb input");
+    r = create_pa_stream(stm, &stm->input_stream, input_stream_params, stream_name);
     if (r != CUBEB_OK) {
       WRAP(pa_threaded_mainloop_unlock)(stm->context->mainloop);
       pulse_stream_destroy(stm);
@@ -789,7 +788,6 @@ pulse_stream_init(cubeb * context,
                                    input_stream_params->devid,
                                    &battr,
                                    PA_STREAM_AUTO_TIMING_UPDATE | PA_STREAM_INTERPOLATE_TIMING |
-                                   PA_STREAM_NOT_MONOTONIC |
                                    PA_STREAM_START_CORKED | PA_STREAM_ADJUST_LATENCY);
   }
 
