@@ -122,7 +122,6 @@ test_context_variables(void)
   r = cubeb_init(&ctx, "test_context_variables");
   assert(r == 0 && ctx);
 
-  params.devid = NULL;
   params.channels = STREAM_CHANNELS;
   params.format = STREAM_FORMAT;
   params.rate = STREAM_RATE;
@@ -159,7 +158,6 @@ test_init_destroy_stream(void)
   params.format = STREAM_FORMAT;
   params.rate = STREAM_RATE;
   params.channels = STREAM_CHANNELS;
-  params.devid = NULL;
 
   r = cubeb_stream_init(ctx, &stream, "test", NULL, &params, STREAM_LATENCY,
                         test_data_callback, test_state_callback, &dummy);
@@ -185,7 +183,6 @@ test_init_destroy_multiple_streams(void)
   r = cubeb_init(&ctx, "test_sanity");
   assert(r == 0 && ctx);
 
-  params.devid = NULL;
   params.format = STREAM_FORMAT;
   params.rate = STREAM_RATE;
   params.channels = STREAM_CHANNELS;
@@ -219,7 +216,6 @@ test_configure_stream(void)
   r = cubeb_init(&ctx, "test_sanity");
   assert(r == 0 && ctx);
 
-  params.devid = NULL;
   params.format = STREAM_FORMAT;
   params.rate = STREAM_RATE;
   params.channels = 2; // panning
@@ -253,7 +249,6 @@ test_init_start_stop_destroy_multiple_streams(int early, int delay_ms)
   r = cubeb_init(&ctx, "test_sanity");
   assert(r == 0 && ctx);
 
-  params.devid = NULL;
   params.format = STREAM_FORMAT;
   params.rate = STREAM_RATE;
   params.channels = STREAM_CHANNELS;
@@ -314,7 +309,6 @@ test_init_destroy_multiple_contexts_and_streams(void)
 
   BEGIN_TEST;
 
-  params.devid = NULL;
   params.format = STREAM_FORMAT;
   params.rate = STREAM_RATE;
   params.channels = STREAM_CHANNELS;
@@ -355,7 +349,6 @@ test_basic_stream_operations(void)
   r = cubeb_init(&ctx, "test_sanity");
   assert(r == 0 && ctx);
 
-  params.devid = NULL;
   params.format = STREAM_FORMAT;
   params.rate = STREAM_RATE;
   params.channels = STREAM_CHANNELS;
@@ -405,7 +398,6 @@ test_stream_position(void)
   r = cubeb_init(&ctx, "test_sanity");
   assert(r == 0 && ctx);
 
-  params.devid = NULL;
   params.format = STREAM_FORMAT;
   params.rate = STREAM_RATE;
   params.channels = STREAM_CHANNELS;
@@ -522,7 +514,6 @@ test_drain(void)
   r = cubeb_init(&ctx, "test_sanity");
   assert(r == 0 && ctx);
 
-  params.devid = NULL;
   params.format = STREAM_FORMAT;
   params.rate = STREAM_RATE;
   params.channels = STREAM_CHANNELS;

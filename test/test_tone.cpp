@@ -116,7 +116,6 @@ int main(int argc, char *argv[])
     return r;
   }
 
-  params.devid = NULL;
   params.format = STREAM_FORMAT;
   params.rate = SAMPLE_FREQUENCY;
   params.channels = 1;

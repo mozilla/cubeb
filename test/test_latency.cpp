@@ -45,8 +45,7 @@ int main(int argc, char * argv[])
   cubeb_stream_params params = {
     CUBEB_SAMPLE_FLOAT32NE,
     preferred_rate,
-    max_channels,
-    NULL,
+    max_channels
   };
   r = cubeb_get_min_latency(ctx, params, &latency_ms);
   assert(r == CUBEB_OK || r == CUBEB_ERROR_NOT_SUPPORTED);
