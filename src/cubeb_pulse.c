@@ -679,16 +679,23 @@ cubeb_to_pulse_format(cubeb_sample_format format)
   }
 }
 
-static pa_stream *
-create_pa_stream(cubeb_stream * stm, cubeb_stream_params * stream_params, char const * stream_name)
+static int
+create_pa_stream(cubeb_stream * stm,
+                 pa_stream ** pa_stm,
+                 cubeb_stream_params * stream_params,
+                 char const * stream_name)
 {
   assert(stm && stream_params);
+  *pa_stm = NULL;
   pa_sample_spec ss;
   ss.format = cubeb_to_pulse_format(stream_params->format);
+  if (ss.format == PA_SAMPLE_INVALID)
+    return CUBEB_ERROR_INVALID_FORMAT;
   ss.rate = stream_params->rate;
   ss.channels = stream_params->channels;
 
-  return WRAP(pa_stream_new)(stm->context->context, stream_name, &ss, NULL);
+  *pa_stm =  WRAP(pa_stream_new)(stm->context->context, stream_name, &ss, NULL);
+  return (*pa_stm==NULL) ? CUBEB_ERROR : CUBEB_OK;
 }
 
 static pa_buffer_attr
@@ -742,11 +749,11 @@ pulse_stream_init(cubeb * context,
 
   WRAP(pa_threaded_mainloop_lock)(stm->context->mainloop);
   if (output_stream_params) {
-    stm->output_stream = create_pa_stream(stm, output_stream_params, stream_name);
-    if (!stm->output_stream) {
+    r = create_pa_stream(stm, &stm->output_stream, output_stream_params, stream_name);
+    if (r != CUBEB_OK) {
       WRAP(pa_threaded_mainloop_unlock)(stm->context->mainloop);
       pulse_stream_destroy(stm);
-      return CUBEB_ERROR;
+      return r;
     }
 
     stm->output_sample_spec = *(WRAP(pa_stream_get_sample_spec)(stm->output_stream));
@@ -765,11 +772,11 @@ pulse_stream_init(cubeb * context,
 
   // Set up input stream
   if (input_stream_params) {
-    stm->input_stream = create_pa_stream(stm, input_stream_params, "cubeb input");
-    if (!stm->input_stream) {
+    r = create_pa_stream(stm, &stm->input_stream, input_stream_params, "cubeb input");
+    if (r != CUBEB_OK) {
       WRAP(pa_threaded_mainloop_unlock)(stm->context->mainloop);
       pulse_stream_destroy(stm);
-      return CUBEB_ERROR;
+      return r;
     }
 
     stm->input_sample_spec = *(WRAP(pa_stream_get_sample_spec)(stm->input_stream));
