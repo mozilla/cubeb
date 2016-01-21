@@ -781,7 +781,9 @@ static void alsa_stream_destroy(cubeb_stream * stm);
 
 static int
 alsa_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
+                 cubeb_devid input_device,
                  cubeb_stream_params * input_stream_params,
+                 cubeb_devid output_device,
                  cubeb_stream_params * output_stream_params,
                  unsigned int latency,
                  cubeb_data_callback data_callback, cubeb_state_callback state_callback,
@@ -795,6 +797,10 @@ alsa_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
   assert(ctx && stream);
 
   assert(!input_stream_params && "not supported.");
+  if (input_device || output_device) {
+    /* Device selection not yet implemented. */
+    return CUBEB_ERROR_DEVICE_UNAVAILABLE;
+  }
 
   *stream = NULL;
 
@@ -937,7 +943,7 @@ alsa_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
 
   assert(ctx);
 
-  r = alsa_stream_init(ctx, &stm, "", NULL, &params, 100, NULL, NULL, NULL);
+  r = alsa_stream_init(ctx, &stm, "", NULL, NULL, NULL, &params, 100, NULL, NULL, NULL);
   if (r != CUBEB_OK) {
     return CUBEB_ERROR;
   }

@@ -1,5 +1,5 @@
 /*
- * Copyright © 2013 Mozilla Foundation
+ * Copyright ï¿½ 2013 Mozilla Foundation
  *
  * This program is made available under an ISC-style license.  See the
  * accompanying file LICENSE for details.
@@ -1202,7 +1202,9 @@ int setup_wasapi_stream(cubeb_stream * stm)
 int
 wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
                    char const * stream_name,
+                   cubeb_devid input_device,
                    cubeb_stream_params * input_stream_params,
+                   cubeb_devid output_device,
                    cubeb_stream_params * output_stream_params,
                    unsigned int latency, cubeb_data_callback data_callback,
                    cubeb_state_callback state_callback, void * user_ptr)
@@ -1215,6 +1217,10 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
   }
 
   XASSERT(!input_stream_params && "not supported.");
+  if (input_device || output_device) {
+    /* Device selection not yet implemented. */
+    return CUBEB_ERROR_DEVICE_UNAVAILABLE;
+  }
 
   XASSERT(context && stream);
 

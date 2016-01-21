@@ -34,7 +34,7 @@ struct cb_user_data {
   long position;
 };
 
-long data_cb(cubeb_stream *stream, void *user, void* inputbuffer, void *outputbuffer, long nframes)
+long data_cb(cubeb_stream *stream, void *user, const void* inputbuffer, void *outputbuffer, long nframes)
 {
   struct cb_user_data *u = (struct cb_user_data *)user;
 #if (defined(_WIN32) || defined(__WIN32__))
@@ -127,7 +127,7 @@ int main(int argc, char *argv[])
   }
   user_data->position = 0;
 
-  r = cubeb_stream_init(ctx, &stream, "Cubeb tone (mono)", NULL, &params,
+  r = cubeb_stream_init(ctx, &stream, "Cubeb tone (mono)", NULL, NULL, NULL, &params,
                         250, data_cb, state_cb, user_data);
   if (r != CUBEB_OK) {
     fprintf(stderr, "Error initializing cubeb stream\n");

@@ -380,7 +380,9 @@ static void winmm_stream_destroy(cubeb_stream * stm);
 
 static int
 winmm_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
+                  cubeb_devid input_device,
                   cubeb_stream_params * input_stream_params,
+                  cubeb_devid output_device,
                   cubeb_stream_params * output_stream_params,
                   unsigned int latency,
                   cubeb_data_callback data_callback,
@@ -397,6 +399,10 @@ winmm_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   XASSERT(stream);
 
   XASSERT(input_stream_params && "not supported.");
+  if (input_device || output_device) {
+    /* Device selection not yet implemented. */
+    return CUBEB_ERROR_DEVICE_UNAVAILABLE;
+  }
 
   *stream = NULL;
 

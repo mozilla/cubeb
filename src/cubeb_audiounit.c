@@ -539,7 +539,9 @@ static void audiounit_stream_destroy(cubeb_stream * stm);
 
 static int
 audiounit_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
+                      cubeb_devid input_device,
                       cubeb_stream_params * input_stream_params,
+                      cubeb_devid output_device,
                       cubeb_stream_params * output_stream_params,
                       unsigned int latency,
                       cubeb_data_callback data_callback, cubeb_state_callback state_callback,
@@ -561,6 +563,10 @@ audiounit_stream_init(cubeb * context, cubeb_stream ** stream, char const * stre
   AudioValueRange latency_range;
 
   assert(!input_stream_params && "not supported");
+  if (input_device || output_device) {
+    /* Device selection not yet implemented. */
+    return CUBEB_ERROR_DEVICE_UNAVAILABLE;
+  }
 
   assert(context);
   *stream = NULL;
