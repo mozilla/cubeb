@@ -205,13 +205,7 @@ trigger_user_callback(pa_stream * s, void const * input_data, size_t nbytes, cub
   while (towrite) {
     size = towrite;
     r = WRAP(pa_stream_begin_write)(s, &buffer, &size);
-    if (r < 0) {
-      // Never get here in normal scenario
-      LOG("Unexpected error. Debugging with rr causes this\n");
-      WRAP(pa_stream_cancel_write)(s);
-      stm->shutdown = 1;
-      return;
-    }
+    // Note: this has failed running under rr on occassion - needs investigation.
     assert(r == 0);
     assert(size > 0);
     assert(size % frame_size == 0);
@@ -307,6 +301,9 @@ stream_read_callback(pa_stream * s, size_t nbytes, void * u)
   if (stm->shutdown) {
     return;
   }
+
+  // Note: this has failed running under rr on occassion - needs investigation.
+  assert(stm->input_stream && stm->input_sample_spec.rate != 0);
 
   void const * read_data = NULL;
   size_t read_size;
