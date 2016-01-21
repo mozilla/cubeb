@@ -116,7 +116,9 @@ static int cbjack_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint3
 static int cbjack_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate);
 static void cbjack_destroy(cubeb * context);
 static int cbjack_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
+                              cubeb_devid input_device,
                               cubeb_stream_params * input_stream_params,
+                              cubeb_devid output_device,
                               cubeb_stream_params * output_stream_params,
                               unsigned int latency,
                               cubeb_data_callback data_callback,
@@ -581,7 +583,9 @@ context_alloc_stream(cubeb * context, char const * stream_name)
 
 static int
 cbjack_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
+                   cubeb_devid input_device,
                    cubeb_stream_params * input_stream_params,
+                   cubeb_devid output_device,
                    cubeb_stream_params * output_stream_params,
                    unsigned int latency,
                    cubeb_data_callback data_callback,
@@ -589,6 +593,10 @@ cbjack_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_
                    void * user_ptr)
 {
   assert(!input_stream_params && "not supported.");
+  if (input_device || output_device) {
+    /* Device selection not yet implemented. */
+    return CUBEB_ERROR_DEVICE_UNAVAILABLE;
+  }
 
   if (stream == NULL || output_stream_params == NULL) {
     return CUBEB_ERROR_INVALID_PARAMETER;

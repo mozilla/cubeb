@@ -173,9 +173,9 @@ static int
 sndio_stream_init(cubeb * context,
                   cubeb_stream ** stream,
                   char const * stream_name,
-                  char const * input_device_name,
+                  cubeb_devid input_device,
                   cubeb_stream_params * input_stream_params,
-                  char const * output_device_name,
+                  cubeb_devid output_device,
                   cubeb_stream_params * output_stream_params,
                   unsigned int latency,
                   cubeb_data_callback data_callback,
@@ -186,6 +186,12 @@ sndio_stream_init(cubeb * context,
   struct sio_par wpar, rpar;
   DPR("sndio_stream_init(%s)\n", stream_name);
   size_t size;
+
+  assert(!input_stream_params && "not supported.");
+  if (input_device || output_device) {
+    /* Device selection not yet implemented. */
+    return CUBEB_ERROR_DEVICE_UNAVAILABLE;
+  }
 
   s = malloc(sizeof(cubeb_stream));
   if (s == NULL)

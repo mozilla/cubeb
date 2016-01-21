@@ -241,9 +241,9 @@ cubeb_destroy(cubeb * context)
 
 int
 cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
-                  char const * input_device_name,
+                  cubeb_devid input_device,
                   cubeb_stream_params * input_stream_params,
-                  char const * output_device_name,
+                  cubeb_devid output_device,
                   cubeb_stream_params * output_stream_params,
                   unsigned int latency,
                   cubeb_data_callback data_callback,
@@ -262,9 +262,9 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
   }
 
   return context->ops->stream_init(context, stream, stream_name,
-                                   input_device_name,
+                                   input_device,
                                    input_stream_params,
-                                   output_device_name,
+                                   output_device,
                                    output_stream_params,
                                    latency,
                                    data_callback,

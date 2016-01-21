@@ -149,7 +149,8 @@ enum {
   CUBEB_ERROR = -1,                   /**< Unclassified error. */
   CUBEB_ERROR_INVALID_FORMAT = -2,    /**< Unsupported #cubeb_stream_params requested. */
   CUBEB_ERROR_INVALID_PARAMETER = -3, /**< Invalid parameter specified. */
-  CUBEB_ERROR_NOT_SUPPORTED = -4      /**< Optional function not implemented in current backend. */
+  CUBEB_ERROR_NOT_SUPPORTED = -4,     /**< Optional function not implemented in current backend. */
+  CUBEB_ERROR_DEVICE_UNAVAILABLE = -5 /**< Device specified by #cubeb_devid not available. */
 };
 
 /**
@@ -337,12 +338,12 @@ void cubeb_destroy(cubeb * context);
     @param context
     @param stream
     @param stream_name
-    @param input_device_name Device for the input side of the stream. If NULL
-                             default input device is used.
+    @param input_device Device for the input side of the stream. If NULL
+                        default input device is used.
     @param input_stream_params Parameters for the input side of the stream, or
                                NULL if this stream is output only.
-    @param output_device_name Device for the input side of the stream. If NULL
-                              default output device is used.
+    @param output_device Device for the output side of the stream. If NULL
+                         default output device is used.
     @param output_stream_params Parameters for the output side of the stream, or
                                 NULL if this stream is input only.
     @param latency Approximate stream latency in milliseconds.  Valid range
@@ -353,13 +354,14 @@ void cubeb_destroy(cubeb * context);
     @param user_ptr
     @retval CUBEB_OK
     @retval CUBEB_ERROR
-    @retval CUBEB_ERROR_INVALID_FORMAT */
+    @retval CUBEB_ERROR_INVALID_FORMAT
+    @retval CUBEB_ERROR_DEVICE_UNAVAILABLE */
 int cubeb_stream_init(cubeb * context,
                       cubeb_stream ** stream,
                       char const * stream_name,
-                      char const * input_device_name,
+                      cubeb_devid  input_device,
                       cubeb_stream_params * input_stream_params,
-                      char const * output_device_name,
+                      cubeb_devid output_device,
                       cubeb_stream_params * output_stream_params,
                       unsigned int latency,
                       cubeb_data_callback data_callback,
