@@ -441,8 +441,6 @@ int cubeb_register_device_collection_changed(cubeb * context,
 {
   if ((devtype & (CUBEB_DEVICE_TYPE_INPUT | CUBEB_DEVICE_TYPE_OUTPUT)) == 0)
     return CUBEB_ERROR_INVALID_PARAMETER;
-  if (callback == NULL)
-    return CUBEB_ERROR_INVALID_PARAMETER;
   return CUBEB_ERROR_NOT_SUPPORTED;
 }
 
