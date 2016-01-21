@@ -261,7 +261,7 @@ typedef struct {
             and the stream will enter a shutdown state. */
 typedef long (* cubeb_data_callback)(cubeb_stream * stream,
                                      void * user_ptr,
-                                     void * input_buffer,
+                                     const void * input_buffer,
                                      void * output_buffer,
                                      long nframes);
 
@@ -337,8 +337,12 @@ void cubeb_destroy(cubeb * context);
     @param context
     @param stream
     @param stream_name
+    @param input_device_name Device for the input side of the stream. If NULL
+                             default input device is used.
     @param input_stream_params Parameters for the input side of the stream, or
                                NULL if this stream is output only.
+    @param output_device_name Device for the input side of the stream. If NULL
+                              default output device is used.
     @param output_stream_params Parameters for the output side of the stream, or
                                 NULL if this stream is input only.
     @param latency Approximate stream latency in milliseconds.  Valid range
@@ -353,7 +357,9 @@ void cubeb_destroy(cubeb * context);
 int cubeb_stream_init(cubeb * context,
                       cubeb_stream ** stream,
                       char const * stream_name,
+                      char const * input_device_name,
                       cubeb_stream_params * input_stream_params,
+                      char const * output_device_name,
                       cubeb_stream_params * output_stream_params,
                       unsigned int latency,
                       cubeb_data_callback data_callback,

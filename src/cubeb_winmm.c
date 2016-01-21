@@ -380,7 +380,9 @@ static void winmm_stream_destroy(cubeb_stream * stm);
 
 static int
 winmm_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
+                  char const * input_device_name,
                   cubeb_stream_params * input_stream_params,
+                  char const * output_device_name,
                   cubeb_stream_params * output_stream_params,
                   unsigned int latency,
                   cubeb_data_callback data_callback,
