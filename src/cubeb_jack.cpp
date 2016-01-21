@@ -116,7 +116,9 @@ static int cbjack_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint3
 static int cbjack_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate);
 static void cbjack_destroy(cubeb * context);
 static int cbjack_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
-                              cubeb_stream_params stream_params, unsigned int latency,
+                              cubeb_stream_params * input_stream_params,
+                              cubeb_stream_params * output_stream_params,
+                              unsigned int latency,
                               cubeb_data_callback data_callback,
                               cubeb_state_callback state_callback,
                               void * user_ptr);
@@ -312,6 +314,7 @@ cbjack_stream_refill(cubeb_stream * stream)
 
   long num_frames = stream->data_callback(stream,
                                           stream->user_ptr,
+                                          NULL,
                                           stream->context->input_buffer,
                                           max_num_frames);
 
@@ -578,18 +581,22 @@ context_alloc_stream(cubeb * context, char const * stream_name)
 
 static int
 cbjack_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
-                   cubeb_stream_params stream_params, unsigned int latency,
+                   cubeb_stream_params * input_stream_params,
+                   cubeb_stream_params * output_stream_params,
+                   unsigned int latency,
                    cubeb_data_callback data_callback,
                    cubeb_state_callback state_callback,
                    void * user_ptr)
 {
-  if (stream_params.format != CUBEB_SAMPLE_FLOAT32NE
-      && stream_params.format != CUBEB_SAMPLE_S16NE) {
-    return CUBEB_ERROR_INVALID_FORMAT;
+  assert(!input_stream_params && "not supported.");
+
+  if (stream == NULL || output_stream_params == NULL) {
+    return CUBEB_ERROR_INVALID_PARAMETER;
   }
 
-  if (stream == NULL) {
-    return CUBEB_ERROR_INVALID_PARAMETER;
+  if (output_stream_params->format != CUBEB_SAMPLE_FLOAT32NE &&
+      output_stream_params->format != CUBEB_SAMPLE_S16NE) {
+    return CUBEB_ERROR_INVALID_FORMAT;
   }
 
   *stream = NULL;
@@ -607,7 +614,7 @@ cbjack_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_
 
   stm->user_ptr = user_ptr;
   stm->context = context;
-  stm->params = stream_params;
+  stm->params = *output_stream_params;
   stm->data_callback = data_callback;
   stm->state_callback = state_callback;
   stm->position = 0;
