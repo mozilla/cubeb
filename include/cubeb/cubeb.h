@@ -359,7 +359,7 @@ void cubeb_destroy(cubeb * context);
 int cubeb_stream_init(cubeb * context,
                       cubeb_stream ** stream,
                       char const * stream_name,
-                      cubeb_devid  input_device,
+                      cubeb_devid input_device,
                       cubeb_stream_params * input_stream_params,
                       cubeb_devid output_device,
                       cubeb_stream_params * output_stream_params,
@@ -452,7 +452,7 @@ int cubeb_stream_device_destroy(cubeb_stream * stream,
             device_changed_callback are invalid pointers.
     @retval CUBEB_ERROR_NOT_SUPPORTED */
 int cubeb_stream_register_device_changed_callback(cubeb_stream * stream,
-                                                  cubeb_device_changed_callback  device_changed_callback);
+                                                  cubeb_device_changed_callback device_changed_callback);
 
 /** Returns enumerated devices.
     @param context
@@ -480,12 +480,14 @@ int cubeb_device_info_destroy(cubeb_device_info * info);
 /** Registers a callback which is called when the system detects
     a new device or a device is removed.
     @param context
+    @param devtype device type to include
     @param callback a function called whenever the system device list changes.
            Passing NULL allow to unregister a function
     @param user_ptr pointer to user specified data which will be present in
            subsequent callbacks.
     @retval CUBEB_ERROR_NOT_SUPPORTED */
 int cubeb_register_device_collection_changed(cubeb * context,
+                                       cubeb_device_type devtype,
                                        cubeb_device_collection_changed_callback callback,
                                        void * user_ptr);
 
