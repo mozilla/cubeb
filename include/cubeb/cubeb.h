@@ -480,12 +480,14 @@ int cubeb_device_info_destroy(cubeb_device_info * info);
 /** Registers a callback which is called when the system detects
     a new device or a device is removed.
     @param context
+    @param devtype device type to include
     @param callback a function called whenever the system device list changes.
            Passing NULL allow to unregister a function
     @param user_ptr pointer to user specified data which will be present in
            subsequent callbacks.
     @retval CUBEB_ERROR_NOT_SUPPORTED */
 int cubeb_register_device_collection_changed(cubeb * context,
+                                       cubeb_device_type devtype,
                                        cubeb_device_collection_changed_callback callback,
                                        void * user_ptr);
 

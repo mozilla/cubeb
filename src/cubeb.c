@@ -435,6 +435,7 @@ int cubeb_device_info_destroy(cubeb_device_info * info)
 }
 
 int cubeb_register_device_collection_changed(cubeb * context,
+                                             cubeb_device_type devtype,
                                              cubeb_device_collection_changed_callback callback,
                                              void * user_ptr)
 {
