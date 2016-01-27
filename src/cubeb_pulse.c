@@ -817,12 +817,14 @@ pulse_stream_destroy(cubeb_stream * stm)
     }
 
     WRAP(pa_stream_set_state_callback)(stm->output_stream, NULL, NULL);
+    WRAP(pa_stream_set_write_callback)(stm->output_stream, NULL, NULL);
     WRAP(pa_stream_disconnect)(stm->output_stream);
     WRAP(pa_stream_unref)(stm->output_stream);
   }
 
   if (stm->input_stream) {
     WRAP(pa_stream_set_state_callback)(stm->input_stream, NULL, NULL);
+    WRAP(pa_stream_set_read_callback)(stm->input_stream, NULL, NULL);
     WRAP(pa_stream_disconnect)(stm->input_stream);
     WRAP(pa_stream_unref)(stm->input_stream);
   }
