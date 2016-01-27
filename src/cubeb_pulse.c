@@ -975,6 +975,7 @@ typedef struct {
   cubeb_device_info ** devinfo;
   uint32_t max;
   uint32_t count;
+  cubeb * context;
 } pulse_dev_list_data;
 
 static cubeb_device_fmt
@@ -1060,6 +1061,8 @@ pulse_sink_info_cb(pa_context * context, const pa_sink_info * info,
 
   pulse_ensure_dev_list_data_list_size (list_data);
   list_data->devinfo[list_data->count++] = devinfo;
+
+  WRAP(pa_threaded_mainloop_signal)(list_data->context->mainloop, 0);
 }
 
 static cubeb_device_state
@@ -1118,6 +1121,8 @@ pulse_source_info_cb(pa_context * context, const pa_source_info * info,
 
   pulse_ensure_dev_list_data_list_size (list_data);
   list_data->devinfo[list_data->count++] = devinfo;
+
+  WRAP(pa_threaded_mainloop_signal)(list_data->context->mainloop, 0);
 }
 
 static void
@@ -1131,15 +1136,19 @@ pulse_server_info_cb(pa_context * c, const pa_server_info * i, void * userdata)
   free(list_data->default_source_name);
   list_data->default_sink_name = strdup(i->default_sink_name);
   list_data->default_source_name = strdup(i->default_source_name);
+
+  WRAP(pa_threaded_mainloop_signal)(list_data->context->mainloop, 0);
 }
 
 static int
 pulse_enumerate_devices(cubeb * context, cubeb_device_type type,
                         cubeb_device_collection ** collection)
 {
-  pulse_dev_list_data user_data = { NULL, NULL, NULL, 0, 0 };
+  pulse_dev_list_data user_data = { NULL, NULL, NULL, 0, 0, context };
   pa_operation * o;
   uint32_t i;
+
+  WRAP(pa_threaded_mainloop_lock)(context->mainloop);
 
   o = WRAP(pa_context_get_server_info)(context->context,
       pulse_server_info_cb, &user_data);
@@ -1165,6 +1174,8 @@ pulse_enumerate_devices(cubeb * context, cubeb_device_type type,
       WRAP(pa_operation_unref)(o);
     }
   }
+
+  WRAP(pa_threaded_mainloop_unlock)(context->mainloop);
 
   *collection = malloc(sizeof(cubeb_device_collection) +
       sizeof(cubeb_device_info *) * (user_data.count > 0 ? user_data.count - 1 : 0));
@@ -1243,6 +1254,13 @@ void pulse_subscribe_callback(pa_context * ctx,
   }
 }
 
+void subscribe_success(pa_context *c, int success, void *userdata)
+{
+  cubeb * context = userdata;
+  assert(success);
+  WRAP(pa_threaded_mainloop_signal)(context->mainloop, 0);
+}
+
 int pulse_register_device_collection_changed(cubeb * context,
                                              cubeb_device_type devtype,
                                              cubeb_device_collection_changed_callback collection_changed_callback,
@@ -1250,6 +1268,8 @@ int pulse_register_device_collection_changed(cubeb * context,
 {
   context->collection_changed_callback = collection_changed_callback;
   context->collection_changed_user_ptr = user_ptr;
+
+  WRAP(pa_threaded_mainloop_lock)(context->mainloop);
 
   pa_subscription_mask_t mask;
   if (context->collection_changed_callback == NULL) {
@@ -1267,13 +1287,15 @@ int pulse_register_device_collection_changed(cubeb * context,
   }
 
   pa_operation * o;
-  o = WRAP(pa_context_subscribe)(context->context, mask, NULL, NULL);
+  o = WRAP(pa_context_subscribe)(context->context, mask, subscribe_success, context);
   if (o == NULL) {
     LOG("Context subscribe failed\n");
     return CUBEB_ERROR;
   }
   operation_wait(context, NULL, o);
   WRAP(pa_operation_unref)(o);
+
+  WRAP(pa_threaded_mainloop_unlock)(context->mainloop);
 
   return CUBEB_OK;
 }
