@@ -307,9 +307,6 @@ stream_read_callback(pa_stream * s, size_t nbytes, void * u)
     return;
   }
 
-  // Note: this has failed running under rr on occassion - needs investigation.
-  assert(stm->input_stream && stm->input_sample_spec.rate != 0);
-
   void const * read_data = NULL;
   size_t read_size;
   while (read_from_input(s, &read_data, &read_size) > 0) {
