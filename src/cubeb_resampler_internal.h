@@ -239,4 +239,107 @@ private:
   uint32_t additional_latency;
 };
 
+/** This class allows delaying an audio stream by `frames` frames. */
+template<typename T>
+class delay_line : public processor {
+public:
+  /** Constructor
+   * @parameter frames the number of frames of delay.
+   * @parameter channels the number of channels of this delay line. */
+  delay_line(uint32_t frames, uint32_t channels)
+    : processor(channels)
+    , length(frames)
+  {
+    /* Fill the delay line with some silent frames to add latency. */
+    delay_input_buffer.push(frames * channels);
+  }
+  /* Add some latency to the delay line.
+   * @param frames the number of frames of latency to add. */
+  void add_latency(size_t frames)
+  {
+    length+=frames;
+    delay_input_buffer.push(frames_to_samples(frames));
+  }
+  /** Push some frames into the delay line.
+   * @parameter buffer the frames to push.
+   * @parameter frame_count the number of frames in #buffer. */
+  void input(T * buffer, uint32_t frame_count)
+  {
+    delay_input_buffer.push(buffer, frames_to_samples(frame_count));
+  }
+  /** Pop some frames from the internal buffer.
+   * @parameter buffer the buffer in which the frames will be written.
+   * @parameter frames_needed the number of frame that will be written. */
+  void output(T * buffer, uint32_t frame_needed)
+  {
+    delay_input_buffer.pop(buffer, frames_to_samples(frame_needed));
+  }
+  /** Pop some frames from the internal buffer, into a internal output buffer.
+   * @parameter frames_needed the number of frames to be returned.
+   * @return a buffer containing the delayed frames. The consumer should not
+   * hold onto the pointer. */
+  T* output(uint32_t frames_needed)
+  {
+    if (delay_output_buffer.capacity() < frames_to_samples(frames_needed)) {
+      delay_output_buffer.resize(frames_to_samples(frames_needed));
+    }
+
+    delay_output_buffer.clear();
+    delay_output_buffer.push(delay_input_buffer.data(),
+                             frames_to_samples(frames_needed));
+    delay_input_buffer.pop(nullptr, frames_to_samples(frames_needed));
+
+    return delay_output_buffer.data();
+  }
+  /** Get a pointer to the first writable location in the input buffer>
+   * @parameter frames_needed the number of frames the user needs to write into
+   * the buffer.
+   * @returns a pointer to a location in the input buffer where #frames_needed
+   * can be writen. */
+  T * input_buffer(uint32_t frames_needed)
+  {
+    size_t prev_length = delay_input_buffer.length();
+    delay_input_buffer.push(frames_to_samples(frames_needed));
+    return delay_input_buffer.data() + prev_length;
+  }
+  /** Drains the delay line, emptying the buffer.
+   * @parameter output_buffer the buffer in which the frames are written.
+   * @parameter frames_needed the maximum number of frames to write.
+   * @return the actual number of frames written. */
+  size_t drain(T * output_buffer, uint32_t frames_needed)
+  {
+    uint32_t in_len = samples_to_frames(delay_input_buffer.length());
+    uint32_t out_len = frames_needed;
+
+    uint32_t to_pop = std::min(in_len, out_len);
+
+    delay_input_buffer.pop(output_buffer, frames_to_samples(to_pop));
+
+    return to_pop;
+  }
+  /** Returns the number of frames one needs to input into the delay line to get
+   * #frames_needed frames back.
+   * @parameter frames_needed the number of frames one want to write into the
+   * delay_line
+   * @returns the number of frames one will get. */
+  size_t input_needed_for_output(uint32_t frames_needed)
+  {
+    return frames_needed;
+  }
+  /** The number of frames this delay line delays the stream by.
+   * @returns The number of frames of delay. */
+  size_t latency()
+  {
+    return length;
+  }
+private:
+  /** The length, in frames, of this delay line */
+  uint32_t length;
+  /** The input buffer, where the delay is applied. */
+  auto_array<T> delay_input_buffer;
+  /** The output buffer. This is only ever used if using the ::output with a
+   * single argument. */
+  auto_array<T> delay_output_buffer;
+};
+
 #endif /* CUBEB_RESAMPLER_INTERNAL */

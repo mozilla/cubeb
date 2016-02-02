@@ -106,6 +106,42 @@ int16_t epsilon(float ratio) {
   return static_cast<int16_t>(10 * epsilon_tweak_ratio(ratio));
 }
 
+void test_delay_lines(uint32_t delay_frames, uint32_t channels, uint32_t chunk_ms)
+{
+  const size_t length_s = 2;
+  const size_t rate = 44100;
+  const size_t length_frames = rate * length_s;
+  delay_line<float> delay(delay_frames, channels);
+  auto_array<float> input;
+  auto_array<float> output;
+  uint32_t chunk_length = channels * chunk_ms * rate / 1000;
+  uint32_t output_offset = 0;
+  uint32_t channel = 0;
+
+  /** Generate diracs every 100 frames, and check they are delayed. */
+  input.push(length_frames * channels);
+  for (uint32_t i = 0; i < input.length() - 1; i+=100) {
+    input.data()[i + channel] = 0.5;
+    channel = (channel + 1) % channels;
+  }
+  dump("input.raw", input.data(), input.length());
+  while(input.length()) {
+    uint32_t to_pop = std::min<uint32_t>(input.length(), chunk_length * channels);
+    float * in = delay.input_buffer(to_pop / channels);
+    input.pop(in, to_pop);
+    output.push(to_pop);
+    delay.output(output.data() + output_offset, to_pop / channels);
+    output_offset += to_pop;
+  }
+
+  // Check the diracs have been shifted by `delay_frames` frames.
+  for (uint32_t i = 0; i < output.length() - delay_frames * channels + 1; i+=100) {
+    assert(output.data()[i + channel + delay_frames * channels] == 0.5);
+    channel = (channel + 1) % channels;
+  }
+
+  dump("output.raw", output.data(), output.length());
+}
 /**
  * This takes sine waves with a certain `channels` count, `source_rate`, and
  * resample them, by chunk of `chunk_duration` milliseconds, to `target_rate`.
@@ -216,10 +252,23 @@ void test_resamplers_one_way()
   }
 }
 
+void test_delay_line()
+{
+  for (uint32_t channel = 1; channel <= 2; channel++) {
+    for (uint32_t delay_frames = 4; delay_frames <= 40; delay_frames++) {
+      for (uint32_t chunk_size = 10; chunk_size <= 30; chunk_size++) {
+       printf("channel: %d, delay_frames: %d, chunk_size: %d\n",
+              channel, delay_frames, chunk_size);
+        test_delay_lines(delay_frames, channel, chunk_size);
+      }
+    }
+  }
+}
 
 int main()
 {
   test_resamplers_one_way();
+  test_delay_line();
 
   return 0;
 }
