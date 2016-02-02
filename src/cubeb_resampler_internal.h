@@ -76,6 +76,53 @@ protected:
   const uint32_t channels;
 };
 
+/** Bidirectional resampler, can resample an input and an output stream, or just
+ * an input stream or output stream. In this case a delay is inserted in the
+ * opposite direction to keep the streams synchronized. */
+template<typename T, typename InputProcessing, typename OutputProcessing>
+class cubeb_resampler_speex : public cubeb_resampler {
+public:
+  cubeb_resampler_speex(InputProcessing * input_processor,
+                        OutputProcessing * output_processor,
+                        cubeb_stream * s,
+                        cubeb_data_callback cb,
+                        void * ptr);
+
+  virtual ~cubeb_resampler_speex();
+
+  virtual long fill(void * input_buffer, long * input_frames_count,
+                    void * output_buffer, long output_frames_needed);
+
+  virtual long latency()
+  {
+    if (input_processor && output_processor) {
+      assert(input_processor->latency() == output_processor->latency());
+      return input_processor->latency();
+    } else if (input_processor) {
+      return input_processor->latency();
+    } else {
+      return output_processor->latency();
+    }
+  }
+
+private:
+  typedef long(cubeb_resampler_speex::*processing_callback)(T * input_buffer, long * input_frames_count, T * output_buffer, long output_frames_needed);
+
+  long fill_internal_duplex(T * input_buffer, long * input_frames_count,
+                            T * output_buffer, long output_frames_needed);
+  long fill_internal_input(T * input_buffer, long * input_frames_count,
+                           T * output_buffer, long output_frames_needed);
+  long fill_internal_output(T * input_buffer, long * input_frames_count,
+                            T * output_buffer, long output_frames_needed);
+
+  auto_ptr<InputProcessing> input_processor;
+  auto_ptr<OutputProcessing> output_processor;
+  processing_callback fill_internal;
+  cubeb_stream * const stream;
+  const cubeb_data_callback data_callback;
+  void * const user_ptr;
+};
+
 /** Handles one way of a (possibly) duplex resampler, working on interleaved
  * audio buffers of type T. This class is designed so that the number of frames
  * coming out of the resampler can be precisely controled. It manages its own
@@ -170,7 +217,7 @@ public:
     speex_resample(resampling_in_buffer.data(), &in_len,
                    resampling_out_buffer.data(), &out_len);
 
-    assert(out_len == output_frame_count);
+    assert(out_len == output_frame_count );
 
     /* This shifts back any unresampled samples to the beginning of the input
        buffer. */
@@ -195,6 +242,12 @@ public:
   {
     return ceil(output_frame_count * resampling_ratio) + 1
             - resampling_in_buffer.length() / channels;
+  }
+
+  /** Returns the number of frames that can be produced from `input_frames` frames. */
+  uint32_t output_for_input(uint32_t input_frames)
+  {
+    return (input_frames / resampling_ratio);
   }
 
   /** Returns a pointer to the input buffer, that contains empty space for at
@@ -325,6 +378,9 @@ public:
   size_t input_needed_for_output(uint32_t frames_needed)
   {
     return frames_needed;
+  }
+  size_t output_for_input(uint32_t input_frames) {
+    return input_frames;
   }
   /** The number of frames this delay line delays the stream by.
    * @returns The number of frames of delay. */
