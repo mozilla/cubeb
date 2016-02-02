@@ -14,45 +14,8 @@
 #endif
 #include "cubeb_resampler.h"
 #include "cubeb-speex-resampler.h"
-
-namespace {
-
-template<typename T>
-class auto_array
-{
-public:
-  auto_array(uint32_t size)
-    : data(new T[size])
-  {}
-
-  ~auto_array()
-  {
-    delete [] data;
-  }
-
-  T * get() const
-  {
-    return data;
-  }
-
-private:
-  T * data;
-};
-
-long
-frame_count_at_rate(long frame_count, float rate)
-{
-  return static_cast<long>(ceilf(rate * frame_count) + 1);
-}
-
-size_t
-frames_to_bytes(cubeb_stream_params params, size_t frames)
-{
-  assert(params.format == CUBEB_SAMPLE_S16NE || params.format == CUBEB_SAMPLE_FLOAT32NE);
-  size_t sample_size = params.format == CUBEB_SAMPLE_S16NE ? sizeof(short) : sizeof(float);
-  size_t frame_size = params.channels * sample_size;
-  return frame_size * frames;
-}
+#include "cubeb_resampler_internal.h"
+#include "cubeb_utils.h"
 
 int
 to_speex_quality(cubeb_resampler_quality q)
@@ -69,71 +32,54 @@ to_speex_quality(cubeb_resampler_quality q)
     return 0XFFFFFFFF;
   }
 }
+
+template<typename T>
+cubeb_resampler_speex_one_way<T>::cubeb_resampler_speex_one_way(int32_t channels,
+                                                                int32_t source_rate,
+                                                                int32_t target_rate,
+                                                                int quality)
+  : processor(channels)
+  , resampling_ratio(static_cast<float>(source_rate) / target_rate)
+  , additional_latency(0)
+{
+  int r;
+  speex_resampler = speex_resampler_init(channels, source_rate,
+                                         target_rate, quality, &r);
+  assert(r == RESAMPLER_ERR_SUCCESS && "resampler allocation failure");
+}
+
+template<typename T>
+cubeb_resampler_speex_one_way<T>::~cubeb_resampler_speex_one_way()
+{
+  speex_resampler_destroy(speex_resampler);
+}
+
+long noop_resampler::fill(void * input_buffer, long * input_frames_count,
+                          void * output_buffer, long output_frames)
+{
+  assert(input_buffer && output_buffer &&
+         *input_frames_count >= output_frames||
+         !input_buffer && input_frames_count == 0 ||
+         !output_buffer && output_frames== 0);
+
+  if (*input_frames_count != output_frames) {
+    assert(*input_frames_count > output_frames);
+    *input_frames_count = output_frames;
+  }
+
+  return data_callback(stream, user_ptr,
+                       input_buffer, output_buffer, output_frames);
+}
+
+namespace {
+
+long
+frame_count_at_rate(long frame_count, float rate)
+{
+  return static_cast<long>(ceilf(rate * frame_count) + 1);
+}
+
 } // end of anonymous namespace
-
-struct cubeb_resampler {
-  virtual long fill(void * input_buffer, void * output_buffer, long frames_needed) = 0;
-  virtual ~cubeb_resampler() {}
-};
-
-class noop_resampler : public cubeb_resampler {
-public:
-  noop_resampler(cubeb_stream * s,
-                 cubeb_data_callback cb,
-                 void * ptr)
-    : stream(s)
-    , data_callback(cb)
-    , user_ptr(ptr)
-  {
-  }
-
-  virtual long fill(void * input_buffer, void * output_buffer, long frames_needed)
-  {
-    long got = data_callback(stream, user_ptr, input_buffer, output_buffer, frames_needed);
-    assert(got <= frames_needed);
-    return got;
-  }
-
-private:
-  cubeb_stream * const stream;
-  const cubeb_data_callback data_callback;
-  void * const user_ptr;
-};
-
-class cubeb_resampler_speex : public cubeb_resampler {
-public:
-  cubeb_resampler_speex(SpeexResamplerState * r, cubeb_stream * s,
-                        cubeb_stream_params params, uint32_t out_rate,
-                        cubeb_data_callback cb, long max_count,
-                        void * ptr);
-
-  virtual ~cubeb_resampler_speex();
-
-  virtual long fill(void * input_buffer, void * output_buffer, long frames_needed);
-
-private:
-  SpeexResamplerState * const speex_resampler;
-  cubeb_stream * const stream;
-  const cubeb_stream_params stream_params;
-  const cubeb_data_callback data_callback;
-  void * const user_ptr;
-
-  // Maximum number of frames we can be requested in a callback.
-  const long buffer_frame_count;
-  // input rate / output rate
-  const float resampling_ratio;
-  // Maximum frames that can be stored in |leftover_frames_buffer|.
-  const uint32_t leftover_frame_size;
-  // Number of leftover frames stored in |leftover_frames_buffer|.
-  uint32_t leftover_frame_count;
-
-  // A little buffer to store the leftover frames,
-  // that is, the samples not consumed by the resampler that we will end up
-  // using next time fill() is called.
-  auto_array<uint8_t> leftover_frames_buffer;
-  // A buffer to store frames that will be consumed by the resampler.
-  auto_array<uint8_t> resampling_src_buffer;
-};
 
 cubeb_resampler_speex::cubeb_resampler_speex(SpeexResamplerState * r,
                                              cubeb_stream * s,

@@ -2,6 +2,10 @@
 *.o
 *.swp
 *~
+*.trs
+*.raw
+*.wav
+*.log
 .deps
 .dirstamp
 .libs
@@ -47,10 +51,11 @@ test/test_tone
 test/test_tone.exe
 test/test_devices
 test/test_devices.exe
+test/test_resampler
+test/test_resampler.exe
 test/test_utils
 test/test_utils.exe
 include/cubeb/cubeb-stdint.h
 test-suite.log
 test/test_sanity.log
 test/test_sanity.trs
-
