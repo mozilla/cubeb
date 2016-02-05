@@ -80,6 +80,7 @@ check_PROGRAMS = test/test_sanity \
 								 test/test_audio \
 								 test/test_latency \
 								 test/test_devices \
+								 test/test_duplex \
 								 test/test_resampler \
 								 test/test_utils \
 								 $(NULL)
@@ -101,6 +102,9 @@ test_test_devices_LDADD = -lm src/libcubeb.la $(platform_lib)
 
 test_test_resampler_SOURCES = test/test_resampler.cpp
 test_test_resampler_LDADD = -lm src/libcubeb.la $(platform_lib) src/cubeb_resampler.o
+
+test_test_duplex_SOURCES = test/test_duplex.cpp
+test_test_duplex_LDADD = -lm src/libcubeb.la $(platform_lib)
 
 test_test_resampler_SOURCES = test/test_utils.cpp
 
