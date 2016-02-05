@@ -53,6 +53,8 @@ test/test_devices
 test/test_devices.exe
 test/test_resampler
 test/test_resampler.exe
+test/test_record
+test/test_record.exe
 test/test_utils
 test/test_utils.exe
 include/cubeb/cubeb-stdint.h
