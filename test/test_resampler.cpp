@@ -232,6 +232,157 @@ cubeb_sample_format cubeb_format<short>()
   return CUBEB_SAMPLE_S16NE;
 }
 
+struct osc_state {
+  osc_state()
+    : input_phase_index(0)
+    , output_phase_index(0)
+    , output_offset(0)
+    , input_channels(0)
+    , output_channels(0)
+  {}
+  uint32_t input_phase_index;
+  uint32_t max_output_phase_index;
+  uint32_t output_phase_index;
+  uint32_t output_offset;
+  uint32_t input_channels;
+  uint32_t output_channels;
+  uint32_t output_rate;
+  uint32_t target_rate;
+  auto_array<float> input;
+  auto_array<float> output;
+};
+
+uint32_t fill_with_sine(float * buf, uint32_t rate, uint32_t channels,
+                        uint32_t frames, uint32_t initial_phase)
+{
+  uint32_t offset = 0;
+  for (uint32_t i = 0; i < frames; i++) {
+    float  p = initial_phase++ / static_cast<float>(rate);
+    for (uint32_t j = 0; j < channels; j++) {
+      buf[offset++] = 0.5 * sin(440. * 2 * PI * p);
+    }
+  }
+  return initial_phase;
+}
+
+long data_cb(cubeb_stream * stm, void * user_ptr,
+             const void * input_buffer, void * output_buffer, long frame_count)
+{
+  osc_state * state = reinterpret_cast<osc_state*>(user_ptr);
+  const float * in = reinterpret_cast<const float*>(input_buffer);
+  float * out = reinterpret_cast<float*>(output_buffer);
+
+
+  state->input.push(in, frame_count * state->input_channels);
+
+  /* Check how much output frames we need to write */
+  uint32_t remaining = state->max_output_phase_index - state->output_phase_index;
+  uint32_t to_write = std::min<uint32_t>(remaining, frame_count);
+  state->output_phase_index = fill_with_sine(out,
+                                             state->target_rate,
+                                             state->output_channels,
+                                             to_write,
+                                             state->output_phase_index);
+
+  return to_write;
+}
+
+template<typename T>
+bool array_fuzzy_equal(const auto_array<T>& lhs, const auto_array<T>& rhs, T epsi)
+{
+  uint32_t len = std::min(lhs.length(), rhs.length());
+
+  for (uint32_t i = 0; i < len; i++) {
+    if (abs(lhs.at(i) - rhs.at(i)) > epsi) {
+      std::cout << "not fuzzy equal at index " << i
+                << "lhs: " << lhs.at(i) <<  " rhs: " << rhs.at(i)
+                << "delta: " << abs(lhs.at(i) - rhs.at(i)) << std::endl;
+      return false;
+    }
+  }
+  return true;
+}
+
+template<typename T>
+void test_resampler_duplex(uint32_t input_channels, uint32_t output_channels,
+                           uint32_t input_rate, uint32_t output_rate,
+                           uint32_t target_rate, float chunk_duration)
+{
+  cubeb_stream_params input_params;
+  cubeb_stream_params output_params;
+  osc_state state;
+
+  input_params.format = output_params.format = cubeb_format<T>();
+  state.input_channels = input_params.channels = input_channels;
+  state.output_channels = output_params.channels = output_channels;
+  input_params.rate = input_rate;
+  state.output_rate = output_params.rate = output_rate;
+  state.target_rate = target_rate;
+  long got;
+
+  cubeb_resampler * resampler =
+    cubeb_resampler_create((cubeb_stream*)nullptr, &input_params, &output_params, target_rate,
+                           data_cb, (void*)&state, CUBEB_RESAMPLER_QUALITY_VOIP);
+
+  long latency = cubeb_resampler_latency(resampler);
+
+  const uint32_t duration_s = 2;
+  int32_t duration_frames = duration_s * target_rate;
+  uint32_t resampled_chunk_frame_count = chunk_duration * target_rate / 1000;
+  uint32_t input_array_frame_count = ceil(chunk_duration * input_rate / 1000) + ceilf(static_cast<float>(input_rate) / target_rate) * 2;
+  uint32_t output_array_frame_count = chunk_duration * output_rate / 1000;
+  auto_array<float> input_buffer(input_channels * input_array_frame_count);
+  auto_array<float> output_buffer(output_channels * output_array_frame_count);
+  auto_array<float> expected_resampled_input(input_channels * duration_frames);
+  auto_array<float> expected_resampled_output(output_channels * output_rate * duration_s);
+
+  state.max_output_phase_index = duration_s * target_rate;
+
+  expected_resampled_input.push(input_channels * duration_frames);
+  expected_resampled_output.push(output_channels * output_rate * duration_s);
+
+  /* expected output is a 440Hz sine wave at 16kHz */
+  fill_with_sine(expected_resampled_input.data() + latency,
+                 target_rate, input_channels, duration_frames - latency, 0);
+  /* expected output is a 440Hz sine wave at 32kHz */
+  fill_with_sine(expected_resampled_output.data() + latency,
+                 output_rate, output_channels, output_rate * duration_s - latency, 0);
+
+
+  uint32_t leftover_input_frames = 0;
+  while (state.output_phase_index != state.max_output_phase_index) {
+    state.input_phase_index = fill_with_sine(input_buffer.data() + leftover_input_frames * input_channels,
+                                             input_rate,
+                                             input_channels,
+                                             input_array_frame_count - leftover_input_frames,
+                                             state.input_phase_index);
+    long input_consumed = input_array_frame_count;
+
+    got = cubeb_resampler_fill(resampler,
+                               input_buffer.data(), &input_consumed,
+                               output_buffer.data(), output_array_frame_count);
+
+    /* handle leftover input */
+    if (input_array_frame_count != input_consumed) {
+      leftover_input_frames = input_array_frame_count - input_consumed;
+      input_buffer.pop(nullptr, leftover_input_frames * input_channels);
+    } else {
+      input_buffer.clear();
+    }
+
+    state.output.push(output_buffer.data(), got * state.output_channels);
+  }
+
+  dump("input_expected.raw", expected_resampled_input.data(), expected_resampled_input.length());
+  dump("output_expected.raw", expected_resampled_output.data(), expected_resampled_output.length());
+  dump("input.raw", state.input.data(), state.input.length());
+  dump("output.raw", state.output.data(), state.output.length());
+
+  assert(array_fuzzy_equal(state.input, expected_resampled_input, epsilon<T>(input_rate/target_rate)));
+  assert(array_fuzzy_equal(state.output, expected_resampled_output, epsilon<T>(output_rate/target_rate)));
+
+  cubeb_resampler_destroy(resampler);
+}
 
 #define array_size(x) (sizeof(x) / sizeof(x[0]))
 
@@ -252,6 +403,37 @@ void test_resamplers_one_way()
   }
 }
 
+void test_resamplers_duplex()
+{
+  /* Test duplex resamplers */
+  for (uint32_t input_channels = 1; input_channels <= max_channels; input_channels++) {
+    for (uint32_t output_channels = 1; output_channels <= max_channels; output_channels++) {
+      for (uint32_t source_rate_input = 6; source_rate_input < array_size(sample_rates); source_rate_input++) {
+        for (uint32_t source_rate_output = 3; source_rate_output < array_size(sample_rates); source_rate_output++) {
+          for (uint32_t dest_rate = 4; dest_rate < array_size(sample_rates); dest_rate++) {
+            for (uint32_t chunk_duration = min_chunks; chunk_duration < max_chunks; chunk_duration++) {
+              printf("input chanenls:%d output_channels:%d input_rate:%d"
+                     "output_rate:%d target_rate:%d chunk_ms:%d\n",
+                     input_channels, output_channels,
+                     sample_rates[source_rate_input],
+                     sample_rates[source_rate_output],
+                     sample_rates[dest_rate],
+                     chunk_duration);
+              test_resampler_duplex<float>(input_channels, output_channels,
+                                           sample_rates[source_rate_input],
+                                           sample_rates[source_rate_output],
+                                           sample_rates[dest_rate],
+                                           chunk_duration);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  test_resampler_duplex<float>(1, 2, 16000, 44100, 44100, 10);
+}
+
 void test_delay_line()
 {
   for (uint32_t channel = 1; channel <= 2; channel++) {
@@ -269,6 +451,7 @@ int main()
 {
   test_resamplers_one_way();
   test_delay_line();
+  test_resamplers_duplex();
 
   return 0;
 }
