@@ -398,4 +398,91 @@ private:
   auto_array<T> delay_output_buffer;
 };
 
+/** This sits behind the C API and is more typed. */
+template<typename T>
+cubeb_resampler *
+cubeb_resampler_create_internal(cubeb_stream * stream,
+                                cubeb_stream_params * input_params,
+                                cubeb_stream_params * output_params,
+                                unsigned int target_rate,
+                                cubeb_data_callback callback,
+                                void * user_ptr,
+                                cubeb_resampler_quality quality)
+{
+  cubeb_resampler_speex_one_way<T> * input_resampler = nullptr;
+  cubeb_resampler_speex_one_way<T> * output_resampler = nullptr;
+  delay_line<T> * input_delay = nullptr;
+  delay_line<T> * output_delay = nullptr;
+
+  assert(input_params || output_params &&
+         "need at least one valid parameter pointer.");
+
+  /* All the streams we have have a sample rate that matches the target
+     sample rate, use a no-op resampler, that simply forwards the buffers to the
+     callback. */
+  if (((input_params && input_params->rate == target_rate) &&
+      (output_params && output_params->rate == target_rate)) ||
+      (input_params && !output_params && (input_params->rate == target_rate)) ||
+      (output_params && !input_params && (output_params->rate == target_rate))) {
+    return new noop_resampler(stream, callback, user_ptr);
+  }
+
+  /* Determine if we need to resampler one or both directions, and create the
+     resamplers. */
+  if (output_params && (output_params->rate != target_rate)) {
+    /* The target param here is the platforms stream's rate, since we're
+     * resampling from the user's chosen sample rate to the platforms's
+     * mandatory sample rate. */
+    output_resampler = new cubeb_resampler_speex_one_way<T>(output_params->channels,
+                                                            target_rate,
+                                                            output_params->rate,
+                                                            to_speex_quality(quality));
+    if (!output_resampler) {
+      return NULL;
+    }
+  }
+
+  if (input_params && (input_params->rate != target_rate)) {
+    input_resampler = new cubeb_resampler_speex_one_way<T>(input_params->channels,
+                                                           input_params->rate,
+                                                           target_rate,
+                                                           to_speex_quality(quality));
+    if (!input_resampler) {
+      return NULL;
+    }
+  }
+
+  /* If we resample only one direction but we have a duplex stream, insert a
+   * delay line with a length equal to the resampler latency of the
+   * other direction so that the streams are synchronized. */
+  if (input_resampler && !output_resampler && input_params && output_params) {
+    output_delay = new delay_line<T>(input_resampler->latency(),
+                                     output_params->channels);
+  } else if (output_resampler && !input_resampler && input_params && output_params) {
+    input_delay = new delay_line<T>(output_resampler->latency(),
+                                    input_params->channels);
+  }
+
+  if (input_resampler && output_resampler) {
+    return new cubeb_resampler_speex<T,
+                                     cubeb_resampler_speex_one_way<T>,
+                                     cubeb_resampler_speex_one_way<T>>
+                                       (input_resampler,
+                                        output_resampler,
+                                        stream, callback, user_ptr);
+  } else if (input_resampler) {
+    return new cubeb_resampler_speex<T,
+                                     cubeb_resampler_speex_one_way<T>,
+                                     delay_line<T>>
+                                      (input_resampler, output_delay,
+                                       stream, callback, user_ptr);
+  } else {
+    return new cubeb_resampler_speex<T,
+                                     delay_line<T>,
+                                     cubeb_resampler_speex_one_way<T>>
+                                      (input_delay, output_resampler,
+                                       stream, callback, user_ptr);
+  }
+}
+
 #endif /* CUBEB_RESAMPLER_INTERNAL */

@@ -254,44 +254,68 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>
   return got;
 }
 
+/* Resampler C API */
+
 cubeb_resampler *
 cubeb_resampler_create(cubeb_stream * stream,
-                       cubeb_stream_params params,
-                       unsigned int out_rate,
+                       cubeb_stream_params * input_params,
+                       cubeb_stream_params * output_params,
+                       unsigned int target_rate,
                        cubeb_data_callback callback,
-                       long buffer_frame_count,
                        void * user_ptr,
                        cubeb_resampler_quality quality)
 {
-  if (params.rate != out_rate) {
-    SpeexResamplerState * resampler = NULL;
-    resampler = speex_resampler_init(params.channels,
-                                     params.rate,
-                                     out_rate,
-                                     to_speex_quality(quality),
-                                     NULL);
-    if (!resampler) {
-      return NULL;
-    }
+  cubeb_sample_format format;
 
-    return new cubeb_resampler_speex(resampler, stream, params, out_rate,
-                                     callback, buffer_frame_count, user_ptr);
+  assert(input_params || output_params);
+
+  if (input_params) {
+    format = input_params->format;
+  } else {
+    format = output_params->format;
   }
 
-  return new noop_resampler(stream, callback, user_ptr);
+  switch(format) {
+    case CUBEB_SAMPLE_S16NE:
+      return cubeb_resampler_create_internal<short>(stream,
+                                                    input_params,
+                                                    output_params,
+                                                    target_rate,
+                                                    callback,
+                                                    user_ptr,
+                                                    quality);
+    case CUBEB_SAMPLE_FLOAT32NE:
+      return cubeb_resampler_create_internal<float>(stream,
+                                                    input_params,
+                                                    output_params,
+                                                    target_rate,
+                                                    callback,
+                                                    user_ptr,
+                                                    quality);
+    default:
+      assert(false);
+  }
 }
 
 long
 cubeb_resampler_fill(cubeb_resampler * resampler,
                      void * input_buffer,
+                     long * input_frames_count,
                      void * output_buffer,
-                     long frames_needed)
+                     long output_frames_needed)
 {
-  return resampler->fill(input_buffer, output_buffer, frames_needed);
+  return resampler->fill(input_buffer, input_frames_count,
+                         output_buffer, output_frames_needed);
 }
 
 void
 cubeb_resampler_destroy(cubeb_resampler * resampler)
 {
   delete resampler;
+}
+
+long
+cubeb_resampler_latency(cubeb_resampler * resampler)
+{
+  return resampler->latency();
 }
