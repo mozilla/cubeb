@@ -19,6 +19,10 @@
 
 /* Windows cmath USE_MATH_DEFINE thing... */
 const float PI = 3.14159265359f;
+
+/* Testing all sample rates is very long, so if THOROUGH_TESTING is not defined,
+ * only part of the test suite is ran. */
+#ifdef THOROUGH_TESTING
 /* Some standard sample rates we're testing with. */
 const int sample_rates[] = {
     8000,
@@ -37,6 +41,20 @@ const uint32_t max_channels = 2;
  * because audio is delivered using callbacks. */
 const uint32_t min_chunks = 10; /* ms */
 const uint32_t max_chunks = 30; /* ms */
+const uint32_t chunk_increment = 1;
+
+#else
+
+const int sample_rates[] = {
+    8000,
+   44100,
+   48000,
+};
+const uint32_t max_channels = 2;
+const uint32_t min_chunks = 10; /* ms */
+const uint32_t max_chunks = 30; /* ms */
+const uint32_t chunk_increment = 10;
+#endif
 
 #define DUMP_ARRAYS
 #ifdef DUMP_ARRAYS
@@ -392,7 +410,7 @@ void test_resamplers_one_way()
   for (uint32_t channels = 1; channels <= max_channels; channels++) {
     for (uint32_t source_rate = 0; source_rate < array_size(sample_rates); source_rate++) {
       for (uint32_t dest_rate = 0; dest_rate < array_size(sample_rates); dest_rate++) {
-        for (uint32_t chunk_duration = min_chunks; chunk_duration < max_chunks; chunk_duration++) {
+        for (uint32_t chunk_duration = min_chunks; chunk_duration < max_chunks; chunk_duration+=chunk_increment) {
           printf("one_way: channels: %d, source_rate: %d, dest_rate: %d, chunk_duration: %d\n",
                   channels, sample_rates[source_rate], sample_rates[dest_rate], chunk_duration);
           test_resampler_one_way<float>(channels, sample_rates[source_rate],
@@ -411,7 +429,7 @@ void test_resamplers_duplex()
       for (uint32_t source_rate_input = 0; source_rate_input < array_size(sample_rates); source_rate_input++) {
         for (uint32_t source_rate_output = 0; source_rate_output < array_size(sample_rates); source_rate_output++) {
           for (uint32_t dest_rate = 0; dest_rate < array_size(sample_rates); dest_rate++) {
-            for (uint32_t chunk_duration = min_chunks; chunk_duration < max_chunks; chunk_duration++) {
+            for (uint32_t chunk_duration = min_chunks; chunk_duration < max_chunks; chunk_duration+=chunk_increment) {
               printf("input chanenls:%d output_channels:%d input_rate:%d"
                      "output_rate:%d target_rate:%d chunk_ms:%d\n",
                      input_channels, output_channels,
@@ -435,7 +453,7 @@ void test_resamplers_duplex()
 void test_delay_line()
 {
   for (uint32_t channel = 1; channel <= 2; channel++) {
-    for (uint32_t delay_frames = 4; delay_frames <= 40; delay_frames++) {
+    for (uint32_t delay_frames = 4; delay_frames <= 40; delay_frames+=chunk_increment) {
       for (uint32_t chunk_size = 10; chunk_size <= 30; chunk_size++) {
        printf("channel: %d, delay_frames: %d, chunk_size: %d\n",
               channel, delay_frames, chunk_size);
