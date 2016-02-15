@@ -137,7 +137,7 @@ void test_delay_lines(uint32_t delay_frames, uint32_t channels, uint32_t chunk_m
   uint32_t channel = 0;
 
   /** Generate diracs every 100 frames, and check they are delayed. */
-  input.push(length_frames * channels);
+  input.push_silence(length_frames * channels);
   for (uint32_t i = 0; i < input.length() - 1; i+=100) {
     input.data()[i + channel] = 0.5;
     channel = (channel + 1) % channels;
@@ -147,7 +147,7 @@ void test_delay_lines(uint32_t delay_frames, uint32_t channels, uint32_t chunk_m
     uint32_t to_pop = std::min<uint32_t>(input.length(), chunk_length * channels);
     float * in = delay.input_buffer(to_pop / channels);
     input.pop(in, to_pop);
-    output.push(to_pop);
+    output.push_silence(to_pop);
     delay.output(output.data() + output_offset, to_pop / channels);
     output_offset += to_pop;
   }
@@ -180,7 +180,7 @@ void test_resampler_one_way(uint32_t channels, int32_t source_rate, int32_t targ
   const uint32_t buf_len = 2; /* seconds */
 
   // generate a sine wave in each channel, at the source sample rate
-  source.push(channels * source_rate * buf_len);
+  source.push_silence(channels * source_rate * buf_len);
   while(offset != source.length()) {
     float  p = phase_index++ / static_cast<float>(source_rate);
     for (uint32_t j = 0; j < channels; j++) {
@@ -190,7 +190,7 @@ void test_resampler_one_way(uint32_t channels, int32_t source_rate, int32_t targ
 
   dump("input.raw", source.data(), source.length());
 
-  expected.push(channels * target_rate * buf_len);
+  expected.push_silence(channels * target_rate * buf_len);
   // generate a sine wave in each channel, at the target sample rate.
   // Insert silent samples at the beginning to account for the resampler latency.
   offset = resampler.latency() * channels;
@@ -209,7 +209,7 @@ void test_resampler_one_way(uint32_t channels, int32_t source_rate, int32_t targ
 
   // resample by chunk
   uint32_t write_offset = 0;
-  destination.push(channels * target_rate * buf_len);
+  destination.push_silence(channels * target_rate * buf_len);
   while (write_offset < destination.length())
   {
     size_t output_frames = static_cast<uint32_t>(floor(chunk_duration_in_source_frames / resampling_ratio));
@@ -356,8 +356,8 @@ void test_resampler_duplex(uint32_t input_channels, uint32_t output_channels,
 
   state.max_output_phase_index = duration_s * target_rate;
 
-  expected_resampled_input.push(input_channels * duration_frames);
-  expected_resampled_output.push(output_channels * output_rate * duration_s);
+  expected_resampled_input.push_silence(input_channels * duration_frames);
+  expected_resampled_output.push_silence(output_channels * output_rate * duration_s);
 
   /* expected output is a 440Hz sine wave at 16kHz */
   fill_with_sine(expected_resampled_input.data() + latency,

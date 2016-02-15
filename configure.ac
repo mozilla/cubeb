@@ -46,7 +46,6 @@ AM_PROG_CC_C_O
 AC_LIBTOOL_WIN32_DLL
 AM_PROG_LIBTOOL
 
-NEED_SPEEX=1
 
 AC_ARG_WITH([pulse],
             AS_HELP_STRING([--with-pulse], [with PulseAudio @<:@default=check@:>@]))
@@ -66,7 +65,6 @@ AS_IF([test "x$with_jack" != xno],
       [PKG_CHECK_MODULES(JACK, jack >= 1.9.9, [
        HAVE_JACK=1
        JACK_LIBS="-ldl"
-       NEED_SPEEX=1
        AC_DEFINE([USE_JACK], [], [Use JACK])
       ], [
        HAVE_JACK=0
@@ -160,7 +158,6 @@ AC_ARG_WITH([wasapi],
 AS_IF([test "x$with_wasapi" != xno],
       [AC_CHECK_HEADERS([audioclient.h], [
        HAVE_WASAPI=1
-       NEED_SPEEX=1
        AC_DEFINE([USE_WASAPI], [], [Use WASAPI])
        WASAPI_LIBS="-lole32"
       ], [
@@ -195,15 +192,10 @@ AS_IF([test "x$with_kai" != xno],
       ])])
 AM_CONDITIONAL([KAI], [test $HAVE_KAI -eq 1])
 
-AM_CONDITIONAL([SPEEX], [test $NEED_SPEEX -eq 1])
-
-AS_IF([test $NEED_SPEEX -eq 1],
-      [
-       AC_DEFINE([OUTSIDE_SPEEX], [], [Tell the speex resampler not to expect speex headers.])
-       AC_DEFINE([RANDOM_PREFIX], [speex], [Required by the speex resampler.])
-       AC_DEFINE([FLOATING_POINT], [], [Tell the resampler to only enable floating point support])
-       AC_DEFINE([EXPORT], [], [Tell the resampler to export the symbols by default.])
-      ])
+AC_DEFINE([OUTSIDE_SPEEX], [], [Tell the speex resampler not to expect speex headers.])
+AC_DEFINE([RANDOM_PREFIX], [speex], [Required by the speex resampler.])
+AC_DEFINE([FLOATING_POINT], [], [Tell the resampler to only enable floating point support])
+AC_DEFINE([EXPORT], [], [Tell the resampler to export the symbols by default.])
 
 platform_lib="$PULSE_LIBS $JACK_LIBS $ALSA_LIBS $AUDIOUNIT_LIBS $AUDIOQUEUE_LIBS $SNDIO_LIBS $OPENSL_LIBS $DIRECTSOUND_LIBS $WINMM_LIBS $WASAPI_LIBS $KAI_LIBS"
 

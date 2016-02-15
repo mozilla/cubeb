@@ -90,7 +90,7 @@ public:
     * @returns false if the new capacity is not big enough to accomodate for the
     *                elements in the array.
     */
-  bool resize(size_t new_capacity)
+  bool reserve(size_t new_capacity)
   {
     if (new_capacity < length_) {
       return false;
@@ -114,7 +114,7 @@ public:
   void push(const T * elements, size_t length)
   {
     if (length_ + length > capacity_) {
-      resize(length_ + length);
+      reserve(length_ + length);
     }
     PodCopy(data_ + length_, elements, length);
     length_ += length;
@@ -124,10 +124,10 @@ public:
    * array if needed.
    * @parameter length the number of elements to append to the array.
    */
-  void push(size_t length)
+  void push_silence(size_t length)
   {
     if (length_ + length > capacity_) {
-      resize(length + length_);
+      reserve(length + length_);
     }
     PodZero(data_ + length_, length);
     length_ += length;
@@ -167,33 +167,6 @@ private:
   size_t capacity_;
   /** The number of elements the array contains. */
   size_t length_;
-};
-
-template<typename T>
-class auto_ptr
-{
-public:
-  auto_ptr(T * ptr)
-    : ptr(ptr)
-  {}
-  ~auto_ptr()
-  {
-    delete ptr;
-  }
-  T * get() const
-  {
-    return ptr;
-  }
-  T* operator->() const {
-    assert(ptr && "null pointer dereference.");
-    return ptr;
-  }
-  operator bool() const
-  {
-    return !!ptr;
-  }
-private:
-  T * ptr;
 };
 
 #endif /* CUBEB_UTILS */

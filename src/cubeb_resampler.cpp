@@ -34,9 +34,9 @@ to_speex_quality(cubeb_resampler_quality q)
 }
 
 template<typename T>
-cubeb_resampler_speex_one_way<T>::cubeb_resampler_speex_one_way(int32_t channels,
-                                                                int32_t source_rate,
-                                                                int32_t target_rate,
+cubeb_resampler_speex_one_way<T>::cubeb_resampler_speex_one_way(uint32_t channels,
+                                                                uint32_t source_rate,
+                                                                uint32_t target_rate,
                                                                 int quality)
   : processor(channels)
   , resampling_ratio(static_cast<float>(source_rate) / target_rate)
@@ -58,7 +58,7 @@ long noop_resampler::fill(void * input_buffer, long * input_frames_count,
                           void * output_buffer, long output_frames)
 {
   assert(input_buffer && output_buffer &&
-         *input_frames_count >= output_frames||
+         *input_frames_count >= output_frames ||
          !input_buffer && input_frames_count == 0 ||
          !output_buffer && output_frames== 0);
 
@@ -70,16 +70,6 @@ long noop_resampler::fill(void * input_buffer, long * input_frames_count,
   return data_callback(stream, user_ptr,
                        input_buffer, output_buffer, output_frames);
 }
-
-namespace {
-
-long
-frame_count_at_rate(long frame_count, float rate)
-{
-  return static_cast<long>(ceilf(rate * frame_count) + 1);
-}
-
-} // end of anonymous namespace
 
 template<typename T, typename InputProcessor, typename OutputProcessor>
 cubeb_resampler_speex<T, InputProcessor, OutputProcessor>
@@ -142,7 +132,7 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>
          output_buffer && output_frames_needed);
 
   long got = 0;
-T * out_unprocessed = nullptr;
+  T * out_unprocessed = nullptr;
 
   uint32_t output_frames_before_processing =
     output_processor->input_needed_for_output(output_frames_needed);
@@ -152,8 +142,8 @@ T * out_unprocessed = nullptr;
     output_processor->input_buffer(output_frames_before_processing);
 
   got = data_callback(stream, user_ptr,
-    nullptr, nullptr,
-    output_frames_before_processing);
+                      nullptr, nullptr,
+                      output_frames_before_processing);
 
   /* Process the output. If not enough frames have been returned from the
   * callback, drain the processors. */
@@ -190,7 +180,7 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>
   resampled_input = input_processor->output(resampled_frame_count);
 
   got = data_callback(stream, user_ptr,
-    resampled_input, nullptr, resampled_frame_count);
+                      resampled_input, nullptr, resampled_frame_count);
 
   return *input_frames_count;
 }
@@ -214,7 +204,7 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>
    * - If we have a two way stream, but we're only resampling input, we resample
    * the input to the number of output frames.
    * - If we have a two way stream, but we're only resampling the output, we
-   * resize the input buffer of the outut resampler to the number of input
+   * resize the input buffer of the output resampler to the number of input
    * frames, and we resample it afterwards.
    * - If we resample both ways, we resample the input to the number of frames
    * we would need to pass down to the consumer (before resampling the output),
@@ -238,8 +228,8 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>
    }
 
    got = data_callback(stream, user_ptr,
-		       resampled_input, out_unprocessed,
-		       output_frames_before_processing);
+                       resampled_input, out_unprocessed,
+                       output_frames_before_processing);
 
 
   /* Process the output. If not enough frames have been returned from the

@@ -20,7 +20,7 @@ int test_auto_array()
 
   array.push(a, 10);
 
-  assert(!array.resize(9));
+  assert(!array.reserve(9));
 
   for (uint32_t i = 0; i < 10; i++) {
     assert(array.data()[i] == i);

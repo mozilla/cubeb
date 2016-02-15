@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cassert>
 #include <algorithm>
+#include <memory>
 #include "cubeb/cubeb.h"
 #include "cubeb_utils.h"
 #include "cubeb-speex-resampler.h"
@@ -115,8 +116,8 @@ private:
   long fill_internal_output(T * input_buffer, long * input_frames_count,
                             T * output_buffer, long output_frames_needed);
 
-  auto_ptr<InputProcessing> input_processor;
-  auto_ptr<OutputProcessing> output_processor;
+  std::unique_ptr<InputProcessing> input_processor;
+  std::unique_ptr<OutputProcessing> output_processor;
   processing_callback fill_internal;
   cubeb_stream * const stream;
   const cubeb_data_callback data_callback;
@@ -140,9 +141,9 @@ public:
    * @parameter target_rate The sample-rate of the audio output.
    * @parameter quality A number between 0 (fast, low quality) and 10 (slow,
    * high quality). */
-  cubeb_resampler_speex_one_way(int32_t channels,
-                                int32_t source_rate,
-                                int32_t target_rate,
+  cubeb_resampler_speex_one_way(uint32_t channels,
+                                uint32_t source_rate,
+                                uint32_t target_rate,
                                 int quality);
 
   /** Destructor, deallocate the resampler */
@@ -156,7 +157,7 @@ public:
   void add_latency(size_t frames)
   {
     additional_latency += frames;
-    resampling_in_buffer.push(frames_to_samples(frames));
+    resampling_in_buffer.push_silence(frames_to_samples(frames));
   }
 
   /* Fill the resampler with `input_frame_count` frames. */
@@ -183,9 +184,10 @@ public:
     resampling_in_buffer.pop(nullptr, frames_to_samples(in_len));
   }
 
-  /** Drains the resampler, emptying the input buffer, and returning the number
-   * of frames written to `output_buffer`, that can be less than
-   * `output_frame_count`. */
+  /** Drains the resampler, trying to empty the input buffer, and returning the
+   * number of frames written to `output_buffer`, that can be less than
+   * `output_frame_count`. If the return value is equal to `output_frame_count`,
+   * it may be necessary to call `drain()` again to empty the resampler. */
   size_t drain(T * output_buffer, size_t output_frame_count)
   {
     uint32_t in_len = samples_to_frames(resampling_in_buffer.length());
@@ -198,8 +200,6 @@ public:
        buffer. */
     resampling_in_buffer.pop(nullptr, frames_to_samples(in_len));
 
-    // assert(resampling_in_buffer.length() == 0);
-
     return out_len;
   }
 
@@ -208,7 +208,7 @@ public:
   T * output(size_t output_frame_count)
   {
     if (resampling_out_buffer.capacity() < frames_to_samples(output_frame_count)) {
-      resampling_out_buffer.resize(frames_to_samples(output_frame_count));
+      resampling_out_buffer.reserve(frames_to_samples(output_frame_count));
     }
 
     uint32_t in_len = samples_to_frames(resampling_in_buffer.length());
@@ -217,7 +217,7 @@ public:
     speex_resample(resampling_in_buffer.data(), &in_len,
                    resampling_out_buffer.data(), &out_len);
 
-    assert(out_len == output_frame_count );
+    assert(out_len == output_frame_count);
 
     /* This shifts back any unresampled samples to the beginning of the input
        buffer. */
@@ -226,12 +226,19 @@ public:
     return resampling_out_buffer.data();
   }
 
-  /** Get the l atency of the resampler, in output frames. */
+  /** Get the latency of the resampler, in output frames. */
   uint32_t latency() const
   {
     /* The documentation of the resampler talks about "samples" here, but it
      * only consider a single channel here so it's the same number of frames. */
-    return speex_resampler_get_output_latency(speex_resampler) + additional_latency;
+    int latency = 0;
+
+    latency =
+      speex_resampler_get_output_latency(speex_resampler) + additional_latency;
+
+    assert(latency >= 0);
+
+    return latency;
   }
 
   /** Returns the number of frames to pass in the input of the resampler to have
@@ -258,7 +265,7 @@ public:
   T * input_buffer(size_t frame_count)
   {
     size_t prev_length = resampling_in_buffer.length();
-    resampling_in_buffer.push(frames_to_samples(frame_count));
+    resampling_in_buffer.push_silence(frames_to_samples(frame_count));
     return resampling_in_buffer.data() + prev_length;
   }
 private:
@@ -267,17 +274,25 @@ private:
   void speex_resample(float * input_buffer, uint32_t * input_frame_count,
                       float * output_buffer, uint32_t * output_frame_count)
   {
-    speex_resampler_process_interleaved_float(speex_resampler,
-                                              input_buffer, input_frame_count,
-                                              output_buffer, output_frame_count);
+    int rv;
+    rv = speex_resampler_process_interleaved_float(speex_resampler,
+                                                   input_buffer,
+                                                   input_frame_count,
+                                                   output_buffer,
+                                                   output_frame_count);
+    assert(rv == RESAMPLER_ERR_SUCCESS);
   }
 
   void speex_resample(short * input_buffer, uint32_t * input_frame_count,
                       short * output_buffer, uint32_t * output_frame_count)
   {
-    speex_resampler_process_interleaved_int(speex_resampler,
-                                            input_buffer, input_frame_count,
-                                            output_buffer, output_frame_count);
+    int rv;
+    rv = speex_resampler_process_interleaved_int(speex_resampler,
+                                                 input_buffer,
+                                                 input_frame_count,
+                                                 output_buffer,
+                                                 output_frame_count);
+    assert(rv == RESAMPLER_ERR_SUCCESS);
   }
   /** The state for the speex resampler used internaly. */
   SpeexResamplerState * speex_resampler;
@@ -304,14 +319,14 @@ public:
     , length(frames)
   {
     /* Fill the delay line with some silent frames to add latency. */
-    delay_input_buffer.push(frames * channels);
+    delay_input_buffer.push_silence(frames * channels);
   }
   /* Add some latency to the delay line.
    * @param frames the number of frames of latency to add. */
   void add_latency(size_t frames)
   {
-    length+=frames;
-    delay_input_buffer.push(frames_to_samples(frames));
+    length += frames;
+    delay_input_buffer.push_silence(frames_to_samples(frames));
   }
   /** Push some frames into the delay line.
    * @parameter buffer the frames to push.
@@ -331,10 +346,10 @@ public:
    * @parameter frames_needed the number of frames to be returned.
    * @return a buffer containing the delayed frames. The consumer should not
    * hold onto the pointer. */
-  T* output(uint32_t frames_needed)
+  T * output(uint32_t frames_needed)
   {
     if (delay_output_buffer.capacity() < frames_to_samples(frames_needed)) {
-      delay_output_buffer.resize(frames_to_samples(frames_needed));
+      delay_output_buffer.reserve(frames_to_samples(frames_needed));
     }
 
     delay_output_buffer.clear();
@@ -352,7 +367,7 @@ public:
   T * input_buffer(uint32_t frames_needed)
   {
     size_t prev_length = delay_input_buffer.length();
-    delay_input_buffer.push(frames_to_samples(frames_needed));
+    delay_input_buffer.push_silence(frames_to_samples(frames_needed));
     return delay_input_buffer.data() + prev_length;
   }
   /** Drains the delay line, emptying the buffer.
@@ -379,7 +394,8 @@ public:
   {
     return frames_needed;
   }
-  size_t output_for_input(uint32_t input_frames) {
+  size_t output_for_input(uint32_t input_frames)
+  {
     return input_frames;
   }
   /** The number of frames this delay line delays the stream by.
@@ -409,10 +425,10 @@ cubeb_resampler_create_internal(cubeb_stream * stream,
                                 void * user_ptr,
                                 cubeb_resampler_quality quality)
 {
-  cubeb_resampler_speex_one_way<T> * input_resampler = nullptr;
-  cubeb_resampler_speex_one_way<T> * output_resampler = nullptr;
-  delay_line<T> * input_delay = nullptr;
-  delay_line<T> * output_delay = nullptr;
+  std::unique_ptr<cubeb_resampler_speex_one_way<T>> input_resampler = nullptr;
+  std::unique_ptr<cubeb_resampler_speex_one_way<T>> output_resampler = nullptr;
+  std::unique_ptr<delay_line<T>> input_delay = nullptr;
+  std::unique_ptr<delay_line<T>> output_delay = nullptr;
 
   assert(input_params || output_params &&
          "need at least one valid parameter pointer.");
@@ -430,23 +446,22 @@ cubeb_resampler_create_internal(cubeb_stream * stream,
   /* Determine if we need to resampler one or both directions, and create the
      resamplers. */
   if (output_params && (output_params->rate != target_rate)) {
-    /* The target param here is the platforms stream's rate, since we're
-     * resampling from the user's chosen sample rate to the platforms's
-     * mandatory sample rate. */
-    output_resampler = new cubeb_resampler_speex_one_way<T>(output_params->channels,
-                                                            target_rate,
-                                                            output_params->rate,
-                                                            to_speex_quality(quality));
+    output_resampler.reset(
+        new cubeb_resampler_speex_one_way<T>(output_params->channels,
+                                             target_rate,
+                                             output_params->rate,
+                                             to_speex_quality(quality)));
     if (!output_resampler) {
       return NULL;
     }
   }
 
   if (input_params && (input_params->rate != target_rate)) {
-    input_resampler = new cubeb_resampler_speex_one_way<T>(input_params->channels,
-                                                           input_params->rate,
-                                                           target_rate,
-                                                           to_speex_quality(quality));
+    input_resampler.reset(
+        new cubeb_resampler_speex_one_way<T>(input_params->channels,
+                                             input_params->rate,
+                                             target_rate,
+                                             to_speex_quality(quality)));
     if (!input_resampler) {
       return NULL;
     }
@@ -456,31 +471,39 @@ cubeb_resampler_create_internal(cubeb_stream * stream,
    * delay line with a length equal to the resampler latency of the
    * other direction so that the streams are synchronized. */
   if (input_resampler && !output_resampler && input_params && output_params) {
-    output_delay = new delay_line<T>(input_resampler->latency(),
-                                     output_params->channels);
+    output_delay.reset(new delay_line<T>(input_resampler->latency(),
+                                         output_params->channels));
+    if (!output_delay) {
+      return NULL;
+    }
   } else if (output_resampler && !input_resampler && input_params && output_params) {
-    input_delay = new delay_line<T>(output_resampler->latency(),
-                                    input_params->channels);
+    input_delay.reset(new delay_line<T>(output_resampler->latency(),
+                                        input_params->channels));
+    if (!input_delay) {
+      return NULL;
+    }
   }
 
   if (input_resampler && output_resampler) {
     return new cubeb_resampler_speex<T,
                                      cubeb_resampler_speex_one_way<T>,
                                      cubeb_resampler_speex_one_way<T>>
-                                       (input_resampler,
-                                        output_resampler,
+                                       (input_resampler.release(),
+                                        output_resampler.release(),
                                         stream, callback, user_ptr);
   } else if (input_resampler) {
     return new cubeb_resampler_speex<T,
                                      cubeb_resampler_speex_one_way<T>,
                                      delay_line<T>>
-                                      (input_resampler, output_delay,
+                                      (input_resampler.release(),
+                                       output_delay.release(),
                                        stream, callback, user_ptr);
   } else {
     return new cubeb_resampler_speex<T,
                                      delay_line<T>,
                                      cubeb_resampler_speex_one_way<T>>
-                                      (input_delay, output_resampler,
+                                      (input_delay.release(),
+                                       output_resampler.release(),
                                        stream, callback, user_ptr);
   }
 }

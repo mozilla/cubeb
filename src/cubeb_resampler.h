@@ -26,7 +26,7 @@ typedef enum {
  * is accepted by the audio backend.
  * @param stream A cubeb_stream instance supplied to the data callback.
  * @param params Used to calculate bytes per frame and buffer size for resampling.
- * @param out_rate The sampling rate after resampling.
+ * @param target_rate The sampling rate after resampling.
  * @param callback A callback to request data for resampling.
  * @param user_ptr User data supplied to the data callback.
  * @param quality Quality of the resampler.
@@ -35,7 +35,7 @@ typedef enum {
 cubeb_resampler * cubeb_resampler_create(cubeb_stream * stream,
                                          cubeb_stream_params * input_params,
                                          cubeb_stream_params * output_params,
-                                         unsigned int out_rate,
+                                         unsigned int target_rate,
                                          cubeb_data_callback callback,
                                          void * user_ptr,
                                          cubeb_resampler_quality quality);

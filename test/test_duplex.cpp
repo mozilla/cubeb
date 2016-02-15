@@ -16,7 +16,7 @@
 #include <math.h>
 #include <assert.h>
 
-#include "../include/cubeb/cubeb.h"
+#include "cubeb/cubeb.h"
 #include "common.h"
 #ifdef CUBEB_GECKO_BUILD
 #include "TestHarness.h"
@@ -25,8 +25,10 @@
 #define SAMPLE_FREQUENCY 48000
 #if (defined(_WIN32) || defined(__WIN32__))
 #define STREAM_FORMAT CUBEB_SAMPLE_FLOAT32LE
+#define SILENT_SAMPLE 0.0f
 #else
 #define STREAM_FORMAT CUBEB_SAMPLE_S16LE
+#define SILENT_SAMPLE 0
 #endif
 
 struct user_state
@@ -34,11 +36,18 @@ struct user_state
   bool seen_noise;
 };
 
+
+
 long data_cb(cubeb_stream *stream, void *user, const void * inputbuffer, void *outputbuffer, long nframes)
 {
   user_state * u = reinterpret_cast<user_state*>(user);
+#if (defined(_WIN32) || defined(__WIN32__))
   float *ib = (float *)inputbuffer;
   float *ob = (float *)outputbuffer;
+#else
+  short *ib = (short *)inputbuffer;
+  short *ob = (short *)outputbuffer;
+#endif
   bool seen_noise = false;
 
   if (stream == NULL  || inputbuffer == NULL || outputbuffer == NULL) {
@@ -49,7 +58,7 @@ long data_cb(cubeb_stream *stream, void *user, const void * inputbuffer, void *o
   // checking if there is noise in the process.
   long output_index = 0;
   for (long i = 0; i < nframes; i++) {
-    if (ib[i] != 0.0) {
+    if (ib[i] != SILENT_SAMPLE) {
       seen_noise = true;
     }
     ob[output_index] = ob[output_index + 1] = ib[i];
@@ -101,11 +110,17 @@ int main(int argc, char *argv[])
     return r;
   }
 
+  /* This test needs an available input device, skip it if this host does not
+   * have one. */
+  if (!has_available_input_device(ctx)) {
+    return 0;
+  }
+
   /* typical user-case: mono input, stereo output, low latency. */
-  input_params.format = CUBEB_SAMPLE_FLOAT32LE;
+  input_params.format = STREAM_FORMAT;
   input_params.rate = 48000;
   input_params.channels = 1;
-  output_params.format = CUBEB_SAMPLE_FLOAT32LE;
+  output_params.format = STREAM_FORMAT;
   output_params.rate = 48000;
   output_params.channels = 2;
 

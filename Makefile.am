@@ -1,8 +1,9 @@
 AUTOMAKE_OPTIONS = foreign 1.10 dist-bzip2 subdir-objects
 ACLOCAL_AMFLAGS = -I m4
 
-AM_CPPFLAGS = -I$(top_srcdir)/include -I$(top_builddir)/include -I. -I$(top_srcdir)/src -std=c++11
+AM_CPPFLAGS = -I$(top_srcdir)/include -I$(top_builddir)/include -I. -I$(top_srcdir)/src
 AM_CFLAGS = -ansi -std=gnu99 -Wall -Wextra -Wno-long-long -O2 -g -Wno-unused-parameter
+AM_CXXFLAGS = -std=c++11
 
 SUBDIRS = docs
 
@@ -59,9 +60,8 @@ endif
 if KAI
 src_libcubeb_la_SOURCES += src/cubeb_kai.c
 endif
-if SPEEX
+
 src_libcubeb_la_SOURCES += src/cubeb_resampler.cpp src/speex/resample.c
-endif
 
 EXTRA_src_libcubeb_la_SOURCES = \
 	src/cubeb.c \
@@ -110,7 +110,7 @@ test_test_duplex_LDADD = -lm src/libcubeb.la $(platform_lib)
 test_test_record_SOURCES = test/test_record.cpp
 test_test_record_LDADD = -lm src/libcubeb.la $(platform_lib)
 
-test_test_resampler_SOURCES = test/test_utils.cpp
+test_test_utils_SOURCES = test/test_utils.cpp
 
 TESTS = $(check_PROGRAMS)
 

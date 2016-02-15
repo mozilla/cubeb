@@ -15,7 +15,7 @@
 #include <math.h>
 #include <assert.h>
 
-#include "../include/cubeb/cubeb.h"
+#include "cubeb/cubeb.h"
 #include "common.h"
 #ifdef CUBEB_GECKO_BUILD
 #include "TestHarness.h"
@@ -87,7 +87,6 @@ int main(int argc, char *argv[])
   cubeb_stream *stream;
   cubeb_stream_params params;
   int r;
-  cubeb_device_collection * collection;
   user_state stream_state = { false };
 
   r = cubeb_init(&ctx, "Cubeb record example");
@@ -96,18 +95,15 @@ int main(int argc, char *argv[])
     return r;
   }
 
-  r = cubeb_enumerate_devices(ctx, CUBEB_DEVICE_TYPE_INPUT, &collection);
-
-  if (r != CUBEB_OK) {
-	  fprintf(stderr, "Error getting the device collection\n");
-	  return r;
+  /* This test needs an available input device, skip it if this host does not
+   * have one. */
+  if (!has_available_input_device(ctx)) {
+    return 0;
   }
 
   params.format = STREAM_FORMAT;
   params.rate = SAMPLE_FREQUENCY;
   params.channels = 1;
-  assert(collection->count >= 3);
-  params.devid = collection->device[5]->devid;
 
   r = cubeb_stream_init(ctx, &stream, "Cubeb record (mono)", NULL, &params, NULL, nullptr,
                         250, data_cb, state_cb, &stream_state);
