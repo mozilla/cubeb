@@ -408,9 +408,9 @@ void test_resamplers_duplex()
   /* Test duplex resamplers */
   for (uint32_t input_channels = 1; input_channels <= max_channels; input_channels++) {
     for (uint32_t output_channels = 1; output_channels <= max_channels; output_channels++) {
-      for (uint32_t source_rate_input = 6; source_rate_input < array_size(sample_rates); source_rate_input++) {
-        for (uint32_t source_rate_output = 3; source_rate_output < array_size(sample_rates); source_rate_output++) {
-          for (uint32_t dest_rate = 4; dest_rate < array_size(sample_rates); dest_rate++) {
+      for (uint32_t source_rate_input = 0; source_rate_input < array_size(sample_rates); source_rate_input++) {
+        for (uint32_t source_rate_output = 0; source_rate_output < array_size(sample_rates); source_rate_output++) {
+          for (uint32_t dest_rate = 0; dest_rate < array_size(sample_rates); dest_rate++) {
             for (uint32_t chunk_duration = min_chunks; chunk_duration < max_chunks; chunk_duration++) {
               printf("input chanenls:%d output_channels:%d input_rate:%d"
                      "output_rate:%d target_rate:%d chunk_ms:%d\n",
@@ -430,8 +430,6 @@ void test_resamplers_duplex()
       }
     }
   }
-
-  test_resampler_duplex<float>(1, 2, 16000, 44100, 44100, 10);
 }
 
 void test_delay_line()
