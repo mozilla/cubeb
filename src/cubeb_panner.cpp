@@ -11,6 +11,10 @@
 
 #include "cubeb_panner.h"
 
+#ifndef M_PI
+#define M_PI 3.14159263
+#endif
+
 /**
  * We use a cos/sin law.
  */

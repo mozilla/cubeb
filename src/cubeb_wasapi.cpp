@@ -472,7 +472,7 @@ refill(cubeb_stream * stm, float * data, long frames_needed)
     dest = data;
   }
 
-  long out_frames = cubeb_resampler_fill(stm->resampler, NULL, dest, frames_needed);
+  long out_frames = cubeb_resampler_fill(stm->resampler, NULL, NULL, dest, frames_needed);
   /* TODO: Report out_frames < 0 as an error via the API. */
   XASSERT(out_frames >= 0);
 
@@ -1185,10 +1185,11 @@ int setup_wasapi_stream(cubeb_stream * stm)
      and copy it over, so we are always resampling the number
      of channels of the stream, not the number of channels
      that WASAPI wants. */
-  stm->resampler = cubeb_resampler_create(stm, stm->stream_params,
+  stm->resampler = cubeb_resampler_create(stm,
+                                          NULL,
+                                          &stm->stream_params,
                                           stm->mix_params.rate,
                                           stm->data_callback,
-                                          stm->buffer_frame_count,
                                           stm->user_ptr,
                                           CUBEB_RESAMPLER_QUALITY_DESKTOP);
   if (!stm->resampler) {
