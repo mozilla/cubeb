@@ -24,7 +24,7 @@ const float PI = 3.14159265359f;
  * only part of the test suite is ran. */
 #ifdef THOROUGH_TESTING
 /* Some standard sample rates we're testing with. */
-const int sample_rates[] = {
+const uint32_t sample_rates[] = {
     8000,
    16000,
    32000,
@@ -45,7 +45,7 @@ const uint32_t chunk_increment = 1;
 
 #else
 
-const int sample_rates[] = {
+const uint32_t sample_rates[] = {
     8000,
    44100,
    48000,
@@ -167,7 +167,7 @@ void test_delay_lines(uint32_t delay_frames, uint32_t channels, uint32_t chunk_m
  * the correct rate.
  */
 template<typename T>
-void test_resampler_one_way(uint32_t channels, int32_t source_rate, int32_t target_rate, float chunk_duration)
+void test_resampler_one_way(uint32_t channels, uint32_t source_rate, uint32_t target_rate, float chunk_duration)
 {
   size_t chunk_duration_in_source_frames = static_cast<uint32_t>(ceil(chunk_duration * source_rate / 1000.));
   float resampling_ratio = static_cast<float>(source_rate) / target_rate;
