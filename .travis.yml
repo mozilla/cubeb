@@ -1,8 +1,11 @@
 language: cpp
+dist: trusty
+sudo: required
 matrix:
   include:
     - compiler: clang
     - compiler: gcc
+      env: COMPILER_CXX=g++-4.8 COMPILER_CC=gcc-4.8
     - compiler: gcc
       env: HOST=i686-w64-mingw32
 before_install:
@@ -11,7 +14,7 @@ before_install:
       sudo apt-get install -y libpulse-dev libasound2-dev pulseaudio doxygen;
     fi
   - if [ ! -z "$HOST" ]; then
-      sudo apt-get install -qq mingw-w64 mingw-w64-dev g++-mingw-w64 binutils-mingw-w64;
+      sudo apt-get install -qq mingw-w64 g++-mingw-w64 binutils-mingw-w64;
       wget http://mirrors.kernel.org/ubuntu/pool/universe/m/mingw-w64/mingw-w64-tools_3.1.0-1_amd64.deb;
       sudo dpkg -i mingw-w64-tools_3.1.0-1_amd64.deb;
     fi
@@ -20,6 +23,10 @@ before_script:
       unset CC;
       unset CXX;
     fi
+  - if [ -z "$COMPILER_CXX"]; then
+      export CC=$COMPILER_CC;
+      export CXX=$COMPILER_CXX;
+    fi
   - autoreconf -i
   - ./configure --host=$HOST
 script:
@@ -27,3 +34,11 @@ script:
   - if [ -z "$HOST" ]; then
       make check;
     fi
+addons:
+  apt:
+    sources:
+      - ubuntu-toolchain-r-test
+    packages:
+      - clang
+      - g++-4.8
+      - gcc-4.8

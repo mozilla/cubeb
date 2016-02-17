@@ -3,6 +3,7 @@ ACLOCAL_AMFLAGS = -I m4
 
 AM_CPPFLAGS = -I$(top_srcdir)/include -I$(top_builddir)/include -I. -I$(top_srcdir)/src
 AM_CFLAGS = -ansi -std=gnu99 -Wall -Wextra -Wno-long-long -O2 -g -Wno-unused-parameter
+AM_CXXFLAGS = -std=c++11
 
 SUBDIRS = docs
 
@@ -59,9 +60,8 @@ endif
 if KAI
 src_libcubeb_la_SOURCES += src/cubeb_kai.c
 endif
-if SPEEX
+
 src_libcubeb_la_SOURCES += src/cubeb_resampler.cpp src/speex/resample.c
-endif
 
 EXTRA_src_libcubeb_la_SOURCES = \
 	src/cubeb.c \
@@ -80,6 +80,10 @@ check_PROGRAMS = test/test_sanity \
 								 test/test_audio \
 								 test/test_latency \
 								 test/test_devices \
+								 test/test_duplex \
+								 test/test_resampler \
+								 test/test_record \
+								 test/test_utils \
 								 $(NULL)
 
 test_test_sanity_SOURCES = test/test_sanity.cpp
@@ -97,7 +101,18 @@ test_test_latency_LDADD = -lm src/libcubeb.la $(platform_lib)
 test_test_devices_SOURCES = test/test_devices.cpp
 test_test_devices_LDADD = -lm src/libcubeb.la $(platform_lib)
 
-TESTS = test/test_sanity
+test_test_resampler_SOURCES = test/test_resampler.cpp
+test_test_resampler_LDADD = -lm src/libcubeb.la $(platform_lib) src/cubeb_resampler.o
+
+test_test_duplex_SOURCES = test/test_duplex.cpp
+test_test_duplex_LDADD = -lm src/libcubeb.la $(platform_lib)
+
+test_test_record_SOURCES = test/test_record.cpp
+test_test_record_LDADD = -lm src/libcubeb.la $(platform_lib)
+
+test_test_utils_SOURCES = test/test_utils.cpp
+
+TESTS = $(check_PROGRAMS)
 
 DISTCLEANFILES = include/cubeb/cubeb-stdint.h
 
