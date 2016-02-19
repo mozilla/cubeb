@@ -43,6 +43,15 @@ DEFINE_PROPERTYKEY(PKEY_Device_FriendlyName,    0xa45c254e, 0xdf1c, 0x4efd, 0x80
 DEFINE_PROPERTYKEY(PKEY_Device_InstanceId,      0x78c34fc8, 0x104a, 0x4aca, 0x9e, 0xa4, 0x52, 0x4d, 0x52, 0x99, 0x6e, 0x57, 0x00000100); //    VT_LPWSTR
 #endif
 
+// MinGW workarounds
+#ifndef UNICODE
+  #undef _UNICODE
+#else
+#ifndef _UNICODE
+#define _UNICODE
+#endif
+#endif
+
 // #define LOGGING_ENABLED
 
 #ifdef LOGGING_ENABLED
@@ -1548,6 +1557,7 @@ int setup_wasapi_stream(cubeb_stream * stm)
    * the highest sample rate available. */
   int32_t target_sample_rate;
   if (has_input(stm) && has_output(stm)) {
+    using namespace std;
     target_sample_rate = max(stm->input_stream_params.rate, stm->output_stream_params.rate);
   }  else if (has_input(stm)) {
     target_sample_rate = stm->input_stream_params.rate;
