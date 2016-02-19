@@ -100,7 +100,6 @@ int main(int argc, char *argv[])
   cubeb_stream_params input_params;
   cubeb_stream_params output_params;
   int r;
-  cubeb_device_collection * collection;
   user_state stream_state = { false };
   uint32_t latency_ms = 0;
 
