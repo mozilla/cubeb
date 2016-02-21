@@ -123,7 +123,7 @@ kai_callback(PVOID cbdata, PVOID buffer, ULONG len)
       ? stm->float_buffer : buffer;
 
   wanted_frames = bytes_to_frames(len, stm->params);
-  frames = stm->data_callback(stm, stm->user_ptr, p, wanted_frames);
+  frames = stm->data_callback(stm, stm->user_ptr, NULL, p, wanted_frames);
 
   _fmutex_request(&stm->mutex, 0);
   stm->total_frames += frames;
@@ -151,14 +151,28 @@ static void kai_stream_destroy(cubeb_stream * stm);
 
 static int
 kai_stream_init(cubeb * context, cubeb_stream ** stream,
-                char const * stream_name, cubeb_stream_params stream_params,
+                char const * stream_name,
+                cubeb_devid input_device,
+                cubeb_stream_params * input_stream_params,
+                cubeb_devid output_device,
+                cubeb_stream_params * output_stream_params,
                 unsigned int latency, cubeb_data_callback data_callback,
                 cubeb_state_callback state_callback, void * user_ptr)
 {
   cubeb_stream * stm;
   KAISPEC wanted_spec;
 
-  if (stream_params.channels < 1 || stream_params.channels > MAX_CHANNELS)
+  XASSERT(!input_stream_params && "not supported.");
+  if (input_device || output_device) {
+    /* Device selection not yet implemented. */
+    return CUBEB_ERROR_DEVICE_UNAVAILABLE;
+  }
+
+  if (!output_stream_params)
+    return CUBEB_ERROR_INVALID_PARAMETER;
+
+  if (output_stream_params->channels < 1 ||
+      output_stream_params->channels > MAX_CHANNELS)
     return CUBEB_ERROR_INVALID_FORMAT;
 
   XASSERT(context);
@@ -170,7 +184,7 @@ kai_stream_init(cubeb * context, cubeb_stream ** stream,
   XASSERT(stm);
 
   stm->context = context;
-  stm->params = stream_params;
+  stm->params = *output_stream_params;
   stm->data_callback = data_callback;
   stm->state_callback = state_callback;
   stm->user_ptr = user_ptr;
