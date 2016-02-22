@@ -946,8 +946,12 @@ HRESULT get_endpoint(IMMDevice ** device, LPCWSTR devid)
   hr = enumerator->GetDevice(devid, device);
   if (FAILED(hr)) {
     LOG("Could not get device: %x\n", hr);
+    SafeRelease(enumerator);
     return hr;
   }
+
+  SafeRelease(enumerator);
+
   return S_OK;
 }
 
