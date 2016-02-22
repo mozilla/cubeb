@@ -1739,65 +1739,61 @@ void wasapi_stream_destroy(cubeb_stream * stm)
   free(stm);
 }
 
+int stream_start_one_side(cubeb_stream * stm, IAudioClient * client)
+{
+  XASSERT(stm->output_client == client || stm->input_client == client);
+
+  HRESULT hr = client->Start();
+  if (hr == AUDCLNT_E_DEVICE_INVALIDATED) {
+    LOG("audioclient invalidated for %s device, reconfiguring\n",
+        stm->output_client == client ? "output" : "input", hr);
+
+    BOOL ok = ResetEvent(stm->reconfigure_event);
+    if (!ok) {
+      LOG("resetting reconfig event failed for %s stream: %x\n",
+          stm->output_client == client ? "output" : "input", GetLastError());
+    }
+
+    close_wasapi_stream(stm);
+    int r = setup_wasapi_stream(stm);
+    if (r != CUBEB_OK) {
+      LOG("reconfigure failed\n");
+      return r;
+    }
+
+    HRESULT hr = client->Start();
+    if (FAILED(hr)) {
+      LOG("could not start the %s stream after reconfig: %x (%s)\n",
+        stm->output_client == client ? "output" : "input", hr);
+      return CUBEB_ERROR;
+    }
+  } else if (FAILED(hr)) {
+    LOG("could not start the %s stream: %x.\n",
+        stm->output_client == client ? "output" : "input", hr);
+    return CUBEB_ERROR;
+  }
+
+  return CUBEB_OK;
+}
+
 int wasapi_stream_start(cubeb_stream * stm)
 {
+  int rv;
   auto_lock lock(stm->stream_reset_lock);
 
   XASSERT(stm && !stm->thread && !stm->shutdown_event);
 
   if (has_output(stm)) {
-    HRESULT hr = stm->output_client->Start();
-    if (hr == AUDCLNT_E_DEVICE_INVALIDATED) {
-      LOG("audioclient invalid device, reconfiguring\n", hr);
-
-      BOOL ok = ResetEvent(stm->reconfigure_event);
-      if (!ok) {
-        LOG("resetting reconfig event failed: %x\n", GetLastError());
-      }
-
-      close_wasapi_stream(stm);
-      int r = setup_wasapi_stream(stm);
-      if (r != CUBEB_OK) {
-        LOG("reconfigure failed\n");
-        return r;
-      }
-
-      HRESULT hr = stm->output_client->Start();
-      if (FAILED(hr)) {
-        LOG("could not start the stream after reconfig: %x\n", hr);
-        return CUBEB_ERROR;
-      }
-    } else if (FAILED(hr)) {
-      LOG("could not start the stream.\n");
-      return CUBEB_ERROR;
+    rv = stream_start_one_side(stm, stm->output_client);
+    if (rv != CUBEB_OK) {
+      return rv;
     }
   }
 
   if (stm->input_client) {
-    HRESULT hr = stm->input_client->Start();
-    if (hr == AUDCLNT_E_DEVICE_INVALIDATED) {
-      LOG("audioclient invalid device, reconfiguring\n", hr);
-
-      BOOL ok = ResetEvent(stm->reconfigure_event);
-      if (!ok) {
-        LOG("resetting reconfig event failed: %x\n", GetLastError());
-      }
-
-      close_wasapi_stream(stm);
-      int r = setup_wasapi_stream(stm);
-      if (r != CUBEB_OK) {
-        LOG("reconfigure failed\n");
-        return r;
-      }
-
-      HRESULT hr = stm->input_client->Start();
-      if (FAILED(hr)) {
-        LOG("could not start the stream after reconfig: %x\n", hr);
-        return CUBEB_ERROR;
-      }
-    } else if (FAILED(hr)) {
-      LOG("could not start capture.\n");
-      return CUBEB_ERROR;
+    rv = stream_start_one_side(stm, stm->input_client);
+    if (rv != CUBEB_OK) {
+      return rv;
     }
   }
 
