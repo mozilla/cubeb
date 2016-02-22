@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <cmath>
 #include <algorithm>
+#include <memory>
 
 #include "cubeb/cubeb.h"
 #include "cubeb-internal.h"
@@ -41,15 +42,6 @@ DEFINE_PROPERTYKEY(PKEY_Device_FriendlyName,    0xa45c254e, 0xdf1c, 0x4efd, 0x80
 #endif
 #ifndef PKEY_Device_InstanceId
 DEFINE_PROPERTYKEY(PKEY_Device_InstanceId,      0x78c34fc8, 0x104a, 0x4aca, 0x9e, 0xa4, 0x52, 0x4d, 0x52, 0x99, 0x6e, 0x57, 0x00000100); //    VT_LPWSTR
-#endif
-
-// MinGW workarounds
-#ifndef UNICODE
-  #undef _UNICODE
-#else
-#ifndef _UNICODE
-#define _UNICODE
-#endif
 #endif
 
 // #define LOGGING_ENABLED
@@ -203,8 +195,8 @@ int wasapi_stream_stop(cubeb_stream * stm);
 int wasapi_stream_start(cubeb_stream * stm);
 void close_wasapi_stream(cubeb_stream * stm);
 int setup_wasapi_stream(cubeb_stream * stm);
-static char * wstr_to_utf8(LPCWSTR str);
-static LPCWSTR utf8_to_wstr(char* str);
+static char * wstr_to_utf8(const wchar_t * str);
+static const wchar_t * utf8_to_wstr(char* str);
 
 }
 
@@ -1367,9 +1359,10 @@ int setup_wasapi_stream(cubeb_stream * stm)
 
   if (has_input(stm)) {
     if (stm->input_device) {
-      // XXX this leaks
-      LPCWSTR id = utf8_to_wstr(reinterpret_cast<char*>(stm->input_device));
-      hr = get_endpoint(&device, id);
+      std::unique_ptr<const wchar_t> id;
+      id.reset(utf8_to_wstr(reinterpret_cast<char*>(stm->input_device)));
+      hr = get_endpoint(&device, id.get());
+
       if (FAILED(hr)) {
         LOG("Could not get capture endpoint, error: %x\n", hr);
         return CUBEB_ERROR;
@@ -1449,9 +1442,10 @@ int setup_wasapi_stream(cubeb_stream * stm)
 
   if (has_output(stm)) {
     if (stm->output_device) {
-      // XXX this leaks
-      LPCWSTR id = utf8_to_wstr(reinterpret_cast<char*>(stm->output_device));
-      hr = get_endpoint(&device, id);
+      std::unique_ptr<const wchar_t> id;
+      id.reset(utf8_to_wstr(reinterpret_cast<char*>(stm->output_device)));
+      hr = get_endpoint(&device, id.get());
+
       if (FAILED(hr)) {
         LOG("Could not get render endpoint, error: %x\n", hr);
         return CUBEB_ERROR;
@@ -1937,30 +1931,26 @@ wstr_to_utf8(LPCWSTR str)
 
   size = ::WideCharToMultiByte(CP_UTF8, 0, str, -1, ret, 0, NULL, NULL);
   if (size > 0) {
-    ret = (char *) malloc(size);
+    ret =  new char[size];
     ::WideCharToMultiByte(CP_UTF8, 0, str, -1, ret, size, NULL, NULL);
   }
 
   return ret;
 }
 
-static LPCWSTR
+static const wchar_t *
 utf8_to_wstr(char* str)
 {
-  LPWSTR ret = NULL;
+  wchar_t * ret = nullptr;
   int size;
 
   size = ::MultiByteToWideChar(CP_UTF8, 0, str, -1, ret, 0);
   if (size > 0) {
-    ret = (LPWSTR) malloc(size * sizeof(wchar_t));
+    ret = new wchar_t[size];
     ::MultiByteToWideChar(CP_UTF8, 0, str, -1, ret, size);
   }
 
-#ifndef _UNICODE
-#error Need to update the code above, see the MSDN documentation.
-#endif
-
-  return reinterpret_cast<LPCWSTR>(ret);
+  return ret;
 }
 
 static IMMDevice *
