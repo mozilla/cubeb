@@ -660,7 +660,6 @@ refill_callback_duplex(cubeb_stream * stm)
          available_output);
 
   hr = stm->render_client->ReleaseBuffer(available_output, 0);
-
   if (FAILED(hr)) {
     LOG("failed to release buffer: %x\n", hr);
     return false;
@@ -945,7 +944,6 @@ HRESULT get_endpoint(IMMDevice ** device, LPCWSTR devid)
   }
 
   hr = enumerator->GetDevice(devid, device);
-
   if (FAILED(hr)) {
     LOG("Could not get device: %x\n", hr);
     return hr;
@@ -1323,7 +1321,6 @@ handle_channel_layout(cubeb_stream * stm,  WAVEFORMATEX ** mix_format, const cub
   HRESULT hr = stm->output_client->IsFormatSupported(AUDCLNT_SHAREMODE_SHARED,
                                                      *mix_format,
                                                      &closest);
-
   if (hr == S_FALSE) {
     /* Not supported, but WASAPI gives us a suggestion. Use it, and handle the
        eventual upmix/downmix ourselves */
@@ -1364,7 +1361,6 @@ int setup_wasapi_stream(cubeb_stream * stm)
       std::unique_ptr<const wchar_t> id;
       id.reset(utf8_to_wstr(reinterpret_cast<char*>(stm->input_device)));
       hr = get_endpoint(&device, id.get());
-
       if (FAILED(hr)) {
         LOG("Could not get capture endpoint, error: %x\n", hr);
         return CUBEB_ERROR;
@@ -1411,7 +1407,6 @@ int setup_wasapi_stream(cubeb_stream * stm)
                                        0,
                                        mix_format,
                                        NULL);
-
     if (FAILED(hr)) {
       LOG("Unable to initialize audio client: %x.\n", hr);
       return CUBEB_ERROR;
@@ -1447,7 +1442,6 @@ int setup_wasapi_stream(cubeb_stream * stm)
       std::unique_ptr<const wchar_t> id;
       id.reset(utf8_to_wstr(reinterpret_cast<char*>(stm->output_device)));
       hr = get_endpoint(&device, id.get());
-
       if (FAILED(hr)) {
         LOG("Could not get render endpoint, error: %x\n", hr);
         return CUBEB_ERROR;
