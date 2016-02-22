@@ -4,6 +4,8 @@
  * This program is made available under an ISC-style license.  See the
  * accompanying file LICENSE for details.
  */
+#define NOMINMAX
+
 #if defined(HAVE_CONFIG_H)
 #include "config.h"
 #endif
@@ -1551,8 +1553,7 @@ int setup_wasapi_stream(cubeb_stream * stm)
    * the highest sample rate available. */
   int32_t target_sample_rate;
   if (has_input(stm) && has_output(stm)) {
-    using namespace std;
-    target_sample_rate = max(stm->input_stream_params.rate, stm->output_stream_params.rate);
+    target_sample_rate = std::max(stm->input_stream_params.rate, stm->output_stream_params.rate);
   }  else if (has_input(stm)) {
     target_sample_rate = stm->input_stream_params.rate;
   } else {
