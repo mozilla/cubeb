@@ -560,62 +560,34 @@ refill(cubeb_stream * stm, float * input_buffer, long input_frames_count,
   return out_frames;
 }
 
-/**
- * This function gets input data from a input device, and pass it along with an
- * output buffer to the callback.  */
-bool
-refill_callback_duplex(cubeb_stream * stm)
+/* This helper grabs all the frames available from a capture client, put them in
+ * linear_input_buffer. linear_input_buffer should be cleared before the
+ * callback exits. */
+bool get_input_buffer(cubeb_stream * stm)
 {
-  UINT32 padding_out, padding_in;
   HRESULT hr;
+  UINT32 padding_in;
 
-  XASSERT(has_input(stm) && has_output(stm));
+  XASSERT(has_input(stm));
 
-  hr = stm->output_client->GetCurrentPadding(&padding_out);
-  if (FAILED(hr)) {
-    LOG("Failed to get padding: %x\n", hr);
-    return false;
-  }
-  XASSERT(padding_out <= stm->output_buffer_frame_count);
   hr = stm->input_client->GetCurrentPadding(&padding_in);
   if (FAILED(hr)) {
     LOG("Failed to get padding\n");
     return false;
   }
   XASSERT(padding_in <= stm->input_buffer_frame_count);
-
-  if (stm->draining) {
-    if (padding_out == 0) {
-      stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
-    }
-    return false;
-  }
-
-  UINT32 available_output = stm->output_buffer_frame_count - padding_out;
   UINT32 total_available_input = padding_in;
-  BYTE * output_buffer;
-
-  /* This can only happen when debugging, and having breakpoints set in the
-   * callback */
-  if (available_output == 0) {
-    return true;
-  }
 
   BYTE * input_packet = NULL;
   DWORD flags;
   UINT64 dev_pos;
   UINT32 next;
-  hr = stm->render_client->GetBuffer(available_output, &output_buffer);
-  if (FAILED(hr)) {
-    LOG("cannot get render buffer\n");
-    return false;
-  }
   /* Get input packets until we have captured enough frames, and put them in a
    * contiguous buffer. */
   uint32_t offset = 0;
   uint32_t input_channel_count = stm->input_stream_params.channels;
   while (offset != total_available_input * input_channel_count &&
-         total_available_input) {
+      total_available_input) {
     hr = stm->capture_client->GetNextPacketSize(&next);
     if (FAILED(hr)) {
       LOG("cannot get next packet size: %x\n", hr);
@@ -629,10 +601,10 @@ refill_callback_duplex(cubeb_stream * stm)
 
     UINT32 packet_size;
     hr = stm->capture_client->GetBuffer(&input_packet,
-                                        &packet_size,
-                                        &flags,
-                                        &dev_pos,
-                                        NULL);
+        &packet_size,
+        &flags,
+        &dev_pos,
+        NULL);
     if (FAILED(hr)) {
       LOG("GetBuffer failed for capture: %x\n", hr);
       return false;
@@ -642,7 +614,7 @@ refill_callback_duplex(cubeb_stream * stm)
       stm->linear_input_buffer.push_silence(packet_size * input_channel_count);
     } else {
       stm->linear_input_buffer.push(reinterpret_cast<float*>(input_packet),
-                                    packet_size * input_channel_count);
+          packet_size * input_channel_count);
     }
     hr = stm->capture_client->ReleaseBuffer(packet_size);
     if (FAILED(hr)) {
@@ -653,118 +625,144 @@ refill_callback_duplex(cubeb_stream * stm)
 
   assert(stm->linear_input_buffer.length() == total_available_input);
 
+  return true;
+}
+
+/* Get an output buffer from the render_client. It has to be released before
+ * exiting the callback. */
+bool get_output_buffer(cubeb_stream * stm, float *& buffer, size_t & frame_count)
+{
+  UINT32 padding_out;
+  HRESULT hr;
+
+  XASSERT(has_output(stm));
+
+  hr = stm->output_client->GetCurrentPadding(&padding_out);
+  if (FAILED(hr)) {
+    LOG("Failed to get padding: %x\n", hr);
+    return false;
+  }
+  XASSERT(padding_out <= stm->output_buffer_frame_count);
+
+  if (stm->draining) {
+    if (padding_out == 0) {
+      stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
+    }
+    return false;
+  }
+
+  frame_count = stm->output_buffer_frame_count - padding_out;
+  BYTE * output_buffer;
+
+  hr = stm->render_client->GetBuffer(frame_count, &output_buffer);
+  if (FAILED(hr)) {
+    LOG("cannot get render buffer\n");
+    return false;
+  }
+
+  buffer = reinterpret_cast<float*>(output_buffer);
+
+  return true;
+}
+
+/**
+ * This function gets input data from a input device, and pass it along with an
+ * output buffer to the resamplers.  */
+bool
+refill_callback_duplex(cubeb_stream * stm)
+{
+  HRESULT hr;
+  float * output_buffer;
+  size_t output_frames;
+  bool rv;
+
+  XASSERT(has_input(stm) && has_output(stm));
+
+  rv = get_input_buffer(stm);
+  if (!rv) {
+    return rv;
+  }
+
+  rv = get_output_buffer(stm, output_buffer, output_frames);
+  if (!rv) {
+    return rv;
+  }
+
+  /* This can only happen when debugging, and having breakpoints set in the
+   * callback in a way that it makes the stream underrun. */
+  if (output_frames == 0) {
+    return true;
+  }
+
   refill(stm,
          stm->linear_input_buffer.data(),
-         total_available_input,
-         reinterpret_cast<float *>(output_buffer),
-         available_output);
+         stm->linear_input_buffer.length(),
+         output_buffer,
+         output_frames);
 
-  hr = stm->render_client->ReleaseBuffer(available_output, 0);
+  stm->linear_input_buffer.clear();
+
+  hr = stm->render_client->ReleaseBuffer(output_frames, 0);
   if (FAILED(hr)) {
     LOG("failed to release buffer: %x\n", hr);
     return false;
   }
-
-  stm->linear_input_buffer.clear();
-
   return true;
 }
 
 bool
 refill_callback_input(cubeb_stream * stm)
 {
-  /* padding here has a meaning inverse than from the output case, it's the
-   * number of frames we can read. */
-  UINT32 padding_input;
-  HRESULT hr;
-  DWORD flags;
-  UINT64 dev_pos;
+  bool rv, consumed_all_buffer;
 
   XASSERT(has_input(stm) && !has_output(stm));
 
-  hr = stm->input_client->GetCurrentPadding(&padding_input);
-  if (FAILED(hr)) {
-    LOG("Failed to get padding: %x\n", hr);
-    return false;
-  }
-  XASSERT(padding_input <= stm->input_buffer_frame_count);
-
-  /* That can happen on the first couple callbacks because of latency, just
-   * return. */
-  if (padding_input == 0) {
-    return true;
+  rv = get_input_buffer(stm);
+  if (!rv) {
+    return rv;
   }
 
-  BYTE * data;
-  UINT32 available_input;
-  hr = stm->capture_client->GetBuffer(&data,
-                                      &available_input,
-                                      &flags,
-                                      &dev_pos,
-                                      NULL);
-  if (SUCCEEDED(hr)) {
-    long read = refill(stm, reinterpret_cast<float*>(data),
-                       available_input, nullptr, 0);
+  long read = refill(stm,
+                     stm->linear_input_buffer.data(),
+                     stm->linear_input_buffer.length(),
+                     nullptr,
+                     0);
 
-    XASSERT(read == available_input || stm->draining);
+  consumed_all_buffer = read == stm->linear_input_buffer.length();
 
-    hr = stm->capture_client->ReleaseBuffer(read);
-    if (FAILED(hr)) {
-      LOG("failed to release buffer: %x\n", hr);
-      return false;
-    }
-  } else {
-    LOG("failed to get buffer: %x\n", hr);
-    return false;
-  }
-  return true;
+  stm->linear_input_buffer.clear();
+
+  return consumed_all_buffer;
 }
 
 bool
 refill_callback_output(cubeb_stream * stm)
 {
-  UINT32 padding;
+  bool rv;
   HRESULT hr;
+  float * output_buffer;
+  size_t output_frames;
 
   XASSERT(!has_input(stm) && has_output(stm));
 
-  hr = stm->output_client->GetCurrentPadding(&padding);
+  rv = get_output_buffer(stm, output_buffer, output_frames);
+  if (!rv) {
+    return rv;
+  }
+
+  long got = refill(stm,
+                    nullptr,
+                    0,
+                    output_buffer,
+                    output_frames);
+
+  hr = stm->render_client->ReleaseBuffer(output_frames, 0);
   if (FAILED(hr)) {
-    LOG("Failed to get padding: %x\n", hr);
+    LOG("failed to release buffer: %x\n", hr);
     return false;
   }
-  XASSERT(padding <= stm->output_buffer_frame_count);
 
-  if (stm->draining) {
-    if (padding == 0) {
-      stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
-      return false;
-    }
-    return true;
-  }
-
-  long available = stm->output_buffer_frame_count - padding;
-
-  if (available == 0) {
-    return true;
-  }
-
-  BYTE * data;
-  hr = stm->render_client->GetBuffer(available, &data);
-  if (SUCCEEDED(hr)) {
-    long wrote = refill(stm, nullptr, 0, reinterpret_cast<float *>(data), available);
-    XASSERT(wrote == available || stm->draining);
-
-    hr = stm->render_client->ReleaseBuffer(wrote, 0);
-    if (FAILED(hr)) {
-      LOG("failed to release buffer: %x\n", hr);
-      return false;
-    }
-  } else {
-    LOG("failed to get buffer: %x\n", hr);
-    return false;
-  }
-  return true;
+  return got == output_frames;
 }
 
 static unsigned int __stdcall
