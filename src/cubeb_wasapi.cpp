@@ -1343,11 +1343,119 @@ handle_channel_layout(cubeb_stream * stm,  WAVEFORMATEX ** mix_format, const cub
   }
 }
 
+#define DIRECTION_NAME (direction == eCapture ? "capture" : "render")
+
+template<typename T>
+int setup_wasapi_stream_one_side(cubeb_stream * stm,
+                                 cubeb_stream_params * stream_params,
+                                 cubeb_devid devid,
+                                 EDataFlow direction,
+                                 REFIID riid,
+                                 IAudioClient ** audio_client,
+                                 uint32_t * buffer_frame_count,
+                                 HANDLE & event,
+                                 T ** render_or_capture_client,
+                                 cubeb_stream_params * mix_params)
+{
+  IMMDevice * device;
+  WAVEFORMATEX * mix_format;
+  HRESULT hr;
+
+  stm->stream_reset_lock->assert_current_thread_owns();
+
+  if (devid) {
+    std::unique_ptr<const wchar_t> id;
+    id.reset(utf8_to_wstr(reinterpret_cast<char*>(devid)));
+    hr = get_endpoint(&device, id.get());
+    if (FAILED(hr)) {
+      LOG("Could not get %s endpoint, error: %x\n", DIRECTION_NAME, hr);
+      return CUBEB_ERROR;
+    }
+  } else {
+    hr = get_default_endpoint(&device, direction);
+    if (FAILED(hr)) {
+      LOG("Could not get default %s endpoint, error: %x\n", DIRECTION_NAME, hr);
+      return CUBEB_ERROR;
+    }
+  }
+
+  /* Get a client. We will get all other interfaces we need from
+   * this pointer. */
+  hr = device->Activate(__uuidof(IAudioClient),
+                        CLSCTX_INPROC_SERVER,
+                        NULL, (void **)audio_client);
+  SafeRelease(device);
+  if (FAILED(hr)) {
+    LOG("Could not activate the device to get an audio"
+        " client for %s: error: %x\n", DIRECTION_NAME, hr);
+    return CUBEB_ERROR;
+  }
+
+  /* We have to distinguish between the format the mixer uses,
+   * and the format the stream we want to play uses. */
+  hr = (*audio_client)->GetMixFormat(&mix_format);
+  if (FAILED(hr)) {
+    LOG("Could not fetch current mix format from the audio"
+        " client for %s: error: %x\n", DIRECTION_NAME, hr);
+    return CUBEB_ERROR;
+  }
+
+  handle_channel_layout(stm, &mix_format, stream_params);
+
+  /* Shared mode WASAPI always supports float32 sample format, so this
+   * is safe. */
+  mix_params->format = CUBEB_SAMPLE_FLOAT32NE;
+  mix_params->rate = mix_format->nSamplesPerSec;
+  mix_params->channels = mix_format->nChannels;
+
+  hr = (*audio_client)->Initialize(AUDCLNT_SHAREMODE_SHARED,
+                                   AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
+                                   AUDCLNT_STREAMFLAGS_NOPERSIST,
+                                   ms_to_hns(stm->latency),
+                                   0,
+                                   mix_format,
+                                   NULL);
+  if (FAILED(hr)) {
+    LOG("Unable to initialize audio client for %s: %x.\n", DIRECTION_NAME, hr);
+    return CUBEB_ERROR;
+  }
+
+  CoTaskMemFree(mix_format);
+
+  hr = (*audio_client)->GetBufferSize(buffer_frame_count);
+  if (FAILED(hr)) {
+    LOG("Could not get the buffer size from the client"
+        " for %s %x.\n", DIRECTION_NAME, hr);
+    return CUBEB_ERROR;
+  }
+
+  if (should_upmix(*stream_params, *mix_params) ||
+      should_downmix(*stream_params, *mix_params)) {
+    stm->mix_buffer = (float *)malloc(frames_to_bytes_before_mix(stm, *buffer_frame_count));
+  }
+
+  hr = (*audio_client)->SetEventHandle(event);
+  if (FAILED(hr)) {
+    LOG("Could set the event handle for the %s client %x.\n",
+        DIRECTION_NAME, hr);
+    return CUBEB_ERROR;
+  }
+
+  hr = (*audio_client)->GetService(riid, (void **)render_or_capture_client);
+  if (FAILED(hr)) {
+    LOG("Could not get the %s client %x.\n", DIRECTION_NAME, hr);
+    return CUBEB_ERROR;
+  }
+
+  return CUBEB_OK;
+}
+
+#undef DIRECTION_NAME
+
 int setup_wasapi_stream(cubeb_stream * stm)
 {
   HRESULT hr;
-  IMMDevice * device;
-  WAVEFORMATEX * mix_format;
+  int rv;
 
   stm->stream_reset_lock->assert_current_thread_owns();
 
@@ -1359,170 +1467,35 @@ int setup_wasapi_stream(cubeb_stream * stm)
   XASSERT(!stm->output_client && "WASAPI stream already setup, close it first.");
 
   if (has_input(stm)) {
-    if (stm->input_device) {
-      std::unique_ptr<const wchar_t> id;
-      id.reset(utf8_to_wstr(reinterpret_cast<char*>(stm->input_device)));
-      hr = get_endpoint(&device, id.get());
-      if (FAILED(hr)) {
-        LOG("Could not get capture endpoint, error: %x\n", hr);
-        return CUBEB_ERROR;
-      }
-    } else {
-      hr = get_default_endpoint(&device, eCapture);
-      if (FAILED(hr)) {
-        LOG("Could not get default endpoint, error: %x\n", hr);
-        return CUBEB_ERROR;
-      }
-    }
-
-    /* Get a client. We will get all other interfaces we need from
-     * this pointer. */
-    hr = device->Activate(__uuidof(IAudioClient),
-                          CLSCTX_INPROC_SERVER,
-                          NULL, (void **)&stm->input_client);
-    SafeRelease(device);
-    if (FAILED(hr)) {
-      LOG("Could not activate the device to get an audio client: error: %x\n", hr);
-      return CUBEB_ERROR;
-    }
-
-    /* We have to distinguish between the format the mixer uses,
-     * and the format the stream we want to play uses. */
-    hr = stm->input_client->GetMixFormat(&mix_format);
-    if (FAILED(hr)) {
-      LOG("Could not fetch current mix format from the audio client: error: %x\n", hr);
-      return CUBEB_ERROR;
-    }
-
-    handle_channel_layout(stm, &mix_format, &stm->input_stream_params);
-
-    /* Shared mode WASAPI always supports float32 sample format, so this
-     * is safe. */
-    stm->input_mix_params.format = CUBEB_SAMPLE_FLOAT32NE;
-    stm->input_mix_params.rate = mix_format->nSamplesPerSec;
-    stm->input_mix_params.channels = mix_format->nChannels;
-
-    hr = stm->input_client->Initialize(AUDCLNT_SHAREMODE_SHARED,
-                                       AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
-                                       AUDCLNT_STREAMFLAGS_NOPERSIST,
-                                       ms_to_hns(stm->latency),
-                                       0,
-                                       mix_format,
-                                       NULL);
-    if (FAILED(hr)) {
-      LOG("Unable to initialize audio client: %x.\n", hr);
-      return CUBEB_ERROR;
-    }
-
-    hr = stm->input_client->GetBufferSize(&stm->input_buffer_frame_count);
-    if (FAILED(hr)) {
-      LOG("Could not get the buffer size from the client %x.\n", hr);
-      return CUBEB_ERROR;
-    }
-
-    if (should_upmix(stm->input_stream_params, stm->input_mix_params) ||
-        should_downmix(stm->input_stream_params, stm->input_mix_params)) {
-      stm->mix_buffer = (float *)malloc(frames_to_bytes_before_mix(stm, stm->input_buffer_frame_count));
-    }
-
-    hr = stm->input_client->SetEventHandle(stm->input_available_event);
-    if (FAILED(hr)) {
-      LOG("Could set the event handle for the input client %x.\n", hr);
-      return CUBEB_ERROR;
-    }
-
-    hr = stm->input_client->GetService(__uuidof(IAudioCaptureClient),
-                                       (void **)&stm->capture_client);
-    if (FAILED(hr)) {
-      LOG("Could not get the capture client %x.\n", hr);
-      return CUBEB_ERROR;
+    rv = setup_wasapi_stream_one_side(stm,
+                                      &stm->input_stream_params,
+                                      stm->input_device,
+                                      eCapture,
+                                      __uuidof(IAudioCaptureClient),
+                                      &stm->input_client,
+                                      &stm->input_buffer_frame_count,
+                                      stm->input_available_event,
+                                      &stm->capture_client,
+                                      &stm->input_mix_params);
+    if (rv != CUBEB_OK) {
+      return rv;
     }
   }
 
   if (has_output(stm)) {
-    if (stm->output_device) {
-      std::unique_ptr<const wchar_t> id;
-      id.reset(utf8_to_wstr(reinterpret_cast<char*>(stm->output_device)));
-      hr = get_endpoint(&device, id.get());
-      if (FAILED(hr)) {
-        LOG("Could not get render endpoint, error: %x\n", hr);
-        return CUBEB_ERROR;
-      }
-    } else {
-      hr = get_default_endpoint(&device, eRender);
-      if (FAILED(hr)) {
-        LOG("Could not get default endpoint, error: %x\n", hr);
-        return CUBEB_ERROR;
-      }
+    rv = setup_wasapi_stream_one_side(stm,
+                                      &stm->output_stream_params,
+                                      stm->output_device,
+                                      eRender,
+                                      __uuidof(IAudioRenderClient),
+                                      &stm->output_client,
+                                      &stm->output_buffer_frame_count,
+                                      stm->refill_event,
+                                      &stm->render_client,
+                                      &stm->output_mix_params);
+    if (rv != CUBEB_OK) {
+      return rv;
     }
-
-    /* Get a client. We will get all other interfaces we need from
-    this pointer. */
-    hr = device->Activate(__uuidof(IAudioClient),
-                          CLSCTX_INPROC_SERVER,
-                          NULL, (void **)&stm->output_client);
-    SafeRelease(device);
-    if (FAILED(hr)) {
-      LOG("Could not activate the device to get an audio client: error: %x\n", hr);
-      return CUBEB_ERROR;
-    }
-
-     /* We have to distinguish between the format the mixer uses,
-    * and the format the stream we want to play uses. */
-    hr = stm->output_client->GetMixFormat(&mix_format);
-    if (FAILED(hr)) {
-      LOG("Could not fetch current mix format from the audio client: error: %x\n", hr);
-      return CUBEB_ERROR;
-    }
-
-    handle_channel_layout(stm, &mix_format, &stm->output_stream_params);
-
-    /* Shared mode WASAPI always supports float32 sample format, so this
-     * is safe. */
-    stm->output_mix_params.format = CUBEB_SAMPLE_FLOAT32NE;
-    stm->output_mix_params.rate = mix_format->nSamplesPerSec;
-    stm->output_mix_params.channels = mix_format->nChannels;
-
-
-    hr = stm->output_client->Initialize(AUDCLNT_SHAREMODE_SHARED,
-                                        AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
-                                        AUDCLNT_STREAMFLAGS_NOPERSIST,
-                                        ms_to_hns(stm->latency),
-                                        0,
-                                        mix_format,
-                                        NULL);
-
-    CoTaskMemFree(mix_format);
-
-    if (FAILED(hr)) {
-      LOG("Unable to initialize audio client: %x.\n", hr);
-      return CUBEB_ERROR;
-    }
-
-    hr = stm->output_client->GetBufferSize(&stm->output_buffer_frame_count);
-    if (FAILED(hr)) {
-      LOG("Could not get the buffer size from the client %x.\n", hr);
-      return CUBEB_ERROR;
-    }
-
-    if (should_upmix(stm->output_stream_params, stm->output_mix_params) ||
-        should_downmix(stm->output_stream_params, stm->output_mix_params)) {
-      stm->mix_buffer = (float *)malloc(frames_to_bytes_before_mix(stm, stm->output_buffer_frame_count));
-    }
-
-    hr = stm->output_client->SetEventHandle(stm->refill_event);
-    if (FAILED(hr)) {
-      LOG("Could set the event handle for the client %x.\n", hr);
-      return CUBEB_ERROR;
-    }
-
-    hr = stm->output_client->GetService(__uuidof(IAudioRenderClient),
-                                        (void **)&stm->render_client);
-    if (FAILED(hr)) {
-      LOG("Could not get the render client %x.\n", hr);
-      return CUBEB_ERROR;
-    }
-
 
     hr = stm->output_client->GetService(__uuidof(IAudioStreamVolume),
                                         (void **)&stm->audio_stream_volume);
@@ -1545,12 +1518,12 @@ int setup_wasapi_stream(cubeb_stream * stm)
     }
   }
 
-
   /* If we have both input and output, we resample to
    * the highest sample rate available. */
   int32_t target_sample_rate;
   if (has_input(stm) && has_output(stm)) {
-    target_sample_rate = std::max(stm->input_stream_params.rate, stm->output_stream_params.rate);
+    target_sample_rate = std::max(stm->input_stream_params.rate,
+                                  stm->output_stream_params.rate);
   }  else if (has_input(stm)) {
     target_sample_rate = stm->input_stream_params.rate;
   } else {
