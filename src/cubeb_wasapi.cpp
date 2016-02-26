@@ -17,10 +17,10 @@
 #include <avrt.h>
 #include "cubeb/cubeb.h"
 #include "cubeb-internal.h"
-#include "cubeb/cubeb-stdint.h"
 #include "cubeb_resampler.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <cmath>
 
 /* devicetopology.h missing in MinGW. */

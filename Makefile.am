@@ -11,14 +11,13 @@ EXTRA_DIST = \
 	AUTHORS README LICENSE \
 	cubeb-uninstalled.pc.in \
 	m4/as-ac-expand.m4 \
-	m4/pkg.m4 \
-	m4/ax_create_stdint_h.m4
+	m4/pkg.m4
 
 pkgconfigdir = $(libdir)/pkgconfig
 pkgconfig_DATA = cubeb.pc
 
 cubebincludedir = $(includedir)/cubeb
-cubebinclude_HEADERS = include/cubeb/cubeb.h include/cubeb/cubeb-stdint.h
+cubebinclude_HEADERS = include/cubeb/cubeb.h
 
 lib_LTLIBRARIES = src/libcubeb.la
 
@@ -113,8 +112,6 @@ test_test_record_LDADD = -lm src/libcubeb.la $(platform_lib)
 test_test_utils_SOURCES = test/test_utils.cpp
 
 TESTS = $(check_PROGRAMS)
-
-DISTCLEANFILES = include/cubeb/cubeb-stdint.h
 
 dist-hook:
 	find $(distdir) -type d -name '.git' | xargs rm -rf
