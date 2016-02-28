@@ -120,8 +120,9 @@ bufferqueue_callback(SLBufferQueueItf caller, void * user_ptr)
     pthread_mutex_unlock(&stm->mutex);
 
     if (!draining) {
-      written = cubeb_resampler_fill(stm->resampler, NULL, buf,
-                                     stm->queuebuf_len / stm->framesize);
+      written = cubeb_resampler_fill(stm->resampler,
+                                     NULL, NULL,
+                                     buf, stm->queuebuf_len / stm->framesize);
       if (written < 0 || written * stm->framesize > stm->queuebuf_len) {
         (*stm->play)->SetPlayState(stm->play, SL_PLAYSTATE_PAUSED);
         return;
@@ -584,10 +585,9 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
     stm->queuebuf_len += stm->framesize - (stm->queuebuf_len % stm->framesize);
   }
 
-  stm->resampler = cubeb_resampler_create(stm, *output_stream_params,
+  stm->resampler = cubeb_resampler_create(stm, NULL, output_stream_params,
                                           preferred_sampling_rate,
                                           data_callback,
-                                          stm->queuebuf_len / stm->framesize,
                                           user_ptr,
                                           CUBEB_RESAMPLER_QUALITY_DEFAULT);
 
