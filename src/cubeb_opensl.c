@@ -341,7 +341,6 @@ opensl_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
   void * libmedia;
   uint32_t (*get_primary_output_samplingrate)();
   uint32_t (*get_output_samplingrate)(int * samplingRate, int streamType);
-  uint32_t primary_sampling_rate;
 
   libmedia = dlopen("libmedia.so", RTLD_LAZY);
   if (!libmedia) {
