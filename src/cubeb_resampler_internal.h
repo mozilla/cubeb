@@ -12,6 +12,16 @@
 #include <cassert>
 #include <algorithm>
 #include <memory>
+#ifdef CUBEB_GECKO_BUILD
+#include "mozilla/UniquePtr.h"
+namespace std
+{
+  using mozilla::DefaultDelete;
+  using mozilla::UniquePtr;
+  #define default_delete DefaultDelete
+  #define unique_ptr UniquePtr
+}
+#endif
 #include "cubeb/cubeb.h"
 #include "cubeb_utils.h"
 #include "cubeb-speex-resampler.h"
