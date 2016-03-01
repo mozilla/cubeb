@@ -17,6 +17,7 @@
 #include "android/sles_definitions.h"
 #include <SLES/OpenSLES_Android.h>
 #include <android/log.h>
+#include <android/api-level.h>
 #define LOG(args...)  __android_log_print(ANDROID_LOG_INFO, "Cubeb_OpenSL" , ## args)
 #define ANDROID_VERSION_GINGERBREAD_MR1 10
 #endif
@@ -181,7 +182,7 @@ convert_stream_type_to_sl_stream(cubeb_stream_type stream_type)
 
 static void opensl_destroy(cubeb * ctx);
 
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) && (__ANDROID_API__ <= ANDROID_VERSION_GINGERBREAD_MR1)
 
 static int
 get_android_version(void)
@@ -205,7 +206,7 @@ opensl_init(cubeb ** context, char const * context_name)
 {
   cubeb * ctx;
 
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) && (__ANDROID_API__ <= ANDROID_VERSION_GINGERBREAD_MR1)
   int android_version = get_android_version();
   if (android_version > 0 && android_version <= ANDROID_VERSION_GINGERBREAD_MR1) {
     // Don't even attempt to run on Gingerbread and lower
