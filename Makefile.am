@@ -83,6 +83,7 @@ check_PROGRAMS = test/test_sanity \
 								 test/test_resampler \
 								 test/test_record \
 								 test/test_utils \
+								 test/test_ring_array\
 								 $(NULL)
 
 test_test_sanity_SOURCES = test/test_sanity.cpp
@@ -101,7 +102,7 @@ test_test_devices_SOURCES = test/test_devices.cpp
 test_test_devices_LDADD = -lm src/libcubeb.la $(platform_lib)
 
 test_test_resampler_SOURCES = test/test_resampler.cpp
-test_test_resampler_LDADD = -lm src/libcubeb.la $(platform_lib) src/cubeb_resampler.o
+test_test_resampler_LDADD = -lm src/libcubeb.la $(platform_lib) src/cubeb_resampler.o src/speex/resample.lo
 
 test_test_duplex_SOURCES = test/test_duplex.cpp
 test_test_duplex_LDADD = -lm src/libcubeb.la $(platform_lib)
@@ -110,6 +111,9 @@ test_test_record_SOURCES = test/test_record.cpp
 test_test_record_LDADD = -lm src/libcubeb.la $(platform_lib)
 
 test_test_utils_SOURCES = test/test_utils.cpp
+
+test_test_ring_array_SOURCES = test/test_ring_array.c
+test_test_ring_array_LDADD = -lpthread
 
 TESTS = $(check_PROGRAMS)
 

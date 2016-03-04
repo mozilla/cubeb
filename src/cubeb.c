@@ -425,6 +425,7 @@ int cubeb_device_collection_destroy(cubeb_device_collection * collection)
 
 int cubeb_device_info_destroy(cubeb_device_info * info)
 {
+  free(info->devid);
   free(info->device_id);
   free(info->friendly_name);
   free(info->group_id);

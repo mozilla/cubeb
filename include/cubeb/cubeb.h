@@ -221,7 +221,7 @@ typedef enum {
  *  `cubeb_enumerate_devices`, and must be destroyed using
  *  `cubeb_device_info_destroy`. */
 typedef struct {
-  cubeb_devid devid;          /**< Device identifier handle. */
+  cubeb_devid devid;          /**< Device identifier handle. Always fresh allocate and copy it's value. */
   char * device_id;           /**< Device identifier which might be presented in a UI. */
   char * friendly_name;       /**< Friendly device name which might be presented in a UI. */
   char * group_id;            /**< Two devices have the same group identifier if they belong to the same physical device; for example a headset and microphone. */
