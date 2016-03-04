@@ -33,27 +33,6 @@ to_speex_quality(cubeb_resampler_quality q)
   }
 }
 
-template<typename T>
-cubeb_resampler_speex_one_way<T>::cubeb_resampler_speex_one_way(uint32_t channels,
-                                                                uint32_t source_rate,
-                                                                uint32_t target_rate,
-                                                                int quality)
-  : processor(channels)
-  , resampling_ratio(static_cast<float>(source_rate) / target_rate)
-  , additional_latency(0)
-{
-  int r;
-  speex_resampler = speex_resampler_init(channels, source_rate,
-                                         target_rate, quality, &r);
-  assert(r == RESAMPLER_ERR_SUCCESS && "resampler allocation failure");
-}
-
-template<typename T>
-cubeb_resampler_speex_one_way<T>::~cubeb_resampler_speex_one_way()
-{
-  speex_resampler_destroy(speex_resampler);
-}
-
 long noop_resampler::fill(void * input_buffer, long * input_frames_count,
                           void * output_buffer, long output_frames)
 {

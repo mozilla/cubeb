@@ -1,5 +1,5 @@
 /*
- * Copyright © 2016 Mozilla Foundation
+ * Copyright Â© 2016 Mozilla Foundation
  *
  * This program is made available under an ISC-style license.  See the
  * accompanying file LICENSE for details.
@@ -31,9 +31,6 @@ namespace std
 /* This header file contains the internal C++ API of the resamplers, for testing. */
 
 int to_speex_quality(cubeb_resampler_quality q);
-
-template<typename T>
-class cubeb_resampler_speex_one_way;
 
 struct cubeb_resampler {
   virtual long fill(void * input_buffer, long * input_frames_count,
@@ -155,10 +152,22 @@ public:
   cubeb_resampler_speex_one_way(uint32_t channels,
                                 uint32_t source_rate,
                                 uint32_t target_rate,
-                                int quality);
+                                int quality)
+  : processor(channels)
+  , resampling_ratio(static_cast<float>(source_rate) / target_rate)
+  , additional_latency(0)
+  {
+    int r;
+    speex_resampler = speex_resampler_init(channels, source_rate,
+                                           target_rate, quality, &r);
+    assert(r == RESAMPLER_ERR_SUCCESS && "resampler allocation failure");
+  }
 
   /** Destructor, deallocate the resampler */
-  virtual ~cubeb_resampler_speex_one_way();
+  virtual ~cubeb_resampler_speex_one_way()
+  {
+    speex_resampler_destroy(speex_resampler);
+  }
 
   /** Sometimes, it is necessary to add latency on one way of a two-way
    * resampler so that the stream are synchronized. This must be called only on
