@@ -13,7 +13,7 @@ extern "C" {
 #endif
 
 /** Ring array of pointers is used to hold buffers. In case that
-    asynchronus producer/consumer callbacks do not arrive in a
+    asynchronous producer/consumer callbacks do not arrive in a
     repeated order the ring array stores the buffers and fetch
     them in the correct order. */
 #define RING_ARRAY_CAPACITY 8
@@ -41,7 +41,7 @@ ring_array_init(ring_array * ra)
   pthread_mutexattr_init(&attr);
   pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_DEFAULT);
   int ret = pthread_mutex_init(&ra->mutex, &attr);
-  assert(0 == ret);
+  assert(ret == 0);
   pthread_mutexattr_destroy(&attr);
 
   assert(ra->pointer_array[0] == NULL);

@@ -160,32 +160,32 @@ audiounit_input_callback(void * user_ptr,
                          UInt32 input_frames,
                          AudioBufferList * bufs)
 {
-  cubeb_stream * stream = user_ptr;
+  cubeb_stream * stm = user_ptr;
   long outframes, frames;
   void * input_buffer = NULL;
 
-  pthread_mutex_lock(&stream->mutex);
-  ASSERT_LOCKED(stream->mutex);
+  pthread_mutex_lock(&stm->mutex);
+  ASSERT_LOCKED(stm->mutex);
 
-  assert(stream->input_unit != NULL);
+  assert(stm->input_unit != NULL);
   assert(AU_IN_BUS == bus);
 
-  if (stream->shutdown) {
-    pthread_mutex_unlock(&stream->mutex);
+  if (stm->shutdown) {
+    pthread_mutex_unlock(&stm->mutex);
     return noErr;
   }
 
   /* Get next store buffer from ring array */
-  AudioBufferList * store_input_buffer_list = ring_array_store_buffer(&stream->input_buffer_list_array);
+  AudioBufferList * store_input_buffer_list = ring_array_store_buffer(&stm->input_buffer_list_array);
   if (store_input_buffer_list == NULL) {
     LOG("input: Ring array is full drop one buffer\n");
-    ring_array_fetch_buffer(&stream->input_buffer_list_array);
+    ring_array_fetch_buffer(&stm->input_buffer_list_array);
 
-    store_input_buffer_list = ring_array_store_buffer(&stream->input_buffer_list_array);
+    store_input_buffer_list = ring_array_store_buffer(&stm->input_buffer_list_array);
     assert(store_input_buffer_list);
   }
   /* Render input samples */
-  OSStatus r = AudioUnitRender(stream->input_unit,
+  OSStatus r = AudioUnitRender(stm->input_unit,
                                flags,
                                tstamp,
                                bus,
@@ -196,41 +196,41 @@ audiounit_input_callback(void * user_ptr,
       store_input_buffer_list->mBuffers[0].mDataByteSize, store_input_buffer_list->mBuffers[0].mNumberChannels, input_frames);
 
   assert(input_frames > 0);
-  stream->frames_read += input_frames;
+  stm->frames_read += input_frames;
 
   // Full Duplex. We'll call data_callback in the AudioUnit output callback.
-  if (stream->output_unit != NULL) {
+  if (stm->output_unit != NULL) {
     // User callback will be called by output callback
-    pthread_mutex_unlock(&stream->mutex);
+    pthread_mutex_unlock(&stm->mutex);
     return noErr;
   }
 
   /* Input only. Call the user callback through resampler.
      Resampler will deliver input buffer in the correct rate. */
   frames = input_frames;
-  AudioBufferList * fetch_input_buffer_list = ring_array_fetch_buffer(&stream->input_buffer_list_array);
+  AudioBufferList * fetch_input_buffer_list = ring_array_fetch_buffer(&stm->input_buffer_list_array);
   assert(fetch_input_buffer_list && "fetch buffer is null in the input");
   input_buffer = fetch_input_buffer_list->mBuffers[0].mData;
-  outframes = cubeb_resampler_fill(stream->resampler,
+  outframes = cubeb_resampler_fill(stm->resampler,
                                    input_buffer,
                                    &frames,
                                    NULL,
                                    0);
 
   if (outframes < 0 || outframes != input_frames) {
-    stream->shutdown = 1;
-    pthread_mutex_unlock(&stream->mutex);
+    stm->shutdown = 1;
+    pthread_mutex_unlock(&stm->mutex);
     return noErr;
   }
 
-  pthread_mutex_unlock(&stream->mutex);
+  pthread_mutex_unlock(&stm->mutex);
   return noErr;
 }
 
 static void
 audiounit_make_silent(AudioBufferList * ioData)
 {
-  for(UInt32 i = 0; i<ioData->mNumberBuffers;i++) {
+  for(UInt32 i = 0; i < ioData->mNumberBuffers; i++) {
     memset(ioData->mBuffers[i].mData, 0, ioData->mBuffers[i].mDataByteSize);
   }
 }
@@ -250,29 +250,29 @@ audiounit_output_callback(void * user_ptr,
       outBufferList->mNumberBuffers, outBufferList->mBuffers[0].mDataByteSize,
       outBufferList->mBuffers[0].mNumberChannels, output_frames);
 
-  cubeb_stream * stream = user_ptr;
+  cubeb_stream * stm = user_ptr;
   long outframes = 0, input_frames = 0;
   void * output_buffer = NULL, * input_buffer = NULL;
 
-  pthread_mutex_lock(&stream->mutex);
-  ASSERT_LOCKED(stream->mutex);
+  pthread_mutex_lock(&stm->mutex);
+  ASSERT_LOCKED(stm->mutex);
 
-  if (stream->shutdown) {
+  if (stm->shutdown) {
     audiounit_make_silent(outBufferList);
-    pthread_mutex_unlock(&stream->mutex);
+    pthread_mutex_unlock(&stm->mutex);
     return noErr;
   }
 
-  stream->current_latency_frames = audiotimestamp_to_latency(tstamp, stream);
-  if (stream->draining) {
-    OSStatus r = AudioOutputUnitStop(stream->output_unit);
+  stm->current_latency_frames = audiotimestamp_to_latency(tstamp, stm);
+  if (stm->draining) {
+    OSStatus r = AudioOutputUnitStop(stm->output_unit);
     assert(r == 0);
-    if (stream->input_unit) {
-      r = AudioOutputUnitStop(stream->input_unit);
-      assert(r==0);
+    if (stm->input_unit) {
+      r = AudioOutputUnitStop(stm->input_unit);
+      assert(r == 0);
     }
-    stream->state_callback(stream, stream->user_ptr, CUBEB_STATE_DRAINED);
-    pthread_mutex_unlock(&stream->mutex);
+    stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
+    pthread_mutex_unlock(&stm->mutex);
     audiounit_make_silent(outBufferList);
     return noErr;
   }
@@ -280,15 +280,15 @@ audiounit_output_callback(void * user_ptr,
   output_buffer = outBufferList->mBuffers[0].mData;
   /* If Full duplex get also input buffer */
   AudioBufferList * fetch_input_buffer_list = NULL;
-  if (stream->input_unit != NULL) {
+  if (stm->input_unit != NULL) {
     /* Output callback came first */
-    if (stream->frames_read == 0) {
+    if (stm->frames_read == 0) {
       audiounit_make_silent(outBufferList);
-      pthread_mutex_unlock(&stream->mutex);
+      pthread_mutex_unlock(&stm->mutex);
       return noErr;
     }
     /* Input samples stored previously in input callback. */
-    fetch_input_buffer_list = ring_array_fetch_buffer(&stream->input_buffer_list_array);
+    fetch_input_buffer_list = ring_array_fetch_buffer(&stm->input_buffer_list_array);
     if (fetch_input_buffer_list == NULL) {
       LOG("Requested more output than input. "
              "This is either a hole or we are after a stream stop and input thread stopped before output\n");
@@ -299,16 +299,16 @@ audiounit_output_callback(void * user_ptr,
 
       /* Avoid here to allocate new memory since we are inside callback. Use the existing
        * allocated buffers since the ring array is empty and the buffer is not used. */
-      fetch_input_buffer_list = &stream->input_buffer_list[0];
+      fetch_input_buffer_list = &stm->input_buffer_list[0];
       audiounit_make_silent(fetch_input_buffer_list);
     }
     input_buffer = fetch_input_buffer_list->mBuffers[0].mData;
-    input_frames = stream->input_buffer_frames;
-    assert(stream->frames_read > 0);
+    input_frames = stm->input_buffer_frames;
+    assert(stm->frames_read > 0);
   }
 
   /* Call user callback through resampler. */
-  outframes = cubeb_resampler_fill(stream->resampler,
+  outframes = cubeb_resampler_fill(stm->resampler,
                                    input_buffer,
                                    &input_frames,
                                    output_buffer,
@@ -319,10 +319,9 @@ audiounit_output_callback(void * user_ptr,
     audiounit_make_silent(fetch_input_buffer_list);
   }
 
-
   if (outframes < 0) {
-    stream->shutdown = 1;
-    pthread_mutex_unlock(&stream->mutex);
+    stm->shutdown = 1;
+    pthread_mutex_unlock(&stm->mutex);
     return noErr;
   }
 
@@ -330,17 +329,17 @@ audiounit_output_callback(void * user_ptr,
   float panning;
   size_t outbpf;
 
-  outbpf = stream->output_desc.mBytesPerFrame;
-  stream->draining = (outframes < output_frames);
-  stream->frames_played = stream->frames_queued;
-  stream->frames_queued += outframes;
+  outbpf = stm->output_desc.mBytesPerFrame;
+  stm->draining = outframes < output_frames;
+  stm->frames_played = stm->frames_queued;
+  stm->frames_queued += outframes;
 
-  outaff = stream->output_desc.mFormatFlags;
-  panning = (stream->output_desc.mChannelsPerFrame == 2) ? stream->panning : 0.0f;
-  pthread_mutex_unlock(&stream->mutex);
+  outaff = stm->output_desc.mFormatFlags;
+  panning = (stm->output_desc.mChannelsPerFrame == 2) ? stm->panning : 0.0f;
+  pthread_mutex_unlock(&stm->mutex);
 
   /* Post process output samples. */
-  if (stream->draining) {
+  if (stm->draining) {
     /* Clear missing frames (silence) */
     memset(output_buffer + outframes * outbpf, 0, (output_frames - outframes) * outbpf);
   }
@@ -597,12 +596,13 @@ audiounit_get_default_device_id(cubeb_device_type type)
   AudioDeviceID devid;
   UInt32 size;
 
-  if (type == CUBEB_DEVICE_TYPE_OUTPUT)
+  if (type == CUBEB_DEVICE_TYPE_OUTPUT) {
     adr.mSelector = kAudioHardwarePropertyDefaultOutputDevice;
-  else if (type == CUBEB_DEVICE_TYPE_INPUT)
+  } else if (type == CUBEB_DEVICE_TYPE_INPUT) {
     adr.mSelector = kAudioHardwarePropertyDefaultInputDevice;
-  else
+  } else {
     return kAudioObjectUnknown;
+  }
 
   size = sizeof(AudioDeviceID);
   if (AudioObjectGetPropertyData(kAudioObjectSystemObject, &adr, 0, NULL, &size, &devid) != noErr) {
@@ -725,8 +725,8 @@ audiounit_destroy(cubeb * ctx)
 static void audiounit_stream_destroy(cubeb_stream * stm);
 
 static int
-audio_stream_desc_init (AudioStreamBasicDescription  * ss,
-                        const cubeb_stream_params * stream_params)
+audio_stream_desc_init(AudioStreamBasicDescription * ss,
+                       const cubeb_stream_params * stream_params)
 {
   memset(ss, 0, sizeof(AudioStreamBasicDescription));
 
@@ -805,10 +805,10 @@ audiounit_create_unit(AudioUnit * unit,
   }
 
   if (device == NULL) {
-    devid = audiounit_get_default_device_id (is_input ? CUBEB_DEVICE_TYPE_INPUT
-                                                      : CUBEB_DEVICE_TYPE_OUTPUT);
+    devid = audiounit_get_default_device_id(is_input ? CUBEB_DEVICE_TYPE_INPUT
+                                                     : CUBEB_DEVICE_TYPE_OUTPUT);
   } else {
-    devid = *(AudioDeviceID *)device;
+    devid = *(AudioDeviceID*)device;
   }
   int err = AudioUnitSetProperty(*unit, kAudioOutputUnitProperty_CurrentDevice,
                                  kAudioUnitScope_Global,
@@ -822,9 +822,9 @@ audiounit_create_unit(AudioUnit * unit,
 }
 
 static int
-audiounit_buflst_init_single_buffer (AudioBufferList * buflst,
-                                     const AudioStreamBasicDescription * desc,
-                                     uint32_t frames)
+audiounit_buflst_init_single_buffer(AudioBufferList * buflst,
+                                    const AudioStreamBasicDescription * desc,
+                                    uint32_t frames)
 {
   size_t size = desc->mBytesPerFrame * frames;
 
@@ -894,7 +894,7 @@ audiounit_stream_init(cubeb * context,
   cubeb_stream * stm;
   AudioUnit input_unit;
   AudioUnit output_unit;
-  int ret;
+  int r;
   AURenderCallbackStruct aurcbs_in;
   AURenderCallbackStruct aurcbs_out;
   UInt32 size;
@@ -915,15 +915,15 @@ audiounit_stream_init(cubeb * context,
   pthread_mutex_unlock(&context->mutex);
 
   if (input_stream_params != NULL) {
-    if ((ret = audiounit_create_unit (&input_unit, true,
+    if ((r = audiounit_create_unit(&input_unit, true,
             input_stream_params, input_device)) != CUBEB_OK)
-      return ret;
+      return r;
   }
 
   if (output_stream_params != NULL) {
-    if ((ret = audiounit_create_unit (&output_unit, false,
+    if ((r = audiounit_create_unit(&output_unit, false,
             output_stream_params, output_device)) != CUBEB_OK)
-      return ret;
+      return r;
   }
 
   stm = calloc(1, sizeof(cubeb_stream));
@@ -931,7 +931,7 @@ audiounit_stream_init(cubeb * context,
 
   /* These could be different in the future if we have both
    * full-duplex stream and different devices for input vs output. */
-  stm->input_unit  = (input_stream_params  != NULL) ? input_unit : NULL;
+  stm->input_unit  = (input_stream_params != NULL) ? input_unit : NULL;
   stm->output_unit = (output_stream_params != NULL) ? output_unit : NULL;
   stm->context = context;
   stm->data_callback = data_callback;
@@ -946,8 +946,8 @@ audiounit_stream_init(cubeb * context,
 #else
   pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
 #endif
-  ret = pthread_mutex_init(&stm->mutex, &attr);
-  assert(0 == ret);
+  r = pthread_mutex_init(&stm->mutex, &attr);
+  assert(r == 0);
   pthread_mutexattr_destroy(&attr);
 
   stm->draining = false;
@@ -960,7 +960,6 @@ audiounit_stream_init(cubeb * context,
 
   /* Setup Input Stream! */
   if (input_stream_params != NULL) {
-
     size = sizeof(UInt32);
     if (AudioUnitGetProperty(stm->input_unit,
                              kAudioDevicePropertyBufferFrameSize,
@@ -990,16 +989,16 @@ audiounit_stream_init(cubeb * context,
                              kAudioUnitScope_Input,
                              AU_IN_BUS,
                              &input_hw_desc,
-                             &size) !=0) {
+                             &size) != 0) {
       audiounit_stream_destroy(stm);
       return CUBEB_ERROR;
     }
     stm->input_hw_rate = input_hw_desc.mSampleRate;
 
     /* Set format description according to the input params. */
-    if ((ret = audio_stream_desc_init(&stm->input_desc, input_stream_params)) != CUBEB_OK) {
+    if ((r = audio_stream_desc_init(&stm->input_desc, input_stream_params)) != CUBEB_OK) {
       audiounit_stream_destroy(stm);
-      return ret;
+      return r;
     }
 
     AudioStreamBasicDescription src_desc = stm->input_desc;
@@ -1014,7 +1013,7 @@ audiounit_stream_init(cubeb * context,
                              kAudioUnitScope_Output,
                              AU_IN_BUS,
                              &src_desc,
-                             sizeof(AudioStreamBasicDescription)) !=0) {
+                             sizeof(AudioStreamBasicDescription)) != 0) {
       audiounit_stream_destroy(stm);
       return CUBEB_ERROR;
     }
@@ -1051,10 +1050,9 @@ audiounit_stream_init(cubeb * context,
 
   /* Setup Output Stream! */
   if (output_stream_params != NULL) {
-
-    if ((ret = audio_stream_desc_init(&stm->output_desc, output_stream_params)) != CUBEB_OK) {
+    if ((r = audio_stream_desc_init(&stm->output_desc, output_stream_params)) != CUBEB_OK) {
       audiounit_stream_destroy(stm);
-      return ret;
+      return r;
     }
 
     if (AudioUnitSetProperty(stm->output_unit,
@@ -1493,12 +1491,15 @@ audiounit_get_devices(AudioObjectID ** devices, uint32_t * count)
                                      kAudioObjectPropertyElementMaster };
 
   ret = AudioObjectGetPropertyDataSize(kAudioObjectSystemObject, &adr, 0, NULL, &size);
-  if (ret != noErr)
+  if (ret != noErr) {
     return ret;
+  }
 
   *count = (uint32_t)(size / sizeof(AudioObjectID));
   if (size >= sizeof(AudioObjectID)) {
-    if (*devices != NULL) free(*devices);
+    if (*devices != NULL) {
+      free(*devices);
+    }
     *devices = malloc(size);
     memset(*devices, 0, size);
 
@@ -1515,11 +1516,13 @@ audiounit_get_devices(AudioObjectID ** devices, uint32_t * count)
 }
 
 static char *
-audiounit_strref_to_cstr_utf8(CFStringRef strref) {
+audiounit_strref_to_cstr_utf8(CFStringRef strref)
+{
   CFIndex len, size;
   char * ret;
-  if (strref == NULL)
+  if (strref == NULL) {
     return NULL;
+  }
 
   len = CFStringGetLength(strref);
   size = CFStringGetMaximumSizeForEncoding(len, kCFStringEncodingUTF8);
@@ -1563,8 +1566,9 @@ audiounit_get_available_samplerate(AudioObjectID devid, AudioObjectPropertyScope
   if (AudioObjectHasProperty(devid, &adr)) {
     UInt32 size = sizeof(Float64);
     Float64 fvalue = 0.0;
-    if (AudioObjectGetPropertyData(devid, &adr, 0, NULL, &size, &fvalue) == noErr)
+    if (AudioObjectGetPropertyData(devid, &adr, 0, NULL, &size, &fvalue) == noErr) {
       *def = fvalue;
+    }
   }
 
   adr.mSelector = kAudioDevicePropertyAvailableNominalSampleRates;
@@ -1603,8 +1607,9 @@ audiounit_get_device_presentation_latency(AudioObjectID devid, AudioObjectProper
 
   adr.mSelector = kAudioDevicePropertyLatency;
   size = sizeof(UInt32);
-  if (AudioObjectGetPropertyData(devid, &adr, 0, NULL, &size, &dev) != noErr)
+  if (AudioObjectGetPropertyData(devid, &adr, 0, NULL, &size, &dev) != noErr) {
     dev = 0;
+  }
 
   adr.mSelector = kAudioDevicePropertyStreams;
   size = sizeof(sid);
@@ -1616,8 +1621,9 @@ audiounit_get_device_presentation_latency(AudioObjectID devid, AudioObjectProper
 
   adr.mSelector = kAudioDevicePropertySafetyOffset;
   size = sizeof(UInt32);
-  if (AudioObjectGetPropertyData(devid, &adr, 0, NULL, &size, &offset) != noErr)
+  if (AudioObjectGetPropertyData(devid, &adr, 0, NULL, &size, &offset) != noErr) {
     offset = 0;
+  }
 
   return dev + stream + offset;
 }
@@ -1639,8 +1645,9 @@ audiounit_create_device_from_hwdev(AudioObjectID devid, cubeb_device_type type)
     return NULL;
   }
 
-  if ((ch = audiounit_get_channel_count(devid, adr.mScope)) == 0)
+  if ((ch = audiounit_get_channel_count(devid, adr.mScope)) == 0) {
     return NULL;
+  }
 
   ret = calloc(1, sizeof(cubeb_device_info));
 
@@ -1722,8 +1729,9 @@ audiounit_enumerate_devices(cubeb * context, cubeb_device_type type,
   uint32_t i, hwdevcount = 0;
   OSStatus err;
 
-  if ((err = audiounit_get_devices(&hwdevs, &hwdevcount)) != noErr)
+  if ((err = audiounit_get_devices(&hwdevs, &hwdevcount)) != noErr) {
     return CUBEB_ERROR;
+  }
 
   *collection = malloc(sizeof(cubeb_device_collection) +
       sizeof(cubeb_device_info*) * (hwdevcount > 0 ? hwdevcount - 1 : 0));
