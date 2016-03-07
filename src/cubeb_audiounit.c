@@ -88,8 +88,8 @@ struct cubeb_stream {
   pthread_mutex_t mutex;
   /* Hold the input samples in every
    * input callback iteration */
-  AudioBufferList input_buffer_list[RING_ARRAY_CAPACITY];
-  ring_array input_buffer_list_array;
+  AudioBuffer input_buffer[RING_ARRAY_CAPACITY];
+  ring_array input_buffer_array;
   /* Frames on input buffer */
   uint32_t input_buffer_frames;
   /* Frame counters */
@@ -164,24 +164,32 @@ audiounit_input_callback(void * user_ptr,
   }
 
   /* Get next store buffer from ring array */
-  AudioBufferList * input_buffer_list = ring_array_get_next_free_buffer(&stm->input_buffer_list_array);
-  if (input_buffer_list == NULL) {
+  AudioBuffer * input_buffer = ring_array_get_next_free_buffer(&stm->input_buffer_array);
+  if (input_buffer == NULL) {
     LOG("input: Ring array is full drop one buffer\n");
-    ring_array_get_first_data_buffer(&stm->input_buffer_list_array);
+    ring_array_get_first_data_buffer(&stm->input_buffer_array);
 
-    input_buffer_list = ring_array_get_next_free_buffer(&stm->input_buffer_list_array);
-    assert(input_buffer_list);
+    input_buffer = ring_array_get_next_free_buffer(&stm->input_buffer_array);
+    assert(input_buffer);
   }
+
+  AudioBufferList input_buffer_list;
+  input_buffer_list.mBuffers[0] = *input_buffer;
+  input_buffer_list.mNumberBuffers = 1;
+
   /* Render input samples */
   OSStatus r = AudioUnitRender(stm->input_unit,
                                flags,
                                tstamp,
                                bus,
                                input_frames,
-                               input_buffer_list);
+                               &input_buffer_list);
   assert(r == noErr);
-  LOG("- input:  buffers %d, size %d, channels %d, frames %d\n", store_input_buffer_list->mNumberBuffers,
-      store_input_buffer_list->mBuffers[0].mDataByteSize, store_input_buffer_list->mBuffers[0].mNumberChannels, input_frames);
+  LOG("- input:  buffers %d, size %d, channels %d, frames %d\n",
+      input_buffer_list.mNumberBuffers,
+      input_buffer_list.mBuffers[0].mDataByteSize,
+      input_buffer_list.mBuffers[0].mNumberChannels,
+      input_frames);
 
   assert(input_frames > 0);
   stm->frames_read += input_frames;
@@ -196,10 +204,10 @@ audiounit_input_callback(void * user_ptr,
   /* Input only. Call the user callback through resampler.
      Resampler will deliver input buffer in the correct rate. */
   frames = input_frames;
-  input_buffer_list = ring_array_get_first_data_buffer(&stm->input_buffer_list_array);
-  assert(input_buffer_list && "fetch buffer is null in the input");
+  input_buffer = ring_array_get_first_data_buffer(&stm->input_buffer_array);
+  assert(input_buffer && "fetch buffer is null in the input");
   outframes = cubeb_resampler_fill(stm->resampler,
-                                   input_buffer_list->mBuffers[0].mData,
+                                   input_buffer->mData,
                                    &frames,
                                    NULL,
                                    0);
@@ -215,11 +223,9 @@ audiounit_input_callback(void * user_ptr,
 }
 
 static void
-audiounit_make_silent(AudioBufferList * ioData)
+audiounit_make_silent(AudioBuffer * ioData)
 {
-  for(UInt32 i = 0; i < ioData->mNumberBuffers; i++) {
-    memset(ioData->mBuffers[i].mData, 0, ioData->mBuffers[i].mDataByteSize);
-  }
+  memset(ioData->mData, 0, ioData->mDataByteSize);
 }
 
 static OSStatus
@@ -244,7 +250,7 @@ audiounit_output_callback(void * user_ptr,
   pthread_mutex_lock(&stm->mutex);
 
   if (stm->shutdown) {
-    audiounit_make_silent(outBufferList);
+    audiounit_make_silent(&outBufferList->mBuffers[0]);
     pthread_mutex_unlock(&stm->mutex);
     return noErr;
   }
@@ -259,23 +265,23 @@ audiounit_output_callback(void * user_ptr,
     }
     stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
     pthread_mutex_unlock(&stm->mutex);
-    audiounit_make_silent(outBufferList);
+    audiounit_make_silent(&outBufferList->mBuffers[0]);
     return noErr;
   }
   /* Get output buffer. */
   output_buffer = outBufferList->mBuffers[0].mData;
   /* If Full duplex get also input buffer */
-  AudioBufferList * input_buffer_list = NULL;
+  AudioBuffer * input_aud_buf = NULL;
   if (stm->input_unit != NULL) {
     /* Output callback came first */
     if (stm->frames_read == 0) {
-      audiounit_make_silent(outBufferList);
+      audiounit_make_silent(&outBufferList->mBuffers[0]);
       pthread_mutex_unlock(&stm->mutex);
       return noErr;
     }
     /* Input samples stored previously in input callback. */
-    input_buffer_list = ring_array_get_first_data_buffer(&stm->input_buffer_list_array);
-    if (input_buffer_list == NULL) {
+    input_aud_buf = ring_array_get_first_data_buffer(&stm->input_buffer_array);
+    if (input_aud_buf == NULL) {
       LOG("Requested more output than input. "
              "This is either a hole or we are after a stream stop and input thread stopped before output\n");
       /* Provide silent input. Other than that we could provide silent output and exit without
@@ -285,10 +291,10 @@ audiounit_output_callback(void * user_ptr,
 
       /* Avoid here to allocate new memory since we are inside callback. Use the existing
        * allocated buffers since the ring array is empty and the buffer is not used. */
-      input_buffer_list = &stm->input_buffer_list[0];
-      audiounit_make_silent(input_buffer_list);
+      input_aud_buf = &stm->input_buffer[0];
+      audiounit_make_silent(input_aud_buf);
     }
-    input_buffer = input_buffer_list->mBuffers[0].mData;
+    input_buffer = input_aud_buf->mData;
     input_frames = stm->input_buffer_frames;
     assert(stm->frames_read > 0);
   }
@@ -302,7 +308,7 @@ audiounit_output_callback(void * user_ptr,
 
   /* Cleanup the input buffer to make sure that we have fresh data. */
   if (input_buffer) {
-    audiounit_make_silent(input_buffer_list);
+    audiounit_make_silent(input_aud_buf);
   }
 
   if (outframes < 0) {
@@ -804,59 +810,58 @@ audiounit_create_unit(AudioUnit * unit,
 }
 
 static int
-audiounit_buflst_init_single_buffer(AudioBufferList * buflst,
+audiounit_buflst_init_single_buffer(AudioBuffer * buffer,
                                     const AudioStreamBasicDescription * desc,
                                     uint32_t frames)
 {
   size_t size = desc->mBytesPerFrame * frames;
 
-  buflst->mBuffers[0].mData = malloc(size);
-  if (buflst->mBuffers[0].mData == NULL) {
+  buffer->mData = malloc(size);
+  if (buffer->mData == NULL) {
     return CUBEB_ERROR;
   }
 
-  buflst->mBuffers[0].mNumberChannels = desc->mChannelsPerFrame;
-  buflst->mBuffers[0].mDataByteSize = size;
-  buflst->mNumberBuffers = 1;
+  buffer->mNumberChannels = desc->mChannelsPerFrame;
+  buffer->mDataByteSize = size;
 
   return CUBEB_OK;
 }
 
 static int
-audiounit_init_input_buffer_list_array(cubeb_stream * stream)
+audiounit_init_input_buffer_array(cubeb_stream * stream)
 {
   /* Init ring array. */
-  ring_array_init(&stream->input_buffer_list_array);
+  ring_array_init(&stream->input_buffer_array);
   /* Initialize buffer list. */
-  memset(&stream->input_buffer_list, 0, sizeof(stream->input_buffer_list));
+  memset(&stream->input_buffer, 0, sizeof(stream->input_buffer));
   /* Create input descriptor. */
   AudioStreamBasicDescription src_desc = stream->input_desc;
   src_desc.mSampleRate = stream->input_hw_rate;
   /* Set data to ring array. */
   for (int i = 0; i < RING_ARRAY_CAPACITY; ++i) {
     /* Allocate the data (AudioBufferList here). */
-    if (audiounit_buflst_init_single_buffer(&stream->input_buffer_list[i],
+    if (audiounit_buflst_init_single_buffer(&stream->input_buffer[i],
                                             &src_desc,
                                             stream->input_buffer_frames) != CUBEB_OK) {
       return CUBEB_ERROR;
     }
     /* Set the data in the array. */
-    ring_array_set_data(&stream->input_buffer_list_array,
-                        &stream->input_buffer_list[i], i);
+    ring_array_set_data(&stream->input_buffer_array,
+                        &stream->input_buffer[i], i);
   }
   return CUBEB_OK;
 }
 
 static void
-audiounit_destroy_input_buffer_list_array(cubeb_stream * stream)
+audiounit_destroy_input_buffer_array(cubeb_stream * stream)
 {
   /* Destroy the data in the array first*/
   for (int i = 0; i < RING_ARRAY_CAPACITY; ++i) {
-    if (stream->input_buffer_list[i].mBuffers[0].mData) {
-      free(stream->input_buffer_list[i].mBuffers[0].mData);
+    if (stream->input_buffer[i].mData) {
+      free(stream->input_buffer[i].mData);
     }
   }
-  ring_array_destroy(&stream->input_buffer_list_array);
+  ring_array_destroy(&stream->input_buffer_array);
 }
 
 static int
@@ -1002,7 +1007,7 @@ audiounit_stream_init(cubeb * context,
       return CUBEB_ERROR;
     }
 
-    if (audiounit_init_input_buffer_list_array(stm) != CUBEB_OK) {
+    if (audiounit_init_input_buffer_array(stm) != CUBEB_OK) {
       audiounit_stream_destroy(stm);
       return CUBEB_ERROR;
     }
@@ -1165,7 +1170,7 @@ audiounit_stream_destroy(cubeb_stream * stm)
     AudioComponentInstanceDispose(stm->input_unit);
   }
 
-  audiounit_destroy_input_buffer_list_array(stm);
+  audiounit_destroy_input_buffer_array(stm);
 
   if (stm->output_unit != NULL) {
     AudioOutputUnitStop(stm->output_unit);
