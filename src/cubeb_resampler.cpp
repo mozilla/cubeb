@@ -59,10 +59,14 @@ long noop_resampler::fill(void * input_buffer, long * input_frames_count,
 {
   assert(input_buffer && output_buffer &&
          *input_frames_count >= output_frames ||
-         !input_buffer && input_frames_count == 0 ||
-         !output_buffer && output_frames== 0);
+         !input_buffer && !input_frames_count ||
+         !output_buffer && output_frames == 0);
 
-  if (*input_frames_count != output_frames) {
+  if (output_buffer == nullptr) {
+    output_frames = *input_frames_count;
+  }
+
+  if (input_buffer && *input_frames_count != output_frames) {
     assert(*input_frames_count > output_frames);
     *input_frames_count = output_frames;
   }
