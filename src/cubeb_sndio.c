@@ -197,7 +197,7 @@ sndio_stream_init(cubeb * context,
   if (s == NULL)
     return CUBEB_ERROR;
   s->context = context;
-  s->hdl = sio_open(NULL, SIO_PLAY, 0);
+  s->hdl = sio_open(NULL, SIO_PLAY, 1);
   if (s->hdl == NULL) {
     free(s);
     DPR("sndio_stream_init(), sio_open() failed\n");
