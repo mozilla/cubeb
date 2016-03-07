@@ -61,16 +61,6 @@
 #define LOG(...)
 #endif
 
-#ifdef DEBUG
-#define ASSERT_LOCKED(mutex)           \
-do {                                   \
-  int rv = pthread_mutex_lock(&mutex); \
-  assert(rv == EDEADLK);               \
-} while (0);
-#else
-#define ASSERT_LOCKED(mutex)
-#endif
-
 static struct cubeb_ops const audiounit_ops;
 
 struct cubeb {
@@ -165,7 +155,6 @@ audiounit_input_callback(void * user_ptr,
   void * input_buffer = NULL;
 
   pthread_mutex_lock(&stm->mutex);
-  ASSERT_LOCKED(stm->mutex);
 
   assert(stm->input_unit != NULL);
   assert(AU_IN_BUS == bus);
@@ -255,7 +244,6 @@ audiounit_output_callback(void * user_ptr,
   void * output_buffer = NULL, * input_buffer = NULL;
 
   pthread_mutex_lock(&stm->mutex);
-  ASSERT_LOCKED(stm->mutex);
 
   if (stm->shutdown) {
     audiounit_make_silent(outBufferList);
@@ -941,11 +929,7 @@ audiounit_stream_init(cubeb * context,
 
   pthread_mutexattr_t attr;
   pthread_mutexattr_init(&attr);
-#ifdef DEBUG
-  pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK);
-#else
   pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
-#endif
   r = pthread_mutex_init(&stm->mutex, &attr);
   assert(r == 0);
   pthread_mutexattr_destroy(&attr);
