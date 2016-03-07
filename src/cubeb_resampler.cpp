@@ -87,6 +87,7 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>
   , stream(s)
   , data_callback(cb)
   , user_ptr(ptr)
+  , draining(false)
 {
   if (input_processor && output_processor) {
     // Add some delay on the processor that has the lowest delay so that the
@@ -137,24 +138,29 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>
 
   long got = 0;
   T * out_unprocessed = nullptr;
+  long output_frames_before_processing = 0;
 
-  uint32_t output_frames_before_processing =
-    output_processor->input_needed_for_output(output_frames_needed);
 
-  /* fill directly the input buffer of the output processor to save a copy */
-  out_unprocessed =
-    output_processor->input_buffer(output_frames_before_processing);
+  if (!draining) {
+    /* fill directly the input buffer of the output processor to save a copy */
+    output_frames_before_processing =
+      output_processor->input_needed_for_output(output_frames_needed);
 
-  got = data_callback(stream, user_ptr,
-                      nullptr, nullptr,
-                      output_frames_before_processing);
+    out_unprocessed =
+      output_processor->input_buffer(output_frames_before_processing);
+
+    got = data_callback(stream, user_ptr,
+                        nullptr, out_unprocessed,
+                        output_frames_before_processing);
+
+  }
 
   /* Process the output. If not enough frames have been returned from the
   * callback, drain the processors. */
-  if (got != output_frames_before_processing) {
+  if (got != output_frames_before_processing || draining) {
+    draining = true;
     got = output_processor->drain(output_buffer, output_frames_needed);
-  }
-  else {
+  } else {
     output_processor->output(output_buffer, output_frames_needed);
     got = output_frames_needed;
   }
@@ -200,7 +206,7 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>
   T * resampled_input = nullptr;
   /* The output buffer passed down in the callback, that might be resampled. */
   T * out_unprocessed = nullptr;
-  size_t output_frames_before_processing;
+  size_t output_frames_before_processing = 0;
   /* The number of frames returned from the callback. */
   long got = 0;
 
@@ -215,30 +221,33 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>
    * get the output data, and resample it to the number of frames needed by the
    * caller. */
 
-   output_frames_before_processing =
-     output_processor->input_needed_for_output(output_frames_needed);
-   /* fill directly the input buffer of the output processor to save a copy */
-   out_unprocessed =
-     output_processor->input_buffer(output_frames_before_processing);
+  if (!draining) {
+     output_frames_before_processing =
+       output_processor->input_needed_for_output(output_frames_needed);
+     /* fill directly the input buffer of the output processor to save a copy */
+     out_unprocessed =
+       output_processor->input_buffer(output_frames_before_processing);
 
-   if (in_buffer) {
-     /* process the input, and present exactly `output_frames_needed` in the
-     * callback. */
-     input_processor->input(in_buffer, *input_frames_count);
-     resampled_input =
-       input_processor->output(output_frames_before_processing);
-   } else {
-     resampled_input = nullptr;
+     if (in_buffer) {
+       /* process the input, and present exactly `output_frames_needed` in the
+       * callback. */
+       input_processor->input(in_buffer, *input_frames_count);
+       resampled_input =
+         input_processor->output(output_frames_before_processing);
+     } else {
+       resampled_input = nullptr;
+     }
+
+     got = data_callback(stream, user_ptr,
+                         resampled_input, out_unprocessed,
+                         output_frames_before_processing);
    }
-
-   got = data_callback(stream, user_ptr,
-                       resampled_input, out_unprocessed,
-                       output_frames_before_processing);
 
 
   /* Process the output. If not enough frames have been returned from the
    * callback, drain the processors. */
-  if (got != output_frames_before_processing) {
+  if (got != output_frames_before_processing || draining) {
+    draining = true;
     got = output_processor->drain(out_buffer, output_frames_needed);
   } else {
     output_processor->output(out_buffer, output_frames_needed);
