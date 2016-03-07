@@ -840,10 +840,8 @@ audiounit_init_input_buffer_list_array(cubeb_stream * stream)
       return CUBEB_ERROR;
     }
     /* Set the data in the array. */
-    if (ring_array_set_data(&stream->input_buffer_list_array,
-                            &stream->input_buffer_list[i], i) == NULL) {
-      return CUBEB_ERROR;
-    }
+    ring_array_set_data(&stream->input_buffer_list_array,
+                        &stream->input_buffer_list[i], i);
   }
   return CUBEB_OK;
 }

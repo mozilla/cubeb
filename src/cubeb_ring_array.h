@@ -42,19 +42,15 @@ ring_array_init(ring_array * ra)
 }
 
 /** Set the allocated space to store the data.
-    This must be done before store/fetch.
+    This must be called before store/fetch.
     @param ra The ring_array pointer.
     @param data Pointer to allocated space of buffers.
-    @param index Index between 0 and capacity-1 to store the allocated data buffer.
-    @retval The data pointer on success or NULL on failure. */
-void *
+    @param index Index between 0 and capacity-1 to store the allocated data buffer. */
+void
 ring_array_set_data(ring_array * ra, void * data, unsigned int index)
 {
-  if (index < ra->capacity) {
-    ra->pointer_array[index] = data;
-    return data;
-  }
-  return NULL;
+  assert(index < ra->capacity);
+  ra->pointer_array[index] = data;
 }
 
 /** Destroy the ring array.

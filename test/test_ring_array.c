@@ -13,12 +13,9 @@ int test_ring_array()
 
   for (int i = 0; i < RING_ARRAY_CAPACITY; ++i) {
     data[i] = i; // in case RING_ARRAY_CAPACITY change value
-    p_data = ring_array_set_data(&ra, &data[i], i);
-    assert(p_data);
-    assert(p_data == &data[i]);
+    ring_array_set_data(&ra, &data[i], i);
   }
 
-  p_data = NULL;
   /* Get store buffers*/
   for (int i = 0; i < RING_ARRAY_CAPACITY; ++i) {
     p_data = ring_array_store_buffer(&ra);
