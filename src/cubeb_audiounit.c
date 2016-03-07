@@ -152,7 +152,6 @@ audiounit_input_callback(void * user_ptr,
 {
   cubeb_stream * stm = user_ptr;
   long outframes, frames;
-  void * input_buffer = NULL;
 
   pthread_mutex_lock(&stm->mutex);
 
@@ -199,9 +198,8 @@ audiounit_input_callback(void * user_ptr,
   frames = input_frames;
   AudioBufferList * fetch_input_buffer_list = ring_array_fetch_buffer(&stm->input_buffer_list_array);
   assert(fetch_input_buffer_list && "fetch buffer is null in the input");
-  input_buffer = fetch_input_buffer_list->mBuffers[0].mData;
   outframes = cubeb_resampler_fill(stm->resampler,
-                                   input_buffer,
+                                   fetch_input_buffer_list->mBuffers[0].mData,
                                    &frames,
                                    NULL,
                                    0);
@@ -313,17 +311,13 @@ audiounit_output_callback(void * user_ptr,
     return noErr;
   }
 
-  AudioFormatFlags outaff;
-  float panning;
-  size_t outbpf;
-
-  outbpf = stm->output_desc.mBytesPerFrame;
+  size_t outbpf = stm->output_desc.mBytesPerFrame;
   stm->draining = outframes < output_frames;
   stm->frames_played = stm->frames_queued;
   stm->frames_queued += outframes;
 
-  outaff = stm->output_desc.mFormatFlags;
-  panning = (stm->output_desc.mChannelsPerFrame == 2) ? stm->panning : 0.0f;
+  AudioFormatFlags outaff = stm->output_desc.mFormatFlags;
+  float panning = (stm->output_desc.mChannelsPerFrame == 2) ? stm->panning : 0.0f;
   pthread_mutex_unlock(&stm->mutex);
 
   /* Post process output samples. */
@@ -716,8 +710,6 @@ static int
 audio_stream_desc_init(AudioStreamBasicDescription * ss,
                        const cubeb_stream_params * stream_params)
 {
-  memset(ss, 0, sizeof(AudioStreamBasicDescription));
-
   switch (stream_params->format) {
   case CUBEB_SAMPLE_S16LE:
     ss->mBitsPerChannel = 16;
@@ -749,6 +741,8 @@ audio_stream_desc_init(AudioStreamBasicDescription * ss,
   ss->mBytesPerFrame = (ss->mBitsPerChannel / 8) * ss->mChannelsPerFrame;
   ss->mFramesPerPacket = 1;
   ss->mBytesPerPacket = ss->mBytesPerFrame * ss->mFramesPerPacket;
+
+  ss->mReserved = 0;
 
   return CUBEB_OK;
 }
@@ -886,10 +880,6 @@ audiounit_stream_init(cubeb * context,
   AURenderCallbackStruct aurcbs_in;
   AURenderCallbackStruct aurcbs_out;
   UInt32 size;
-#if 0
-  unsigned int buffer_size, default_buffer_size;
-  AudioValueRange latency_range;
-#endif
 
   assert(context);
   *stream = NULL;
@@ -902,15 +892,15 @@ audiounit_stream_init(cubeb * context,
   context->active_streams += 1;
   pthread_mutex_unlock(&context->mutex);
 
-  if (input_stream_params != NULL) {
-    if ((r = audiounit_create_unit(&input_unit, true,
-            input_stream_params, input_device)) != CUBEB_OK)
+  if (input_stream_params != NULL &&
+      (r = audiounit_create_unit(&input_unit, true,
+            input_stream_params, input_device)) != CUBEB_OK) {
       return r;
   }
 
-  if (output_stream_params != NULL) {
-    if ((r = audiounit_create_unit(&output_unit, false,
-            output_stream_params, output_device)) != CUBEB_OK)
+  if (output_stream_params != NULL &&
+      (r = audiounit_create_unit(&output_unit, false,
+            output_stream_params, output_device)) != CUBEB_OK) {
       return r;
   }
 
@@ -934,12 +924,7 @@ audiounit_stream_init(cubeb * context,
   assert(r == 0);
   pthread_mutexattr_destroy(&attr);
 
-  stm->draining = false;
-  stm->shutdown = 0;
-  stm->frames_played = 0;
-  stm->frames_queued = 0;
-  stm->frames_read = 0;
-  stm->current_latency_frames = 0;
+  /* Init data members where necessary */
   stm->hw_latency_frames = UINT64_MAX;
 
   /* Setup Input Stream! */
@@ -986,11 +971,9 @@ audiounit_stream_init(cubeb * context,
     }
 
     AudioStreamBasicDescription src_desc = stm->input_desc;
-    /* Input AudioUnit must be configured with device's sample rate. */
-    if (src_desc.mSampleRate != stm->input_hw_rate) {
-      /* Set the sample rate of the device we will resample inside input callback. */
-      src_desc.mSampleRate = stm->input_hw_rate;
-    }
+    /* Input AudioUnit must be configured with device's sample rate.
+       we will resample inside input callback. */
+    src_desc.mSampleRate = stm->input_hw_rate;
 
     if (AudioUnitSetProperty(stm->input_unit,
                              kAudioUnitProperty_StreamFormat,
@@ -1112,7 +1095,7 @@ audiounit_stream_init(cubeb * context,
    * reliable only in the capture device sample rate.
    * Resampler will convert it to the user sample rate
    * and deliver it to the callback. */
-  int32_t target_sample_rate;
+  uint32_t target_sample_rate;
   if (input_stream_params) {
     target_sample_rate = input_stream_params->rate;
   } else {
@@ -1138,6 +1121,7 @@ audiounit_stream_init(cubeb * context,
                                           CUBEB_RESAMPLER_QUALITY_DESKTOP);
   if (!stm->resampler) {
     LOG("Could not get a resampler\n");
+    audiounit_stream_destroy(stm);
     return CUBEB_ERROR;
   }
 
@@ -1172,7 +1156,6 @@ audiounit_stream_destroy(cubeb_stream * stm)
     AudioOutputUnitStop(stm->input_unit);
     AudioUnitUninitialize(stm->input_unit);
     AudioComponentInstanceDispose(stm->input_unit);
-    stm->input_unit = NULL;
   }
 
   audiounit_destroy_input_buffer_list_array(stm);
@@ -1181,8 +1164,9 @@ audiounit_stream_destroy(cubeb_stream * stm)
     AudioOutputUnitStop(stm->output_unit);
     AudioUnitUninitialize(stm->output_unit);
     AudioComponentInstanceDispose(stm->output_unit);
-    stm->output_unit = NULL;
   }
+
+  cubeb_resampler_destroy(stm->resampler);
 
 #if !TARGET_OS_IPHONE
   audiounit_uninstall_device_changed_callback(stm);
