@@ -23,7 +23,6 @@ typedef struct {
   unsigned int tail;                          /**< Index of the last element (first to deliver). */
   int count;                                  /**< Number of elements in the array. */
   unsigned int capacity;                      /**< Total length of the array. */
-  pthread_mutex_t mutex;                      /**< Mutex to synchronize store/fetch. */
 } ring_array;
 
 /** Initialize the ring array.
@@ -37,16 +36,9 @@ ring_array_init(ring_array * ra)
   ra->count = 0;
   memset(ra->pointer_array, 0, sizeof(ra->pointer_array));
 
-  pthread_mutexattr_t attr;
-  pthread_mutexattr_init(&attr);
-  pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_DEFAULT);
-  int ret = pthread_mutex_init(&ra->mutex, &attr);
-  assert(ret == 0);
-  pthread_mutexattr_destroy(&attr);
-
   assert(ra->pointer_array[0] == NULL);
 
-  return ret;
+  return 0;
 }
 
 /** Set the allocated space to store the data.
@@ -70,7 +62,6 @@ ring_array_set_data(ring_array * ra, void * data, unsigned int index)
 void
 ring_array_destroy(ring_array * ra)
 {
-  pthread_mutex_destroy(&ra->mutex);
 }
 
 /** Get the allocated buffer to be stored with fresh data.
@@ -79,13 +70,8 @@ ring_array_destroy(ring_array * ra)
 void *
 ring_array_store_buffer(ring_array * ra)
 {
-  int rv = pthread_mutex_lock(&ra->mutex);
-  assert(rv == 0);
-
   assert(ra->pointer_array[0] != NULL);
-
   if (ra->count == (int)ra->capacity) {
-    pthread_mutex_unlock(&ra->mutex);
     return NULL;
   }
 
@@ -95,7 +81,6 @@ ring_array_store_buffer(ring_array * ra)
   ++ra->count;
   assert(ra->count <= (int)ra->capacity);
 
-  pthread_mutex_unlock(&ra->mutex);
   return ret;
 }
 
@@ -105,13 +90,9 @@ ring_array_store_buffer(ring_array * ra)
 void *
 ring_array_fetch_buffer(ring_array * ra)
 {
-  int rv = pthread_mutex_lock(&ra->mutex);
-  assert(rv == 0);
-
   assert(ra->pointer_array[0] != NULL);
 
   if (ra->count == 0) {
-    pthread_mutex_unlock(&ra->mutex);
     return NULL;
   }
   void * ret = ra->pointer_array[ra->tail];
@@ -122,7 +103,6 @@ ring_array_fetch_buffer(ring_array * ra)
   ra->count--;
   assert(ra->count >= 0);
 
-  pthread_mutex_unlock(&ra->mutex);
   return ret;
 }
 
