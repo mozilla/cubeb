@@ -810,7 +810,8 @@ audiounit_buflst_init_single_buffer(AudioBufferList * buflst,
 {
   size_t size = desc->mBytesPerFrame * frames;
 
-  if ((buflst->mBuffers[0].mData = malloc(size)) == NULL) {
+  buflst->mBuffers[0].mData = malloc(size);
+  if (buflst->mBuffers[0].mData == NULL) {
     return CUBEB_ERROR;
   }
 
@@ -890,16 +891,22 @@ audiounit_stream_init(cubeb * context,
   context->active_streams += 1;
   pthread_mutex_unlock(&context->mutex);
 
-  if (input_stream_params != NULL &&
-      (r = audiounit_create_unit(&input_unit, true,
-            input_stream_params, input_device)) != CUBEB_OK) {
+  if (input_stream_params != NULL) {
+    r = audiounit_create_unit(&input_unit, true,
+                              input_stream_params,
+                              input_device);
+    if (r != CUBEB_OK) {
       return r;
+    }
   }
 
-  if (output_stream_params != NULL &&
-      (r = audiounit_create_unit(&output_unit, false,
-            output_stream_params, output_device)) != CUBEB_OK) {
+  if (output_stream_params != NULL) {
+    r = audiounit_create_unit(&output_unit, false,
+                              output_stream_params,
+                              output_device);
+    if (r != CUBEB_OK) {
       return r;
+    }
   }
 
   stm = calloc(1, sizeof(cubeb_stream));
@@ -963,7 +970,8 @@ audiounit_stream_init(cubeb * context,
     stm->input_hw_rate = input_hw_desc.mSampleRate;
 
     /* Set format description according to the input params. */
-    if ((r = audio_stream_desc_init(&stm->input_desc, input_stream_params)) != CUBEB_OK) {
+    r = audio_stream_desc_init(&stm->input_desc, input_stream_params);
+    if (r != CUBEB_OK) {
       audiounit_stream_destroy(stm);
       return r;
     }
@@ -1015,7 +1023,8 @@ audiounit_stream_init(cubeb * context,
 
   /* Setup Output Stream! */
   if (output_stream_params != NULL) {
-    if ((r = audio_stream_desc_init(&stm->output_desc, output_stream_params)) != CUBEB_OK) {
+    r = audio_stream_desc_init(&stm->output_desc, output_stream_params);
+    if (r != CUBEB_OK) {
       audiounit_stream_destroy(stm);
       return r;
     }
@@ -1248,7 +1257,6 @@ audiounit_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
     };
 
     r = audiounit_get_output_device_id(&output_device_id);
-
     if (r != noErr) {
       pthread_mutex_unlock(&stm->mutex);
       return CUBEB_ERROR;
@@ -1611,7 +1619,8 @@ audiounit_create_device_from_hwdev(AudioObjectID devid, cubeb_device_type type)
     return NULL;
   }
 
-  if ((ch = audiounit_get_channel_count(devid, adr.mScope)) == 0) {
+  ch = audiounit_get_channel_count(devid, adr.mScope);
+  if (ch == 0) {
     return NULL;
   }
 
