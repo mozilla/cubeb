@@ -164,13 +164,13 @@ audiounit_input_callback(void * user_ptr,
   }
 
   /* Get next store buffer from ring array */
-  AudioBufferList * store_input_buffer_list = ring_array_store_buffer(&stm->input_buffer_list_array);
-  if (store_input_buffer_list == NULL) {
+  AudioBufferList * input_buffer_list = ring_array_get_next_free_buffer(&stm->input_buffer_list_array);
+  if (input_buffer_list == NULL) {
     LOG("input: Ring array is full drop one buffer\n");
-    ring_array_fetch_buffer(&stm->input_buffer_list_array);
+    ring_array_get_first_data_buffer(&stm->input_buffer_list_array);
 
-    store_input_buffer_list = ring_array_store_buffer(&stm->input_buffer_list_array);
-    assert(store_input_buffer_list);
+    input_buffer_list = ring_array_get_next_free_buffer(&stm->input_buffer_list_array);
+    assert(input_buffer_list);
   }
   /* Render input samples */
   OSStatus r = AudioUnitRender(stm->input_unit,
@@ -178,7 +178,7 @@ audiounit_input_callback(void * user_ptr,
                                tstamp,
                                bus,
                                input_frames,
-                               store_input_buffer_list);
+                               input_buffer_list);
   assert(r == noErr);
   LOG("- input:  buffers %d, size %d, channels %d, frames %d\n", store_input_buffer_list->mNumberBuffers,
       store_input_buffer_list->mBuffers[0].mDataByteSize, store_input_buffer_list->mBuffers[0].mNumberChannels, input_frames);
@@ -196,10 +196,10 @@ audiounit_input_callback(void * user_ptr,
   /* Input only. Call the user callback through resampler.
      Resampler will deliver input buffer in the correct rate. */
   frames = input_frames;
-  AudioBufferList * fetch_input_buffer_list = ring_array_fetch_buffer(&stm->input_buffer_list_array);
-  assert(fetch_input_buffer_list && "fetch buffer is null in the input");
+  input_buffer_list = ring_array_get_first_data_buffer(&stm->input_buffer_list_array);
+  assert(input_buffer_list && "fetch buffer is null in the input");
   outframes = cubeb_resampler_fill(stm->resampler,
-                                   fetch_input_buffer_list->mBuffers[0].mData,
+                                   input_buffer_list->mBuffers[0].mData,
                                    &frames,
                                    NULL,
                                    0);
@@ -265,7 +265,7 @@ audiounit_output_callback(void * user_ptr,
   /* Get output buffer. */
   output_buffer = outBufferList->mBuffers[0].mData;
   /* If Full duplex get also input buffer */
-  AudioBufferList * fetch_input_buffer_list = NULL;
+  AudioBufferList * input_buffer_list = NULL;
   if (stm->input_unit != NULL) {
     /* Output callback came first */
     if (stm->frames_read == 0) {
@@ -274,8 +274,8 @@ audiounit_output_callback(void * user_ptr,
       return noErr;
     }
     /* Input samples stored previously in input callback. */
-    fetch_input_buffer_list = ring_array_fetch_buffer(&stm->input_buffer_list_array);
-    if (fetch_input_buffer_list == NULL) {
+    input_buffer_list = ring_array_get_first_data_buffer(&stm->input_buffer_list_array);
+    if (input_buffer_list == NULL) {
       LOG("Requested more output than input. "
              "This is either a hole or we are after a stream stop and input thread stopped before output\n");
       /* Provide silent input. Other than that we could provide silent output and exit without
@@ -285,10 +285,10 @@ audiounit_output_callback(void * user_ptr,
 
       /* Avoid here to allocate new memory since we are inside callback. Use the existing
        * allocated buffers since the ring array is empty and the buffer is not used. */
-      fetch_input_buffer_list = &stm->input_buffer_list[0];
-      audiounit_make_silent(fetch_input_buffer_list);
+      input_buffer_list = &stm->input_buffer_list[0];
+      audiounit_make_silent(input_buffer_list);
     }
-    input_buffer = fetch_input_buffer_list->mBuffers[0].mData;
+    input_buffer = input_buffer_list->mBuffers[0].mData;
     input_frames = stm->input_buffer_frames;
     assert(stm->frames_read > 0);
   }
@@ -302,7 +302,7 @@ audiounit_output_callback(void * user_ptr,
 
   /* Cleanup the input buffer to make sure that we have fresh data. */
   if (input_buffer) {
-    audiounit_make_silent(fetch_input_buffer_list);
+    audiounit_make_silent(input_buffer_list);
   }
 
   if (outframes < 0) {

@@ -42,7 +42,7 @@ ring_array_init(ring_array * ra)
 }
 
 /** Set the allocated space to store the data.
-    This must be called before store/fetch.
+    This must be called after init and before the get operation buffer.
     @param ra The ring_array pointer.
     @param data Pointer to allocated space of buffers.
     @param index Index between 0 and capacity-1 to store the allocated data buffer. */
@@ -64,7 +64,7 @@ ring_array_destroy(ring_array * ra)
     @param ra The ring_array pointer.
     @retval Pointer of the allocated space to be stored with fresh data or NULL if full. */
 void *
-ring_array_store_buffer(ring_array * ra)
+ring_array_get_next_free_buffer(ring_array * ra)
 {
   assert(ra->pointer_array[0] != NULL);
   if (ra->count == (int)ra->capacity) {
@@ -84,7 +84,7 @@ ring_array_store_buffer(ring_array * ra)
     @param ra The ring_array pointer.
     @retval Pointer of the next in order data buffer or NULL if empty. */
 void *
-ring_array_fetch_buffer(ring_array * ra)
+ring_array_get_first_data_buffer(ring_array * ra)
 {
   assert(ra->pointer_array[0] != NULL);
 

@@ -18,37 +18,37 @@ int test_ring_array()
 
   /* Get store buffers*/
   for (int i = 0; i < RING_ARRAY_CAPACITY; ++i) {
-    p_data = ring_array_store_buffer(&ra);
+    p_data = ring_array_get_next_free_buffer(&ra);
     assert(p_data == &data[i]);
   }
   /*Now array is full extra store should give NULL*/
-  assert(NULL == ring_array_store_buffer(&ra));
+  assert(NULL == ring_array_get_next_free_buffer(&ra));
   /* Get fetch buffers*/
   for (int i = 0; i < RING_ARRAY_CAPACITY; ++i) {
-    p_data = ring_array_fetch_buffer(&ra);
+    p_data = ring_array_get_first_data_buffer(&ra);
     assert(p_data == &data[i]);
   }
   /*Now array is empty extra fetch should give NULL*/
-  assert(NULL == ring_array_fetch_buffer(&ra));
+  assert(NULL == ring_array_get_first_data_buffer(&ra));
 
   p_data = NULL;
   /* Repeated store fetch should can go for ever*/
   for (int i = 0; i < 2*RING_ARRAY_CAPACITY; ++i) {
-    p_data = ring_array_store_buffer(&ra);
+    p_data = ring_array_get_next_free_buffer(&ra);
     assert(p_data);
-    assert(ring_array_fetch_buffer(&ra) == p_data);
+    assert(ring_array_get_first_data_buffer(&ra) == p_data);
   }
 
   p_data = NULL;
   /* Verify/modify buffer data*/
   for (int i = 0; i < RING_ARRAY_CAPACITY; ++i) {
-    p_data = ring_array_store_buffer(&ra);
+    p_data = ring_array_get_next_free_buffer(&ra);
     assert(p_data);
     assert(*((int*)p_data) == data[i]);
     (*((int*)p_data))++; // Modify data
   }
   for (int i = 0; i < RING_ARRAY_CAPACITY; ++i) {
-    p_data = ring_array_fetch_buffer(&ra);
+    p_data = ring_array_get_first_data_buffer(&ra);
     assert(p_data);
     assert(*((int*)p_data) == i+1); // Verify modified data
   }
