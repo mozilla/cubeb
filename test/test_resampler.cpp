@@ -463,11 +463,87 @@ void test_delay_line()
   }
 }
 
+long test_output_only_noop_data_cb(cubeb_stream * stm, void * user_ptr,
+                                   const void * input_buffer,
+                                   void * output_buffer, long frame_count)
+{
+  assert(output_buffer);
+  assert(!input_buffer);
+  return frame_count;
+}
+
+void test_output_only_noop()
+{
+  cubeb_stream_params output_params;
+  int target_rate;
+
+  output_params.rate = 44100;
+  output_params.channels = 1;
+  output_params.format = CUBEB_SAMPLE_FLOAT32NE;
+  target_rate = output_params.rate;
+
+  cubeb_resampler * resampler =
+    cubeb_resampler_create((cubeb_stream*)nullptr, nullptr, &output_params, target_rate,
+                           test_output_only_noop_data_cb, nullptr,
+                           CUBEB_RESAMPLER_QUALITY_VOIP);
+
+  long out_frames = 128;
+  float out_buffer[out_frames];
+  long got;
+
+  got = cubeb_resampler_fill(resampler, nullptr, nullptr,
+                             out_buffer, out_frames);
+
+  cubeb_resampler_destroy(resampler);
+}
+
+long test_drain_data_cb(cubeb_stream * stm, void * user_ptr,
+                        const void * input_buffer,
+                        void * output_buffer, long frame_count)
+{
+  assert(output_buffer);
+  assert(!input_buffer);
+  return frame_count - 1;
+}
+
+void test_resampler_drain()
+{
+  cubeb_stream_params output_params;
+  int target_rate;
+
+  output_params.rate = 44100;
+  output_params.channels = 1;
+  output_params.format = CUBEB_SAMPLE_FLOAT32NE;
+  target_rate = 48000;
+
+  cubeb_resampler * resampler =
+    cubeb_resampler_create((cubeb_stream*)nullptr, nullptr, &output_params, target_rate,
+                           test_drain_data_cb, nullptr,
+                           CUBEB_RESAMPLER_QUALITY_VOIP);
+
+  long out_frames = 128;
+  float out_buffer[out_frames];
+  long got;
+
+  do {
+    got = cubeb_resampler_fill(resampler, nullptr, nullptr,
+                               out_buffer, out_frames);
+  } while (got == out_frames);
+
+  /* If the above is not an infinite loop, the drain was a success, just mark
+   * this test as such. */
+  assert(true);
+
+  cubeb_resampler_destroy(resampler);
+}
+
 int main()
 {
   test_resamplers_one_way();
   test_delay_line();
   test_resamplers_duplex();
+  test_output_only_noop();
+  test_resampler_drain();
 
   return 0;
 }
