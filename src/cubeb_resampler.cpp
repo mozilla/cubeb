@@ -166,7 +166,6 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>
   }
 
   return got;
-
 }
 
 template<typename T, typename InputProcessor, typename OutputProcessor>
@@ -297,6 +296,7 @@ cubeb_resampler_create(cubeb_stream * stream,
                                                     quality);
     default:
       assert(false);
+      return nullptr;
   }
 }
 
