@@ -302,7 +302,7 @@ audiounit_output_callback(void * user_ptr,
   /* Call user callback through resampler. */
   outframes = cubeb_resampler_fill(stm->resampler,
                                    input_buffer,
-                                   &input_frames,
+                                   input_buffer ? &input_frames : NULL,
                                    output_buffer,
                                    output_frames);
 
