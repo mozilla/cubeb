@@ -1,3 +1,5 @@
+#ifdef __APPLE__
+
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
@@ -74,3 +76,11 @@ int main()
   return 0;
 }
 
+#else
+
+int main()
+{
+  return 0;
+}
+
+#endif
