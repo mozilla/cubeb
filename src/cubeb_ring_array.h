@@ -16,13 +16,12 @@ extern "C" {
     asynchronous producer/consumer callbacks do not arrive in a
     repeated order the ring array stores the buffers and fetch
     them in the correct order. */
-#define RING_ARRAY_CAPACITY 8
 
 typedef struct {
-  AudioBuffer buffer_array[RING_ARRAY_CAPACITY];   /**< Array that hold pointers of the allocated space for the buffers. */
-  unsigned int tail;                          /**< Index of the last element (first to deliver). */
-  unsigned int count;                         /**< Number of elements in the array. */
-  unsigned int capacity;                      /**< Total length of the array. */
+  AudioBuffer * buffer_array;   /**< Array that hold pointers of the allocated space for the buffers. */
+  unsigned int tail;            /**< Index of the last element (first to deliver). */
+  unsigned int count;           /**< Number of elements in the array. */
+  unsigned int capacity;        /**< Total length of the array. */
 } ring_array;
 
 static int
@@ -51,15 +50,24 @@ single_audiobuffer_init(AudioBuffer * buffer,
     @retval 0 on success. */
 int
 ring_array_init(ring_array * ra,
+                uint32_t capacity,
                 uint32_t bytesPerFrame,
                 uint32_t channelsPerFrame,
                 uint32_t framesPerBuffer)
 {
   assert(ra);
-  ra->capacity = RING_ARRAY_CAPACITY;
+  if (capacity == 0 || bytesPerFrame == 0 ||
+      channelsPerFrame == 0 || framesPerBuffer == 0) {
+    return CUBEB_ERROR_INVALID_PARAMETER;
+  }
+  ra->capacity = capacity;
   ra->tail = 0;
   ra->count = 0;
-  memset(ra->buffer_array, 0, sizeof(ra->buffer_array));
+
+  ra->buffer_array = calloc(ra->capacity, sizeof(AudioBuffer));
+  if (ra->buffer_array == NULL) {
+    return CUBEB_ERROR;
+  }
 
   for (unsigned int i = 0; i < ra->capacity; ++i) {
     if (single_audiobuffer_init(&ra->buffer_array[i],
@@ -79,11 +87,15 @@ void
 ring_array_destroy(ring_array * ra)
 {
   assert(ra);
+  if (ra->buffer_array == NULL){
+    return;
+  }
   for (unsigned int i = 0; i < ra->capacity; ++i) {
     if (ra->buffer_array[i].mData) {
       free(ra->buffer_array[i].mData);
     }
   }
+  free(ra->buffer_array);
 }
 
 /** Get the allocated buffer to be stored with fresh data.
@@ -92,6 +104,7 @@ ring_array_destroy(ring_array * ra)
 AudioBuffer *
 ring_array_get_free_buffer(ring_array * ra)
 {
+  assert(ra && ra->buffer_array);
   assert(ra->buffer_array[0].mData != NULL);
   if (ra->count == ra->capacity) {
     return NULL;
@@ -112,6 +125,7 @@ ring_array_get_free_buffer(ring_array * ra)
 AudioBuffer *
 ring_array_get_data_buffer(ring_array * ra)
 {
+  assert(ra && ra->buffer_array);
   assert(ra->buffer_array[0].mData != NULL);
 
   if (ra->count == 0) {
@@ -134,6 +148,7 @@ ring_array_get_data_buffer(ring_array * ra)
 AudioBuffer *
 ring_array_get_dummy_buffer(ring_array * ra)
 {
+  assert(ra && ra->buffer_array);
   assert(ra->capacity > 0);
   if (ra->count > 0) {
     return NULL;

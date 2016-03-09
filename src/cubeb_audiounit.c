@@ -809,9 +809,10 @@ audiounit_create_unit(AudioUnit * unit,
 }
 
 static int
-audiounit_init_input_buffer_array(cubeb_stream * stream)
+audiounit_init_input_buffer_array(cubeb_stream * stream, uint32_t capacity)
 {
   int r = ring_array_init(&stream->input_buffer_array,
+                          capacity,
                           stream->input_desc.mBytesPerFrame,
                           stream->input_desc.mChannelsPerFrame,
                           stream->input_buffer_frames);
@@ -968,7 +969,13 @@ audiounit_stream_init(cubeb * context,
       return CUBEB_ERROR;
     }
 
-    if (audiounit_init_input_buffer_array(stm) != CUBEB_OK) {
+    // Input only capacity
+    unsigned int array_capacity = 1;
+    if (output_stream_params) {
+      // Full-duplex increase capacity
+      array_capacity = 8;
+    }
+    if (audiounit_init_input_buffer_array(stm, array_capacity) != CUBEB_OK) {
       audiounit_stream_destroy(stm);
       return CUBEB_ERROR;
     }
