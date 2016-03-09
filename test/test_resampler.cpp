@@ -1,5 +1,5 @@
 /*
- * Copyright © 2016 Mozilla Foundation
+ * Copyright Â© 2016 Mozilla Foundation
  *
  * This program is made available under an ISC-style license.  See the
  * accompanying file LICENSE for details.
@@ -8,9 +8,6 @@
 #define OUTSIDE_SPEEX
 #define RANDOM_PREFIX speex
 
-#include "cubeb/cubeb.h"
-#include "cubeb_utils.h"
-#include "cubeb_resampler.h"
 #include "cubeb_resampler_internal.h"
 #include <assert.h>
 #include <stdio.h>
@@ -312,9 +309,10 @@ bool array_fuzzy_equal(const auto_array<T>& lhs, const auto_array<T>& rhs, T eps
 
   for (uint32_t i = 0; i < len; i++) {
     if (abs(lhs.at(i) - rhs.at(i)) > epsi) {
-      std::cout << "not fuzzy equal at index " << i
-                << "lhs: " << lhs.at(i) <<  " rhs: " << rhs.at(i)
-                << "delta: " << abs(lhs.at(i) - rhs.at(i)) << std::endl;
+      std::cout << "not fuzzy equal at index: " << i
+                << " lhs: " << lhs.at(i) <<  " rhs: " << rhs.at(i)
+                << " delta: " << abs(lhs.at(i) - rhs.at(i))
+                << " epsilon: "<< epsi << std::endl;
       return false;
     }
   }
@@ -430,7 +428,7 @@ void test_resamplers_duplex()
         for (uint32_t source_rate_output = 0; source_rate_output < array_size(sample_rates); source_rate_output++) {
           for (uint32_t dest_rate = 0; dest_rate < array_size(sample_rates); dest_rate++) {
             for (uint32_t chunk_duration = min_chunks; chunk_duration < max_chunks; chunk_duration+=chunk_increment) {
-              printf("input chanenls:%d output_channels:%d input_rate:%d"
+              printf("input chanenls:%d output_channels:%d input_rate:%d "
                      "output_rate:%d target_rate:%d chunk_ms:%d\n",
                      input_channels, output_channels,
                      sample_rates[source_rate_input],
