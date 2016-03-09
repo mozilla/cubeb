@@ -810,18 +810,19 @@ audiounit_create_unit(AudioUnit * unit,
 }
 
 static int
-audiounit_buflst_init_single_buffer(AudioBuffer * buffer,
-                                    const AudioStreamBasicDescription * desc,
-                                    uint32_t frames)
+audiounit_init_audio_buffer(AudioBuffer * buffer,
+                            uint32_t bytesPerFrame,
+                            uint32_t channelsPerFrame,
+                            uint32_t frames)
 {
-  size_t size = desc->mBytesPerFrame * frames;
+  size_t size = bytesPerFrame * frames;
 
-  buffer->mData = malloc(size);
+  buffer->mData = calloc(1, size);
   if (buffer->mData == NULL) {
     return CUBEB_ERROR;
   }
 
-  buffer->mNumberChannels = desc->mChannelsPerFrame;
+  buffer->mNumberChannels = channelsPerFrame;
   buffer->mDataByteSize = size;
 
   return CUBEB_OK;
@@ -840,9 +841,10 @@ audiounit_init_input_buffer_array(cubeb_stream * stream)
   /* Set data to ring array. */
   for (int i = 0; i < RING_ARRAY_CAPACITY; ++i) {
     /* Allocate the data (AudioBufferList here). */
-    if (audiounit_buflst_init_single_buffer(&stream->input_buffer[i],
-                                            &src_desc,
-                                            stream->input_buffer_frames) != CUBEB_OK) {
+    if (audiounit_init_audio_buffer(&stream->input_buffer[i],
+                                    src_desc.mBytesPerFrame,
+                                    src_desc.mChannelsPerFrame,
+                                    stream->input_buffer_frames) != CUBEB_OK) {
       return CUBEB_ERROR;
     }
     /* Set the data in the array. */
