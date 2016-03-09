@@ -1635,8 +1635,7 @@ audiounit_create_device_from_hwdev(AudioObjectID devid, cubeb_device_type type)
   adr.mSelector = kAudioDevicePropertyDeviceUID;
   if (AudioObjectGetPropertyData(devid, &adr, 0, NULL, &size, &str) == noErr && str != NULL) {
     ret->device_id = audiounit_strref_to_cstr_utf8(str);
-    ret->devid = malloc(sizeof(UInt32));
-    memcpy(ret->devid, &devid, sizeof(UInt32));
+    ret->devid = (cubeb_devid)(size_t)devid;
     ret->group_id = strdup(ret->device_id);
     CFRelease(str);
   }
