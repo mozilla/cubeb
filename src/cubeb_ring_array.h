@@ -21,7 +21,7 @@ extern "C" {
 typedef struct {
   void* pointer_array[RING_ARRAY_CAPACITY];   /**< Array that hold pointers of the allocated space for the buffers. */
   unsigned int tail;                          /**< Index of the last element (first to deliver). */
-  int count;                                  /**< Number of elements in the array. */
+  unsigned int count;                         /**< Number of elements in the array. */
   unsigned int capacity;                      /**< Total length of the array. */
 } ring_array;
 
@@ -67,7 +67,7 @@ void *
 ring_array_get_next_free_buffer(ring_array * ra)
 {
   assert(ra->pointer_array[0] != NULL);
-  if (ra->count == (int)ra->capacity) {
+  if (ra->count == ra->capacity) {
     return NULL;
   }
 
@@ -75,7 +75,7 @@ ring_array_get_next_free_buffer(ring_array * ra)
   void * ret = ra->pointer_array[(ra->tail + ra->count) % ra->capacity];
 
   ++ra->count;
-  assert(ra->count <= (int)ra->capacity);
+  assert(ra->count <= ra->capacity);
 
   return ret;
 }
@@ -96,8 +96,8 @@ ring_array_get_first_data_buffer(ring_array * ra)
   ra->tail = (ra->tail + 1) % ra->capacity;
   assert(ra->tail < ra->capacity);
 
-  ra->count--;
-  assert(ra->count >= 0);
+  assert(ra->count > 0);
+  --ra->count;
 
   return ret;
 }
