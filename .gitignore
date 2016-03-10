@@ -63,3 +63,5 @@ include/cubeb/cubeb-stdint.h
 test-suite.log
 test/test_sanity.log
 test/test_sanity.trs
+test/test_ring_array
+test/test_ring_array.exe
