@@ -68,6 +68,8 @@ struct cubeb {
   pthread_mutex_t mutex;
   int active_streams;
   int limit_streams;
+  cubeb_device_collection_changed_callback collection_changed_callback;
+  void * collection_changed_user_ptr;
 };
 
 struct cubeb_stream {
@@ -1707,6 +1709,64 @@ audiounit_enumerate_devices(cubeb * context, cubeb_device_type type,
   return CUBEB_OK;
 }
 
+static OSStatus
+ausiounit_collectio_changed_callback(AudioObjectID inObjectID,
+                                     UInt32 inNumberAddresses,
+                                     const AudioObjectPropertyAddress * inAddresses,
+                                     void * inClientData)
+{
+  cubeb * context = inClientData;
+  pthread_mutex_lock(&context->mutex);
+  if (context->collection_changed_callback == NULL) {
+    /* Listener removed while waiting in mutex, abort. */
+    pthread_mutex_unlock(&context->mutex);
+    return noErr;
+  }
+  context->collection_changed_callback(context, context->collection_changed_user_ptr);
+  pthread_mutex_unlock(&context->mutex);
+  return noErr;
+}
+
+int audiounit_register_device_collection_changed(cubeb * context,
+                                                 cubeb_device_type devtype,
+                                                 cubeb_device_collection_changed_callback collection_changed_callback,
+                                                 void * user_ptr)
+{
+  AudioObjectPropertyAddress devAddr;
+  devAddr.mSelector = kAudioHardwarePropertyDevices;
+  devAddr.mScope = kAudioObjectPropertyScopeGlobal;
+  devAddr.mElement = kAudioObjectPropertyElementMaster;
+
+  OSStatus ret;
+  pthread_mutex_lock(&context->mutex);
+  if (collection_changed_callback) {
+    /* Note: second register without unregister first causes 'nope' error.
+     * Current implementation requires unregister before register a new cb. */
+    assert(context->collection_changed_callback == NULL);
+    ret = AudioObjectAddPropertyListener(kAudioObjectSystemObject,
+                                         &devAddr,
+                                         ausiounit_collectio_changed_callback,
+                                         context);
+  } else {
+    /* Note: unregister a non registered cb is not a problem, not checking. */
+    ret = AudioObjectRemovePropertyListener(kAudioObjectSystemObject,
+                                            &devAddr,
+                                            ausiounit_collectio_changed_callback,
+                                            context);
+
+  }
+
+  if (ret != noErr) {
+    pthread_mutex_unlock(&context->mutex);
+    return CUBEB_ERROR;
+  }
+
+  context->collection_changed_callback = collection_changed_callback;
+  context->collection_changed_user_ptr = user_ptr;
+  pthread_mutex_unlock(&context->mutex);
+  return CUBEB_OK;
+}
+
 static struct cubeb_ops const audiounit_ops = {
   .init = audiounit_init,
   .get_backend_id = audiounit_get_backend_id,
@@ -1726,5 +1786,5 @@ static struct cubeb_ops const audiounit_ops = {
   .stream_get_current_device = audiounit_stream_get_current_device,
   .stream_device_destroy = audiounit_stream_device_destroy,
   .stream_register_device_changed_callback = audiounit_stream_register_device_changed_callback,
-  .register_device_collection_changed = NULL
+  .register_device_collection_changed = audiounit_register_device_collection_changed
 };
