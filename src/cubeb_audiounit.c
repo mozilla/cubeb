@@ -1730,7 +1730,7 @@ audiounit_number_of_devices(cubeb_device_type devtype)
   }
 
   AudioObjectID devices[count];
-  ret = AudioObjectGetPropertyData(kAudioObjectSystemObject, &adr, 0, NULL, &size, (void *)&devices);
+  ret = AudioObjectGetPropertyData(kAudioObjectSystemObject, &adr, 0, NULL, &size, &devices);
   if (ret != noErr) {
     return 0;
   }
@@ -1742,7 +1742,7 @@ audiounit_number_of_devices(cubeb_device_type devtype)
   uint32_t dev_count = 0;
   for(uint32_t i = 0; i < count; ++i) {
     /* For device in the given scope channel must be > 0. */
-    dev_count += !!audiounit_get_channel_count(devices[i], scope);
+    dev_count += audiounit_get_channel_count(devices[i], scope) > 0;
   }
 
   return dev_count;
