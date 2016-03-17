@@ -467,8 +467,8 @@ cubeb_resampler_create_internal(cubeb_stream * stream,
   if (output_params && (output_params->rate != target_rate)) {
     output_resampler.reset(
         new cubeb_resampler_speex_one_way<T>(output_params->channels,
-                                             output_params->rate,
                                              target_rate,
+                                             output_params->rate,
                                              to_speex_quality(quality)));
     if (!output_resampler) {
       return NULL;
