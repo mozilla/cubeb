@@ -68,6 +68,10 @@ struct cubeb {
   pthread_mutex_t mutex;
   int active_streams;
   int limit_streams;
+  cubeb_device_collection_changed_callback collection_changed_callback;
+  void * collection_changed_user_ptr;
+  cubeb_device_type collection_changed_devtype;
+  uint32_t devtype_device_count;
 };
 
 struct cubeb_stream {
@@ -1707,6 +1711,125 @@ audiounit_enumerate_devices(cubeb * context, cubeb_device_type type,
   return CUBEB_OK;
 }
 
+static uint32_t
+audiounit_number_of_devices(cubeb_device_type devtype)
+{
+  AudioObjectPropertyAddress adr = { kAudioHardwarePropertyDevices,
+                                     kAudioObjectPropertyScopeGlobal,
+                                     kAudioObjectPropertyElementMaster };
+  UInt32 size = 0;
+  OSStatus ret = AudioObjectGetPropertyDataSize(kAudioObjectSystemObject, &adr, 0, NULL, &size);
+  if (ret != noErr) {
+    return 0;
+  }
+  /* Total number of input and output devices. */
+  uint32_t count = (uint32_t)(size / sizeof(AudioObjectID));
+
+  if (devtype == (CUBEB_DEVICE_TYPE_INPUT | CUBEB_DEVICE_TYPE_OUTPUT)) {
+    return count;
+  }
+
+  AudioObjectID devices[count];
+  ret = AudioObjectGetPropertyData(kAudioObjectSystemObject, &adr, 0, NULL, &size, &devices);
+  if (ret != noErr) {
+    return 0;
+  }
+
+  AudioObjectPropertyScope scope = (devtype == CUBEB_DEVICE_TYPE_INPUT) ?
+                                         kAudioObjectPropertyScopeInput :
+                                         kAudioObjectPropertyScopeOutput;
+
+  uint32_t dev_count = 0;
+  for(uint32_t i = 0; i < count; ++i) {
+    /* For device in the given scope channel must be > 0. */
+    dev_count += audiounit_get_channel_count(devices[i], scope) > 0;
+  }
+
+  return dev_count;
+}
+
+static OSStatus
+audiounit_collection_changed_callback(AudioObjectID inObjectID,
+                                      UInt32 inNumberAddresses,
+                                      const AudioObjectPropertyAddress * inAddresses,
+                                      void * inClientData)
+{
+  cubeb * context = inClientData;
+  pthread_mutex_lock(&context->mutex);
+  if (context->collection_changed_callback == NULL) {
+    /* Listener removed while waiting in mutex, abort. */
+    pthread_mutex_unlock(&context->mutex);
+    return noErr;
+  }
+
+  /* Differentiate input from output changes. */
+  if (context->collection_changed_devtype == CUBEB_DEVICE_TYPE_INPUT ||
+      context->collection_changed_devtype == CUBEB_DEVICE_TYPE_OUTPUT) {
+    uint32_t new_number_of_devices = audiounit_number_of_devices(context->collection_changed_devtype);
+    if (context->devtype_device_count == new_number_of_devices) {
+      /* Device changed for the other scope, ignore. */
+      pthread_mutex_unlock(&context->mutex);
+      return noErr;
+    }
+    /* Device on desired scope changed, reset counter. */
+    context->devtype_device_count = new_number_of_devices;
+  }
+
+  context->collection_changed_callback(context, context->collection_changed_user_ptr);
+  pthread_mutex_unlock(&context->mutex);
+  return noErr;
+}
+
+int audiounit_register_device_collection_changed(cubeb * context,
+                                                 cubeb_device_type devtype,
+                                                 cubeb_device_collection_changed_callback collection_changed_callback,
+                                                 void * user_ptr)
+{
+  AudioObjectPropertyAddress devAddr;
+  devAddr.mSelector = kAudioHardwarePropertyDevices;
+  devAddr.mScope = kAudioObjectPropertyScopeGlobal;
+  devAddr.mElement = kAudioObjectPropertyElementMaster;
+
+  OSStatus ret;
+  pthread_mutex_lock(&context->mutex);
+  if (collection_changed_callback) {
+    /* Note: second register without unregister first causes 'nope' error.
+     * Current implementation requires unregister before register a new cb. */
+    assert(context->collection_changed_callback == NULL);
+    ret = AudioObjectAddPropertyListener(kAudioObjectSystemObject,
+                                         &devAddr,
+                                         audiounit_collection_changed_callback,
+                                         context);
+  } else {
+    /* Note: unregister a non registered cb is not a problem, not checking. */
+    ret = AudioObjectRemovePropertyListener(kAudioObjectSystemObject,
+                                            &devAddr,
+                                            audiounit_collection_changed_callback,
+                                            context);
+  }
+
+  if (ret != noErr) {
+    pthread_mutex_unlock(&context->mutex);
+    return CUBEB_ERROR;
+  }
+
+  /* Listener works for input and output.
+   * When requested one of them we need to differentiate. */
+  if (devtype == CUBEB_DEVICE_TYPE_INPUT ||
+      devtype == CUBEB_DEVICE_TYPE_OUTPUT) {
+    /* Used to differentiate input from output changes inside cb. */
+    context->devtype_device_count = audiounit_number_of_devices(devtype);
+  } else {
+    /* For input && ouput it is not needed. */
+    context->devtype_device_count = 0;
+  }
+  context->collection_changed_devtype = devtype;
+  context->collection_changed_callback = collection_changed_callback;
+  context->collection_changed_user_ptr = user_ptr;
+  pthread_mutex_unlock(&context->mutex);
+  return CUBEB_OK;
+}
+
 static struct cubeb_ops const audiounit_ops = {
   .init = audiounit_init,
   .get_backend_id = audiounit_get_backend_id,
@@ -1726,5 +1849,5 @@ static struct cubeb_ops const audiounit_ops = {
   .stream_get_current_device = audiounit_stream_get_current_device,
   .stream_device_destroy = audiounit_stream_device_destroy,
   .stream_register_device_changed_callback = audiounit_stream_register_device_changed_callback,
-  .register_device_collection_changed = NULL
+  .register_device_collection_changed = audiounit_register_device_collection_changed
 };
