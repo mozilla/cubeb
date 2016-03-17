@@ -156,6 +156,7 @@ public:
   : processor(channels)
   , resampling_ratio(static_cast<float>(source_rate) / target_rate)
   , additional_latency(0)
+  , leftover_samples(0)
   {
     int r;
     speex_resampler = speex_resampler_init(channels, source_rate,
@@ -189,26 +190,7 @@ public:
 
   /** Outputs exactly `output_frame_count` into `output_buffer`.
     * `output_buffer` has to be at least `output_frame_count` long. */
-  void output(T * output_buffer, size_t output_frame_count)
-  {
-    uint32_t in_len = samples_to_frames(resampling_in_buffer.length());
-    uint32_t out_len = output_frame_count;
-
-    speex_resample(resampling_in_buffer.data(), &in_len,
-                   output_buffer, &out_len);
-
-    assert(out_len == output_frame_count);
-
-    /* This shifts back any unresampled samples to the beginning of the input
-       buffer. */
-    resampling_in_buffer.pop(nullptr, frames_to_samples(in_len));
-  }
-
-  /** Drains the resampler, trying to empty the input buffer, and returning the
-   * number of frames written to `output_buffer`, that can be less than
-   * `output_frame_count`. If the return value is equal to `output_frame_count`,
-   * it may be necessary to call `drain()` again to empty the resampler. */
-  size_t drain(T * output_buffer, size_t output_frame_count)
+  size_t output(T * output_buffer, size_t output_frame_count)
   {
     uint32_t in_len = samples_to_frames(resampling_in_buffer.length());
     uint32_t out_len = output_frame_count;
@@ -221,6 +203,12 @@ public:
     resampling_in_buffer.pop(nullptr, frames_to_samples(in_len));
 
     return out_len;
+  }
+
+  size_t output_for_input(uint32_t input_frames)
+  {
+    return ceilf(input_frames * resampling_ratio) + 1
+           - resampling_in_buffer.length() / channels;
   }
 
   /** Returns a buffer containing exactly `output_frame_count` resampled frames.
@@ -267,14 +255,8 @@ public:
    * number of output frames will be exactly equal. */
   uint32_t input_needed_for_output(uint32_t output_frame_count)
   {
-    return ceil(output_frame_count * resampling_ratio) + 1
-            - resampling_in_buffer.length() / channels;
-  }
-
-  /** Returns the number of frames that can be produced from `input_frames` frames. */
-  uint32_t output_for_input(uint32_t input_frames)
-  {
-    return (input_frames / resampling_ratio);
+    return ceilf(output_frame_count * resampling_ratio) + 1
+           - samples_to_frames(resampling_in_buffer.length());
   }
 
   /** Returns a pointer to the input buffer, that contains empty space for at
@@ -284,9 +266,18 @@ public:
    */
   T * input_buffer(size_t frame_count)
   {
-    size_t prev_length = resampling_in_buffer.length();
-    resampling_in_buffer.push_silence(frames_to_samples(frame_count));
-    return resampling_in_buffer.data() + prev_length;
+    leftover_samples = resampling_in_buffer.length();
+    resampling_in_buffer.reserve(leftover_samples +
+                                 frames_to_samples(frame_count));
+    return resampling_in_buffer.data() + leftover_samples;
+  }
+
+  /** This method works with `input_buffer`, and allows to inform the processor
+      how much frames have been written in the provided buffer. */
+  void written(size_t written_frames)
+  {
+    resampling_in_buffer.set_length(leftover_samples +
+                                    frames_to_samples(written_frames));
   }
 private:
   /** Wrapper for the speex resampling functions to have a typed
@@ -325,6 +316,9 @@ private:
   auto_array<T> resampling_out_buffer;
   /** Additional latency inserted into the pipeline for synchronisation. */
   uint32_t additional_latency;
+  /** When `input_buffer` is called, this allows tracking the number of samples
+      that where in the buffer. */
+  uint32_t leftover_samples;
 };
 
 /** This class allows delaying an audio stream by `frames` frames. */
@@ -337,6 +331,7 @@ public:
   delay_line(uint32_t frames, uint32_t channels)
     : processor(channels)
     , length(frames)
+    , leftover_samples(0)
   {
     /* Fill the delay line with some silent frames to add latency. */
     delay_input_buffer.push_silence(frames * channels);
@@ -354,13 +349,6 @@ public:
   void input(T * buffer, uint32_t frame_count)
   {
     delay_input_buffer.push(buffer, frames_to_samples(frame_count));
-  }
-  /** Pop some frames from the internal buffer.
-   * @parameter buffer the buffer in which the frames will be written.
-   * @parameter frames_needed the number of frame that will be written. */
-  void output(T * buffer, uint32_t frame_needed)
-  {
-    delay_input_buffer.pop(buffer, frames_to_samples(frame_needed));
   }
   /** Pop some frames from the internal buffer, into a internal output buffer.
    * @parameter frames_needed the number of frames to be returned.
@@ -386,15 +374,22 @@ public:
    * can be writen. */
   T * input_buffer(uint32_t frames_needed)
   {
-    size_t prev_length = delay_input_buffer.length();
-    delay_input_buffer.push_silence(frames_to_samples(frames_needed));
-    return delay_input_buffer.data() + prev_length;
+    leftover_samples = delay_input_buffer.length();
+    delay_input_buffer.reserve(leftover_samples + frames_to_samples(frames_needed));
+    return delay_input_buffer.data() + leftover_samples;
+  }
+  /** This method works with `input_buffer`, and allows to inform the processor
+      how much frames have been written in the provided buffer. */
+  void written(size_t frames_written)
+  {
+    delay_input_buffer.set_length(leftover_samples +
+                                  frames_to_samples(frames_written));
   }
   /** Drains the delay line, emptying the buffer.
    * @parameter output_buffer the buffer in which the frames are written.
    * @parameter frames_needed the maximum number of frames to write.
    * @return the actual number of frames written. */
-  size_t drain(T * output_buffer, uint32_t frames_needed)
+  size_t output(T * output_buffer, uint32_t frames_needed)
   {
     uint32_t in_len = samples_to_frames(delay_input_buffer.length());
     uint32_t out_len = frames_needed;
@@ -414,6 +409,7 @@ public:
   {
     return frames_needed;
   }
+  /** Returns the number of frames produces for `input_frames` frames in input */
   size_t output_for_input(uint32_t input_frames)
   {
     return input_frames;
@@ -427,6 +423,9 @@ public:
 private:
   /** The length, in frames, of this delay line */
   uint32_t length;
+  /** When `input_buffer` is called, this allows tracking the number of samples
+      that where in the buffer. */
+  uint32_t leftover_samples;
   /** The input buffer, where the delay is applied. */
   auto_array<T> delay_input_buffer;
   /** The output buffer. This is only ever used if using the ::output with a
@@ -468,8 +467,8 @@ cubeb_resampler_create_internal(cubeb_stream * stream,
   if (output_params && (output_params->rate != target_rate)) {
     output_resampler.reset(
         new cubeb_resampler_speex_one_way<T>(output_params->channels,
-                                             target_rate,
                                              output_params->rate,
+                                             target_rate,
                                              to_speex_quality(quality)));
     if (!output_resampler) {
       return NULL;
