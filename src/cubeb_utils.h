@@ -1,5 +1,5 @@
 /*
- * Copyright © 2016 Mozilla Foundation
+ * Copyright Â© 2016 Mozilla Foundation
  *
  * This program is made available under an ISC-style license.  See the
  * accompanying file LICENSE for details.
@@ -158,6 +158,12 @@ public:
     length_ -= length;
 
     return true;
+  }
+
+  void set_length(size_t length)
+  {
+    assert(length <= capacity_);
+    length_ = length;
   }
 
 private:

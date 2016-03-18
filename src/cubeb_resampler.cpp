@@ -4,6 +4,7 @@
  * This program is made available under an ISC-style license.  See the
  * accompanying file LICENSE for details.
  */
+#include <algorithm>
 #include <cmath>
 #include <cassert>
 #include <cstring>
@@ -66,7 +67,6 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>
   , stream(s)
   , data_callback(cb)
   , user_ptr(ptr)
-  , draining(false)
 {
   if (input_processor && output_processor) {
     // Add some delay on the processor that has the lowest delay so that the
@@ -134,17 +134,12 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>
 
   }
 
+  output_processor->written(got);
+
+
   /* Process the output. If not enough frames have been returned from the
   * callback, drain the processors. */
-  if (got != output_frames_before_processing || draining) {
-    draining = true;
-    got = output_processor->drain(output_buffer, output_frames_needed);
-  } else {
-    output_processor->output(output_buffer, output_frames_needed);
-    got = output_frames_needed;
-  }
-
-  return got;
+  return output_processor->output(output_buffer, output_frames_needed);
 }
 
 template<typename T, typename InputProcessor, typename OutputProcessor>
@@ -199,40 +194,31 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>
    * get the output data, and resample it to the number of frames needed by the
    * caller. */
 
-  if (!draining) {
-     output_frames_before_processing =
-       output_processor->input_needed_for_output(output_frames_needed);
-     /* fill directly the input buffer of the output processor to save a copy */
-     out_unprocessed =
-       output_processor->input_buffer(output_frames_before_processing);
+  output_frames_before_processing =
+    output_processor->input_needed_for_output(output_frames_needed);
+   /* fill directly the input buffer of the output processor to save a copy */
+  out_unprocessed =
+    output_processor->input_buffer(output_frames_before_processing);
 
-     if (in_buffer) {
-       /* process the input, and present exactly `output_frames_needed` in the
-       * callback. */
-       input_processor->input(in_buffer, *input_frames_count);
-       resampled_input =
-         input_processor->output(output_frames_before_processing);
-     } else {
-       resampled_input = nullptr;
-     }
+  if (in_buffer) {
+    /* process the input, and present exactly `output_frames_needed` in the
+    * callback. */
+    input_processor->input(in_buffer, *input_frames_count);
+    resampled_input =
+      input_processor->output(output_frames_before_processing);
+  } else {
+    resampled_input = nullptr;
+  }
 
-     got = data_callback(stream, user_ptr,
-                         resampled_input, out_unprocessed,
-                         output_frames_before_processing);
-   }
+  got = data_callback(stream, user_ptr,
+                      resampled_input, out_unprocessed,
+                      output_frames_before_processing);
 
+  output_processor->written(got);
 
   /* Process the output. If not enough frames have been returned from the
    * callback, drain the processors. */
-  if (got != output_frames_before_processing || draining) {
-    draining = true;
-    got = output_processor->drain(out_buffer, output_frames_needed);
-  } else {
-    output_processor->output(out_buffer, output_frames_needed);
-    got = output_frames_needed;
-  }
-
-  return got;
+  return output_processor->output(out_buffer, output_frames_needed);
 }
 
 /* Resampler C API */

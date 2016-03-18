@@ -144,6 +144,7 @@ void test_delay_lines(uint32_t delay_frames, uint32_t channels, uint32_t chunk_m
     uint32_t to_pop = std::min<uint32_t>(input.length(), chunk_length * channels);
     float * in = delay.input_buffer(to_pop / channels);
     input.pop(in, to_pop);
+    delay.written(to_pop / channels);
     output.push_silence(to_pop);
     delay.output(output.data() + output_offset, to_pop / channels);
     output_offset += to_pop;
