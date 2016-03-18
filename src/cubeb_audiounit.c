@@ -1728,7 +1728,7 @@ int compare_devid(const void * a, const void * b)
 }
 
 static uint32_t
-audiounit_number_of_devices(cubeb_device_type devtype, AudioObjectID ** devid_array)
+audiounit_get_devices_of_type(cubeb_device_type devtype, AudioObjectID ** devid_array)
 {
   assert(devid_array == NULL || *devid_array == NULL);
 
@@ -1812,7 +1812,8 @@ audiounit_collection_changed_callback(AudioObjectID inObjectID,
   if (context->collection_changed_devtype == CUBEB_DEVICE_TYPE_INPUT ||
       context->collection_changed_devtype == CUBEB_DEVICE_TYPE_OUTPUT) {
     AudioObjectID * devices = NULL;
-    uint32_t new_number_of_devices = audiounit_number_of_devices(context->collection_changed_devtype, &devices);
+    uint32_t new_number_of_devices = audiounit_get_devices_of_type(context->collection_changed_devtype, &devices);
+    /* When count is the same examine the devid for the case of coalescing. */
     if (context->devtype_device_count == new_number_of_devices &&
         audiounit_equal_arrays(devices, context->devtype_device_array, new_number_of_devices)) {
       /* Device changed for the other scope, ignore. */
@@ -1864,8 +1865,8 @@ int audiounit_register_device_collection_changed(cubeb * context,
      * When requested one of them we need to differentiate. */
     if (devtype == CUBEB_DEVICE_TYPE_INPUT ||
         devtype == CUBEB_DEVICE_TYPE_OUTPUT) {
-      /* Used to differentiate input from output changes inside cb. */
-      context->devtype_device_count = audiounit_number_of_devices(devtype, &context->devtype_device_array);
+      /* Used to differentiate input from output device changes. */
+      context->devtype_device_count = audiounit_get_devices_of_type(devtype, &context->devtype_device_array);
     }
     context->collection_changed_devtype = devtype;
     context->collection_changed_callback = collection_changed_callback;
