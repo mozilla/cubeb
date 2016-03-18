@@ -701,10 +701,8 @@ audiounit_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
   return CUBEB_OK;
 }
 
-int audiounit_register_device_collection_changed(cubeb * context,
-                                                 cubeb_device_type devtype,
-                                                 cubeb_device_collection_changed_callback collection_changed_callback,
-                                                 void * user_ptr);
+static OSStatus audiounit_remove_device_listener(cubeb * context);
+
 static void
 audiounit_destroy(cubeb * ctx)
 {
@@ -713,8 +711,9 @@ audiounit_destroy(cubeb * ctx)
 
   /* Unregister the callback if necessary. */
   if(ctx->collection_changed_callback) {
-    audiounit_register_device_collection_changed(ctx, ctx->collection_changed_devtype,
-                                                 NULL, NULL);
+    pthread_mutex_lock(&ctx->mutex);
+    audiounit_remove_device_listener(ctx);
+    pthread_mutex_unlock(&ctx->mutex);
   }
 
   int r = pthread_mutex_destroy(&ctx->mutex);
@@ -1833,31 +1832,26 @@ audiounit_collection_changed_callback(AudioObjectID inObjectID,
   return noErr;
 }
 
-int audiounit_register_device_collection_changed(cubeb * context,
-                                                 cubeb_device_type devtype,
-                                                 cubeb_device_collection_changed_callback collection_changed_callback,
-                                                 void * user_ptr)
+static OSStatus
+audiounit_add_device_listener(cubeb * context,
+                              cubeb_device_type devtype,
+                              cubeb_device_collection_changed_callback collection_changed_callback,
+                              void * user_ptr)
 {
+  /* Note: second register without unregister first causes 'nope' error.
+   * Current implementation requires unregister before register a new cb. */
+  assert(context->collection_changed_callback == NULL);
+
   AudioObjectPropertyAddress devAddr;
   devAddr.mSelector = kAudioHardwarePropertyDevices;
   devAddr.mScope = kAudioObjectPropertyScopeGlobal;
   devAddr.mElement = kAudioObjectPropertyElementMaster;
 
-  OSStatus ret;
-  pthread_mutex_lock(&context->mutex);
-  if (collection_changed_callback) {
-    /* Note: second register without unregister first causes 'nope' error.
-     * Current implementation requires unregister before register a new cb. */
-    assert(context->collection_changed_callback == NULL);
-    ret = AudioObjectAddPropertyListener(kAudioObjectSystemObject,
-                                         &devAddr,
-                                         audiounit_collection_changed_callback,
-                                         context);
-    if (ret != noErr) {
-      pthread_mutex_unlock(&context->mutex);
-      return CUBEB_ERROR;
-    }
-
+  OSStatus ret = AudioObjectAddPropertyListener(kAudioObjectSystemObject,
+                                                &devAddr,
+                                                audiounit_collection_changed_callback,
+                                                context);
+  if (ret == noErr) {
     /* Expected zero after unregister. */
     assert(context->devtype_device_count == 0);
     assert(context->devtype_device_array == NULL);
@@ -1871,17 +1865,24 @@ int audiounit_register_device_collection_changed(cubeb * context,
     context->collection_changed_devtype = devtype;
     context->collection_changed_callback = collection_changed_callback;
     context->collection_changed_user_ptr = user_ptr;
-  } else {
-    /* Note: unregister a non registered cb is not a problem, not checking. */
-    ret = AudioObjectRemovePropertyListener(kAudioObjectSystemObject,
-                                            &devAddr,
-                                            audiounit_collection_changed_callback,
-                                            context);
-    if (ret != noErr) {
-      pthread_mutex_unlock(&context->mutex);
-      return CUBEB_ERROR;
-    }
+  }
+  return ret;
+}
 
+static OSStatus
+audiounit_remove_device_listener(cubeb * context)
+{
+  AudioObjectPropertyAddress devAddr;
+  devAddr.mSelector = kAudioHardwarePropertyDevices;
+  devAddr.mScope = kAudioObjectPropertyScopeGlobal;
+  devAddr.mElement = kAudioObjectPropertyElementMaster;
+
+  /* Note: unregister a non registered cb is not a problem, not checking. */
+  OSStatus ret = AudioObjectRemovePropertyListener(kAudioObjectSystemObject,
+                                                   &devAddr,
+                                                   audiounit_collection_changed_callback,
+                                                   context);
+  if (ret == noErr) {
     /* Reset all values. */
     context->collection_changed_devtype = 0;
     context->collection_changed_callback = NULL;
@@ -1892,9 +1893,25 @@ int audiounit_register_device_collection_changed(cubeb * context,
       context->devtype_device_array = NULL;
     }
   }
+  return ret;
+}
 
+int audiounit_register_device_collection_changed(cubeb * context,
+                                                 cubeb_device_type devtype,
+                                                 cubeb_device_collection_changed_callback collection_changed_callback,
+                                                 void * user_ptr)
+{
+  OSStatus ret;
+  pthread_mutex_lock(&context->mutex);
+  if (collection_changed_callback) {
+    ret = audiounit_add_device_listener(context, devtype,
+                                        collection_changed_callback,
+                                        user_ptr);
+  } else {
+    ret = audiounit_remove_device_listener(context);
+  }
   pthread_mutex_unlock(&context->mutex);
-  return CUBEB_OK;
+  return (ret == noErr) ? CUBEB_OK : CUBEB_ERROR;
 }
 
 static struct cubeb_ops const audiounit_ops = {
