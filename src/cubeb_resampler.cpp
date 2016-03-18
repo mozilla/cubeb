@@ -207,12 +207,12 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>
     resampled_input =
       input_processor->output(output_frames_before_processing);
   } else {
-   resampled_input = nullptr;
+    resampled_input = nullptr;
   }
 
   got = data_callback(stream, user_ptr,
-                     resampled_input, out_unprocessed,
-                     output_frames_before_processing);
+                      resampled_input, out_unprocessed,
+                      output_frames_before_processing);
 
   output_processor->written(got);
 
