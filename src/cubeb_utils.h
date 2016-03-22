@@ -37,7 +37,7 @@ template<typename T>
 class auto_array
 {
 public:
-  auto_array(uint32_t capacity = 0)
+  explicit auto_array(uint32_t capacity = 0)
     : data_(capacity ? new T[capacity] : nullptr)
     , capacity_(capacity)
     , length_(0)
