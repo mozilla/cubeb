@@ -67,7 +67,7 @@ private:
 /** Base class for processors. This is just used to share methods for now. */
 class processor {
 public:
-  processor(uint32_t channels)
+  explicit processor(uint32_t channels)
     : channels(channels)
   {}
 protected:
