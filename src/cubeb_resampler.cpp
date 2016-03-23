@@ -39,7 +39,7 @@ long noop_resampler::fill(void * input_buffer, long * input_frames_count,
 {
   assert(input_buffer && output_buffer &&
          *input_frames_count >= output_frames ||
-         !input_buffer && !input_frames_count ||
+         !input_buffer && (!input_frames_count || *input_frames_count == 0) ||
          !output_buffer && output_frames == 0);
 
   if (output_buffer == nullptr) {
@@ -112,7 +112,7 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>
 ::fill_internal_output(T * input_buffer, long * input_frames_count,
                        T * output_buffer, long output_frames_needed)
 {
-  assert(!input_buffer && !input_frames_count &&
+  assert(!input_buffer && (!input_frames_count || *input_frames_count == 0) &&
          output_buffer && output_frames_needed);
 
   long got = 0;
