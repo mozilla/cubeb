@@ -622,6 +622,7 @@ bool get_input_buffer(cubeb_stream * stm)
       LOG("FAILED to release intput buffer");
       return false;
     }
+    offset += packet_size * input_channel_count;
   }
 
   assert(stm->linear_input_buffer.length() == total_available_input);
