@@ -1635,6 +1635,7 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
     return CUBEB_ERROR;
   }
 
+  /* Unconditionally create the two events so that the wait logic is simpler. */
   stm->refill_event = CreateEvent(NULL, 0, 0, NULL);
   if (!stm->refill_event) {
     LOG("Can't create the refill event, error: %x\n", GetLastError());
@@ -1642,14 +1643,13 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
     return CUBEB_ERROR;
   }
 
-  if (input_stream_params) {
-    stm->input_available_event = CreateEvent(NULL, 0, 0, NULL);
-    if (!stm->input_available_event) {
-      LOG("Can't create the input available event , error: %x\n", GetLastError());
-      wasapi_stream_destroy(stm);
-      return CUBEB_ERROR;
-    }
+  stm->input_available_event = CreateEvent(NULL, 0, 0, NULL);
+  if (!stm->input_available_event) {
+    LOG("Can't create the input available event , error: %x\n", GetLastError());
+    wasapi_stream_destroy(stm);
+    return CUBEB_ERROR;
   }
+
 
   {
     /* Locking here is not strictly necessary, because we don't have a
