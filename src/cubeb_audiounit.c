@@ -41,6 +41,10 @@
 #define AudioComponentInstanceDispose CloseComponent
 #endif
 
+#if MAC_OS_X_VERSION_MIN_REQUIRED < 1080
+typedef UInt32  AudioFormatFlags;
+#endif
+
 #define CUBEB_STREAM_MAX 8
 
 #define AU_OUT_BUS    0
@@ -1740,8 +1744,8 @@ audiounit_get_devices_of_type(cubeb_device_type devtype, AudioObjectID ** devid_
   assert(devid_array == NULL || *devid_array == NULL);
 
   AudioObjectPropertyAddress adr = { kAudioHardwarePropertyDevices,
-                                     kAudioObjectPropertyScopeGlobal,
-                                     kAudioObjectPropertyElementMaster };
+                                     kAudioDevicePropertyScopeInput,
+                                     kAudioDevicePropertyScopeOutput };
   UInt32 size = 0;
   OSStatus ret = AudioObjectGetPropertyDataSize(kAudioObjectSystemObject, &adr, 0, NULL, &size);
   if (ret != noErr) {
