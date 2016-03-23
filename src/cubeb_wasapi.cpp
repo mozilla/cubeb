@@ -1535,8 +1535,8 @@ int setup_wasapi_stream(cubeb_stream * stm)
    * the highest sample rate available. */
   int32_t target_sample_rate;
   if (has_input(stm) && has_output(stm)) {
-    target_sample_rate = std::max(stm->input_stream_params.rate,
-                                  stm->output_stream_params.rate);
+    assert(stm->input_stream_params.rate == stm->output_stream_params.rate);
+    target_sample_rate = stm->input_stream_params.rate;
   }  else if (has_input(stm)) {
     target_sample_rate = stm->input_stream_params.rate;
   } else {
@@ -1548,10 +1548,15 @@ int setup_wasapi_stream(cubeb_stream * stm)
    and copy it over, so we are always resampling the number
    of channels of the stream, not the number of channels
    that WASAPI wants. */
+  cubeb_stream_params input_params = stm->input_mix_params;
+  input_params.channels = stm->input_stream_params.channels;
+  cubeb_stream_params output_params = stm->output_mix_params;
+  output_params.channels = stm->output_stream_params.channels;
+
   stm->resampler =
     cubeb_resampler_create(stm,
-                           has_input(stm) ? &stm->input_mix_params : nullptr,
-                           has_output(stm) ? &stm->output_mix_params : nullptr,
+                           has_input(stm) ? &input_params : nullptr,
+                           has_output(stm) ? &output_params : nullptr,
                            target_sample_rate,
                            stm->data_callback,
                            stm->user_ptr,
