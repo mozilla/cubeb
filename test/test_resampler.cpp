@@ -5,9 +5,6 @@
  * accompanying file LICENSE for details.
  */
 
-#define OUTSIDE_SPEEX
-#define RANDOM_PREFIX speex
-
 #include "cubeb_resampler_internal.h"
 #include <assert.h>
 #include <stdio.h>
@@ -345,7 +342,6 @@ void test_resampler_duplex(uint32_t input_channels, uint32_t output_channels,
 
   const uint32_t duration_s = 2;
   int32_t duration_frames = duration_s * target_rate;
-  uint32_t resampled_chunk_frame_count = chunk_duration * target_rate / 1000;
   uint32_t input_array_frame_count = ceil(chunk_duration * input_rate / 1000) + ceilf(static_cast<float>(input_rate) / target_rate) * 2;
   uint32_t output_array_frame_count = chunk_duration * output_rate / 1000;
   auto_array<float> input_buffer(input_channels * input_array_frame_count);
@@ -486,12 +482,14 @@ void test_output_only_noop()
                            test_output_only_noop_data_cb, nullptr,
                            CUBEB_RESAMPLER_QUALITY_VOIP);
 
-  long out_frames = 128;
+  const long out_frames = 128;
   float out_buffer[out_frames];
   long got;
 
   got = cubeb_resampler_fill(resampler, nullptr, nullptr,
                              out_buffer, out_frames);
+
+  assert(got == out_frames);
 
   cubeb_resampler_destroy(resampler);
 }
@@ -520,7 +518,7 @@ void test_resampler_drain()
                            test_drain_data_cb, nullptr,
                            CUBEB_RESAMPLER_QUALITY_VOIP);
 
-  long out_frames = 128;
+  const long out_frames = 128;
   float out_buffer[out_frames];
   long got;
 
