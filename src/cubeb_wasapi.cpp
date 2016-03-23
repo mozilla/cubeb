@@ -871,6 +871,7 @@ wasapi_stream_render_loop(LPVOID stream)
     case WAIT_OBJECT_0 + 3: /* input available */
       if (has_input(stm) && has_output(stm)) { continue; }
       is_playing = stm->refill_callback(stm);
+      break;
     case WAIT_TIMEOUT:
       XASSERT(stm->shutdown_event == wait_array[0]);
       if (++timeout_count >= timeout_limit) {
