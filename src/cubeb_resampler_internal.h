@@ -129,7 +129,6 @@ private:
   cubeb_stream * const stream;
   const cubeb_data_callback data_callback;
   void * const user_ptr;
-  bool draining;
 };
 
 /** Handles one way of a (possibly) duplex resampler, working on interleaved

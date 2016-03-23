@@ -120,22 +120,18 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>
   long output_frames_before_processing = 0;
 
 
-  if (!draining) {
-    /* fill directly the input buffer of the output processor to save a copy */
-    output_frames_before_processing =
-      output_processor->input_needed_for_output(output_frames_needed);
+  /* fill directly the input buffer of the output processor to save a copy */
+  output_frames_before_processing =
+    output_processor->input_needed_for_output(output_frames_needed);
 
-    out_unprocessed =
-      output_processor->input_buffer(output_frames_before_processing);
+  out_unprocessed =
+    output_processor->input_buffer(output_frames_before_processing);
 
-    got = data_callback(stream, user_ptr,
-                        nullptr, out_unprocessed,
-                        output_frames_before_processing);
-
-  }
+  got = data_callback(stream, user_ptr,
+                      nullptr, out_unprocessed,
+                      output_frames_before_processing);
 
   output_processor->written(got);
-
 
   /* Process the output. If not enough frames have been returned from the
   * callback, drain the processors. */
