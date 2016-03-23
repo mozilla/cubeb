@@ -649,8 +649,9 @@ bool get_output_buffer(cubeb_stream * stm, float *& buffer, size_t & frame_count
   if (stm->draining) {
     if (padding_out == 0) {
       stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
+      return false;
     }
-    return false;
+    return true;
   }
 
   frame_count = stm->output_buffer_frame_count - padding_out;
@@ -751,6 +752,10 @@ refill_callback_output(cubeb_stream * stm)
   if (!rv) {
     return rv;
   }
+  if (stm->draining || output_frames == 0) {
+    return true;
+  }
+
 
   long got = refill(stm,
                     nullptr,
@@ -764,7 +769,7 @@ refill_callback_output(cubeb_stream * stm)
     return false;
   }
 
-  return got == output_frames;
+  return got == output_frames || stm->draining;
 }
 
 static unsigned int __stdcall
