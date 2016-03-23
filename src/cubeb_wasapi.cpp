@@ -697,6 +697,11 @@ refill_callback_duplex(cubeb_stream * stm)
     return true;
   }
 
+  // When WASAPI has not filled the input buffer yet, send silence.
+  if (stm->linear_input_buffer.length() == 0) {
+    stm->linear_input_buffer.push_silence(output_frames* stm->output_mix_params.channels);
+  }
+
   refill(stm,
          stm->linear_input_buffer.data(),
          stm->linear_input_buffer.length(),
