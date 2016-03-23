@@ -244,11 +244,12 @@ audiounit_output_callback(void * user_ptr,
   assert(AU_OUT_BUS == bus);
   assert(outBufferList->mNumberBuffers == 1);
 
-  LOG("- output: buffers %d, size %d, channels %d, frames %d\n",
+  cubeb_stream * stm = user_ptr;
+
+  LOG("- output(%p): buffers %d, size %d, channels %d, frames %d\n", stm,
       outBufferList->mNumberBuffers, outBufferList->mBuffers[0].mDataByteSize,
       outBufferList->mBuffers[0].mNumberChannels, output_frames);
 
-  cubeb_stream * stm = user_ptr;
   long outframes = 0, input_frames = 0;
   void * output_buffer = NULL, * input_buffer = NULL;
 
@@ -280,6 +281,7 @@ audiounit_output_callback(void * user_ptr,
   if (stm->input_unit != NULL) {
     /* Output callback came first */
     if (stm->frames_read == 0) {
+      LOG("Output callback came first send silent.\n");
       audiounit_make_silent(&outBufferList->mBuffers[0]);
       pthread_mutex_unlock(&stm->mutex);
       return noErr;
@@ -876,6 +878,7 @@ audiounit_stream_init(cubeb * context,
                               input_stream_params,
                               input_device);
     if (r != CUBEB_OK) {
+      LOG("Create input stream failed\n");
       return r;
     }
   }
@@ -885,6 +888,7 @@ audiounit_stream_init(cubeb * context,
                               output_stream_params,
                               output_device);
     if (r != CUBEB_OK) {
+      LOG("Create output stream failed\n");
       return r;
     }
   }
@@ -1005,6 +1009,7 @@ audiounit_stream_init(cubeb * context,
       audiounit_stream_destroy(stm);
       return CUBEB_ERROR;
     }
+    LOG("Input audiounit init successfully.\n");
   }
 
   /* Setup Output Stream! */
@@ -1037,6 +1042,7 @@ audiounit_stream_init(cubeb * context,
       audiounit_stream_destroy(stm);
       return CUBEB_ERROR;
     }
+    LOG("Output audiounit init successfully.\n");
   }
 
   // Setting the latency doesn't work well for USB headsets (eg. plantronics).
@@ -1113,7 +1119,7 @@ audiounit_stream_init(cubeb * context,
                                           stm->user_ptr,
                                           CUBEB_RESAMPLER_QUALITY_DESKTOP);
   if (!stm->resampler) {
-    LOG("Could not get a resampler\n");
+    LOG("Could not create resampler\n");
     audiounit_stream_destroy(stm);
     return CUBEB_ERROR;
   }
@@ -1136,7 +1142,7 @@ audiounit_stream_init(cubeb * context,
    * even if we can't detect device changes. */
   audiounit_install_device_changed_callback(stm);
 #endif
-
+  LOG("Cubeb stream init successfully.\n");
   return CUBEB_OK;
 }
 
@@ -1189,6 +1195,7 @@ audiounit_stream_start(cubeb_stream * stm)
     assert(r == 0);
   }
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STARTED);
+  LOG("Cubeb stream (%p) started successfully.\n", stm);
   return CUBEB_OK;
 }
 
@@ -1205,6 +1212,7 @@ audiounit_stream_stop(cubeb_stream * stm)
     assert(r == 0);
   }
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STOPPED);
+  LOG("Cubeb stream (%p) stopped successfully.\n", stm);
   return CUBEB_OK;
 }
 
