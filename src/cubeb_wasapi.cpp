@@ -507,7 +507,7 @@ frames_to_bytes_before_mix(cubeb_stream * stm, size_t frames)
 }
 
 /* This function handles the processing of the input and output audio,
- * converting it to rate and channel layout specified at initialization. 
+ * converting it to rate and channel layout specified at initialization.
  * It then calls the data callback, via the resampler. */
 long
 refill(cubeb_stream * stm, float * input_buffer, long input_frames_count,
