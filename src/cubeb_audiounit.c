@@ -340,7 +340,7 @@ audiounit_output_callback(void * user_ptr,
   /* Post process output samples. */
   if (stm->draining) {
     /* Clear missing frames (silence) */
-    memset(output_buffer + outframes * outbpf, 0, (output_frames - outframes) * outbpf);
+    memset((uint8_t*)output_buffer + outframes * outbpf, 0, (output_frames - outframes) * outbpf);
   }
   /* Pan stereo. */
   if (panning != 0.0f) {
