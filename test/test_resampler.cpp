@@ -502,7 +502,7 @@ long test_drain_data_cb(cubeb_stream * stm, void * user_ptr,
 {
   assert(output_buffer);
   assert(!input_buffer);
-  return frame_count - 1;
+  return frame_count - 10;
 }
 
 void test_resampler_drain()
