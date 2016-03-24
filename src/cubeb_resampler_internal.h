@@ -448,7 +448,7 @@ cubeb_resampler_create_internal(cubeb_stream * stream,
   std::unique_ptr<delay_line<T>> input_delay = nullptr;
   std::unique_ptr<delay_line<T>> output_delay = nullptr;
 
-  assert(input_params || output_params &&
+  assert((input_params || output_params) &&
          "need at least one valid parameter pointer.");
 
   /* All the streams we have have a sample rate that matches the target
