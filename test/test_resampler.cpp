@@ -8,7 +8,9 @@
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
+#ifndef CUBEB_GECKO_BUILD
 #include "config.h"
+#endif
 #include "cubeb_resampler_internal.h"
 #include <assert.h>
 #include <stdio.h>
