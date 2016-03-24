@@ -1744,8 +1744,8 @@ audiounit_get_devices_of_type(cubeb_device_type devtype, AudioObjectID ** devid_
   assert(devid_array == NULL || *devid_array == NULL);
 
   AudioObjectPropertyAddress adr = { kAudioHardwarePropertyDevices,
-                                     kAudioDevicePropertyScopeInput,
-                                     kAudioDevicePropertyScopeOutput };
+                                     kAudioObjectPropertyScopeGlobal,
+                                     kAudioObjectPropertyElementMaster };
   UInt32 size = 0;
   OSStatus ret = AudioObjectGetPropertyDataSize(kAudioObjectSystemObject, &adr, 0, NULL, &size);
   if (ret != noErr) {
@@ -1772,8 +1772,8 @@ audiounit_get_devices_of_type(cubeb_device_type devtype, AudioObjectID ** devid_
   }
 
   AudioObjectPropertyScope scope = (devtype == CUBEB_DEVICE_TYPE_INPUT) ?
-                                         kAudioObjectPropertyScopeInput :
-                                         kAudioObjectPropertyScopeOutput;
+                                         kAudioDevicePropertyScopeInput :
+                                         kAudioDevicePropertyScopeOutput;
 
   uint32_t dev_count = 0;
   AudioObjectID devices_in_scope[count];
