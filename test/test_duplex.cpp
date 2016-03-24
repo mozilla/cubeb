@@ -50,7 +50,7 @@ long data_cb(cubeb_stream *stream, void *user, const void * inputbuffer, void *o
 #endif
   bool seen_noise = false;
 
-  if (stream == NULL  || inputbuffer == NULL || outputbuffer == NULL) {
+  if (stream == NULL || inputbuffer == NULL || outputbuffer == NULL) {
     return CUBEB_ERROR;
   }
 
