@@ -5,6 +5,7 @@
  * accompanying file LICENSE for details.
  */
 
+#include "config.h"
 #include "cubeb_resampler_internal.h"
 #include <assert.h>
 #include <stdio.h>
