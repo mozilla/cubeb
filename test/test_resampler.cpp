@@ -5,7 +5,12 @@
  * accompanying file LICENSE for details.
  */
 
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
+#ifndef CUBEB_GECKO_BUILD
 #include "config.h"
+#endif
 #include "cubeb_resampler_internal.h"
 #include <assert.h>
 #include <stdio.h>
@@ -222,7 +227,7 @@ void test_resampler_one_way(uint32_t channels, uint32_t source_rate, uint32_t ta
   // compare, taking the latency into account
   bool fuzzy_equal = true;
   for (uint32_t i = resampler.latency() + 1; i < expected.length(); i++) {
-    float diff = abs(expected.data()[i] - destination.data()[i]);
+    float diff = fabs(expected.data()[i] - destination.data()[i]);
     if (diff > epsilon<T>(resampling_ratio)) {
       fprintf(stderr, "divergence at %d: %f %f (delta %f)\n", i, expected.data()[i], destination.data()[i], diff);
       fuzzy_equal = false;
@@ -307,10 +312,10 @@ bool array_fuzzy_equal(const auto_array<T>& lhs, const auto_array<T>& rhs, T eps
   uint32_t len = std::min(lhs.length(), rhs.length());
 
   for (uint32_t i = 0; i < len; i++) {
-    if (abs(lhs.at(i) - rhs.at(i)) > epsi) {
+    if (fabs(lhs.at(i) - rhs.at(i)) > epsi) {
       std::cout << "not fuzzy equal at index: " << i
                 << " lhs: " << lhs.at(i) <<  " rhs: " << rhs.at(i)
-                << " delta: " << abs(lhs.at(i) - rhs.at(i))
+                << " delta: " << fabs(lhs.at(i) - rhs.at(i))
                 << " epsilon: "<< epsi << std::endl;
       return false;
     }
@@ -377,7 +382,7 @@ void test_resampler_duplex(uint32_t input_channels, uint32_t output_channels,
                                output_buffer.data(), output_array_frame_count);
 
     /* handle leftover input */
-    if (input_array_frame_count != input_consumed) {
+    if (input_array_frame_count != static_cast<uint32_t>(input_consumed)) {
       leftover_input_frames = input_array_frame_count - input_consumed;
       input_buffer.pop(nullptr, leftover_input_frames * input_channels);
     } else {

@@ -284,24 +284,30 @@ private:
   void speex_resample(float * input_buffer, uint32_t * input_frame_count,
                       float * output_buffer, uint32_t * output_frame_count)
   {
+#ifndef NDEBUG
     int rv;
-    rv = speex_resampler_process_interleaved_float(speex_resampler,
-                                                   input_buffer,
-                                                   input_frame_count,
-                                                   output_buffer,
-                                                   output_frame_count);
+    rv =
+#endif
+      speex_resampler_process_interleaved_float(speex_resampler,
+                                                input_buffer,
+                                                input_frame_count,
+                                                output_buffer,
+                                                output_frame_count);
     assert(rv == RESAMPLER_ERR_SUCCESS);
   }
 
   void speex_resample(short * input_buffer, uint32_t * input_frame_count,
                       short * output_buffer, uint32_t * output_frame_count)
   {
+#ifndef NDEBUG
     int rv;
-    rv = speex_resampler_process_interleaved_int(speex_resampler,
-                                                 input_buffer,
-                                                 input_frame_count,
-                                                 output_buffer,
-                                                 output_frame_count);
+    rv =
+#endif
+      speex_resampler_process_interleaved_int(speex_resampler,
+                                              input_buffer,
+                                              input_frame_count,
+                                              output_buffer,
+                                              output_frame_count);
     assert(rv == RESAMPLER_ERR_SUCCESS);
   }
   /** The state for the speex resampler used internaly. */
@@ -448,7 +454,7 @@ cubeb_resampler_create_internal(cubeb_stream * stream,
   std::unique_ptr<delay_line<T>> input_delay = nullptr;
   std::unique_ptr<delay_line<T>> output_delay = nullptr;
 
-  assert(input_params || output_params &&
+  assert((input_params || output_params) &&
          "need at least one valid parameter pointer.");
 
   /* All the streams we have have a sample rate that matches the target
