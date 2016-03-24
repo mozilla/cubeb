@@ -507,7 +507,7 @@ frames_to_bytes_before_mix(cubeb_stream * stm, size_t frames)
 }
 
 /* This function handles the processing of the input and output audio,
- * converting it to rate and channel layout specified at initialization. 
+ * converting it to rate and channel layout specified at initialization.
  * It then calls the data callback, via the resampler. */
 long
 refill(cubeb_stream * stm, float * input_buffer, long input_frames_count,
@@ -622,6 +622,7 @@ bool get_input_buffer(cubeb_stream * stm)
       LOG("FAILED to release intput buffer");
       return false;
     }
+    offset += packet_size * input_channel_count;
   }
 
   assert(stm->linear_input_buffer.length() == total_available_input);
@@ -648,8 +649,9 @@ bool get_output_buffer(cubeb_stream * stm, float *& buffer, size_t & frame_count
   if (stm->draining) {
     if (padding_out == 0) {
       stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
+      return false;
     }
-    return false;
+    return true;
   }
 
   frame_count = stm->output_buffer_frame_count - padding_out;
@@ -693,6 +695,11 @@ refill_callback_duplex(cubeb_stream * stm)
    * callback in a way that it makes the stream underrun. */
   if (output_frames == 0) {
     return true;
+  }
+
+  // When WASAPI has not filled the input buffer yet, send silence.
+  if (stm->linear_input_buffer.length() == 0) {
+    stm->linear_input_buffer.push_silence(output_frames* stm->output_mix_params.channels);
   }
 
   refill(stm,
@@ -750,6 +757,10 @@ refill_callback_output(cubeb_stream * stm)
   if (!rv) {
     return rv;
   }
+  if (stm->draining || output_frames == 0) {
+    return true;
+  }
+
 
   long got = refill(stm,
                     nullptr,
@@ -763,7 +774,7 @@ refill_callback_output(cubeb_stream * stm)
     return false;
   }
 
-  return got == output_frames;
+  return got == output_frames || stm->draining;
 }
 
 static unsigned int __stdcall
@@ -860,6 +871,7 @@ wasapi_stream_render_loop(LPVOID stream)
     case WAIT_OBJECT_0 + 3: /* input available */
       if (has_input(stm) && has_output(stm)) { continue; }
       is_playing = stm->refill_callback(stm);
+      break;
     case WAIT_TIMEOUT:
       XASSERT(stm->shutdown_event == wait_array[0]);
       if (++timeout_count >= timeout_limit) {
@@ -1523,8 +1535,8 @@ int setup_wasapi_stream(cubeb_stream * stm)
    * the highest sample rate available. */
   int32_t target_sample_rate;
   if (has_input(stm) && has_output(stm)) {
-    target_sample_rate = std::max(stm->input_stream_params.rate,
-                                  stm->output_stream_params.rate);
+    assert(stm->input_stream_params.rate == stm->output_stream_params.rate);
+    target_sample_rate = stm->input_stream_params.rate;
   }  else if (has_input(stm)) {
     target_sample_rate = stm->input_stream_params.rate;
   } else {
@@ -1536,10 +1548,15 @@ int setup_wasapi_stream(cubeb_stream * stm)
    and copy it over, so we are always resampling the number
    of channels of the stream, not the number of channels
    that WASAPI wants. */
+  cubeb_stream_params input_params = stm->input_mix_params;
+  input_params.channels = stm->input_stream_params.channels;
+  cubeb_stream_params output_params = stm->output_mix_params;
+  output_params.channels = stm->output_stream_params.channels;
+
   stm->resampler =
     cubeb_resampler_create(stm,
-                           has_input(stm) ? &stm->input_mix_params : nullptr,
-                           has_output(stm) ? &stm->output_mix_params : nullptr,
+                           has_input(stm) ? &input_params : nullptr,
+                           has_output(stm) ? &output_params : nullptr,
                            target_sample_rate,
                            stm->data_callback,
                            stm->user_ptr,
@@ -1618,6 +1635,7 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
     return CUBEB_ERROR;
   }
 
+  /* Unconditionally create the two events so that the wait logic is simpler. */
   stm->refill_event = CreateEvent(NULL, 0, 0, NULL);
   if (!stm->refill_event) {
     LOG("Can't create the refill event, error: %x\n", GetLastError());
@@ -1625,14 +1643,13 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
     return CUBEB_ERROR;
   }
 
-  if (input_stream_params) {
-    stm->input_available_event = CreateEvent(NULL, 0, 0, NULL);
-    if (!stm->input_available_event) {
-      LOG("Can't create the input available event , error: %x\n", GetLastError());
-      wasapi_stream_destroy(stm);
-      return CUBEB_ERROR;
-    }
+  stm->input_available_event = CreateEvent(NULL, 0, 0, NULL);
+  if (!stm->input_available_event) {
+    LOG("Can't create the input available event , error: %x\n", GetLastError());
+    wasapi_stream_destroy(stm);
+    return CUBEB_ERROR;
   }
+
 
   {
     /* Locking here is not strictly necessary, because we don't have a
