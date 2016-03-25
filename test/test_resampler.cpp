@@ -370,12 +370,15 @@ void test_resampler_duplex(uint32_t input_channels, uint32_t output_channels,
 
   uint32_t leftover_input_frames = 0;
   while (state.output_phase_index != state.max_output_phase_index) {
-    state.input_phase_index = fill_with_sine(input_buffer.data() + leftover_input_frames * input_channels,
+    uint32_t leftover_samples = input_buffer.length() * input_channels;
+    input_buffer.reserve(input_array_frame_count);
+    state.input_phase_index = fill_with_sine(input_buffer.data() + leftover_samples,
                                              input_rate,
                                              input_channels,
-                                             input_array_frame_count - leftover_input_frames,
+                                             input_array_frame_count - leftover_samples,
                                              state.input_phase_index);
     long input_consumed = input_array_frame_count;
+    input_buffer.set_length(input_array_frame_count);
 
     got = cubeb_resampler_fill(resampler,
                                input_buffer.data(), &input_consumed,
@@ -383,8 +386,7 @@ void test_resampler_duplex(uint32_t input_channels, uint32_t output_channels,
 
     /* handle leftover input */
     if (input_array_frame_count != static_cast<uint32_t>(input_consumed)) {
-      leftover_input_frames = input_array_frame_count - input_consumed;
-      input_buffer.pop(nullptr, leftover_input_frames * input_channels);
+      input_buffer.pop(nullptr, input_consumed * input_channels);
     } else {
       input_buffer.clear();
     }
@@ -431,7 +433,7 @@ void test_resamplers_duplex()
         for (uint32_t source_rate_output = 0; source_rate_output < array_size(sample_rates); source_rate_output++) {
           for (uint32_t dest_rate = 0; dest_rate < array_size(sample_rates); dest_rate++) {
             for (uint32_t chunk_duration = min_chunks; chunk_duration < max_chunks; chunk_duration+=chunk_increment) {
-              printf("input chanenls:%d output_channels:%d input_rate:%d "
+              printf("input channels:%d output_channels:%d input_rate:%d "
                      "output_rate:%d target_rate:%d chunk_ms:%d\n",
                      input_channels, output_channels,
                      sample_rates[source_rate_input],
