@@ -628,8 +628,11 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
     stm->queuebuf_len += stm->framesize - (stm->queuebuf_len % stm->framesize);
   }
 
-  stm->resampler = cubeb_resampler_create(stm, NULL, output_stream_params,
-                                          preferred_sampling_rate,
+  cubeb_stream_params params = *output_stream_params;
+  params.rate = preferred_sampling_rate;
+
+  stm->resampler = cubeb_resampler_create(stm, NULL, &params,
+                                          output_stream_params->rate,
                                           data_callback,
                                           user_ptr,
                                           CUBEB_RESAMPLER_QUALITY_DEFAULT);
