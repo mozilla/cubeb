@@ -589,6 +589,11 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
   if (get_android_version() >= ANDROID_VERSION_MARSHMALLOW) {
     // Reset preferred samping rate to trigger fallback to native sampling rate.
     preferred_sampling_rate = 0;
+    if (opensl_get_min_latency(ctx, *output_stream_params, &latency) != CUBEB_OK) {
+      // Default to AudioFlinger's advertised fast track latency of 10ms.
+      latency = 10;
+    }
+    stm->latency = latency;
   }
 #endif
 
