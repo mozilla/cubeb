@@ -1614,9 +1614,11 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
   stm->draining = false;
   if (input_stream_params) {
     stm->input_stream_params = *input_stream_params;
+    stm->input_device = input_device;
   }
   if (output_stream_params) {
     stm->output_stream_params = *output_stream_params;
+    stm->output_device = output_device;
   }
   stm->latency = latency;
   stm->volume = 1.0;
