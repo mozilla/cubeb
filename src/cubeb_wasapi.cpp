@@ -1753,7 +1753,7 @@ int stream_start_one_side(cubeb_stream * stm, StreamDirection dir)
       return r;
     }
 
-    HRESULT hr = OUTPUT ? stm->output_client->Start() : stm->input_client->Start();
+    HRESULT hr = dir == OUTPUT ? stm->output_client->Start() : stm->input_client->Start();
     if (FAILED(hr)) {
       LOG("could not start the %s stream after reconfig: %x (%s)\n",
           dir == OUTPUT ? "output" : "input", hr);
