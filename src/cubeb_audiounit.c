@@ -515,6 +515,26 @@ audiounit_install_device_changed_callback(cubeb_stream * stm)
   }
 
   if (stm->input_unit) {
+    /* This event will notify us when the data source on the input device changes. */
+    AudioDeviceID input_dev_id;
+    if (audiounit_get_input_device_id(&input_dev_id) != noErr) {
+      return CUBEB_ERROR;
+    }
+
+    AudioObjectPropertyAddress source_address = {
+        kAudioDevicePropertyDataSource,
+        kAudioObjectPropertyScopeInput,
+        kAudioObjectPropertyElementMaster
+    };
+
+    r = AudioObjectAddPropertyListener(input_dev_id,
+        &source_address,
+        &audiounit_property_listener_callback,
+        stm);
+    if (r != noErr) {
+      return CUBEB_ERROR;
+    }
+
     /* This event will notify us when the default input device changes. */
     AudioObjectPropertyAddress default_input_device_address = {
         kAudioHardwarePropertyDefaultInputDevice,
