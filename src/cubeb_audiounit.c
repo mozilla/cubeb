@@ -440,9 +440,6 @@ audiounit_get_input_device_id(AudioDeviceID * device_id)
   return CUBEB_OK;
 }
 
-static int audiounit_install_device_changed_callback(cubeb_stream * stm);
-static int audiounit_uninstall_device_changed_callback();
-
 static OSStatus
 audiounit_property_listener_callback(AudioObjectID id, UInt32 address_count,
                                      const AudioObjectPropertyAddress * addresses,
@@ -1180,12 +1177,6 @@ audiounit_stream_init(cubeb * context,
   }
 
   *stream = stm;
-
-#if !TARGET_OS_IPHONE
-  /* we dont' check the return value here, because we want to be able to play
-   * even if we can't detect device changes. */
-  audiounit_install_device_changed_callback(stm);
-#endif
   LOG("Cubeb stream init successfully.\n");
   return CUBEB_OK;
 }
@@ -1486,11 +1477,23 @@ int audiounit_stream_device_destroy(cubeb_stream * stream,
 int audiounit_stream_register_device_changed_callback(cubeb_stream * stream,
                                                       cubeb_device_changed_callback  device_changed_callback)
 {
+  /* Note: second register without unregister first causes 'nope' error.
+   * Current implementation requires unregister before register a new cb. */
+  assert(!stream->device_changed_callback);
+
   pthread_mutex_lock(&stream->mutex);
   stream->device_changed_callback = device_changed_callback;
+  int r = CUBEB_OK;
+#if !TARGET_OS_IPHONE
+  if (device_changed_callback) {
+    r = audiounit_install_device_changed_callback(stream);
+  } else {
+    r = audiounit_uninstall_device_changed_callback(stream);
+  }
+#endif
   pthread_mutex_unlock(&stream->mutex);
 
-  return CUBEB_OK;
+  return r;
 }
 
 static OSStatus
