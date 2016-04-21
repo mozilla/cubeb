@@ -479,7 +479,7 @@ audiounit_install_device_changed_callback(cubeb_stream * stm)
      * headphone jack. */
     AudioObjectPropertyAddress alive_address = {
         kAudioDevicePropertyDataSource,
-        kAudioObjectPropertyScopeGlobal,
+        kAudioObjectPropertyScopeOutput,
         kAudioObjectPropertyElementMaster
     };
 
