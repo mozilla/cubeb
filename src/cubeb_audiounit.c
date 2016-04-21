@@ -453,6 +453,7 @@ audiounit_property_listener_callback(AudioObjectID id, UInt32 address_count,
   for (UInt32 i = 0; i < address_count; i++) {
     switch(addresses[i].mSelector) {
     case kAudioHardwarePropertyDefaultOutputDevice:
+    case kAudioHardwarePropertyDefaultInputDevice:
       /* fall through */
     case kAudioDevicePropertyDataSource:
       pthread_mutex_lock(&stm->mutex);
@@ -471,44 +472,63 @@ static int
 audiounit_install_device_changed_callback(cubeb_stream * stm)
 {
   OSStatus r;
-  AudioDeviceID id;
 
-  /* This event will notify us when the data source on the same device changes,
-   * for example when the user plugs in a normal (non-usb) headset in the
-   * headphone jack. */
-  AudioObjectPropertyAddress alive_address = {
-    kAudioDevicePropertyDataSource,
-    kAudioObjectPropertyScopeGlobal,
-    kAudioObjectPropertyElementMaster
-  };
+  if (stm->output_unit) {
+    /* This event will notify us when the data source on the same device changes,
+     * for example when the user plugs in a normal (non-usb) headset in the
+     * headphone jack. */
+    AudioObjectPropertyAddress alive_address = {
+        kAudioDevicePropertyDataSource,
+        kAudioObjectPropertyScopeGlobal,
+        kAudioObjectPropertyElementMaster
+    };
 
-  if (audiounit_get_output_device_id(&id) != noErr) {
-    return CUBEB_ERROR;
+    AudioDeviceID id;
+    if (audiounit_get_output_device_id(&id) != noErr) {
+      return CUBEB_ERROR;
+    }
+
+    r = AudioObjectAddPropertyListener(id, &alive_address,
+        &audiounit_property_listener_callback,
+        stm);
+    if (r != noErr) {
+      return CUBEB_ERROR;
+    }
+
+    /* This event will notify us when the default audio device changes,
+     * for example when the user plugs in a USB headset and the system chooses it
+     * automatically as the default, or when another device is chosen in the
+     * dropdown list. */
+    AudioObjectPropertyAddress default_device_address = {
+        kAudioHardwarePropertyDefaultOutputDevice,
+        kAudioObjectPropertyScopeGlobal,
+        kAudioObjectPropertyElementMaster
+    };
+
+    r = AudioObjectAddPropertyListener(kAudioObjectSystemObject,
+        &default_device_address,
+        &audiounit_property_listener_callback,
+        stm);
+    if (r != noErr) {
+      return CUBEB_ERROR;
+    }
   }
 
-  r = AudioObjectAddPropertyListener(id, &alive_address,
-                                     &audiounit_property_listener_callback,
-                                     stm);
-  if (r != noErr) {
-    return CUBEB_ERROR;
-  }
+  if (stm->input_unit) {
+    /* This event will notify us when the default input device changes. */
+    AudioObjectPropertyAddress default_input_device_address = {
+        kAudioHardwarePropertyDefaultInputDevice,
+        kAudioObjectPropertyScopeGlobal,
+        kAudioObjectPropertyElementMaster
+    };
 
-  /* This event will notify us when the default audio device changes,
-   * for example when the user plugs in a USB headset and the system chooses it
-   * automatically as the default, or when another device is chosen in the
-   * dropdown list. */
-  AudioObjectPropertyAddress default_device_address = {
-    kAudioHardwarePropertyDefaultOutputDevice,
-    kAudioObjectPropertyScopeGlobal,
-    kAudioObjectPropertyElementMaster
-  };
-
-  r = AudioObjectAddPropertyListener(kAudioObjectSystemObject,
-                                     &default_device_address,
-                                     &audiounit_property_listener_callback,
-                                     stm);
-  if (r != noErr) {
-    return CUBEB_ERROR;
+    r = AudioObjectAddPropertyListener(kAudioObjectSystemObject,
+        &default_input_device_address,
+        &audiounit_property_listener_callback,
+        stm);
+    if (r != noErr) {
+      return CUBEB_ERROR;
+    }
   }
 
   return CUBEB_OK;
