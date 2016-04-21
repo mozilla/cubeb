@@ -479,8 +479,10 @@ audiounit_add_listener(cubeb_stream * stm, AudioDeviceID id, AudioObjectProperty
 }
 
 OSStatus
-audiounit_remove_listener(cubeb_stream * stm, AudioDeviceID id, AudioObjectPropertySelector selector,
-    AudioObjectPropertyScope scope, AudioObjectPropertyListenerProc listener)
+audiounit_remove_listener(cubeb_stream * stm, AudioDeviceID id,
+                          AudioObjectPropertySelector selector,
+                          AudioObjectPropertyScope scope,
+                          AudioObjectPropertyListenerProc listener)
 {
   AudioObjectPropertyAddress address = {
       selector,
