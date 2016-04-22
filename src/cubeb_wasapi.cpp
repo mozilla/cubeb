@@ -244,6 +244,7 @@ struct cubeb_stream
   cubeb_state_callback state_callback;
   cubeb_data_callback data_callback;
   wasapi_refill_callback refill_callback;
+  cubeb_device_change_callback device_change_callback;
   void * user_ptr;
   /* Lifetime considerations:
      - client, render_client, audio_clock and audio_stream_volume are interface
@@ -853,6 +854,9 @@ wasapi_stream_render_loop(LPVOID stream)
           is_playing = false;
           hr = E_FAIL;
           continue;
+        }
+        if (stm->device_changed_callback) {
+          stm->device_change_callback(stm->user_ptr);
         }
       }
       if (stm->output_client) {
@@ -2169,6 +2173,15 @@ wasapi_enumerate_devices(cubeb * context, cubeb_device_type type,
   return CUBEB_OK;
 }
 
+int
+wasapi_register_device_changed_callback(cubeb_stream * stream,
+                                        cubeb_device_changed_callback  device_changed_callback)
+{
+  auto_lock lock(stm->stream_reset_lock);
+  stream->device_change_callback = device_change_callback;
+  return CUBEB_OK;
+}
+
 cubeb_ops const wasapi_ops = {
   /*.init =*/ wasapi_init,
   /*.get_backend_id =*/ wasapi_get_backend_id,
@@ -2187,7 +2200,8 @@ cubeb_ops const wasapi_ops = {
   /*.stream_set_panning =*/ NULL,
   /*.stream_get_current_device =*/ NULL,
   /*.stream_device_destroy =*/ NULL,
-  /*.stream_register_device_changed_callback =*/ NULL,
+  /*.stream_register_device_changed_callback =*/
+    wasapi_register_device_changed_callback,
   /*.register_device_collection_changed =*/ NULL
 };
 } // namespace anonymous
