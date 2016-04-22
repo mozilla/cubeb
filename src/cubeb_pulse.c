@@ -458,6 +458,9 @@ stream_update_timing_info(cubeb_stream * stm)
 
 static void pulse_context_destroy(cubeb * ctx);
 static void pulse_destroy(cubeb * ctx);
+void pulse_subscribe_callback(pa_context * ctx,
+                              pa_subscription_event_type_t t,
+                              uint32_t index, void * userdata);
 
 static int
 pulse_context_init(cubeb * ctx)
@@ -483,6 +486,9 @@ pulse_context_init(cubeb * ctx)
     ctx->context = NULL;
     return -1;
   }
+
+  // Set subscribe callback
+  WRAP(pa_context_set_subscribe_callback)(ctx->context, pulse_subscribe_callback, ctx);
 
   WRAP(pa_threaded_mainloop_unlock)(ctx->mainloop);
 
@@ -602,6 +608,8 @@ pulse_context_destroy(cubeb * ctx)
     WRAP(pa_operation_unref)(o);
   }
   WRAP(pa_context_set_state_callback)(ctx->context, NULL, NULL);
+  WRAP(pa_context_set_subscribe_callback)(ctx->context, NULL, NULL);
+
   WRAP(pa_context_disconnect)(ctx->context);
   WRAP(pa_context_unref)(ctx->context);
   WRAP(pa_threaded_mainloop_unlock)(ctx->mainloop);
@@ -1274,10 +1282,8 @@ int pulse_register_device_collection_changed(cubeb * context,
   pa_subscription_mask_t mask;
   if (context->collection_changed_callback == NULL) {
     // Unregister subscription
-    WRAP(pa_context_set_subscribe_callback)(context->context, NULL, NULL);
     mask = PA_SUBSCRIPTION_MASK_NULL;
   } else {
-    WRAP(pa_context_set_subscribe_callback)(context->context, pulse_subscribe_callback, context);
     if (devtype == CUBEB_DEVICE_TYPE_INPUT)
       mask = PA_SUBSCRIPTION_MASK_SOURCE;
     else if (devtype == CUBEB_DEVICE_TYPE_OUTPUT)
