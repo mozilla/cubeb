@@ -586,7 +586,7 @@ bool get_input_buffer(cubeb_stream * stm)
   /* Get input packets until we have captured enough frames, and put them in a
    * contiguous buffer. */
   uint32_t offset = 0;
-  uint32_t input_channel_count = stm->input_stream_params.channels;
+  uint32_t input_channel_count = stm->input_mix_params.channels;
   while (offset != total_available_input * input_channel_count &&
       total_available_input) {
     hr = stm->capture_client->GetNextPacketSize(&next);
@@ -602,20 +602,41 @@ bool get_input_buffer(cubeb_stream * stm)
 
     UINT32 packet_size;
     hr = stm->capture_client->GetBuffer(&input_packet,
-        &packet_size,
-        &flags,
-        &dev_pos,
-        NULL);
+                                        &packet_size,
+                                        &flags,
+                                        &dev_pos,
+                                        NULL);
     if (FAILED(hr)) {
       LOG("GetBuffer failed for capture: %x\n", hr);
       return false;
     }
     XASSERT(packet_size == next);
     if (flags & AUDCLNT_BUFFERFLAGS_SILENT) {
-      stm->linear_input_buffer.push_silence(packet_size * input_channel_count);
+      LOG("insert silence: ps=%u\n", packet_size);
+      stm->linear_input_buffer.push_silence(packet_size * stm->input_stream_params.channels);
     } else {
-      stm->linear_input_buffer.push(reinterpret_cast<float*>(input_packet),
-          packet_size * input_channel_count);
+      if (should_upmix(stm->input_mix_params, stm->input_stream_params)) {
+        bool ok = stm->linear_input_buffer.reserve(stm->linear_input_buffer.length() +
+                                                   packet_size * stm->input_stream_params.channels);
+        assert(ok);
+        upmix(reinterpret_cast<float*>(input_packet), packet_size,
+              stm->linear_input_buffer.data() + stm->linear_input_buffer.length(),
+              input_channel_count,
+              stm->input_stream_params.channels);
+        stm->linear_input_buffer.set_length(stm->linear_input_buffer.length() + packet_size * stm->input_stream_params.channels);
+      } else if (should_downmix(stm->input_mix_params, stm->input_stream_params)) {
+        bool ok = stm->linear_input_buffer.reserve(stm->linear_input_buffer.length() +
+                                                   packet_size * stm->input_stream_params.channels);
+        assert(ok);
+        downmix(reinterpret_cast<float*>(input_packet), packet_size,
+                stm->linear_input_buffer.data() + stm->linear_input_buffer.length(),
+                input_channel_count,
+                stm->input_stream_params.channels);
+        stm->linear_input_buffer.set_length(stm->linear_input_buffer.length() + packet_size * stm->input_stream_params.channels);
+      } else {
+        stm->linear_input_buffer.push(reinterpret_cast<float*>(input_packet),
+                                      packet_size * stm->input_stream_params.channels);
+      }
     }
     hr = stm->capture_client->ReleaseBuffer(packet_size);
     if (FAILED(hr)) {
@@ -698,8 +719,13 @@ refill_callback_duplex(cubeb_stream * stm)
   }
 
   // When WASAPI has not filled the input buffer yet, send silence.
-  if (stm->linear_input_buffer.length() == 0) {
-    stm->linear_input_buffer.push_silence(output_frames* stm->output_mix_params.channels);
+  size_t input_frames = stm->linear_input_buffer.length() / stm->input_stream_params.channels;
+  double output_duration = double(output_frames) / stm->output_mix_params.rate;
+  double input_duration = double(input_frames) / stm->input_mix_params.rate;
+  if (input_duration < output_duration) {
+    size_t padding = round((output_duration - input_duration) * stm->input_mix_params.rate);
+    LOG("padding silence: out=%f in=%f pad=%u\n", output_duration, input_duration, padding);
+    stm->linear_input_buffer.push_front_silence(padding * stm->input_stream_params.channels);
   }
 
   refill(stm,
@@ -1243,7 +1269,7 @@ wasapi_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * laten
     return CUBEB_ERROR;
   }
 
-  LOG("default device period: %ld\n", default_period);
+  LOG("default device period: %lld\n", default_period);
 
   /* According to the docs, the best latency we can achieve is by synchronizing
      the stream and the engine.
@@ -1430,6 +1456,9 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
   mix_params->format = CUBEB_SAMPLE_FLOAT32NE;
   mix_params->rate = mix_format->nSamplesPerSec;
   mix_params->channels = mix_format->nChannels;
+  LOG("Setup requested=[f=%d r=%u c=%u] mix=[f=%d r=%u c=%u]\n",
+      stream_params->format, stream_params->rate, stream_params->channels,
+      mix_params->format, mix_params->rate, mix_params->channels);
 
   hr = (*audio_client)->Initialize(AUDCLNT_SHAREMODE_SHARED,
                                    AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
@@ -1452,8 +1481,10 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
     return CUBEB_ERROR;
   }
 
-  if (should_upmix(*stream_params, *mix_params) ||
-      should_downmix(*stream_params, *mix_params)) {
+  // Input is up/down mixed when depacketized in get_input_buffer.
+  if (has_output(stm) &&
+      (should_upmix(*stream_params, *mix_params) ||
+       should_downmix(*stream_params, *mix_params))) {
     stm->mix_buffer = (float *)malloc(frames_to_bytes_before_mix(stm, *buffer_frame_count));
   }
 
@@ -1490,6 +1521,7 @@ int setup_wasapi_stream(cubeb_stream * stm)
   XASSERT(!stm->output_client && "WASAPI stream already setup, close it first.");
 
   if (has_input(stm)) {
+    LOG("Setup capture: device=%x\n", (int)stm->input_device);
     rv = setup_wasapi_stream_one_side(stm,
                                       &stm->input_stream_params,
                                       stm->input_device,
@@ -1506,6 +1538,7 @@ int setup_wasapi_stream(cubeb_stream * stm)
   }
 
   if (has_output(stm)) {
+    LOG("Setup render: device=%x\n", (int)stm->output_device);
     rv = setup_wasapi_stream_one_side(stm,
                                       &stm->output_stream_params,
                                       stm->output_device,
@@ -1547,7 +1580,7 @@ int setup_wasapi_stream(cubeb_stream * stm)
   if (has_input(stm) && has_output(stm)) {
     assert(stm->input_stream_params.rate == stm->output_stream_params.rate);
     target_sample_rate = stm->input_stream_params.rate;
-  }  else if (has_input(stm)) {
+  } else if (has_input(stm)) {
     target_sample_rate = stm->input_stream_params.rate;
   } else {
     XASSERT(has_output(stm));
@@ -1748,7 +1781,7 @@ int stream_start_one_side(cubeb_stream * stm, StreamDirection dir)
   HRESULT hr = dir == OUTPUT ? stm->output_client->Start() : stm->input_client->Start();
   if (hr == AUDCLNT_E_DEVICE_INVALIDATED) {
     LOG("audioclient invalidated for %s device, reconfiguring\n",
-        dir == OUTPUT ? "output" : "input", hr);
+        dir == OUTPUT ? "output" : "input");
 
     BOOL ok = ResetEvent(stm->reconfigure_event);
     if (!ok) {
@@ -1765,7 +1798,7 @@ int stream_start_one_side(cubeb_stream * stm, StreamDirection dir)
 
     HRESULT hr = dir == OUTPUT ? stm->output_client->Start() : stm->input_client->Start();
     if (FAILED(hr)) {
-      LOG("could not start the %s stream after reconfig: %x (%s)\n",
+      LOG("could not start the %s stream after reconfig: %x\n",
           dir == OUTPUT ? "output" : "input", hr);
       return CUBEB_ERROR;
     }
@@ -2137,7 +2170,7 @@ wasapi_enumerate_devices(cubeb * context, cubeb_device_type type,
   }
 
   if (type == CUBEB_DEVICE_TYPE_OUTPUT) flow = eRender;
-  else if (type == CUBEB_DEVICE_TYPE_INPUT)  flow = eCapture;
+  else if (type == CUBEB_DEVICE_TYPE_INPUT) flow = eCapture;
   else if (type & (CUBEB_DEVICE_TYPE_INPUT | CUBEB_DEVICE_TYPE_INPUT)) flow = eAll;
   else return CUBEB_ERROR;
 
