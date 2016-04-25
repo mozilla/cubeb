@@ -366,7 +366,7 @@ public:
     LOG("Audio device default changed.\n");
 
     /* we only support a single stream type for now. */
-    if (flow != eRender && role != eMultimedia) {
+    if (flow != eRender && role != eConsole) {
       return S_OK;
     }
 
@@ -1012,11 +1012,7 @@ HRESULT get_default_endpoint(IMMDevice ** device, EDataFlow direction)
     LOG("Could not get device enumerator: %x\n", hr);
     return hr;
   }
-  /* eMultimedia is okay for now ("Music, movies, narration, [...]").
-     We will need to change this when we distinguish streams by use-case, other
-     possible values being eConsole ("Games, system notification sounds [...]")
-     and eCommunication ("Voice communication"). */
-  hr = enumerator->GetDefaultAudioEndpoint(direction, eMultimedia, device);
+  hr = enumerator->GetDefaultAudioEndpoint(direction, eConsole, device);
   if (FAILED(hr)) {
     LOG("Could not get default audio endpoint: %x\n", hr);
     SafeRelease(enumerator);
@@ -2082,7 +2078,7 @@ wasapi_create_device(IMMDeviceEnumerator * enumerator, IMMDevice * dev)
   }
 
   ret->preferred = CUBEB_DEVICE_PREF_NONE;
-  if (wasapi_is_default_device(flow, eMultimedia, device_id, enumerator))
+  if (wasapi_is_default_device(flow, eConsole, device_id, enumerator))
     ret->preferred = (cubeb_device_pref)(ret->preferred | CUBEB_DEVICE_PREF_MULTIMEDIA);
   if (wasapi_is_default_device(flow, eCommunications, device_id, enumerator))
     ret->preferred = (cubeb_device_pref)(ret->preferred | CUBEB_DEVICE_PREF_VOICE);
