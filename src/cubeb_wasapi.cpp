@@ -696,8 +696,8 @@ bool
 refill_callback_duplex(cubeb_stream * stm)
 {
   HRESULT hr;
-  float * output_buffer;
-  size_t output_frames;
+  float * output_buffer = nullptr;
+  size_t output_frames = 0;
   size_t input_frames;
   bool rv;
 
@@ -780,8 +780,8 @@ refill_callback_output(cubeb_stream * stm)
 {
   bool rv;
   HRESULT hr;
-  float * output_buffer;
-  size_t output_frames;
+  float * output_buffer = nullptr;
+  size_t output_frames = 0;
 
   XASSERT(!has_input(stm) && has_output(stm));
 
@@ -790,10 +790,10 @@ refill_callback_output(cubeb_stream * stm)
   if (!rv) {
     return rv;
   }
+
   if (stm->draining || output_frames == 0) {
     return true;
   }
-
 
   long got = refill(stm,
                     nullptr,
