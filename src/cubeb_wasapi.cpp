@@ -675,7 +675,7 @@ bool get_output_buffer(cubeb_stream * stm, size_t max_frames, float *& buffer, s
     return true;
   }
 
-  frame_count = std::min(max_frames, stm->output_buffer_frame_count - padding_out);
+  frame_count = std::min<size_t>(max_frames, stm->output_buffer_frame_count - padding_out);
   BYTE * output_buffer;
 
   hr = stm->render_client->GetBuffer(frame_count, &output_buffer);
