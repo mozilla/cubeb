@@ -151,6 +151,29 @@ audiotimestamp_to_latency(AudioTimeStamp const * tstamp, cubeb_stream * stream)
   return ((pres - now) * stream->output_desc.mSampleRate) / 1000000000LL;
 }
 
+static void
+audiounit_make_silent(AudioBuffer * ioData)
+{
+  memset(ioData->mData, 0, ioData->mDataByteSize);
+}
+
+static void
+PrintResult(OSStatus result, const char *operation)
+{
+  char errorString[20];
+  // see if it appears to be a 4-char-code
+  *(UInt32 *)(errorString + 1) = CFSwapInt32HostToBig(result);
+  if (isprint(errorString[1]) && isprint(errorString[2]) && isprint(errorString[3]) && isprint(errorString[4])) {
+    errorString[0] = errorString[5] = '\'';
+    errorString[6] = '\0';
+  } else {
+    // no, format it as an integer
+    sprintf(errorString, "%d", (int)result);
+  }
+
+  LOG("Result: %s (%s)\n", operation, errorString);
+}
+
 static OSStatus
 audiounit_input_callback(void * user_ptr,
                          AudioUnitRenderActionFlags * flags,
@@ -193,7 +216,12 @@ audiounit_input_callback(void * user_ptr,
                                bus,
                                input_frames,
                                &input_buffer_list);
-  assert(r == noErr);
+  if (r != noErr) {
+    PrintResult(r, "Input AudioUnitRender failed with error");
+    audiounit_make_silent(input_buffer);
+    return r;
+  }
+
   LOG("- input:  buffers %d, size %d, channels %d, frames %d\n",
       input_buffer_list.mNumberBuffers,
       input_buffer_list.mBuffers[0].mDataByteSize,
@@ -229,12 +257,6 @@ audiounit_input_callback(void * user_ptr,
 
   pthread_mutex_unlock(&stm->mutex);
   return noErr;
-}
-
-static void
-audiounit_make_silent(AudioBuffer * ioData)
-{
-  memset(ioData->mData, 0, ioData->mDataByteSize);
 }
 
 static OSStatus
