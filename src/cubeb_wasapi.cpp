@@ -867,6 +867,7 @@ wasapi_stream_render_loop(LPVOID stream)
       continue;
     }
     case WAIT_OBJECT_0 + 1: { /* reconfigure */
+      XASSERT(stm->output_client || stm->input_client);
       /* Close the stream */
       if (stm->output_client) {
         stm->output_client->Stop();
@@ -888,6 +889,7 @@ wasapi_stream_render_loop(LPVOID stream)
           continue;
         }
       }
+      XASSERT(stm->output_client || stm->input_client);
       if (stm->output_client) {
         stm->output_client->Start();
       }
@@ -1529,7 +1531,7 @@ int setup_wasapi_stream(cubeb_stream * stm)
     return CUBEB_ERROR;
   }
 
-  XASSERT(!stm->output_client && "WASAPI stream already setup, close it first.");
+  XASSERT((!stm->output_client || !stm->input_client) && "WASAPI stream already setup, close it first.");
 
   if (has_input(stm)) {
     LOG("Setup capture: device=%x\n", (int)stm->input_device);
@@ -1728,9 +1730,11 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
 
 void close_wasapi_stream(cubeb_stream * stm)
 {
-  XASSERT(stm);
+  XASSERT(stm && !stm->thread && !stm->shutdown_event);
 
   stm->stream_reset_lock->assert_current_thread_owns();
+
+  XASSERT(stm->output_client || stm->input_client);
 
   SafeRelease(stm->output_client);
   stm->output_client = NULL;
@@ -1828,6 +1832,7 @@ int wasapi_stream_start(cubeb_stream * stm)
   auto_lock lock(stm->stream_reset_lock);
 
   XASSERT(stm && !stm->thread && !stm->shutdown_event);
+  XASSERT(stm->output_client || stm->input_client);
 
   if (stm->output_client) {
     rv = stream_start_one_side(stm, OUTPUT);
@@ -1864,6 +1869,8 @@ int wasapi_stream_stop(cubeb_stream * stm)
 {
   XASSERT(stm);
   HRESULT hr;
+
+  XASSERT(stm->output_client || stm->input_client);
 
   {
     auto_lock lock(stm->stream_reset_lock);
