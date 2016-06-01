@@ -215,7 +215,7 @@ public:
 
   size_t output_for_input(uint32_t input_frames)
   {
-    return ceilf(input_frames * resampling_ratio) + 1
+    return ceilf(input_frames / resampling_ratio)
            - resampling_in_buffer.length() / channels;
   }
 
