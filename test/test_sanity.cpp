@@ -43,7 +43,6 @@ static long
 test_data_callback(cubeb_stream * stm, void * user_ptr, const void * inputbuffer, void * outputbuffer, long nframes)
 {
   assert(stm && user_ptr == &dummy && outputbuffer && nframes > 0);
-  memset(outputbuffer, 0, nframes * sizeof(short));
 #if (defined(_WIN32) || defined(__WIN32__))
   memset(outputbuffer, 0, nframes * sizeof(float));
 #else
@@ -484,7 +483,11 @@ test_drain_data_callback(cubeb_stream * stm, void * user_ptr, const void * input
   }
   /* once drain has started, callback must never be called again */
   assert(do_drain != 2);
+#if (defined(_WIN32) || defined(__WIN32__))
+  memset(outputbuffer, 0, nframes * sizeof(float));
+#else
   memset(outputbuffer, 0, nframes * sizeof(short));
+#endif
   total_frames_written += nframes;
   return nframes;
 }
