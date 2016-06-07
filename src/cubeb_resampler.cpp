@@ -37,12 +37,16 @@ to_speex_quality(cubeb_resampler_quality q)
 long noop_resampler::fill(void * input_buffer, long * input_frames_count,
                           void * output_buffer, long output_frames)
 {
+  if (input_buffer) {
+    assert(input_frames_count);
+  }
   assert((input_buffer && output_buffer &&
          *input_frames_count >= output_frames) ||
          (!input_buffer && (!input_frames_count || *input_frames_count == 0)) ||
          (!output_buffer && output_frames == 0));
 
   if (output_buffer == nullptr) {
+    assert(input_buffer);
     output_frames = *input_frames_count;
   }
 
