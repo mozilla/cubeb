@@ -1828,21 +1828,20 @@ int stream_start_one_side(cubeb_stream * stm, StreamDirection dir)
 
 int wasapi_stream_start(cubeb_stream * stm)
 {
-  int rv;
-  auto_lock lock(stm->stream_reset_lock);
-
   XASSERT(stm && !stm->thread && !stm->shutdown_event);
   XASSERT(stm->output_client || stm->input_client);
 
+  auto_lock lock(stm->stream_reset_lock);
+
   if (stm->output_client) {
-    rv = stream_start_one_side(stm, OUTPUT);
+    int rv = stream_start_one_side(stm, OUTPUT);
     if (rv != CUBEB_OK) {
       return rv;
     }
   }
 
   if (stm->input_client) {
-    rv = stream_start_one_side(stm, INPUT);
+    int rv = stream_start_one_side(stm, INPUT);
     if (rv != CUBEB_OK) {
       return rv;
     }
