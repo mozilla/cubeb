@@ -131,6 +131,10 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>
                       nullptr, out_unprocessed,
                       output_frames_before_processing);
 
+  if (got < 0) {
+    return got;
+  }
+
   output_processor->written(got);
 
   /* Process the output. If not enough frames have been returned from the
@@ -205,6 +209,10 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>
   got = data_callback(stream, user_ptr,
                       resampled_input, out_unprocessed,
                       output_frames_before_processing);
+
+  if (got < 0) {
+    return got;
+  }
 
   output_processor->written(got);
 
