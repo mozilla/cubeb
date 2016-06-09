@@ -16,7 +16,15 @@
 #include <assert.h>
 
 #include "cubeb/cubeb.h"
+
+namespace test_record_common {
 #include "common.h"
+}
+using namespace test_record_common;
+
+#ifdef __ANDROID__
+#include "test_android_decl.h"
+#endif
 #ifdef CUBEB_GECKO_BUILD
 #include "TestHarness.h"
 #endif
@@ -33,7 +41,7 @@ struct user_state
   bool seen_noise;
 };
 
-long data_cb(cubeb_stream * stream, void * user, const void * inputbuffer, void * outputbuffer, long nframes)
+long test_record_data_cb(cubeb_stream * stream, void * user, const void * inputbuffer, void * outputbuffer, long nframes)
 {
   user_state * u = reinterpret_cast<user_state*>(user);
 #if STREAM_FORMAT != CUBEB_SAMPLE_FLOAT32LE
@@ -58,7 +66,7 @@ long data_cb(cubeb_stream * stream, void * user, const void * inputbuffer, void 
   return nframes;
 }
 
-void state_cb(cubeb_stream * stream, void * /*user*/, cubeb_state state)
+void test_record_state_cb(cubeb_stream * stream, void * /*user*/, cubeb_state state)
 {
   if (stream == NULL)
     return;
@@ -77,7 +85,7 @@ void state_cb(cubeb_stream * stream, void * /*user*/, cubeb_state state)
   return;
 }
 
-int main(int /*argc*/, char * /*argv*/[])
+int test_record()
 {
 #ifdef CUBEB_GECKO_BUILD
   ScopedXPCOM xpcom("test_record");
@@ -95,18 +103,20 @@ int main(int /*argc*/, char * /*argv*/[])
     return r;
   }
 
+#ifndef __ANDROID__
   /* This test needs an available input device, skip it if this host does not
    * have one. */
   if (!has_available_input_device(ctx)) {
     return 0;
   }
+#endif
 
   params.format = STREAM_FORMAT;
   params.rate = SAMPLE_FREQUENCY;
   params.channels = 1;
 
   r = cubeb_stream_init(ctx, &stream, "Cubeb record (mono)", NULL, &params, NULL, nullptr,
-                        4096, data_cb, state_cb, &stream_state);
+                        4096, test_record_data_cb, test_record_state_cb, &stream_state);
   if (r != CUBEB_OK) {
     fprintf(stderr, "Error initializing cubeb stream\n");
     return r;
@@ -123,3 +133,10 @@ int main(int /*argc*/, char * /*argv*/[])
 
   return CUBEB_OK;
 }
+
+#ifndef __ANDROID__
+int main(int argc, char *argv[])
+{
+  return test_record();
+}
+#endif

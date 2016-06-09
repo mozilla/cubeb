@@ -61,6 +61,10 @@
 #include "config.h"
 #endif
 
+#ifdef _USE_NEON
+#include "resample_neon.h"
+#endif
+
 #ifdef OUTSIDE_SPEEX
 #include <stdlib.h>
 static void *speex_alloc (int size) {return calloc(size,1);}
