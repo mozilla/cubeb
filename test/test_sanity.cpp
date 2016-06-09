@@ -125,7 +125,7 @@ test_context_variables(void)
   params.format = STREAM_FORMAT;
   params.rate = STREAM_RATE;
 #if defined(__ANDROID__)
-  params.stream_type = CUBEB_STREAM_TYPE_VOICE_CALL;
+  params.stream_type = CUBEB_STREAM_TYPE_MUSIC;
 #endif
   r = cubeb_get_min_latency(ctx, params, &value);
   assert(r == CUBEB_OK || r == CUBEB_ERROR_NOT_SUPPORTED);
@@ -161,7 +161,7 @@ test_init_destroy_stream(void)
   params.rate = STREAM_RATE;
   params.channels = STREAM_CHANNELS;
 #if defined(__ANDROID__)
-  params.stream_type = CUBEB_STREAM_TYPE_VOICE_CALL;
+  params.stream_type = CUBEB_STREAM_TYPE_MUSIC;
 #endif
 
   r = cubeb_stream_init(ctx, &stream, "test", NULL, NULL, NULL, &params, STREAM_LATENCY,
@@ -192,7 +192,7 @@ test_init_destroy_multiple_streams(void)
   params.rate = STREAM_RATE;
   params.channels = STREAM_CHANNELS;
 #if defined(__ANDROID__)
-  params.stream_type = CUBEB_STREAM_TYPE_VOICE_CALL;
+  params.stream_type = CUBEB_STREAM_TYPE_MUSIC;
 #endif
 
   for (i = 0; i < ARRAY_LENGTH(stream); ++i) {
@@ -228,7 +228,7 @@ test_configure_stream(void)
   params.rate = STREAM_RATE;
   params.channels = 2; // panning
 #if defined(__ANDROID__)
-  params.stream_type = CUBEB_STREAM_TYPE_VOICE_CALL;
+  params.stream_type = CUBEB_STREAM_TYPE_MUSIC;
 #endif
 
   r = cubeb_stream_init(ctx, &stream, "test", NULL, NULL, NULL, &params, STREAM_LATENCY,
@@ -264,7 +264,7 @@ test_init_start_stop_destroy_multiple_streams(int early, int delay_ms)
   params.rate = STREAM_RATE;
   params.channels = STREAM_CHANNELS;
 #if defined(__ANDROID__)
-  params.stream_type = CUBEB_STREAM_TYPE_VOICE_CALL;
+  params.stream_type = CUBEB_STREAM_TYPE_MUSIC;
 #endif
 
   for (i = 0; i < ARRAY_LENGTH(stream); ++i) {
@@ -327,7 +327,7 @@ test_init_destroy_multiple_contexts_and_streams(void)
   params.rate = STREAM_RATE;
   params.channels = STREAM_CHANNELS;
 #if defined(__ANDROID__)
-  params.stream_type = CUBEB_STREAM_TYPE_VOICE_CALL;
+  params.stream_type = CUBEB_STREAM_TYPE_MUSIC;
 #endif
 
   for (i = 0; i < ARRAY_LENGTH(ctx); ++i) {
@@ -370,7 +370,7 @@ test_basic_stream_operations(void)
   params.rate = STREAM_RATE;
   params.channels = STREAM_CHANNELS;
 #if defined(__ANDROID__)
-  params.stream_type = CUBEB_STREAM_TYPE_VOICE_CALL;
+  params.stream_type = CUBEB_STREAM_TYPE_MUSIC;
 #endif
 
   r = cubeb_stream_init(ctx, &stream, "test", NULL, NULL, NULL, &params, STREAM_LATENCY,
@@ -422,7 +422,7 @@ test_stream_position(void)
   params.rate = STREAM_RATE;
   params.channels = STREAM_CHANNELS;
 #if defined(__ANDROID__)
-  params.stream_type = CUBEB_STREAM_TYPE_VOICE_CALL;
+  params.stream_type = CUBEB_STREAM_TYPE_MUSIC;
 #endif
 
   r = cubeb_stream_init(ctx, &stream, "test", NULL, NULL, NULL, &params, STREAM_LATENCY,
@@ -545,7 +545,7 @@ test_drain(void)
   params.rate = STREAM_RATE;
   params.channels = STREAM_CHANNELS;
 #if defined(__ANDROID__)
-  params.stream_type = CUBEB_STREAM_TYPE_VOICE_CALL;
+  params.stream_type = CUBEB_STREAM_TYPE_MUSIC;
 #endif
 
   r = cubeb_stream_init(ctx, &stream, "test", NULL, NULL, NULL, &params, STREAM_LATENCY,
