@@ -19,7 +19,14 @@
 #include <SLES/OpenSLES_Android.h>
 #include <android/log.h>
 #include <android/api-level.h>
+
+//#define LOGGING_ENABLED
+#ifdef LOGGING_ENABLED
 #define LOG(args...)  __android_log_print(ANDROID_LOG_INFO, "Cubeb_OpenSL" , ## args)
+#else
+#define LOG(...)
+#endif
+
 #define ANDROID_VERSION_GINGERBREAD_MR1 10
 #define ANDROID_VERSION_LOLLIPOP 21
 #define ANDROID_VERSION_MARSHMALLOW 23
@@ -28,6 +35,9 @@
 #include "cubeb-internal.h"
 #include "cubeb_resampler.h"
 #include "cubeb-sles.h"
+#include "cubeb_array_queue.h"
+
+#define DEFAULT_SAMPLE_RATE 48000
 
 static struct cubeb_ops const opensl_ops;
 
@@ -58,7 +68,8 @@ struct cubeb_stream {
   SLPlayItf play;
   SLBufferQueueItf bufq;
   SLVolumeItf volume;
-  uint8_t *queuebuf[NBUFS];
+  void ** queuebuf;
+  uint32_t queuebuf_capacity;
   int queuebuf_idx;
   long queuebuf_len;
   long bytespersec;
@@ -67,8 +78,56 @@ struct cubeb_stream {
   int draining;
   cubeb_stream_type stream_type;
 
+  array_queue * output_queue;
+
+  /* Flags to determine in/out.*/
+  uint32_t input_enabled;
+  uint32_t output_enabled;
+
+  /* Recorder abstract object. */
+  SLObjectItf recorderObj;
+  /* Recorder Itf for input capture. */
+  SLRecordItf recorderItf;
+  /* Buffer queue for input capture. */
+  SLAndroidSimpleBufferQueueItf recorderBufferQueueItf;
+  /* Store input buffers. */
+  void ** input_buffer_array;
+  /* The capacity of the array.
+   * On capture only can be small (4).
+   * On full duplex is calculated to
+   * store 1 sec of data buffers. */
+  uint32_t input_array_capacity;
+  /* Current filled index of input buffer array. */
+  int input_buffer_index;
+  /* Length of input buffer.*/
+  uint32_t input_buffer_length;
+  /* Input frame size */
+  uint32_t input_frame_size;
+  /* Device sampling rate. If user rate is not
+   * accepted an compatible rate is set. If it is
+   * accepted this is equal to params.rate. */
+  uint32_t input_device_rate;
+  /* Exchange input buffers between input
+   * and full duplex threads. */
+  array_queue * input_queue;
+  /* Silent input buffer used on full duplex. */
+  void * input_silent_buffer;
+  /* Number of input frames from the start of the stream*/
+  uint32_t input_total_frames;
+
+  /* On full duplex thread responsible to call
+   * user callback through resampler. */
+  pthread_t full_duplex_thread;
+
+  /* Flag to stop the execution of user callback and
+   * close all working threads.*/
+  uint32_t shutdown;
+
+  /* Store user callback. */
   cubeb_data_callback data_callback;
+  /* Store state callback. */
   cubeb_state_callback state_callback;
+  /* User pointer for data & state callbacks*/
   void * user_ptr;
 
   cubeb_resampler * resampler;
