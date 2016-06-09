@@ -163,9 +163,9 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>
   long got = data_callback(stream, user_ptr,
                            resampled_input, nullptr, resampled_frame_count);
 
-  // Return the same percentage of initial number of input frames.
-  // Since output_frames_needed == 0 in input scenario, the only
-  // available number outside resampler is the initial number of frames.
+  /* Return the number of initial input frames or part of it.
+  * Since output_frames_needed == 0 in input scenario, the only
+  * available number outside resampler is the initial number of frames. */
   return (*input_frames_count) * (got / resampled_frame_count);
 }
 
