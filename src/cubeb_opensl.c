@@ -1318,40 +1318,197 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
   return CUBEB_OK;
 }
 
-static void
-opensl_stream_destroy(cubeb_stream * stm)
+static int
+opensl_start_player(cubeb_stream * stm)
 {
-  if (stm->playerObj)
-    (*stm->playerObj)->Destroy(stm->playerObj);
-  int i;
-  for (i = 0; i < NBUFS; i++) {
-    free(stm->queuebuf[i]);
+  assert(stm->playerObj);
+  SLuint32 playerState;
+  (*stm->playerObj)->GetState(stm->playerObj, &playerState);
+  if (playerState == SL_OBJECT_STATE_REALIZED) {
+    SLresult res = (*stm->play)->SetPlayState(stm->play, SL_PLAYSTATE_PLAYING);
+    if(res != SL_RESULT_SUCCESS) {
+      LOG("Failed to start player. Error code: %lu", res);
+      return CUBEB_ERROR;
+    }
   }
-  pthread_mutex_destroy(&stm->mutex);
+  return CUBEB_OK;
+}
 
-  cubeb_resampler_destroy(stm->resampler);
+static int
+opensl_start_recorder(cubeb_stream * stm)
+{
+  assert(stm->recorderObj);
+  SLuint32 recorderState;
+  (*stm->recorderObj)->GetState(stm->recorderObj, &recorderState);
+  if (recorderState == SL_OBJECT_STATE_REALIZED) {
+    SLresult res = (*stm->recorderItf)->SetRecordState(stm->recorderItf, SL_RECORDSTATE_RECORDING);
+    if(res != SL_RESULT_SUCCESS) {
+      LOG("Failed to start recorder. Error code: %lu", res);
+      return CUBEB_ERROR;
+    }
+  }
+  return CUBEB_OK;
+}
 
-  free(stm);
+static int
+opensl_start_full_duplex_thread(cubeb_stream * stm)
+{
+  if(pthread_create(&stm->full_duplex_thread, NULL, LoopFullDuplexThread, stm)) {
+    LOG("Error creating full duplex thread");
+    return CUBEB_ERROR;
+  }
+  return CUBEB_OK;
 }
 
 static int
 opensl_stream_start(cubeb_stream * stm)
 {
-  SLresult res = (*stm->play)->SetPlayState(stm->play, SL_PLAYSTATE_PLAYING);
-  if (res != SL_RESULT_SUCCESS)
-    return CUBEB_ERROR;
+  assert(stm);
+
+  pthread_mutex_lock(&stm->mutex);
+  stm->shutdown = 0;
+  stm->draining = 0;
+  pthread_mutex_unlock(&stm->mutex);
+
+  if (stm->playerObj) {
+    int r = opensl_start_player(stm);
+    if (r != CUBEB_OK) {
+      return r;
+    }
+  }
+
+  if (stm->recorderObj) {
+    int r = opensl_start_recorder(stm);
+    if (r != CUBEB_OK) {
+      return r;
+    }
+  }
+
+  if (stm->input_enabled && stm->output_enabled) {
+    int r = opensl_start_full_duplex_thread(stm);
+    if (r != CUBEB_OK) {
+      return r;
+    }
+  }
+
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STARTED);
+  LOG("Cubeb stream (%p) started", stm);
+  return CUBEB_OK;
+}
+
+static int
+opensl_stop_player(cubeb_stream * stm)
+{
+  assert(stm->playerObj);
+  assert(stm->shutdown || stm->draining);
+
+  SLresult res = (*stm->play)->SetPlayState(stm->play, SL_PLAYSTATE_STOPPED);
+  if (res != SL_RESULT_SUCCESS) {
+    LOG("Failed to stop player. Error code: %lu", res);
+    return CUBEB_ERROR;
+  }
+
+  res = (*stm->bufq)->Clear(stm->bufq);
+  if (res != SL_RESULT_SUCCESS) {
+    LOG("Failed to clear player buffer queue. Error code: %lu", res);
+    return CUBEB_ERROR;
+  }
+  return CUBEB_OK;
+}
+
+static int
+opensl_stop_recorder(cubeb_stream * stm)
+{
+  assert(stm->recorderObj);
+  assert(stm->shutdown || stm->draining);
+
+  SLresult res = (*stm->recorderItf)->SetRecordState(stm->recorderItf, SL_RECORDSTATE_STOPPED);
+  if (res != SL_RESULT_SUCCESS) {
+    LOG("Failed to stop recorder. Error code: %lu", res);
+    return CUBEB_ERROR;
+  }
+  res = (*stm->recorderBufferQueueItf)->Clear(stm->recorderBufferQueueItf);
+  if (res != SL_RESULT_SUCCESS) {
+    LOG("Failed to clear recorder buffer queue. Error code: %lu", res);
+    return CUBEB_ERROR;
+  }
+
+  if (stm->input_queue) {
+    // In full duplex send an silent buffer to unlock the thread
+    // waiting in the input queue (just in case)
+    array_queue_push(stm->input_queue, stm->input_silent_buffer);
+  }
   return CUBEB_OK;
 }
 
 static int
 opensl_stream_stop(cubeb_stream * stm)
 {
-  SLresult res = (*stm->play)->SetPlayState(stm->play, SL_PLAYSTATE_PAUSED);
-  if (res != SL_RESULT_SUCCESS)
-    return CUBEB_ERROR;
+  assert(stm);
+
+  pthread_mutex_lock(&stm->mutex);
+  stm->shutdown = 1;
+  pthread_mutex_unlock(&stm->mutex);
+
+  if (stm->playerObj) {
+    int r = opensl_stop_player(stm);
+    if (r != CUBEB_OK) {
+      return r;
+    }
+  }
+
+  if (stm->recorderObj) {
+    int r = opensl_stop_recorder(stm);
+    if (r != CUBEB_OK) {
+      return r;
+    }
+  }
+
+  // On full duplex wait thread to shutdown
+  if (stm->input_enabled && stm->output_enabled) {
+    int r = pthread_join(stm->full_duplex_thread, NULL);
+    assert(r == 0);
+  }
+
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STOPPED);
+  LOG("Cubeb stream (%p) stopped", stm);
   return CUBEB_OK;
+}
+
+static void
+opensl_stream_destroy(cubeb_stream * stm)
+{
+  assert(stm->draining || stm->shutdown);
+
+  if (stm->playerObj) {
+    (*stm->playerObj)->Destroy(stm->playerObj);
+    stm->playerObj = NULL;
+    stm->play = NULL;
+    stm->bufq = NULL;
+    for (int i = 0; i < stm->queuebuf_capacity; ++i) {
+      free(stm->queuebuf[i]);
+    }
+  }
+
+  if (stm->recorderObj) {
+    (*stm->recorderObj)->Destroy(stm->recorderObj);
+    stm->recorderObj = NULL;
+    stm->recorderItf = NULL;
+    stm->recorderBufferQueueItf = NULL;
+    for(int i = 0; i < stm->input_array_capacity; ++i) {
+      free(stm->input_buffer_array[i]);
+    }
+  }
+  cubeb_resampler_destroy(stm->resampler);
+  array_queue_destroy(stm->input_queue);
+  free(stm->input_silent_buffer);
+
+  array_queue_destroy(stm->output_queue);
+
+  pthread_mutex_destroy(&stm->mutex);
+
+  LOG("Cubeb stream (%p) destroyed", stm);
+  free(stm);
 }
 
 static int
