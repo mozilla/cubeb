@@ -287,7 +287,7 @@ get_android_version(void)
   }
 
   int version = (int)strtol(version_string, NULL, 10);
-  LOG("%d", version);
+  LOG("Android version %d", version);
   return version;
 }
 #endif
@@ -556,72 +556,212 @@ opensl_destroy(cubeb * ctx)
 static void opensl_stream_destroy(cubeb_stream * stm);
 
 static int
-opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
-                   cubeb_devid input_device,
-                   cubeb_stream_params * input_stream_params,
-                   cubeb_devid output_device,
-                   cubeb_stream_params * output_stream_params,
-                   unsigned int latency,
-                   cubeb_data_callback data_callback, cubeb_state_callback state_callback,
-                   void * user_ptr)
+opensl_set_format(SLDataFormat_PCM * format, cubeb_stream_params * params)
 {
-  cubeb_stream * stm;
+  assert(format);
+  assert(params);
 
-  assert(ctx);
-  assert(!input_stream_params && "not supported");
-  if (input_device || output_device) {
-    /* Device selection not yet implemented. */
-    return CUBEB_ERROR_DEVICE_UNAVAILABLE;
-  }
-
-  *stream = NULL;
-
-  if (output_stream_params->channels < 1 || output_stream_params->channels > 32 ||
-      latency < 1 || latency > 2000) {
-    return CUBEB_ERROR_INVALID_FORMAT;
-  }
-
-  SLDataFormat_PCM format;
-
-  format.formatType = SL_DATAFORMAT_PCM;
-  format.numChannels = output_stream_params->channels;
+  format->formatType = SL_DATAFORMAT_PCM;
+  format->numChannels = params->channels;
   // samplesPerSec is in milliHertz
-  format.samplesPerSec = output_stream_params->rate * 1000;
-  format.bitsPerSample = SL_PCMSAMPLEFORMAT_FIXED_16;
-  format.containerSize = SL_PCMSAMPLEFORMAT_FIXED_16;
-  format.channelMask = output_stream_params->channels == 1 ?
-    SL_SPEAKER_FRONT_CENTER :
-    SL_SPEAKER_FRONT_LEFT | SL_SPEAKER_FRONT_RIGHT;
+  format->samplesPerSec = params->rate * 1000;
+  format->bitsPerSample = SL_PCMSAMPLEFORMAT_FIXED_16;
+  format->containerSize = SL_PCMSAMPLEFORMAT_FIXED_16;
+  format->channelMask = params->channels == 1 ?
+                       SL_SPEAKER_FRONT_CENTER :
+                       SL_SPEAKER_FRONT_LEFT | SL_SPEAKER_FRONT_RIGHT;
 
-  switch (output_stream_params->format) {
-  case CUBEB_SAMPLE_S16LE:
-    format.endianness = SL_BYTEORDER_LITTLEENDIAN;
-    break;
-  case CUBEB_SAMPLE_S16BE:
-    format.endianness = SL_BYTEORDER_BIGENDIAN;
-    break;
-  default:
+  switch (params->format) {
+    case CUBEB_SAMPLE_S16LE:
+      format->endianness = SL_BYTEORDER_LITTLEENDIAN;
+          break;
+    case CUBEB_SAMPLE_S16BE:
+      format->endianness = SL_BYTEORDER_BIGENDIAN;
+          break;
+    default:
+      return CUBEB_ERROR_INVALID_FORMAT;
+  }
+  return CUBEB_OK;
+}
+
+static int
+opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
+{
+  assert(stm);
+  assert(params);
+
+  SLDataLocator_AndroidSimpleBufferQueue lDataLocatorOut;
+  lDataLocatorOut.locatorType = SL_DATALOCATOR_ANDROIDSIMPLEBUFFERQUEUE;
+  lDataLocatorOut.numBuffers = NBUFS;
+
+  SLDataFormat_PCM lDataFormat;
+  int r = opensl_set_format(&lDataFormat, params);
+  if (r != CUBEB_OK) {
     return CUBEB_ERROR_INVALID_FORMAT;
   }
 
-  stm = calloc(1, sizeof(*stm));
+  /* For now set device rate to params rate. */
+  stm->input_device_rate = params->rate;
+
+  SLDataSink lDataSink;
+  lDataSink.pLocator = &lDataLocatorOut;
+  lDataSink.pFormat = &lDataFormat;
+
+  SLDataLocator_IODevice lDataLocatorIn;
+  lDataLocatorIn.locatorType = SL_DATALOCATOR_IODEVICE;
+  lDataLocatorIn.deviceType = SL_IODEVICE_AUDIOINPUT;
+  lDataLocatorIn.deviceID = SL_DEFAULTDEVICEID_AUDIOINPUT;
+  lDataLocatorIn.device = NULL;
+
+  SLDataSource lDataSource;
+  lDataSource.pLocator = &lDataLocatorIn;
+  lDataSource.pFormat = NULL;
+
+  const SLuint32 lSoundRecorderIIDCount = 2;
+  const SLInterfaceID lSoundRecorderIIDs[] = { SL_IID_RECORD, SL_IID_ANDROIDSIMPLEBUFFERQUEUE };
+  const SLboolean lSoundRecorderReqs[] = { SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE };
+  // create the audio recorder abstract object
+  SLresult res = (*stm->context->eng)->CreateAudioRecorder(stm->context->eng,
+                                                           &stm->recorderObj,
+                                                           &lDataSource,
+                                                           &lDataSink,
+                                                           lSoundRecorderIIDCount,
+                                                           lSoundRecorderIIDs,
+                                                           lSoundRecorderReqs);
+  // Sample rate not supported. Try again with default sample rate!
+  if (res == SL_RESULT_CONTENT_UNSUPPORTED) {
+    if (stm->outputrate != 0 && stm->output_enabled) {
+      // Set the same with the player. Since there is no
+      // api for input device this is a safe choice.
+      stm->input_device_rate = stm->outputrate;
+    } else {
+      // A safe choice for Android.
+      stm->input_device_rate = DEFAULT_SAMPLE_RATE;
+    }
+    lDataFormat.samplesPerSec = stm->input_device_rate * 1000;
+    res = (*stm->context->eng)->CreateAudioRecorder(stm->context->eng,
+                                                    &stm->recorderObj,
+                                                    &lDataSource,
+                                                    &lDataSink,
+                                                    lSoundRecorderIIDCount,
+                                                    lSoundRecorderIIDs,
+                                                    lSoundRecorderReqs);
+
+    if (res != SL_RESULT_SUCCESS) {
+      LOG("Failed to create recorder. Error code: %lu", res);
+      return CUBEB_ERROR;
+    }
+  }
+
+  // realize the audio recorder
+  res = (*stm->recorderObj)->Realize(stm->recorderObj, SL_BOOLEAN_FALSE);
+  if (res != SL_RESULT_SUCCESS) {
+    LOG("Failed to realize recorder. Error code: %lu", res);
+    return CUBEB_ERROR;
+  }
+  // get the record interface
+  res = (*stm->recorderObj)->GetInterface(stm->recorderObj, SL_IID_RECORD, &stm->recorderItf);
+  if (res != SL_RESULT_SUCCESS) {
+    LOG("Failed to get recorder interface. Error code: %lu", res);
+    return CUBEB_ERROR;
+  }
+
+  res = (*stm->recorderItf)->RegisterCallback(stm->recorderItf, recorder_marker_callback, stm);
+  if (res != SL_RESULT_SUCCESS) {
+    opensl_stream_destroy(stm);
+    return CUBEB_ERROR;
+  }
+
+  (*stm->recorderItf)->SetMarkerPosition(stm->recorderItf, (SLmillisecond)0);
+
+  res = (*stm->recorderItf)->SetCallbackEventsMask(stm->recorderItf, (SLuint32)SL_RECORDEVENT_HEADATMARKER);
+  if (res != SL_RESULT_SUCCESS) {
+    opensl_stream_destroy(stm);
+    return CUBEB_ERROR;
+  }
+  // get the simple android buffer queue interface
+  res = (*stm->recorderObj)->GetInterface(stm->recorderObj,
+                                          SL_IID_ANDROIDSIMPLEBUFFERQUEUE,
+                                          &stm->recorderBufferQueueItf);
+  if (res != SL_RESULT_SUCCESS) {
+    LOG("Failed to get recorder (android) buffer queue interface. Error code: %lu", res);
+    return CUBEB_ERROR;
+  }
+
+  // register callback on record (input) buffer queue
+  slAndroidSimpleBufferQueueCallback rec_callback = recorder_callback;
+  if (stm->output_enabled) {
+    // Register full duplex callback instead.
+    rec_callback = recorder_fullduplex_callback;
+  }
+  res = (*stm->recorderBufferQueueItf)->RegisterCallback(stm->recorderBufferQueueItf,
+                                                         rec_callback,
+                                                         stm);
+  if (res != SL_RESULT_SUCCESS) {
+    LOG("Failed to register recorder buffer queue callback. Error code: %lu", res);
+    return CUBEB_ERROR;
+  }
+
+  // Calculate length of input buffer according to requested latency
+  stm->input_frame_size = params->channels * sizeof(int16_t);
+  uint32_t bytes_per_sec = stm->input_device_rate * stm->input_frame_size;
+  stm->input_buffer_length = (bytes_per_sec * stm->latency) / (1000 * NBUFS);
+  // round up to the next multiple of stm->framesize, if needed.
+  if (stm->input_buffer_length % stm->input_frame_size) {
+    stm->input_buffer_length += stm->input_frame_size - (stm->input_buffer_length % stm->input_frame_size);
+  }
+
+  // Calculate the capacity of input array
+  stm->input_array_capacity = NBUFS;
+  if (stm->output_enabled) {
+    // Full duplex, update capacity to hold 1 sec of data
+    stm->input_array_capacity = 1 * stm->input_device_rate / stm->input_buffer_length;
+  }
+  // Allocate input array
+  stm->input_buffer_array = (void**)calloc(1, sizeof(void*)*stm->input_array_capacity);
+  // Buffering has not started yet.
+  stm->input_buffer_index = -1;
+  // Prepare input buffers
+  for(int i = 0; i < stm->input_array_capacity; ++i) {
+    stm->input_buffer_array[i] = calloc(1, stm->input_buffer_length);
+  }
+
+  // On full duplex allocate input queue and silent buffer
+  if (stm->output_enabled) {
+    stm->input_queue = array_queue_create(stm->input_array_capacity);
+    assert(stm->input_queue);
+    stm->input_silent_buffer = calloc(1, stm->input_buffer_length);
+    assert(stm->input_silent_buffer);
+  }
+
+  // Enqueue buffer to start rolling once recorder started
+  r = opensl_enqueue_recorder(stm, NULL);
+  if (r != CUBEB_OK) {
+    return r;
+  }
+
+  LOG("Cubeb stream init recorder success");
+
+  return CUBEB_OK;
+}
+
+static int
+opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
   assert(stm);
+  assert(params);
 
-  stm->context = ctx;
-  stm->data_callback = data_callback;
-  stm->state_callback = state_callback;
-  stm->user_ptr = user_ptr;
-
-  stm->inputrate = output_stream_params->rate;
-  stm->latency = latency;
-  stm->stream_type = output_stream_params->stream_type;
-  stm->framesize = output_stream_params->channels * sizeof(int16_t);
+  stm->inputrate = params->rate;
+  stm->stream_type = params->stream_type;
+  stm->framesize = params->channels * sizeof(int16_t);
   stm->lastPosition = -1;
   stm->lastPositionTimeStamp = 0;
   stm->lastCompensativePosition = -1;
 
-  int r = pthread_mutex_init(&stm->mutex, NULL);
-  assert(r == 0);
+  SLDataFormat_PCM format;
+  int r = opensl_set_format(&format, params);
+  if (r != CUBEB_OK) {
+    return CUBEB_ERROR_INVALID_FORMAT;
+  }
 
   SLDataLocator_BufferQueue loc_bufq;
   loc_bufq.locatorType = SL_DATALOCATOR_BUFFERQUEUE;
@@ -632,15 +772,15 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
 
   SLDataLocator_OutputMix loc_outmix;
   loc_outmix.locatorType = SL_DATALOCATOR_OUTPUTMIX;
-  loc_outmix.outputMix = ctx->outmixObj;
+  loc_outmix.outputMix = stm->context->outmixObj;
   SLDataSink sink;
   sink.pLocator = &loc_outmix;
   sink.pFormat = NULL;
 
 #if defined(__ANDROID__)
-  const SLInterfaceID ids[] = {ctx->SL_IID_BUFFERQUEUE,
-                               ctx->SL_IID_VOLUME,
-                               ctx->SL_IID_ANDROIDCONFIGURATION};
+  const SLInterfaceID ids[] = {stm->context->SL_IID_BUFFERQUEUE,
+                               stm->context->SL_IID_VOLUME,
+                               stm->context->SL_IID_ANDROIDCONFIGURATION};
   const SLboolean req[] = {SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE};
 #else
   const SLInterfaceID ids[] = {ctx->SL_IID_BUFFERQUEUE, ctx->SL_IID_VOLUME};
@@ -648,12 +788,13 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
 #endif
   assert(NELEMS(ids) == NELEMS(req));
 
+  unsigned int latency = stm->latency;
   uint32_t preferred_sampling_rate = stm->inputrate;
 #if defined(__ANDROID__)
   if (get_android_version() >= ANDROID_VERSION_MARSHMALLOW) {
     // Reset preferred samping rate to trigger fallback to native sampling rate.
     preferred_sampling_rate = 0;
-    if (opensl_get_min_latency(ctx, *output_stream_params, &latency) != CUBEB_OK) {
+    if (opensl_get_min_latency(stm->context, *params, &latency) != CUBEB_OK) {
       // Default to AudioFlinger's advertised fast track latency of 10ms.
       latency = 10;
     }
@@ -663,20 +804,30 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
 
   SLresult res = SL_RESULT_CONTENT_UNSUPPORTED;
   if (preferred_sampling_rate) {
-    res = (*ctx->eng)->CreateAudioPlayer(ctx->eng, &stm->playerObj, &source,
-                                         &sink, NELEMS(ids), ids, req);
+    res = (*stm->context->eng)->CreateAudioPlayer(stm->context->eng,
+                                                  &stm->playerObj,
+                                                  &source,
+                                                  &sink,
+                                                  NELEMS(ids),
+                                                  ids,
+                                                  req);
   }
 
   // Sample rate not supported? Try again with primary sample rate!
   if (res == SL_RESULT_CONTENT_UNSUPPORTED) {
-    if (opensl_get_preferred_sample_rate(ctx, &preferred_sampling_rate)) {
-      opensl_stream_destroy(stm);
-      return CUBEB_ERROR;
+    if (opensl_get_preferred_sample_rate(stm->context, &preferred_sampling_rate)) {
+      // If fail default is used
+      preferred_sampling_rate = DEFAULT_SAMPLE_RATE;
     }
 
     format.samplesPerSec = preferred_sampling_rate * 1000;
-    res = (*ctx->eng)->CreateAudioPlayer(ctx->eng, &stm->playerObj,
-                                         &source, &sink, NELEMS(ids), ids, req);
+    res = (*stm->context->eng)->CreateAudioPlayer(stm->context->eng,
+                                                  &stm->playerObj,
+                                                  &source,
+                                                  &sink,
+                                                  NELEMS(ids),
+                                                  ids,
+                                                  req);
   }
 
   if (res != SL_RESULT_SUCCESS) {
@@ -692,34 +843,35 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
     stm->queuebuf_len += stm->framesize - (stm->queuebuf_len % stm->framesize);
   }
 
-  cubeb_stream_params params = *output_stream_params;
-  params.rate = preferred_sampling_rate;
-
-  stm->resampler = cubeb_resampler_create(stm, NULL, &params,
-                                          output_stream_params->rate,
-                                          data_callback,
-                                          user_ptr,
-                                          CUBEB_RESAMPLER_QUALITY_DEFAULT);
-
-  if (!stm->resampler) {
-    opensl_stream_destroy(stm);
-    return CUBEB_ERROR;
+  // Calculate the capacity of input array
+  stm->queuebuf_capacity = NBUFS;
+  if (stm->output_enabled) {
+    // Full duplex, update capacity to hold 1 sec of data
+    stm->queuebuf_capacity = 1 * stm->outputrate / stm->queuebuf_len;
   }
-
-  int i;
-  for (i = 0; i < NBUFS; i++) {
-    stm->queuebuf[i] = malloc(stm->queuebuf_len);
+  // Allocate input array
+  stm->queuebuf = (void**)calloc(1, sizeof(void*) * stm->queuebuf_capacity);
+  for (int i = 0; i < stm->queuebuf_capacity; ++i) {
+    stm->queuebuf[i] = calloc(1, stm->queuebuf_len);
     assert(stm->queuebuf[i]);
   }
 
 #if defined(__ANDROID__)
-  SLuint32 stream_type = convert_stream_type_to_sl_stream(output_stream_params->stream_type);
+  SLuint32 stream_type = convert_stream_type_to_sl_stream(params->stream_type);
   if (stream_type != 0xFFFFFFFF) {
     SLAndroidConfigurationItf playerConfig;
     res = (*stm->playerObj)->GetInterface(stm->playerObj,
-                                          ctx->SL_IID_ANDROIDCONFIGURATION, &playerConfig);
+                                          stm->context->SL_IID_ANDROIDCONFIGURATION,
+                                          &playerConfig);
+    if (res != SL_RESULT_SUCCESS) {
+      opensl_stream_destroy(stm);
+      return CUBEB_ERROR;
+    }
+
     res = (*playerConfig)->SetConfiguration(playerConfig,
-                                            SL_ANDROID_KEY_STREAM_TYPE, &stream_type, sizeof(SLint32));
+                                            SL_ANDROID_KEY_STREAM_TYPE,
+                                            &stream_type,
+                                            sizeof(SLint32));
     if (res != SL_RESULT_SUCCESS) {
       opensl_stream_destroy(stm);
       return CUBEB_ERROR;
@@ -733,22 +885,25 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
     return CUBEB_ERROR;
   }
 
-  res = (*stm->playerObj)->GetInterface(stm->playerObj, ctx->SL_IID_PLAY, &stm->play);
+  res = (*stm->playerObj)->GetInterface(stm->playerObj,
+                                        stm->context->SL_IID_PLAY,
+                                        &stm->play);
   if (res != SL_RESULT_SUCCESS) {
     opensl_stream_destroy(stm);
     return CUBEB_ERROR;
   }
 
-  res = (*stm->playerObj)->GetInterface(stm->playerObj, ctx->SL_IID_BUFFERQUEUE,
+  res = (*stm->playerObj)->GetInterface(stm->playerObj,
+                                        stm->context->SL_IID_BUFFERQUEUE,
                                         &stm->bufq);
   if (res != SL_RESULT_SUCCESS) {
     opensl_stream_destroy(stm);
     return CUBEB_ERROR;
   }
 
-  res = (*stm->playerObj)->GetInterface(stm->playerObj, ctx->SL_IID_VOLUME,
+  res = (*stm->playerObj)->GetInterface(stm->playerObj,
+                                        stm->context->SL_IID_VOLUME,
                                         &stm->volume);
-
   if (res != SL_RESULT_SUCCESS) {
     opensl_stream_destroy(stm);
     return CUBEB_ERROR;
@@ -769,10 +924,20 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
     return CUBEB_ERROR;
   }
 
-  res = (*stm->bufq)->RegisterCallback(stm->bufq, bufferqueue_callback, stm);
+  slBufferQueueCallback player_callback = bufferqueue_callback;
+  if (stm->input_enabled) {
+    player_callback = player_fullduplex_callback;
+  }
+  res = (*stm->bufq)->RegisterCallback(stm->bufq, player_callback, stm);
   if (res != SL_RESULT_SUCCESS) {
     opensl_stream_destroy(stm);
     return CUBEB_ERROR;
+  }
+
+  if (stm->input_enabled) {
+    // Full duplex
+    stm->output_queue = array_queue_create(stm->queuebuf_capacity);
+    assert(stm->output_queue);
   }
 
   {
@@ -786,7 +951,104 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
     assert(res == SL_RESULT_SUCCESS);
   }
 
+  LOG("Cubeb stream init playback success");
+  return CUBEB_OK;
+}
+
+static int
+opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
+                   cubeb_devid input_device,
+                   cubeb_stream_params * input_stream_params,
+                   cubeb_devid output_device,
+                   cubeb_stream_params * output_stream_params,
+                   unsigned int latency,
+                   cubeb_data_callback data_callback, cubeb_state_callback state_callback,
+                   void * user_ptr)
+{
+  cubeb_stream * stm;
+
+  assert(ctx);
+  if (input_device || output_device) {
+    /* Device selection not yet implemented. */
+    return CUBEB_ERROR_DEVICE_UNAVAILABLE;
+  }
+
+  *stream = NULL;
+
+  if ((output_stream_params &&
+       (output_stream_params->channels < 1 || output_stream_params->channels > 32)) ||
+      latency < 1 || latency > 2000) {
+    return CUBEB_ERROR_INVALID_FORMAT;
+  }
+
+  stm = calloc(1, sizeof(*stm));
+  assert(stm);
+
+  stm->context = ctx;
+  stm->data_callback = data_callback;
+  stm->state_callback = state_callback;
+  stm->user_ptr = user_ptr;
+  stm->latency = latency;
+  stm->input_enabled = (input_stream_params) ? 1 : 0;
+  stm->output_enabled = (output_stream_params) ? 1 : 0;
+  stm->shutdown = 1;
+
+  int r = pthread_mutex_init(&stm->mutex, NULL);
+  assert(r == 0);
+
+  if (output_stream_params) {
+    r = opensl_configure_playback(stm, output_stream_params);
+    if (r != CUBEB_OK) {
+      opensl_stream_destroy(stm);
+      return r;
+    }
+  }
+
+  if (input_stream_params) {
+    r = opensl_configure_capture(stm, input_stream_params);
+    if (r != CUBEB_OK) {
+      opensl_stream_destroy(stm);
+      return r;
+    }
+  }
+
+  /* Configure resampler*/
+  uint32_t target_sample_rate;
+  if (input_stream_params) {
+    target_sample_rate = input_stream_params->rate;
+  } else {
+    assert(output_stream_params);
+    target_sample_rate = output_stream_params->rate;
+  }
+
+  // Use the actual configured rates for input
+  // and output.
+  cubeb_stream_params input_params;
+  if (input_stream_params) {
+    input_params = *input_stream_params;
+    input_params.rate = stm->input_device_rate;
+  }
+  cubeb_stream_params output_params;
+  if (output_stream_params) {
+    output_params = *output_stream_params;
+    output_params.rate = stm->outputrate;
+  }
+
+  stm->resampler = cubeb_resampler_create(stm,
+                                          input_stream_params ? &input_params : NULL,
+                                          output_stream_params ? &output_params : NULL,
+                                          target_sample_rate,
+                                          data_callback,
+                                          user_ptr,
+                                          CUBEB_RESAMPLER_QUALITY_DEFAULT);
+  if (!stm->resampler) {
+    LOG("Failed to create resampler");
+    opensl_stream_destroy(stm);
+    return CUBEB_ERROR;
+  }
+
   *stream = stm;
+  LOG("Cubeb stream (%p) init success", stm);
   return CUBEB_OK;
 }
 
