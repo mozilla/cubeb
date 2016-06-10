@@ -172,6 +172,30 @@ play_callback(SLPlayItf caller, void * user_ptr, SLuint32 event)
 }
 
 static void
+recorder_marker_callback (SLRecordItf caller, void * pContext, SLuint32 event)
+{
+  cubeb_stream * stm = pContext;
+  assert(stm);
+
+  if (event == SL_RECORDEVENT_HEADATMARKER) {
+    pthread_mutex_lock(&stm->mutex);
+    int draining = stm->draining;
+    pthread_mutex_unlock(&stm->mutex);
+    if (draining) {
+      stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
+      if (stm->recorderItf) {
+        int r = opensl_stop_recorder(stm);
+        assert(r == CUBEB_OK);
+      }
+      if (stm->play) {
+        int r = opensl_stop_player(stm);
+        assert(r == CUBEB_OK);
+      }
+    }
+  }
+}
+
+static void
 bufferqueue_callback(SLBufferQueueItf caller, void * user_ptr)
 {
   cubeb_stream * stm = user_ptr;
@@ -230,6 +254,232 @@ bufferqueue_callback(SLBufferQueueItf caller, void * user_ptr)
       (*stm->play)->SetMarkerPosition(stm->play, (SLmillisecond)written_duration);
       return;
     }
+  }
+}
+
+static int
+opensl_enqueue_recorder(cubeb_stream * stm, void ** last_filled_buffer)
+{
+  assert(stm);
+
+  int current_index = stm->input_buffer_index;
+  void * last_buffer = NULL;
+
+  if (current_index < 0) {
+    // This is the first enqueue
+    current_index = 0;
+  } else {
+    // The current index hold the last filled buffer get it before advance index.
+    last_buffer = stm->input_buffer_array[current_index];
+    // Advance to get next available buffer
+    current_index = (current_index + 1) % stm->input_array_capacity;
+  }
+  // enqueue next empty buffer to be filled by the recorder
+  SLresult res = (*stm->recorderBufferQueueItf)->Enqueue(stm->recorderBufferQueueItf,
+                                                         stm->input_buffer_array[current_index],
+                                                         stm->input_buffer_length);
+  if (res != SL_RESULT_SUCCESS ) {
+    LOG("Enqueue recorder failed. Error code: %lu", res);
+    return CUBEB_ERROR;
+  }
+  // All good, update buffer and index.
+  stm->input_buffer_index = current_index;
+  if (last_filled_buffer) {
+    *last_filled_buffer = last_buffer;
+  }
+  return CUBEB_OK;
+}
+
+// input data callback
+void recorder_callback(SLAndroidSimpleBufferQueueItf bq, void * context)
+{
+  assert(context);
+  cubeb_stream * stm = context;
+  assert(stm->recorderBufferQueueItf);
+
+  if (stm->shutdown || stm->draining) {
+    // Accordint to the doc, on transition to the SL_RECORDSTATE_STOPPED state,
+    // the application should continue to enqueue buffers onto the queue
+    // to retrieve the residual recorded data in the system.
+    int r = opensl_enqueue_recorder(stm, NULL);
+    assert(r == CUBEB_OK);
+    return;
+  }
+
+  // Enqueue next available buffer and get the last filled buffer.
+  void * input_buffer = NULL;
+  int r = opensl_enqueue_recorder(stm, &input_buffer);
+  assert(r == CUBEB_OK);
+  assert(input_buffer);
+  // Fill resampler with last input
+  long input_frame_count = stm->input_buffer_length / stm->input_frame_size;
+  long got = cubeb_resampler_fill(stm->resampler,
+                                  input_buffer,
+                                  &input_frame_count,
+                                  NULL,
+                                  0);
+  // Error case
+  if (got < 0 || got > input_frame_count) {
+    pthread_mutex_lock(&stm->mutex);
+    stm->shutdown = 1;
+    pthread_mutex_unlock(&stm->mutex);
+    int r = opensl_stop_recorder(stm);
+    assert(r == CUBEB_OK);
+    stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
+  }
+
+  // Advance total stream frames
+  stm->input_total_frames += got;
+
+  if (got < input_frame_count) {
+    pthread_mutex_lock(&stm->mutex);
+    stm->draining = 1;
+    pthread_mutex_unlock(&stm->mutex);
+    int64_t duration = INT64_C(1000) * stm->input_total_frames / stm->input_device_rate;
+    (*stm->recorderItf)->SetMarkerPosition(stm->recorderItf, (SLmillisecond)duration);
+    return;
+  }
+}
+
+void recorder_fullduplex_callback(SLAndroidSimpleBufferQueueItf bq, void * context)
+{
+  assert(context);
+  cubeb_stream * stm = context;
+  assert(stm->recorderBufferQueueItf);
+
+  if (stm->shutdown || stm->draining) {
+    /* On draining and shutdown the recorder should have been stoped from
+    *  the one set the flags. Accordint to the doc, on transition to
+    *  the SL_RECORDSTATE_STOPPED state, the application should
+    *  continue to enqueue buffers onto the queue to retrieve the residual
+    *  recorded data in the system. */
+    LOG("Input shutdown %d or drain %d", stm->shutdown, stm->draining);
+    int r = opensl_enqueue_recorder(stm, NULL);
+    assert(r == CUBEB_OK);
+    return;
+  }
+
+  // Enqueue next available buffer and get the last filled buffer.
+  void * input_buffer = NULL;
+  int r = opensl_enqueue_recorder(stm, &input_buffer);
+  assert(r == CUBEB_OK);
+  assert(input_buffer);
+
+  assert(stm->input_queue);
+  r = array_queue_push(stm->input_queue, input_buffer);
+  if (r == -1) {
+    LOG("Input queue is full, drop input ...");
+  }
+}
+
+static void
+player_fullduplex_callback(SLBufferQueueItf caller, void * user_ptr)
+{
+  cubeb_stream * stm = user_ptr;
+  assert(stm);
+  SLresult res;
+
+  void * output_buffer = NULL;
+  if (stm->shutdown ||
+      stm->draining ||
+      (output_buffer = array_queue_get(stm->output_queue)) == NULL) {
+    LOG("Output hole or shutdown send silent");
+    output_buffer = stm->queuebuf[stm->queuebuf_idx];
+    memset(output_buffer, 0, stm->queuebuf_len);
+    // Advance the output buffer queue index
+    stm->queuebuf_idx = (stm->queuebuf_idx + 1) % stm->queuebuf_capacity;
+  }
+
+  // Enqueue data in player buffer queue
+  res = (*stm->bufq)->Enqueue(stm->bufq,
+                              output_buffer,
+                              stm->queuebuf_len);
+  assert(res == SL_RESULT_SUCCESS);
+}
+
+void * LoopFullDuplexThread(void * p)
+{
+  cubeb_stream * stm = p;
+  assert(stm);
+
+  while (1) {
+    pthread_mutex_lock(&stm->mutex);
+    int draining = stm->draining;
+    uint32_t shutdown = stm->shutdown;
+    pthread_mutex_unlock(&stm->mutex);
+    if (draining || shutdown){
+      LOG("Exit full duplex thread");
+      return NULL;
+    }
+
+    // Wait until some input exist.
+    array_queue_wait_if_empty(stm->input_queue);
+    void * input_buffer = array_queue_get(stm->input_queue);
+    assert(input_buffer);
+    long input_frame_count = stm->input_buffer_length / stm->input_frame_size;
+    long frames_needed = stm->queuebuf_len / stm->framesize;
+
+    // Check again after waiting
+    pthread_mutex_lock(&stm->mutex);
+    draining = stm->draining;
+    shutdown = stm->shutdown;
+    pthread_mutex_unlock(&stm->mutex);
+    if (draining || shutdown){
+      LOG("Exit full duplex thread after wait");
+      return NULL;
+    }
+
+    // Get buffer to store the output
+    void * output_buffer = stm->queuebuf[stm->queuebuf_idx];
+    long written = 0;
+
+    // Trigger user callback through resampler
+    written = cubeb_resampler_fill(stm->resampler,
+                                   input_buffer,
+                                   &input_frame_count,
+                                   output_buffer,
+                                   frames_needed);
+
+    LOG("Fill: written %d, frames_needed %d, input array %d, output array %d",
+        written, frames_needed, array_queue_get_size(stm->input_queue),
+        array_queue_get_size(stm->output_queue));
+
+    if (written < 0 || written  > frames_needed) {
+      // Error case
+      pthread_mutex_lock(&stm->mutex);
+      stm->shutdown = 1;
+      pthread_mutex_unlock(&stm->mutex);
+      opensl_stop_player(stm);
+      opensl_stop_recorder(stm);
+      stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
+      return NULL;
+    }
+
+    // Advance total out written  frames counter
+    stm->written += written;
+
+    if ( written < frames_needed) {
+      pthread_mutex_lock(&stm->mutex);
+      int64_t written_duration = INT64_C(1000) * stm->written * stm->framesize / stm->bytespersec;
+      stm->draining = 1;
+      pthread_mutex_unlock(&stm->mutex);
+
+      // Use SL_PLAYEVENT_HEADATMARKER event from slPlayCallback of SLPlayItf
+      // to make sure all the data has been processed.
+      (*stm->play)->SetMarkerPosition(stm->play, (SLmillisecond)written_duration);
+    }
+
+    // Keep sending silent data even in draining mode to prevent the audio
+    // back-end from being stopped automatically by OpenSL/ES.
+    memset(output_buffer + written * stm->framesize, 0,
+           stm->queuebuf_len - written * stm->framesize);
+    // Push output buffer on output queue
+    int r = array_queue_push(stm->output_queue, output_buffer);
+    if (r == -1) {
+      LOG("Output is full, drop it ...");
+    }
+    // Advance the output buffer queue index
+    stm->queuebuf_idx = (stm->queuebuf_idx + 1) % stm->queuebuf_capacity;
   }
 }
 
