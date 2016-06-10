@@ -139,6 +139,10 @@ struct cubeb_stream {
   int64_t lastCompensativePosition;
 };
 
+/* Forward declaration. */
+static int opensl_stop_player(cubeb_stream * stm);
+static int opensl_stop_recorder(cubeb_stream * stm);
+
 static void
 play_callback(SLPlayItf caller, void * user_ptr, SLuint32 event)
 {
@@ -152,7 +156,14 @@ play_callback(SLPlayItf caller, void * user_ptr, SLuint32 event)
     pthread_mutex_unlock(&stm->mutex);
     if (draining) {
       stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
-      (*stm->play)->SetPlayState(stm->play, SL_PLAYSTATE_PAUSED);
+      if (stm->play) {
+        int r = opensl_stop_player(stm);
+        assert(r == CUBEB_OK);
+      }
+      if (stm->recorderItf) {
+        int r = opensl_stop_recorder(stm);
+        assert(r == CUBEB_OK);
+      }
     }
     break;
   default:
@@ -180,14 +191,19 @@ bufferqueue_callback(SLBufferQueueItf caller, void * user_ptr)
     long written = 0;
     pthread_mutex_lock(&stm->mutex);
     int draining = stm->draining;
+    int shutdown = stm->shutdown;
     pthread_mutex_unlock(&stm->mutex);
 
-    if (!draining) {
+    if (!draining && !shutdown) {
       written = cubeb_resampler_fill(stm->resampler,
                                      NULL, NULL,
                                      buf, stm->queuebuf_len / stm->framesize);
       if (written < 0 || written * stm->framesize > stm->queuebuf_len) {
-        (*stm->play)->SetPlayState(stm->play, SL_PLAYSTATE_PAUSED);
+        pthread_mutex_lock(&stm->mutex);
+        stm->shutdown = 1;
+        pthread_mutex_unlock(&stm->mutex);
+        opensl_stop_player(stm);
+        stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
         return;
       }
     }
@@ -197,7 +213,7 @@ bufferqueue_callback(SLBufferQueueItf caller, void * user_ptr)
     memset(buf + written * stm->framesize, 0, stm->queuebuf_len - written * stm->framesize);
     res = (*stm->bufq)->Enqueue(stm->bufq, buf, stm->queuebuf_len);
     assert(res == SL_RESULT_SUCCESS);
-    stm->queuebuf_idx = (stm->queuebuf_idx + 1) % NBUFS;
+    stm->queuebuf_idx = (stm->queuebuf_idx + 1) % stm->queuebuf_capacity;
     if (written > 0) {
       pthread_mutex_lock(&stm->mutex);
       stm->written += written;
