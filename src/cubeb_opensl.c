@@ -382,7 +382,7 @@ player_fullduplex_callback(SLBufferQueueItf caller, void * user_ptr)
   void * output_buffer = NULL;
   if (stm->shutdown ||
       stm->draining ||
-      (output_buffer = array_queue_get(stm->output_queue)) == NULL) {
+      (output_buffer = array_queue_pop(stm->output_queue)) == NULL) {
     LOG("Output hole or shutdown send silent");
     output_buffer = stm->queuebuf[stm->queuebuf_idx];
     memset(output_buffer, 0, stm->queuebuf_len);
@@ -414,7 +414,7 @@ void * LoopFullDuplexThread(void * p)
 
     // Wait until some input exist.
     array_queue_wait_if_empty(stm->input_queue);
-    void * input_buffer = array_queue_get(stm->input_queue);
+    void * input_buffer = array_queue_pop(stm->input_queue);
     assert(input_buffer);
     long input_frame_count = stm->input_buffer_length / stm->input_frame_size;
     long frames_needed = stm->queuebuf_len / stm->framesize;

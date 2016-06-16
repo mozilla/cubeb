@@ -74,7 +74,7 @@ int array_queue_push(array_queue * aq, void * item)
   return ret;
 }
 
-void* array_queue_get(array_queue * aq)
+void* array_queue_pop(array_queue * aq)
 {
   pthread_mutex_lock(&aq->mutex);
   void * value = aq->buf[aq->readPos % aq->num];
