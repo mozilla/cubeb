@@ -1599,24 +1599,23 @@ audiounit_get_available_samplerate(AudioObjectID devid, AudioObjectPropertyScope
   }
 
   adr.mSelector = kAudioDevicePropertyAvailableNominalSampleRates;
-  if (AudioObjectHasProperty(devid, &adr)) {
-    UInt32 size = 0;
-    AudioValueRange range;
-    if (AudioObjectGetPropertyDataSize(devid, &adr, 0, NULL, &size) == noErr) {
-      uint32_t i, count = size / sizeof(AudioValueRange);
-      AudioValueRange * ranges = malloc(size);
-      range.mMinimum = 9999999999.0;
-      range.mMaximum = 0.0;
-      if (AudioObjectGetPropertyData(devid, &adr, 0, NULL, &size, ranges) == noErr) {
-        for (i = 0; i < count; i++) {
-          if (ranges[i].mMaximum > range.mMaximum)
-            range.mMaximum = ranges[i].mMaximum;
-          if (ranges[i].mMinimum < range.mMinimum)
-            range.mMinimum = ranges[i].mMinimum;
-        }
+  UInt32 size = 0;
+  AudioValueRange range;
+  if (AudioObjectHasProperty(devid, &adr) &&
+      AudioObjectGetPropertyDataSize(devid, &adr, 0, NULL, &size) == noErr) {
+    uint32_t i, count = size / sizeof(AudioValueRange);
+    AudioValueRange * ranges = malloc(size);
+    range.mMinimum = 9999999999.0;
+    range.mMaximum = 0.0;
+    if (AudioObjectGetPropertyData(devid, &adr, 0, NULL, &size, ranges) == noErr) {
+      for (i = 0; i < count; i++) {
+        if (ranges[i].mMaximum > range.mMaximum)
+          range.mMaximum = ranges[i].mMaximum;
+        if (ranges[i].mMinimum < range.mMinimum)
+          range.mMinimum = ranges[i].mMinimum;
       }
-      free(ranges);
     }
+    free(ranges);
     *max = (uint32_t)range.mMaximum;
     *min = (uint32_t)range.mMinimum;
   } else {
