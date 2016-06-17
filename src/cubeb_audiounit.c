@@ -1839,7 +1839,7 @@ audiounit_get_devices_of_type(cubeb_device_type devtype, AudioObjectID ** devid_
     }
   }
 
-  if (devid_array) {
+  if (devid_array && dev_count > 0) {
     *devid_array = calloc(dev_count, sizeof(AudioObjectID));
     assert(*devid_array);
     memcpy(*devid_array, &devices_in_scope, dev_count * sizeof(AudioObjectID));
