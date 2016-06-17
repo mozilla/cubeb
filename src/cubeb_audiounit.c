@@ -1536,6 +1536,7 @@ audiounit_get_devices(AudioObjectID ** devices, uint32_t * count)
     }
   } else {
     *devices = NULL;
+    ret = -1;
   }
 
   return ret;
