@@ -23,13 +23,11 @@ typedef struct
   size_t writePos;
   size_t readPos;
   pthread_mutex_t mutex;
-  pthread_mutex_t empty_mutex;
+  pthread_cond_t empty_convar;
 } array_queue;
 
 array_queue * array_queue_create(size_t num)
 {
-  assert(num > 0);
-
   array_queue * new_queue = (array_queue*)calloc(1, sizeof(array_queue));
   new_queue->buf = (void **)calloc(1, sizeof(void*) * num);
   new_queue->readPos = 0;
@@ -37,8 +35,7 @@ array_queue * array_queue_create(size_t num)
   new_queue->num = num;
 
   pthread_mutex_init(&new_queue->mutex, NULL);
-  pthread_mutex_init(&new_queue->empty_mutex, NULL);
-  pthread_mutex_lock(&new_queue->empty_mutex);
+  pthread_cond_init(&new_queue->empty_convar, NULL);
 
   return new_queue;
 }
@@ -49,10 +46,7 @@ void array_queue_destroy(array_queue * aq)
 
   free(aq->buf);
   pthread_mutex_destroy(&aq->mutex);
-
-  pthread_mutex_unlock(&aq->empty_mutex);
-  pthread_mutex_destroy(&aq->empty_mutex);
-
+  pthread_cond_destroy(&aq->empty_convar);
   free(aq);
 }
 
@@ -69,7 +63,7 @@ int array_queue_push(array_queue * aq, void * item)
     ret = 0;
   }
   // else queue is full
-  pthread_mutex_unlock(&aq->empty_mutex);
+  pthread_cond_signal(&aq->empty_convar);
   pthread_mutex_unlock(&aq->mutex);
   return ret;
 }
@@ -82,20 +76,26 @@ void* array_queue_pop(array_queue * aq)
   {
     aq->buf[aq->readPos % aq->num] = NULL;
     aq->readPos = (aq->readPos + 1) % aq->num;
-    if (aq->readPos == aq->writePos) {
-      pthread_mutex_lock(&aq->empty_mutex);
-    }
   }
   pthread_mutex_unlock(&aq->mutex);
   return value;
 }
 
-void array_queue_wait_if_empty(array_queue * aq)
+void* array_queue_wait_pop(array_queue * aq)
 {
-  while (pthread_mutex_trylock(&aq->empty_mutex) != 0) {
-    usleep(10);
+  pthread_mutex_lock(&aq->mutex);
+  while (aq->readPos == aq->writePos) {
+    // Wait here if queue is empty
+    pthread_cond_wait(&aq->empty_convar, &aq->mutex);
   }
-  pthread_mutex_unlock(&aq->empty_mutex);
+  void * value = aq->buf[aq->readPos % aq->num];
+  // Since it has been waiting it is expected to
+  // return a non NULL value.
+  assert(value);
+  aq->buf[aq->readPos % aq->num] = NULL;
+  aq->readPos = (aq->readPos + 1) % aq->num;
+  pthread_mutex_unlock(&aq->mutex);
+  return value;
 }
 
 ssize_t array_queue_get_size(array_queue * aq)

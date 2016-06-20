@@ -413,8 +413,7 @@ void * LoopFullDuplexThread(void * p)
     }
 
     // Wait until some input exist.
-    array_queue_wait_if_empty(stm->input_queue);
-    void * input_buffer = array_queue_pop(stm->input_queue);
+    void * input_buffer = array_queue_wait_pop(stm->input_queue);
     assert(input_buffer);
     long input_frame_count = stm->input_buffer_length / stm->input_frame_size;
     long frames_needed = stm->queuebuf_len / stm->framesize;
@@ -1495,15 +1494,23 @@ opensl_stream_destroy(cubeb_stream * stm)
     stm->recorderObj = NULL;
     stm->recorderItf = NULL;
     stm->recorderBufferQueueItf = NULL;
-    for(int i = 0; i < stm->input_array_capacity; ++i) {
+    for (int i = 0; i < stm->input_array_capacity; ++i) {
       free(stm->input_buffer_array[i]);
     }
   }
-  cubeb_resampler_destroy(stm->resampler);
-  array_queue_destroy(stm->input_queue);
+
+  if (stm->resampler) {
+    cubeb_resampler_destroy(stm->resampler);
+  }
+
+  if (stm->input_queue) {
+    array_queue_destroy(stm->input_queue);
+  }
   free(stm->input_silent_buffer);
 
-  array_queue_destroy(stm->output_queue);
+  if (stm->output_queue) {
+    array_queue_destroy(stm->output_queue);
+  }
 
   pthread_mutex_destroy(&stm->mutex);
 
