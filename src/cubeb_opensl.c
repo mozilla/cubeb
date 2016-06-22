@@ -138,7 +138,7 @@ struct cubeb_stream {
 
   cubeb_resampler * resampler;
   unsigned int inputrate;
-  unsigned int outputrate;
+  unsigned int output_configured_rate;
   unsigned int latency;
   int64_t lastPosition;
   int64_t lastPositionTimeStamp;
@@ -957,13 +957,18 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
                                                            lSoundRecorderReqs);
   // Sample rate not supported. Try again with default sample rate!
   if (res == SL_RESULT_CONTENT_UNSUPPORTED) {
-    if (stm->outputrate != 0 && stm->output_enabled) {
+    if (stm->output_enabled && stm->output_configured_rate != 0) {
       // Set the same with the player. Since there is no
       // api for input device this is a safe choice.
-      stm->input_device_rate = stm->outputrate;
-    } else {
-      // A safe choice for Android.
-      stm->input_device_rate = DEFAULT_SAMPLE_RATE;
+      stm->input_device_rate = stm->output_configured_rate;
+    } else  {
+      // The output preferred rate is used for input only scenario. This is
+      // the correct rate to use to get a fast track for input only.
+      r = opensl_get_preferred_sample_rate(stm->context, &stm->input_device_rate);
+      if (r != CUBEB_OK) {
+        // If everything else fail use a safe choice for Android.
+        stm->input_device_rate = DEFAULT_SAMPLE_RATE;
+      }
     }
     lDataFormat.samplesPerSec = stm->input_device_rate * 1000;
     res = (*stm->context->eng)->CreateAudioRecorder(stm->context->eng,
@@ -1162,8 +1167,8 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
     return CUBEB_ERROR;
   }
 
-  stm->outputrate = preferred_sampling_rate;
-  stm->bytespersec = stm->outputrate * stm->framesize;
+  stm->output_configured_rate = preferred_sampling_rate;
+  stm->bytespersec = stm->output_configured_rate * stm->framesize;
   stm->queuebuf_len = (stm->bytespersec * latency) / (1000 * NBUFS);
   // round up to the next multiple of stm->framesize, if needed.
   if (stm->queuebuf_len % stm->framesize) {
@@ -1174,7 +1179,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
   stm->queuebuf_capacity = NBUFS;
   if (stm->output_enabled) {
     // Full duplex, update capacity to hold 1 sec of data
-    stm->queuebuf_capacity = 1 * stm->outputrate / stm->queuebuf_len;
+    stm->queuebuf_capacity = 1 * stm->output_configured_rate / stm->queuebuf_len;
   }
   // Allocate input array
   stm->queuebuf = (void**)calloc(1, sizeof(void*) * stm->queuebuf_capacity);
@@ -1358,7 +1363,7 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
   cubeb_stream_params output_params;
   if (output_stream_params) {
     output_params = *output_stream_params;
-    output_params.rate = stm->outputrate;
+    output_params.rate = stm->output_configured_rate;
   }
 
   stm->resampler = cubeb_resampler_create(stm,
@@ -1612,7 +1617,7 @@ opensl_stream_get_position(cubeb_stream * stm, uint64_t * position)
   }
 
   pthread_mutex_lock(&stm->mutex);
-  int64_t maximum_position = stm->written * (int64_t)stm->inputrate / stm->outputrate;
+  int64_t maximum_position = stm->written * (int64_t)stm->inputrate / stm->output_configured_rate;
   pthread_mutex_unlock(&stm->mutex);
   assert(maximum_position >= 0);
 
