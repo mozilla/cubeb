@@ -28,6 +28,7 @@ typedef struct
 
 array_queue * array_queue_create(size_t num)
 {
+  assert(num != 0);
   array_queue * new_queue = (array_queue*)calloc(1, sizeof(array_queue));
   new_queue->buf = (void **)calloc(1, sizeof(void*) * num);
   new_queue->readPos = 0;
@@ -98,15 +99,16 @@ void* array_queue_wait_pop(array_queue * aq)
   return value;
 }
 
-ssize_t array_queue_get_size(array_queue * aq)
+size_t array_queue_get_size(array_queue * aq)
 {
   pthread_mutex_lock(&aq->mutex);
   ssize_t r = aq->writePos - aq->readPos;
   if (r < 0) {
     r = aq->num + r;
+    assert(r >= 0);
   }
   pthread_mutex_unlock(&aq->mutex);
-  return r;
+  return (size_t)r;
 }
 
 #if defined(__cplusplus)

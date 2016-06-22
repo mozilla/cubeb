@@ -102,7 +102,9 @@ struct cubeb_stream {
    * On full duplex is calculated to
    * store 1 sec of data buffers. */
   uint32_t input_array_capacity;
-  /* Current filled index of input buffer array. */
+  /* Current filled index of input buffer array.
+   * It is initiated to -1 indicating buffering
+   * have not started yet. */
   int input_buffer_index;
   /* Length of input buffer.*/
   uint32_t input_buffer_length;
@@ -274,6 +276,7 @@ bufferqueue_callback(SLBufferQueueItf caller, void * user_ptr)
 
     // Keep sending silent data even in draining mode to prevent the audio
     // back-end from being stopped automatically by OpenSL/ES.
+    assert(stm->queuebuf_len >= written * stm->framesize);
     memset(buf + written * stm->framesize, 0, stm->queuebuf_len - written * stm->framesize);
     res = (*stm->bufq)->Enqueue(stm->bufq, buf, stm->queuebuf_len);
     assert(res == SL_RESULT_SUCCESS);
@@ -420,7 +423,12 @@ void recorder_fullduplex_callback(SLAndroidSimpleBufferQueueItf bq, void * conte
   r = array_queue_push(stm->input_queue, input_buffer);
   if (r == -1) {
     LOG("Input queue is full, drop input ...");
+    return;
   }
+
+  LOG("Input pushed in the queue, input array %zu, output array %zu",
+      array_queue_get_size(stm->input_queue),
+      array_queue_get_size(stm->output_queue));
 }
 
 static void
@@ -453,6 +461,9 @@ player_fullduplex_callback(SLBufferQueueItf caller, void * user_ptr)
                               output_buffer,
                               stm->queuebuf_len);
   assert(res == SL_RESULT_SUCCESS);
+  LOG("Output enqueue in player, input array size %zu, output array size %zu",
+      array_queue_get_size(stm->input_queue),
+      array_queue_get_size(stm->output_queue));
 }
 
 void * LoopFullDuplexThread(void * p)
