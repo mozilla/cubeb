@@ -1288,6 +1288,17 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
 }
 
 static int
+opensl_validate_stream_param(cubeb_stream_params * stream_params, unsigned int latency)
+{
+  if ((stream_params &&
+       (stream_params->channels < 1 || stream_params->channels > 32)) ||
+      latency < 1 || latency > 2000) {
+    return CUBEB_ERROR_INVALID_FORMAT;
+  }
+  return CUBEB_OK;
+}
+
+static int
 opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
                    cubeb_devid input_device,
                    cubeb_stream_params * input_stream_params,
@@ -1301,16 +1312,20 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
 
   assert(ctx);
   if (input_device || output_device) {
-    /* Device selection not yet implemented. */
-    return CUBEB_ERROR_DEVICE_UNAVAILABLE;
+    LOG("Device selection is not supported in Android. The default will be used");
   }
 
   *stream = NULL;
 
-  if ((output_stream_params &&
-       (output_stream_params->channels < 1 || output_stream_params->channels > 32)) ||
-      latency < 1 || latency > 2000) {
-    return CUBEB_ERROR_INVALID_FORMAT;
+  int r = opensl_validate_stream_param(output_stream_params, latency);
+  if(r != CUBEB_OK) {
+    LOG("Output stream params not valid");
+    return r;
+  }
+  r = opensl_validate_stream_param(input_stream_params, latency);
+  if(r != CUBEB_OK) {
+    LOG("Input stream params not valid");
+    return r;
   }
 
   stm = calloc(1, sizeof(*stm));
@@ -1325,7 +1340,7 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
   stm->output_enabled = (output_stream_params) ? 1 : 0;
   stm->shutdown = 1;
 
-  int r = pthread_mutex_init(&stm->mutex, NULL);
+  r = pthread_mutex_init(&stm->mutex, NULL);
   assert(r == 0);
 
   if (output_stream_params) {
