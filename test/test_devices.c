@@ -89,14 +89,14 @@ print_device_info(cubeb_device_info * info, FILE * f)
       "\tCh:      %u\n"
       "\tFormat:  %s (0x%x) (default: %s)\n"
       "\tRate:    %u - %u (default: %u)\n"
-      "\tLatency: lo %ums, hi %ums\n",
+      "\tLatency: lo %u frames, hi %u frames\n",
       info->device_id, info->preferred ? " (PREFERRED)" : "",
       info->friendly_name, info->group_id, info->vendor_name,
       devtype, devstate, info->max_channels,
       (devfmts[0] == ' ') ? &devfmts[1] : devfmts,
       (unsigned int)info->format, devdeffmt,
       info->min_rate, info->max_rate, info->default_rate,
-      info->latency_lo_ms, info->latency_hi_ms);
+      info->latency_lo, info->latency_hi);
 }
 
 static void
