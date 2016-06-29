@@ -125,6 +125,12 @@ run_enumerate_devices(void)
       cubeb_get_backend_id(ctx));
 
   r = cubeb_enumerate_devices(ctx, CUBEB_DEVICE_TYPE_INPUT, &collection);
+  if (r == CUBEB_ERROR_NOT_SUPPORTED) {
+    fprintf(stderr, "Device enumeration not supported"
+                    " for this backend, skipping this test.\n");
+    r = CUBEB_OK;
+    goto cleanup;
+  }
   if (r != CUBEB_OK) {
     fprintf(stderr, "Error enumerating devices %d\n", r);
     goto cleanup;
