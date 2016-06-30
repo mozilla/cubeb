@@ -254,11 +254,6 @@ audiounit_output_callback(void * user_ptr,
   assert(outBufferList->mNumberBuffers == 1);
 
   cubeb_stream * stm = user_ptr;
-
-  LOG("- output(%p): buffers %d, size %d, channels %d, frames %d\n", stm,
-      outBufferList->mNumberBuffers, outBufferList->mBuffers[0].mDataByteSize,
-      outBufferList->mBuffers[0].mNumberChannels, output_frames);
-
   long outframes = 0, input_frames = 0;
   void * output_buffer = NULL, * input_buffer = NULL;
 
@@ -269,6 +264,10 @@ audiounit_output_callback(void * user_ptr,
     pthread_mutex_unlock(&stm->mutex);
     return noErr;
   }
+
+  LOG("- output(%p): buffers %d, size %d, channels %d, frames %d\n", stm,
+      outBufferList->mNumberBuffers, outBufferList->mBuffers[0].mDataByteSize,
+      outBufferList->mBuffers[0].mNumberChannels, output_frames);
 
   stm->current_latency_frames = audiotimestamp_to_latency(tstamp, stm);
   if (stm->draining) {
@@ -288,31 +287,31 @@ audiounit_output_callback(void * user_ptr,
   /* If Full duplex get also input buffer */
   AudioBuffer * input_aud_buf = NULL;
   if (stm->input_unit != NULL) {
-    /* Output callback came first */
-    if (stm->frames_read == 0) {
-      LOG("Output callback came first send silent.\n");
-      audiounit_make_silent(&outBufferList->mBuffers[0]);
-      pthread_mutex_unlock(&stm->mutex);
-      return noErr;
-    }
+    // Number of input frames in the buffer
+    input_frames = stm->input_buffer_frames;
     /* Input samples stored previously in input callback. */
     input_aud_buf = ring_array_get_data_buffer(&stm->input_buffer_array);
     if (input_aud_buf == NULL) {
-      LOG("Requested more output than input. "
-             "This is either a hole or we are after a stream stop and input thread stopped before output\n");
       /* Provide silent input. Other than that we could provide silent output and exit without
-       * calling user callback. I do not prefer it because the user loose the control of
+       * calling user callback. This is not preferred because the user loose the control of
        * the output. Also resampler loose frame counting and produce less frame than
        * expected at some point in the future breaking an assert. */
+      LOG("Input hole. Requested more input than existing.\n");
 
       /* Avoid here to allocate new memory since we are inside callback. Use the existing
        * allocated buffers since the ring array is empty and the buffer is not used. */
       input_aud_buf = ring_array_get_dummy_buffer(&stm->input_buffer_array);
-      audiounit_make_silent(input_aud_buf);
+      /* Output callback came first */
+      if (stm->frames_read == 0) {
+        LOG("Output callback came first send silent.\n");
+        audiounit_make_silent(input_aud_buf);
+      } else {
+        /* Update input frames by set them to 0. Resampler will use any buffered
+         * frame if they are not enough will fill the buffer with silence. */
+         input_frames = 0;
+      }
     }
     input_buffer = input_aud_buf->mData;
-    input_frames = stm->input_buffer_frames;
-    assert(stm->frames_read > 0);
   }
 
   /* Call user callback through resampler. */
@@ -711,7 +710,7 @@ audiounit_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * la
     return CUBEB_ERROR;
   }
 
-  *latency_ms = (latency_range.mMinimum * 1000 + params.rate - 1) / params.rate;
+  *latency_ms = ceil((latency_range.mMinimum * 1000 ) / params.rate);
 #endif
 
   return CUBEB_OK;
@@ -970,27 +969,6 @@ audiounit_stream_init(cubeb * context,
 
   /* Setup Input Stream! */
   if (input_stream_params != NULL) {
-    size = sizeof(UInt32);
-    if (AudioUnitGetProperty(stm->input_unit,
-                             kAudioDevicePropertyBufferFrameSize,
-                             kAudioUnitScope_Input,
-                             AU_IN_BUS,
-                             &stm->input_buffer_frames,
-                             &size) != 0) {
-      audiounit_stream_destroy(stm);
-      return CUBEB_ERROR;
-    }
-
-    if (AudioUnitSetProperty(stm->input_unit,
-                             kAudioDevicePropertyBufferFrameSize,
-                             kAudioUnitScope_Output,
-                             AU_IN_BUS,
-                             &stm->input_buffer_frames,
-                             size) != 0) {
-      audiounit_stream_destroy(stm);
-      return CUBEB_ERROR;
-    }
-
     /* Get input device sample rate. */
     AudioStreamBasicDescription input_hw_desc;
     size = sizeof(AudioStreamBasicDescription);
@@ -1010,6 +988,24 @@ audiounit_stream_init(cubeb * context,
     if (r != CUBEB_OK) {
       audiounit_stream_destroy(stm);
       return r;
+    }
+
+    // Use latency to calculate buffer size
+    stm->input_buffer_frames = (latency / 1000.0) * stm->input_hw_rate;
+    if (stm->input_buffer_frames % stm->input_desc.mBytesPerFrame) {
+      // Round up to next frame
+      stm->input_buffer_frames += stm->input_desc.mBytesPerFrame -
+          (stm->input_buffer_frames % stm->input_desc.mBytesPerFrame);
+    }
+    LOG("Calculated input number of frames %u for latency %u\n", stm->input_buffer_frames, latency);
+    if (AudioUnitSetProperty(stm->input_unit,
+                             kAudioDevicePropertyBufferFrameSize,
+                             kAudioUnitScope_Output,
+                             AU_IN_BUS,
+                             &stm->input_buffer_frames,
+                             sizeof(UInt32)) != 0) {
+      audiounit_stream_destroy(stm);
+      return CUBEB_ERROR;
     }
 
     AudioStreamBasicDescription src_desc = stm->input_desc;
@@ -1072,12 +1068,46 @@ audiounit_stream_init(cubeb * context,
       return r;
     }
 
+    /* Get output device sample rate. */
+    AudioStreamBasicDescription output_hw_desc;
+    size = sizeof(AudioStreamBasicDescription);
+    memset(&output_hw_desc, 0, size);
+    if (AudioUnitGetProperty(stm->output_unit,
+                             kAudioUnitProperty_StreamFormat,
+                             kAudioUnitScope_Output,
+                             AU_OUT_BUS,
+                             &output_hw_desc,
+                             &size) != 0) {
+      audiounit_stream_destroy(stm);
+      return CUBEB_ERROR;
+    }
+
     if (AudioUnitSetProperty(stm->output_unit,
                              kAudioUnitProperty_StreamFormat,
                              kAudioUnitScope_Input,
                              AU_OUT_BUS,
                              &stm->output_desc,
                              sizeof(AudioStreamBasicDescription)) != 0) {
+      audiounit_stream_destroy(stm);
+      return CUBEB_ERROR;
+    }
+
+    // Use latency to set number of frames in out buffer. Use the
+    // device sampling rate, internal resampler of audiounit will
+    // calculate the expected number of frames.
+    uint32_t output_buffer_frames = (latency / 1000.0) * output_hw_desc.mSampleRate;
+    if (output_buffer_frames % stm->output_desc.mBytesPerFrame) {
+      // Round up to next frame
+      output_buffer_frames += stm->output_desc.mBytesPerFrame -
+          (output_buffer_frames % stm->output_desc.mBytesPerFrame);
+    }
+    LOG("Calculated output number of frames %u for latency %u\n", output_buffer_frames, latency);
+    if (AudioUnitSetProperty(stm->output_unit,
+                             kAudioDevicePropertyBufferFrameSize,
+                             kAudioUnitScope_Input,
+                             AU_OUT_BUS,
+                             &output_buffer_frames,
+                             sizeof(output_buffer_frames)) != 0) {
       audiounit_stream_destroy(stm);
       return CUBEB_ERROR;
     }
