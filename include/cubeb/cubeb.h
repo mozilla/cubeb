@@ -328,7 +328,7 @@ typedef void (* cubeb_state_callback)(cubeb_stream * stream,
 
 /**
  * User supplied callback called when the underlying device changed.
- * @param user THe pointer passed to cubeb_stream_init. */
+ * @param user The pointer passed to cubeb_stream_init. */
 typedef void (* cubeb_device_changed_callback)(void * user_ptr);
 
 /**
@@ -409,7 +409,7 @@ void cubeb_destroy(cubeb * context);
     @param data_callback Will be called to preroll data before playback is
                          started by cubeb_stream_start.
     @param state_callback A pointer to a state callback.
-    @param user_ptr A pointer that will be passed to the callback. This pointer
+    @param user_ptr A pointer that will be passed to the callbacks. This pointer
                     must outlive the life time of the stream.
     @retval CUBEB_OK
     @retval CUBEB_ERROR
@@ -427,7 +427,8 @@ int cubeb_stream_init(cubeb * context,
                       cubeb_state_callback state_callback,
                       void * user_ptr);
 
-/** Destroy a stream.
+/** Destroy a stream. `cubeb_stream_stop` MUST be called before destroying a
+    stream.
     @param stream The stream to destroy. */
 void cubeb_stream_destroy(cubeb_stream * stream);
 
