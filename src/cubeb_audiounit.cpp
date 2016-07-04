@@ -27,6 +27,7 @@
 #endif
 #include "cubeb_resampler.h"
 #include "cubeb_ring_array.h"
+#include "cubeb_utils.h"
 
 #if !defined(kCFCoreFoundationVersionNumber10_7)
 /* From CoreFoundation CFBase.h */
@@ -369,7 +370,7 @@ audiounit_init(cubeb ** context, char const * context_name)
 
   ctx = new cubeb;
   assert(ctx);
-  memset(ctx, 0, sizeof(cubeb));
+  PodZero(ctx, 1);
 
   ctx->ops = &audiounit_ops;
 
@@ -753,7 +754,7 @@ audiounit_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
     return CUBEB_ERROR;
   }
 
-  *rate = (uint32_t)fsamplerate;
+  *rate = static_cast<uint32_t>(fsamplerate);
 #endif
   return CUBEB_OK;
 }
@@ -950,7 +951,7 @@ audiounit_stream_init(cubeb * context,
 
   stm = new cubeb_stream;
   assert(stm);
-  memset(stm, 0, sizeof(cubeb_stream));
+  PodZero(stm, 1);
 
   /* These could be different in the future if we have both
    * full-duplex stream and different devices for input vs output. */
@@ -1351,7 +1352,7 @@ audiounit_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
 
     /* This part is fixed and depend on the stream parameter and the hardware. */
     stm->hw_latency_frames =
-      (uint32_t)(unit_latency_sec * stm->output_desc.mSampleRate)
+      static_cast<uint32_t>(unit_latency_sec * stm->output_desc.mSampleRate)
       + device_latency_frames
       + device_safety_offset;
   }
@@ -1427,7 +1428,7 @@ int audiounit_stream_get_current_device(cubeb_stream * stm,
   if (!*device) {
     return CUBEB_ERROR;
   }
-  memset(*device, 0, sizeof(cubeb_device));
+  PodZero(*device, 1);
 
   size = sizeof(UInt32);
   /* This fails with some USB headset, so simply return an empty string. */
@@ -1439,7 +1440,7 @@ int audiounit_stream_get_current_device(cubeb_stream * stm,
     data = 0;
   }
 
-  (*device)->output_name = static_cast<char*>(malloc(size + 1));
+  (*device)->output_name = new char[size + 1];
   if (!(*device)->output_name) {
     return CUBEB_ERROR;
   }
@@ -1465,7 +1466,7 @@ int audiounit_stream_get_current_device(cubeb_stream * stm,
     data = 0;
   }
 
-  (*device)->input_name = static_cast<char*>(malloc(size + 1));
+  (*device)->input_name = new char[size + 1];
   if (!(*device)->input_name) {
     return CUBEB_ERROR;
   }
@@ -1486,8 +1487,8 @@ int audiounit_stream_get_current_device(cubeb_stream * stm,
 int audiounit_stream_device_destroy(cubeb_stream * stream,
                                     cubeb_device * device)
 {
-  free(device->output_name);
-  free(device->input_name);
+  delete [] device->output_name;
+  delete [] device->input_name;
   delete device;
   return CUBEB_OK;
 }
@@ -1528,17 +1529,17 @@ audiounit_get_devices(AudioObjectID ** devices, uint32_t * count)
     return ret;
   }
 
-  *count = (uint32_t)(size / sizeof(AudioObjectID));
+  *count = static_cast<uint32_t>(size / sizeof(AudioObjectID));
   if (size >= sizeof(AudioObjectID)) {
     if (*devices != NULL) {
-      free(*devices);
+      delete [] (*devices);
     }
-    *devices = static_cast<AudioObjectID *>(malloc(size));
-    memset(*devices, 0, size);
+    *devices = new AudioObjectID[*count];
+    PodZero(*devices, *count);
 
     ret = AudioObjectGetPropertyData(kAudioObjectSystemObject, &adr, 0, NULL, &size, (void *)*devices);
     if (ret != noErr) {
-      free(*devices);
+      delete [] (*devices);
       *devices = NULL;
     }
   } else {
@@ -1560,10 +1561,10 @@ audiounit_strref_to_cstr_utf8(CFStringRef strref)
 
   len = CFStringGetLength(strref);
   size = CFStringGetMaximumSizeForEncoding(len, kCFStringEncodingUTF8);
-  ret = static_cast<char*>(malloc(size));
+  ret = new char[size];
 
   if (!CFStringGetCString(strref, ret, size, kCFStringEncodingUTF8)) {
-    free(ret);
+    delete [] ret;
     ret = NULL;
   }
 
@@ -1611,7 +1612,7 @@ audiounit_get_available_samplerate(AudioObjectID devid, AudioObjectPropertyScope
   if (AudioObjectHasProperty(devid, &adr) &&
       AudioObjectGetPropertyDataSize(devid, &adr, 0, NULL, &size) == noErr) {
     uint32_t i, count = size / sizeof(AudioValueRange);
-    AudioValueRange * ranges = static_cast<AudioValueRange *>(malloc(size));
+    AudioValueRange * ranges = new AudioValueRange[count];
     range.mMinimum = 9999999999.0;
     range.mMaximum = 0.0;
     if (AudioObjectGetPropertyData(devid, &adr, 0, NULL, &size, ranges) == noErr) {
@@ -1622,9 +1623,9 @@ audiounit_get_available_samplerate(AudioObjectID devid, AudioObjectPropertyScope
           range.mMinimum = ranges[i].mMinimum;
       }
     }
-    free(ranges);
-    *max = (uint32_t)range.mMaximum;
-    *min = (uint32_t)range.mMinimum;
+    delete [] ranges;
+    *max = static_cast<uint32_t>(range.mMaximum);
+    *min = static_cast<uint32_t>(range.mMinimum);
   } else {
     *min = *max = 0;
   }
@@ -1684,7 +1685,7 @@ audiounit_create_device_from_hwdev(AudioObjectID devid, cubeb_device_type type)
   }
 
   ret = new cubeb_device_info;
-  memset(ret, 0, sizeof(cubeb_device_info));
+  PodZero(ret, 1);
 
   size = sizeof(CFStringRef);
   adr.mSelector = kAudioDevicePropertyDeviceUID;
@@ -1789,7 +1790,7 @@ audiounit_enumerate_devices(cubeb * context, cubeb_device_type type,
     }
   }
 
-  free(hwdevs);
+  delete [] hwdevs;
 
   return CUBEB_OK;
 }
@@ -1826,7 +1827,7 @@ audiounit_get_devices_of_type(cubeb_device_type devtype, AudioObjectID ** devid_
 
   if (devtype == (CUBEB_DEVICE_TYPE_INPUT | CUBEB_DEVICE_TYPE_OUTPUT)) {
     if (devid_array) {
-      *devid_array = static_cast<AudioObjectID *>(calloc(count, sizeof(AudioObjectID)));
+      *devid_array = new AudioObjectID[count];
       assert(*devid_array);
       memcpy(*devid_array, &devices, count * sizeof(AudioObjectID));
     }
@@ -1890,14 +1891,14 @@ audiounit_collection_changed_callback(AudioObjectID inObjectID,
     if (context->devtype_device_count == new_number_of_devices &&
         audiounit_equal_arrays(devices, context->devtype_device_array, new_number_of_devices)) {
       /* Device changed for the other scope, ignore. */
-      free(devices);
+      delete [] devices;
       pthread_mutex_unlock(&context->mutex);
       return noErr;
     }
     /* Device on desired scope changed, reset counter and array. */
     context->devtype_device_count = new_number_of_devices;
     /* Free the old array before replace. */
-    free(context->devtype_device_array);
+    delete [] context->devtype_device_array;
     context->devtype_device_array = devices;
   }
 
@@ -1963,7 +1964,7 @@ audiounit_remove_device_listener(cubeb * context)
     context->collection_changed_user_ptr = NULL;
     context->devtype_device_count = 0;
     if (context->devtype_device_array) {
-      free(context->devtype_device_array);
+      delete [] context->devtype_device_array;
       context->devtype_device_array = NULL;
     }
   }
