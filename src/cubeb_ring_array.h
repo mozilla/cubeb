@@ -64,7 +64,7 @@ ring_array_init(ring_array * ra,
   ra->tail = 0;
   ra->count = 0;
 
-  ra->buffer_array = calloc(ra->capacity, sizeof(AudioBuffer));
+  ra->buffer_array = (AudioBuffer *)calloc(ra->capacity, sizeof(AudioBuffer));
   if (ra->buffer_array == NULL) {
     return CUBEB_ERROR;
   }
@@ -111,7 +111,7 @@ ring_array_get_free_buffer(ring_array * ra)
   }
 
   assert(ra->count == 0 || (ra->tail + ra->count) % ra->capacity != ra->tail);
-  void * ret = &ra->buffer_array[(ra->tail + ra->count) % ra->capacity];
+  AudioBuffer * ret = &ra->buffer_array[(ra->tail + ra->count) % ra->capacity];
 
   ++ra->count;
   assert(ra->count <= ra->capacity);
@@ -131,7 +131,7 @@ ring_array_get_data_buffer(ring_array * ra)
   if (ra->count == 0) {
     return NULL;
   }
-  void * ret = &ra->buffer_array[ra->tail];
+  AudioBuffer * ret = &ra->buffer_array[ra->tail];
 
   ra->tail = (ra->tail + 1) % ra->capacity;
   assert(ra->tail < ra->capacity);
