@@ -287,8 +287,6 @@ audiounit_output_callback(void * user_ptr,
   /* If Full duplex get also input buffer */
   AudioBuffer * input_aud_buf = NULL;
   if (stm->input_unit != NULL) {
-    // Number of input frames in the buffer
-    input_frames = stm->input_buffer_frames;
     /* Input samples stored previously in input callback. */
     input_aud_buf = ring_array_get_data_buffer(&stm->input_buffer_array);
     if (input_aud_buf == NULL) {
@@ -304,14 +302,13 @@ audiounit_output_callback(void * user_ptr,
       /* Output callback came first */
       if (stm->frames_read == 0) {
         LOG("Output callback came first send silent.\n");
-        audiounit_make_silent(input_aud_buf);
-      } else {
-        /* Update input frames by set them to 0. Resampler will use any buffered
-         * frame if they are not enough will fill the buffer with silence. */
-         input_frames = 0;
       }
+      audiounit_make_silent(input_aud_buf);
     }
+    // The input buffer
     input_buffer = input_aud_buf->mData;
+    // Number of input frames in the buffer
+    input_frames = stm->input_buffer_frames;
   }
 
   /* Call user callback through resampler. */
