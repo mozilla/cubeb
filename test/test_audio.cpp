@@ -279,7 +279,7 @@ void run_channel_rate_test()
 }
 
 
-int main(int argc, char *argv[])
+int test_audio()
 {
 #ifdef CUBEB_GECKO_BUILD
   ScopedXPCOM xpcom("test_audio");
@@ -291,3 +291,10 @@ int main(int argc, char *argv[])
 
   return CUBEB_OK;
 }
+
+#ifndef __ANDROID__
+int main(int argc, char *argv[])
+{
+  return test_audio();
+}
+#endif

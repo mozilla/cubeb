@@ -56,7 +56,10 @@ const uint32_t max_chunks = 30; /* ms */
 const uint32_t chunk_increment = 10;
 #endif
 
+#ifndef __ANDROID__
 #define DUMP_ARRAYS
+#endif
+
 #ifdef DUMP_ARRAYS
 /**
  * Files produced by dump(...) can be converted to .wave files using:
@@ -283,7 +286,7 @@ uint32_t fill_with_sine(float * buf, uint32_t rate, uint32_t channels,
   return initial_phase;
 }
 
-long data_cb(cubeb_stream * stm, void * user_ptr,
+long test_resampler_data_cb(cubeb_stream * stm, void * user_ptr,
              const void * input_buffer, void * output_buffer, long frame_count)
 {
   osc_state * state = reinterpret_cast<osc_state*>(user_ptr);
@@ -341,7 +344,7 @@ void test_resampler_duplex(uint32_t input_channels, uint32_t output_channels,
 
   cubeb_resampler * resampler =
     cubeb_resampler_create((cubeb_stream*)nullptr, &input_params, &output_params, target_rate,
-                           data_cb, (void*)&state, CUBEB_RESAMPLER_QUALITY_VOIP);
+                           test_resampler_data_cb, (void*)&state, CUBEB_RESAMPLER_QUALITY_VOIP);
 
   long latency = cubeb_resampler_latency(resampler);
 
@@ -540,7 +543,7 @@ void test_resampler_drain()
   cubeb_resampler_destroy(resampler);
 }
 
-int main()
+int test_resampler()
 {
   test_resamplers_one_way();
   test_delay_line();
@@ -552,3 +555,10 @@ int main()
 
   return 0;
 }
+
+#ifndef __ANDROID__
+int main(int argc, char *argv[])
+{
+  return test_resampler();
+}
+#endif

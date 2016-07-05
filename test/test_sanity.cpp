@@ -612,7 +612,7 @@ int is_windows_7()
 }
 
 int
-main(int argc, char * argv[])
+test_sanity()
 {
 #ifdef CUBEB_GECKO_BUILD
   ScopedXPCOM xpcom("test_sanity");
@@ -657,3 +657,10 @@ main(int argc, char * argv[])
 
   return 0;
 }
+
+#ifndef __ANDROID__
+int main(int argc, char *argv[])
+{
+  return test_sanity();
+}
+#endif

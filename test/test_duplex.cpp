@@ -38,7 +38,7 @@ struct user_state
 
 
 
-long data_cb(cubeb_stream *stream, void *user, const void * inputbuffer, void *outputbuffer, long nframes)
+long test_duplex_data_cb(cubeb_stream *stream, void *user, const void * inputbuffer, void *outputbuffer, long nframes)
 {
   user_state * u = reinterpret_cast<user_state*>(user);
 #if (defined(_WIN32) || defined(__WIN32__))
@@ -70,7 +70,7 @@ long data_cb(cubeb_stream *stream, void *user, const void * inputbuffer, void *o
   return nframes;
 }
 
-void state_cb(cubeb_stream *stream, void *user, cubeb_state state)
+void test_duplex_state_cb(cubeb_stream *stream, void *user, cubeb_state state)
 {
   if (stream == NULL)
     return;
@@ -89,7 +89,7 @@ void state_cb(cubeb_stream *stream, void *user, cubeb_state state)
   return;
 }
 
-int main(int argc, char *argv[])
+int test_duplex()
 {
 #ifdef CUBEB_GECKO_BUILD
   ScopedXPCOM xpcom("test_duplex");
@@ -109,11 +109,13 @@ int main(int argc, char *argv[])
     return r;
   }
 
+#ifndef __ANDROID__
   /* This test needs an available input device, skip it if this host does not
    * have one. */
   if (!has_available_input_device(ctx)) {
     return 0;
   }
+#endif
 
   /* typical user-case: mono input, stereo output, low latency. */
   input_params.format = STREAM_FORMAT;
@@ -132,7 +134,7 @@ int main(int argc, char *argv[])
 
   r = cubeb_stream_init(ctx, &stream, "Cubeb duplex",
                         NULL, &input_params, NULL, &output_params,
-                        latency_ms, data_cb, state_cb, &stream_state);
+                        latency_ms, test_duplex_data_cb, test_duplex_state_cb, &stream_state);
   if (r != CUBEB_OK) {
     fprintf(stderr, "Error initializing cubeb stream\n");
     return r;
@@ -149,3 +151,10 @@ int main(int argc, char *argv[])
 
   return CUBEB_OK;
 }
+
+#ifndef __ANDROID__
+int main(int argc, char *argv[])
+{
+  return test_duplex();
+}
+#endif
