@@ -17,6 +17,10 @@
 #include <algorithm>
 #include <iostream>
 
+#ifdef __ANDROID__
+#include "test_android_decl.h"
+#endif
+
 /* Windows cmath USE_MATH_DEFINE thing... */
 const float PI = 3.14159265359f;
 

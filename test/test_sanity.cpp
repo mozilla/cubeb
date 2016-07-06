@@ -13,7 +13,16 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+
+namespace test_sanity_common {
 #include "common.h"
+}
+using namespace test_sanity_common;
+
+#ifdef __ANDROID__
+#include "test_android_decl.h"
+#endif
+
 #ifdef CUBEB_GECKO_BUILD
 #include "TestHarness.h"
 #endif

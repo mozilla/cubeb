@@ -5,6 +5,12 @@
 #include "cubeb/cubeb.h"
 #include <assert.h>
 #include <stdio.h>
+#include "cubeb/cubeb.h"
+
+#ifdef __ANDROID__
+#include "test_android_decl.h"
+#endif
+
 #ifdef CUBEB_GECKO_BUILD
 #include "TestHarness.h"
 #endif

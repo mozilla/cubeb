@@ -17,7 +17,16 @@
 #include <limits.h>
 
 #include "cubeb/cubeb.h"
+
+namespace test_tone_common {
 #include "common.h"
+}
+using namespace test_tone_common;
+
+#ifdef __ANDROID__
+#include "test_android_decl.h"
+#endif
+
 #ifdef CUBEB_GECKO_BUILD
 #include "TestHarness.h"
 #endif

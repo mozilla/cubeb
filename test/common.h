@@ -4,6 +4,8 @@
  * This program is made available under an ISC-style license.  See the
  * accompanying file LICENSE for details.
  */
+#ifndef COMMON_H
+#define COMMON_H
 
 #if defined( _WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -13,6 +15,15 @@
 #else
 #include <unistd.h>
 #endif
+
+#ifdef __ANDROID__
+#include <android/log.h>
+
+#define LOG(args...)  __android_log_print(ANDROID_LOG_INFO, "Cubeb_Test" , ## args)
+#define fprintf(arg1, args...)  __android_log_print(ANDROID_LOG_INFO, "Cubeb_Test_fprintf" , ## args)
+#define printf(args...)  __android_log_print(ANDROID_LOG_INFO, "Cubeb_Test_printf" , ## args)
+
+#endif // __ANDROID__
 
 void delay(unsigned int ms)
 {
@@ -58,4 +69,6 @@ int has_available_input_device(cubeb * ctx)
 
   return 1;
 }
+
+#endif // COMMON_H
 
