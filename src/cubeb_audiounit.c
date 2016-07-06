@@ -56,7 +56,7 @@ typedef UInt32  AudioFormatFlags;
 #define CUBEB_AUDIOUNIT_SUBTYPE kAudioUnitSubType_HALOutput
 #endif
 
-//#define LOGGING_ENABLED
+#define LOGGING_ENABLED
 #ifdef LOGGING_ENABLED
 #define LOG(...) do {                           \
     fprintf(stderr, __VA_ARGS__);               \
@@ -989,11 +989,6 @@ audiounit_stream_init(cubeb * context,
 
     // Use latency to calculate buffer size
     stm->input_buffer_frames = (latency / 1000.0) * stm->input_hw_rate;
-    if (stm->input_buffer_frames % stm->input_desc.mBytesPerFrame) {
-      // Round up to next frame
-      stm->input_buffer_frames += stm->input_desc.mBytesPerFrame -
-          (stm->input_buffer_frames % stm->input_desc.mBytesPerFrame);
-    }
     LOG("Calculated input number of frames %u for latency %u\n", stm->input_buffer_frames, latency);
     if (AudioUnitSetProperty(stm->input_unit,
                              kAudioDevicePropertyBufferFrameSize,
@@ -1093,11 +1088,6 @@ audiounit_stream_init(cubeb * context,
     // device sampling rate, internal resampler of audiounit will
     // calculate the expected number of frames.
     uint32_t output_buffer_frames = (latency / 1000.0) * output_hw_desc.mSampleRate;
-    if (output_buffer_frames % stm->output_desc.mBytesPerFrame) {
-      // Round up to next frame
-      output_buffer_frames += stm->output_desc.mBytesPerFrame -
-          (output_buffer_frames % stm->output_desc.mBytesPerFrame);
-    }
     LOG("Calculated output number of frames %u for latency %u\n", output_buffer_frames, latency);
     if (AudioUnitSetProperty(stm->output_unit,
                              kAudioDevicePropertyBufferFrameSize,
