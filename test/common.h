@@ -16,15 +16,6 @@
 #include <unistd.h>
 #endif
 
-#ifdef __ANDROID__
-#include <android/log.h>
-
-#define LOG(args...)  __android_log_print(ANDROID_LOG_INFO, "Cubeb_Test" , ## args)
-#define fprintf(arg1, args...)  __android_log_print(ANDROID_LOG_INFO, "Cubeb_Test_fprintf" , ## args)
-#define printf(args...)  __android_log_print(ANDROID_LOG_INFO, "Cubeb_Test_printf" , ## args)
-
-#endif // __ANDROID__
-
 void delay(unsigned int ms)
 {
 #if defined(_WIN32)
