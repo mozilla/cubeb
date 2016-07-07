@@ -1,0 +1,59 @@
+-- Merging decision tree log ---
+manifest
+ADDED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml:2:1-23:12
+	package
+		ADDED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml:3:11-41
+		INJECTED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml
+		INJECTED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml
+	android:versionName
+		ADDED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml:5:11-36
+		INJECTED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml
+		INJECTED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml
+	android:versionCode
+		ADDED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml:4:11-34
+		INJECTED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml
+		INJECTED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml
+	xmlns:android
+		ADDED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml:2:11-69
+uses-permission#android.permission.RECORD_AUDIO
+ADDED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml:7:3-85
+	android:name
+		ADDED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml:7:20-66
+uses-permission#android.permission.WRITE_EXTERNAL_STORAGE
+ADDED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml:8:3-95
+	android:name
+		ADDED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml:8:20-76
+application
+ADDED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml:10:3-22:17
+	android:label
+		ADDED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml:14:7-28
+	android:fullBackupContent
+		ADDED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml:12:7-40
+	android:allowBackup
+		ADDED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml:11:7-34
+	android:icon
+		ADDED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml:13:7-41
+activity#com.example.hellojni.HelloJni
+ADDED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml:15:5-21:16
+	android:label
+		ADDED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml:16:15-36
+	android:name
+		ADDED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml:15:15-39
+intent-filter#android.intent.action.MAIN+android.intent.category.LAUNCHER
+ADDED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml:17:7-20:23
+action#android.intent.action.MAIN
+ADDED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml:18:9-61
+	android:name
+		ADDED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml:18:17-58
+category#android.intent.category.LAUNCHER
+ADDED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml:19:9-69
+	android:name
+		ADDED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml:19:19-66
+uses-sdk
+INJECTED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml reason: use-sdk injection requested
+	android:targetSdkVersion
+		INJECTED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml
+		INJECTED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml
+	android:minSdkVersion
+		INJECTED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml
+		INJECTED from /Users/achronopoulos/repos/cubeb/test/AndroidTestProject/cubeb/app/src/main/AndroidManifest.xml
