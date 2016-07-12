@@ -282,6 +282,21 @@ read_from_input(pa_stream * s, void const ** buffer, size_t * size)
 }
 
 static void
+stream_silence_callback(pa_stream * s, size_t nbytes, void * u)
+{
+  LOG("Output callback to be written buffer size %zd (silent callback)\n", nbytes);
+  int r;
+  void * buffer;
+  size_t size;
+
+  r = WRAP(pa_stream_begin_write)(s, &buffer, &size);
+  assert(r == 0);
+  memset(buffer, 0, size);
+  r = WRAP(pa_stream_write)(s, buffer, size, NULL, 0, PA_SEEK_RELATIVE);
+  assert(r == 0);
+}
+
+static void
 stream_write_callback(pa_stream * s, size_t nbytes, void * u)
 {
   LOG("Output callback to be written buffer size %zd\n", nbytes);
@@ -732,7 +747,7 @@ pulse_stream_init(cubeb * context,
     stm->output_sample_spec = *(WRAP(pa_stream_get_sample_spec)(stm->output_stream));
 
     WRAP(pa_stream_set_state_callback)(stm->output_stream, stream_state_callback, stm);
-    WRAP(pa_stream_set_write_callback)(stm->output_stream, stream_write_callback, stm);
+    WRAP(pa_stream_set_write_callback)(stm->output_stream, stream_silence_callback, stm);
 
     battr = set_buffering_attribute(latency, &stm->output_sample_spec);
     WRAP(pa_stream_connect_playback)(stm->output_stream,
@@ -771,6 +786,8 @@ pulse_stream_init(cubeb * context,
        until some point after initialization has completed. */
     r = stream_update_timing_info(stm);
   }
+
+  WRAP(pa_stream_set_write_callback)(stm->output_stream, stream_write_callback, stm);
 
   WRAP(pa_threaded_mainloop_unlock)(stm->context->mainloop);
 
