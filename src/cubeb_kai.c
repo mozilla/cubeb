@@ -241,7 +241,7 @@ kai_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * latency)
 {
   /* We have at least two buffers. One is being played, the other one is being
      filled. So there is as much latency as one buffer. */
-  *latency = FRAME_SIZE * 1000 / params.rate;
+  *latency = FRAME_SIZE;
 
   return CUBEB_OK;
 }
