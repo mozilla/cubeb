@@ -120,6 +120,7 @@ struct cubeb_stream {
   pa_sample_spec input_sample_spec;
   int shutdown;
   float volume;
+  size_t pre_buffered_frames;
 };
 
 const float PULSE_NO_GAIN = -1.0;
@@ -288,12 +289,16 @@ stream_silence_callback(pa_stream * s, size_t nbytes, void * u)
   int r;
   void * buffer;
   size_t size;
+  cubeb_stream * stm = u;
+  int frame_size = WRAP(pa_frame_size)(&stm->output_sample_spec);
 
   r = WRAP(pa_stream_begin_write)(s, &buffer, &size);
   assert(r == 0);
   memset(buffer, 0, size);
   r = WRAP(pa_stream_write)(s, buffer, size, NULL, 0, PA_SEEK_RELATIVE);
   assert(r == 0);
+
+  stm->pre_buffered_frames = size / frame_size;
 }
 
 static void
@@ -787,7 +792,9 @@ pulse_stream_init(cubeb * context,
     r = stream_update_timing_info(stm);
   }
 
-  WRAP(pa_stream_set_write_callback)(stm->output_stream, stream_write_callback, stm);
+  if (output_stream_params){
+    WRAP(pa_stream_set_write_callback)(stm->output_stream, stream_write_callback, stm);
+  }
 
   WRAP(pa_threaded_mainloop_unlock)(stm->context->mainloop);
 
@@ -867,6 +874,7 @@ pulse_stream_get_position(cubeb_stream * stm, uint64_t * position)
   int r, in_thread;
   pa_usec_t r_usec;
   uint64_t bytes;
+  int64_t pos;
 
   if (!stm || !stm->output_stream) {
     return CUBEB_ERROR;
@@ -887,7 +895,8 @@ pulse_stream_get_position(cubeb_stream * stm, uint64_t * position)
   }
 
   bytes = WRAP(pa_usec_to_bytes)(r_usec, &stm->output_sample_spec);
-  *position = bytes / WRAP(pa_frame_size)(&stm->output_sample_spec);
+  pos = bytes / WRAP(pa_frame_size)(&stm->output_sample_spec) - stm->pre_buffered_frames;
+  *position = pos < 0 ? 0 : pos;
 
   return CUBEB_OK;
 }
