@@ -120,6 +120,7 @@ struct cubeb_stream {
   pa_sample_spec input_sample_spec;
   int shutdown;
   float volume;
+  size_t pre_buffered_frames;
 };
 
 const float PULSE_NO_GAIN = -1.0;
@@ -279,6 +280,25 @@ read_from_input(pa_stream * s, void const ** buffer, size_t * size)
     }
   }
   return readable_size;
+}
+
+static void
+stream_silence_callback(pa_stream * s, size_t nbytes, void * u)
+{
+  LOG("Output callback to be written buffer size %zd (silent callback)\n", nbytes);
+  int r;
+  void * buffer;
+  size_t size;
+  cubeb_stream * stm = u;
+  int frame_size = WRAP(pa_frame_size)(&stm->output_sample_spec);
+
+  r = WRAP(pa_stream_begin_write)(s, &buffer, &size);
+  assert(r == 0);
+  memset(buffer, 0, size);
+  r = WRAP(pa_stream_write)(s, buffer, size, NULL, 0, PA_SEEK_RELATIVE);
+  assert(r == 0);
+
+  stm->pre_buffered_frames = size / frame_size;
 }
 
 static void
@@ -732,7 +752,7 @@ pulse_stream_init(cubeb * context,
     stm->output_sample_spec = *(WRAP(pa_stream_get_sample_spec)(stm->output_stream));
 
     WRAP(pa_stream_set_state_callback)(stm->output_stream, stream_state_callback, stm);
-    WRAP(pa_stream_set_write_callback)(stm->output_stream, stream_write_callback, stm);
+    WRAP(pa_stream_set_write_callback)(stm->output_stream, stream_silence_callback, stm);
 
     battr = set_buffering_attribute(latency_frames, &stm->output_sample_spec);
     WRAP(pa_stream_connect_playback)(stm->output_stream,
@@ -770,6 +790,10 @@ pulse_stream_init(cubeb * context,
     /* force a timing update now, otherwise timing info does not become valid
        until some point after initialization has completed. */
     r = stream_update_timing_info(stm);
+  }
+
+  if (output_stream_params){
+    WRAP(pa_stream_set_write_callback)(stm->output_stream, stream_write_callback, stm);
   }
 
   WRAP(pa_threaded_mainloop_unlock)(stm->context->mainloop);
@@ -850,6 +874,7 @@ pulse_stream_get_position(cubeb_stream * stm, uint64_t * position)
   int r, in_thread;
   pa_usec_t r_usec;
   uint64_t bytes;
+  int64_t pos;
 
   if (!stm || !stm->output_stream) {
     return CUBEB_ERROR;
@@ -870,7 +895,8 @@ pulse_stream_get_position(cubeb_stream * stm, uint64_t * position)
   }
 
   bytes = WRAP(pa_usec_to_bytes)(r_usec, &stm->output_sample_spec);
-  *position = bytes / WRAP(pa_frame_size)(&stm->output_sample_spec);
+  pos = bytes / WRAP(pa_frame_size)(&stm->output_sample_spec) - stm->pre_buffered_frames;
+  *position = pos < 0 ? 0 : pos;
 
   return CUBEB_OK;
 }

@@ -443,7 +443,7 @@ test_stream_position(void)
   assert(r == 0);
 
   /* XXX let start happen */
-  delay(500);
+  delay(1000);
 
   /* stream should have prefilled */
   assert(total_frames_written > 0);
