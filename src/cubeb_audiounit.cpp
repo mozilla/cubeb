@@ -1024,8 +1024,12 @@ audiounit_stream_init(cubeb * context,
     }
 
     // Use latency to calculate buffer size
-    stm->input_buffer_frames = latency_frames;
-    LOG("Input buffer frame count %u\n", stm->input_buffer_frames);
+    if (stm->input_hw_rate == input_stream_params->rate) {
+      stm->input_buffer_frames = latency_frames;
+    } else {
+      stm->input_buffer_frames = (latency_frames * stm->input_hw_rate) / input_stream_params->rate;
+    }
+    LOG("Calculated input number of frames %u for latency %u\n", stm->input_buffer_frames, latency_frames);
     if (AudioUnitSetProperty(stm->input_unit,
                              kAudioDevicePropertyBufferFrameSize,
                              kAudioUnitScope_Output,
@@ -1123,8 +1127,14 @@ audiounit_stream_init(cubeb * context,
     // Use latency to set number of frames in out buffer. Use the
     // device sampling rate, internal resampler of audiounit will
     // calculate the expected number of frames.
-    uint32_t output_buffer_frames = latency_frames;
-    LOG("Output buffer frame count %u\n", output_buffer_frames);
+    // Use latency to calculate buffer size
+    uint32_t output_buffer_frames = 0;
+    if (output_hw_desc.mSampleRate == output_stream_params->rate) {
+      output_buffer_frames = latency_frames;
+    } else {
+      output_buffer_frames = (latency_frames * output_hw_desc.mSampleRate) / output_stream_params->rate;
+    }
+    LOG("Calculated output number of frames %u for latency %u\n", output_buffer_frames, latency_frames);
     if (AudioUnitSetProperty(stm->output_unit,
                              kAudioDevicePropertyBufferFrameSize,
                              kAudioUnitScope_Input,
