@@ -1763,8 +1763,6 @@ void close_wasapi_stream(cubeb_stream * stm)
 
   stm->stream_reset_lock->assert_current_thread_owns();
 
-  XASSERT(stm->output_client || stm->input_client);
-
   SafeRelease(stm->output_client);
   stm->output_client = NULL;
   SafeRelease(stm->input_client);
