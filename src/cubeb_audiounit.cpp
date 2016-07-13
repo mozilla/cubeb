@@ -867,7 +867,7 @@ audiounit_create_unit(AudioUnit * unit,
     devid = audiounit_get_default_device_id(is_input ? CUBEB_DEVICE_TYPE_INPUT
                                                      : CUBEB_DEVICE_TYPE_OUTPUT);
   } else {
-    devid = *(static_cast<AudioDeviceID*>(device));
+    devid = reinterpret_cast<intptr_t>(device);
   }
   int err = AudioUnitSetProperty(*unit, kAudioOutputUnitProperty_CurrentDevice,
                                  kAudioUnitScope_Global,
