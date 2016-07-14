@@ -81,6 +81,65 @@ struct cubeb {
   AudioObjectID * devtype_device_array;
 };
 
+class auto_array_wrapper
+{
+public:
+  explicit auto_array_wrapper(auto_array<float> * ar)
+  : float_ar(ar)
+  , short_ar(nullptr)
+  {assert((float_ar && !short_ar) || (!float_ar && short_ar));}
+
+  explicit auto_array_wrapper(auto_array<short> * ar)
+  : float_ar(nullptr)
+  , short_ar(ar)
+  {assert((float_ar && !short_ar) || (!float_ar && short_ar));}
+
+  ~auto_array_wrapper() {
+    assert((float_ar && !short_ar) || (!float_ar && short_ar));
+    delete float_ar;
+    delete short_ar;
+  }
+
+  void push(void * elements, size_t length){
+    assert((float_ar && !short_ar) || (!float_ar && short_ar));
+    if (float_ar)
+      return float_ar->push(static_cast<float*>(elements), length);
+    return short_ar->push(static_cast<short*>(elements), length);
+  }
+
+  size_t length() const {
+    assert((float_ar && !short_ar) || (!float_ar && short_ar));
+    if (float_ar)
+      return float_ar->length();
+    return short_ar->length();
+  }
+
+  void push_silence(size_t length) {
+    assert((float_ar && !short_ar) || (!float_ar && short_ar));
+    if (float_ar)
+      return float_ar->push_silence(length);
+    return short_ar->push_silence(length);
+  }
+
+  bool pop(void * elements, size_t length) {
+    assert((float_ar && !short_ar) || (!float_ar && short_ar));
+    if (float_ar)
+      return float_ar->pop(static_cast<float*>(elements), length);
+    return short_ar->pop(static_cast<short*>(elements), length);
+  }
+
+  void * data() const {
+    assert((float_ar && !short_ar) || (!float_ar && short_ar));
+    if (float_ar)
+      return float_ar->data();
+    return short_ar->data();
+  }
+
+private:
+  auto_array<float> * float_ar;
+  auto_array<short> * short_ar;
+};
+
 struct cubeb_stream {
   cubeb * context;
   cubeb_data_callback data_callback;
@@ -99,7 +158,7 @@ struct cubeb_stream {
   pthread_mutex_t mutex;
   /* Hold the input samples in every
    * input callback iteration */
-  auto_array<short> * input_linear_buffer;
+  auto_array_wrapper * input_linear_buffer;
   /* Buffer used to render input */
   void * input_data;
   /* Frames on input buffer */
@@ -188,11 +247,11 @@ audiounit_render_input(cubeb_stream * stm,
                                &input_buffer_list);
 
   /* Copy input data in linear buffer. */
-  stm->input_linear_buffer->push(static_cast<short*>(stm->input_data),
+  stm->input_linear_buffer->push(stm->input_data,
                                  input_frames * stm->input_desc.mChannelsPerFrame);
 
   if (r != noErr) {
-    LOG("Input AudioUnitRender failed with error=%d", r);
+    LOG("Input AudioUnitRender failed with error=%d\n", r);
     audiounit_make_silent(&audioBuffer);
     return r;
   }
@@ -247,6 +306,7 @@ audiounit_input_callback(void * user_ptr,
   /* Input only. Call the user callback through resampler.
      Resampler will deliver input buffer in the correct rate. */
   frames = input_frames;
+  assert(input_frames <= stm->input_linear_buffer->length() / stm->input_desc.mChannelsPerFrame);
   outframes = cubeb_resampler_fill(stm->resampler,
                                    stm->input_linear_buffer->data(),
                                    &frames,
@@ -893,9 +953,18 @@ audiounit_create_unit(AudioUnit * unit,
 static int
 audiounit_init_input_linear_buffer(cubeb_stream * stream, uint32_t capacity)
 {
-  stream->input_linear_buffer = new auto_array<short>(capacity *
-                                                     stream->input_buffer_frames *
-                                                     stream->input_desc.mChannelsPerFrame);
+  if (stream->input_desc.mFormatFlags == kAudioFormatFlagIsSignedInteger) {
+    stream->input_linear_buffer = new auto_array_wrapper(
+        new auto_array<short>(capacity *
+                              stream->input_buffer_frames *
+                              stream->input_desc.mChannelsPerFrame) );
+  } else {
+    stream->input_linear_buffer = new auto_array_wrapper(
+        new auto_array<float>(capacity *
+                              stream->input_buffer_frames *
+                              stream->input_desc.mChannelsPerFrame) );
+  }
+
   if (!stream->input_linear_buffer) {
     return CUBEB_ERROR;
   }
@@ -911,8 +980,8 @@ audiounit_init_input_linear_buffer(cubeb_stream * stream, uint32_t capacity)
     assert(stream->input_linear_buffer->length() == silence_size);
   }
 
-  stream->input_data = calloc(1, stream->input_buffer_frames *
-                                 stream->input_desc.mBytesPerFrame);
+  stream->input_data = operator new(stream->input_buffer_frames *
+                                    stream->input_desc.mBytesPerFrame);
 
   return CUBEB_OK;
 }
@@ -920,7 +989,7 @@ audiounit_init_input_linear_buffer(cubeb_stream * stream, uint32_t capacity)
 static void
 audiounit_destroy_input_linear_buffer(cubeb_stream * stream)
 {
-  free(stream->input_data);
+  operator delete(stream->input_data);
   delete stream->input_linear_buffer;
 }
 
