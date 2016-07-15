@@ -24,6 +24,7 @@
 #include <cmath>
 #include <algorithm>
 #include <memory>
+#include <limits>
 
 #include "cubeb/cubeb.h"
 #include "cubeb-internal.h"
@@ -61,23 +62,6 @@ DEFINE_PROPERTYKEY(PKEY_Device_InstanceId,      0x78c34fc8, 0x104a, 0x4aca, 0x9e
   (sizeof(array_) / sizeof(array_[0]))
 
 namespace {
-uint32_t
-ms_to_hns(uint32_t ms)
-{
-  return ms * 10000;
-}
-
-uint32_t
-hns_to_ms(REFERENCE_TIME hns)
-{
-  return static_cast<uint32_t>(hns / 10000);
-}
-
-double
-hns_to_s(REFERENCE_TIME hns)
-{
-  return static_cast<double>(hns) / 10000000;
-}
 
 void
 SafeRelease(HANDLE handle)
@@ -121,7 +105,7 @@ public:
     owner = GetCurrentThreadId();
 #endif
   }
-
+  
   void leave()
   {
 #ifdef DEBUG
@@ -239,7 +223,7 @@ struct cubeb_stream
   /* The input and output device, or NULL for default. */
   cubeb_devid input_device;
   cubeb_devid output_device;
-  /* The latency initially requested for this stream. */
+  /* The latency initially requested for this stream, in frames. */
   unsigned latency;
   cubeb_state_callback state_callback;
   cubeb_data_callback data_callback;
@@ -366,7 +350,7 @@ public:
     LOG("Audio device default changed.\n");
 
     /* we only support a single stream type for now. */
-    if (flow != eRender && role != eMultimedia) {
+    if (flow != eRender && role != eConsole) {
       return S_OK;
     }
 
@@ -435,6 +419,50 @@ bool should_downmix(cubeb_stream_params & stream, cubeb_stream_params & mixer)
 double stream_to_mix_samplerate_ratio(cubeb_stream_params & stream, cubeb_stream_params & mixer)
 {
   return double(stream.rate) / mixer.rate;
+}
+
+
+uint32_t
+get_rate(cubeb_stream * stm)
+{
+  return has_input(stm) ? stm->input_stream_params.rate
+                        : stm->output_stream_params.rate;
+}
+
+uint32_t
+ms_to_hns(uint32_t ms)
+{
+  return ms * 10000;
+}
+
+uint32_t
+hns_to_ms(REFERENCE_TIME hns)
+{
+  return static_cast<uint32_t>(hns / 10000);
+}
+
+double
+hns_to_s(REFERENCE_TIME hns)
+{
+  return static_cast<double>(hns) / 10000000;
+}
+
+uint32_t
+hns_to_frames(cubeb_stream * stm, REFERENCE_TIME hns)
+{
+  return hns_to_ms(hns * get_rate(stm)) / 1000;
+}
+
+uint32_t
+hns_to_frames(uint32_t rate, REFERENCE_TIME hns)
+{
+  return hns_to_ms(hns * rate) / 1000;
+}
+
+REFERENCE_TIME
+frames_to_hns(cubeb_stream * stm, uint32_t frames)
+{
+   return frames * 1000 / get_rate(stm);
 }
 
 /* Upmix function, copies a mono channel into L and R */
@@ -586,9 +614,7 @@ bool get_input_buffer(cubeb_stream * stm)
   /* Get input packets until we have captured enough frames, and put them in a
    * contiguous buffer. */
   uint32_t offset = 0;
-  uint32_t input_channel_count = stm->input_stream_params.channels;
-  while (offset != total_available_input * input_channel_count &&
-      total_available_input) {
+  while (offset != total_available_input) {
     hr = stm->capture_client->GetNextPacketSize(&next);
     if (FAILED(hr)) {
       LOG("cannot get next packet size: %x\n", hr);
@@ -602,37 +628,59 @@ bool get_input_buffer(cubeb_stream * stm)
 
     UINT32 packet_size;
     hr = stm->capture_client->GetBuffer(&input_packet,
-        &packet_size,
-        &flags,
-        &dev_pos,
-        NULL);
+                                        &packet_size,
+                                        &flags,
+                                        &dev_pos,
+                                        NULL);
     if (FAILED(hr)) {
       LOG("GetBuffer failed for capture: %x\n", hr);
       return false;
     }
     XASSERT(packet_size == next);
     if (flags & AUDCLNT_BUFFERFLAGS_SILENT) {
-      stm->linear_input_buffer.push_silence(packet_size * input_channel_count);
+      LOG("insert silence: ps=%u\n", packet_size);
+      stm->linear_input_buffer.push_silence(packet_size * stm->input_stream_params.channels);
     } else {
-      stm->linear_input_buffer.push(reinterpret_cast<float*>(input_packet),
-          packet_size * input_channel_count);
+      if (should_upmix(stm->input_mix_params, stm->input_stream_params)) {
+        bool ok = stm->linear_input_buffer.reserve(stm->linear_input_buffer.length() +
+                                                   packet_size * stm->input_stream_params.channels);
+        assert(ok);
+        upmix(reinterpret_cast<float*>(input_packet), packet_size,
+              stm->linear_input_buffer.data() + stm->linear_input_buffer.length(),
+              stm->input_mix_params.channels,
+              stm->input_stream_params.channels);
+        stm->linear_input_buffer.set_length(stm->linear_input_buffer.length() + packet_size * stm->input_stream_params.channels);
+      } else if (should_downmix(stm->input_mix_params, stm->input_stream_params)) {
+        bool ok = stm->linear_input_buffer.reserve(stm->linear_input_buffer.length() +
+                                                   packet_size * stm->input_stream_params.channels);
+        assert(ok);
+        downmix(reinterpret_cast<float*>(input_packet), packet_size,
+                stm->linear_input_buffer.data() + stm->linear_input_buffer.length(),
+                stm->input_mix_params.channels,
+                stm->input_stream_params.channels);
+        stm->linear_input_buffer.set_length(stm->linear_input_buffer.length() + packet_size * stm->input_stream_params.channels);
+      } else {
+        stm->linear_input_buffer.push(reinterpret_cast<float*>(input_packet),
+                                      packet_size * stm->input_stream_params.channels);
+      }
     }
     hr = stm->capture_client->ReleaseBuffer(packet_size);
     if (FAILED(hr)) {
       LOG("FAILED to release intput buffer");
       return false;
     }
-    offset += packet_size * input_channel_count;
+    offset += packet_size;
   }
 
-  assert(stm->linear_input_buffer.length() == total_available_input);
+  assert(stm->linear_input_buffer.length() >= total_available_input &&
+         offset == total_available_input);
 
   return true;
 }
 
 /* Get an output buffer from the render_client. It has to be released before
  * exiting the callback. */
-bool get_output_buffer(cubeb_stream * stm, float *& buffer, size_t & frame_count)
+bool get_output_buffer(cubeb_stream * stm, size_t max_frames, float *& buffer, size_t & frame_count)
 {
   UINT32 padding_out;
   HRESULT hr;
@@ -654,7 +702,7 @@ bool get_output_buffer(cubeb_stream * stm, float *& buffer, size_t & frame_count
     return true;
   }
 
-  frame_count = stm->output_buffer_frame_count - padding_out;
+  frame_count = std::min<size_t>(max_frames, stm->output_buffer_frame_count - padding_out);
   BYTE * output_buffer;
 
   hr = stm->render_client->GetBuffer(frame_count, &output_buffer);
@@ -675,8 +723,9 @@ bool
 refill_callback_duplex(cubeb_stream * stm)
 {
   HRESULT hr;
-  float * output_buffer;
-  size_t output_frames;
+  float * output_buffer = nullptr;
+  size_t output_frames = 0;
+  size_t input_frames;
   bool rv;
 
   XASSERT(has_input(stm) && has_output(stm));
@@ -686,8 +735,14 @@ refill_callback_duplex(cubeb_stream * stm)
     return rv;
   }
 
-  rv = get_output_buffer(stm, output_buffer, output_frames);
+  input_frames = stm->linear_input_buffer.length() / stm->input_stream_params.channels;
+  if (!input_frames) {
+    return true;
+  }
+
+  rv = get_output_buffer(stm, input_frames, output_buffer, output_frames);
   if (!rv) {
+    hr = stm->render_client->ReleaseBuffer(output_frames, 0);
     return rv;
   }
 
@@ -698,8 +753,12 @@ refill_callback_duplex(cubeb_stream * stm)
   }
 
   // When WASAPI has not filled the input buffer yet, send silence.
-  if (stm->linear_input_buffer.length() == 0) {
-    stm->linear_input_buffer.push_silence(output_frames* stm->output_mix_params.channels);
+  double output_duration = double(output_frames) / stm->output_mix_params.rate;
+  double input_duration = double(input_frames) / stm->input_mix_params.rate;
+  if (input_duration < output_duration) {
+    size_t padding = size_t(round((output_duration - input_duration) * stm->input_mix_params.rate));
+    LOG("padding silence: out=%f in=%f pad=%u\n", output_duration, input_duration, padding);
+    stm->linear_input_buffer.push_front_silence(padding * stm->input_stream_params.channels);
   }
 
   refill(stm,
@@ -748,19 +807,20 @@ refill_callback_output(cubeb_stream * stm)
 {
   bool rv;
   HRESULT hr;
-  float * output_buffer;
-  size_t output_frames;
+  float * output_buffer = nullptr;
+  size_t output_frames = 0;
 
   XASSERT(!has_input(stm) && has_output(stm));
 
-  rv = get_output_buffer(stm, output_buffer, output_frames);
+  rv = get_output_buffer(stm, std::numeric_limits<size_t>::max(),
+                         output_buffer, output_frames);
   if (!rv) {
     return rv;
   }
+
   if (stm->draining || output_frames == 0) {
     return true;
   }
-
 
   long got = refill(stm,
                     nullptr,
@@ -834,6 +894,7 @@ wasapi_stream_render_loop(LPVOID stream)
       continue;
     }
     case WAIT_OBJECT_0 + 1: { /* reconfigure */
+      XASSERT(stm->output_client || stm->input_client);
       /* Close the stream */
       if (stm->output_client) {
         stm->output_client->Stop();
@@ -855,6 +916,7 @@ wasapi_stream_render_loop(LPVOID stream)
           continue;
         }
       }
+      XASSERT(stm->output_client || stm->input_client);
       if (stm->output_client) {
         stm->output_client->Start();
       }
@@ -986,11 +1048,7 @@ HRESULT get_default_endpoint(IMMDevice ** device, EDataFlow direction)
     LOG("Could not get device enumerator: %x\n", hr);
     return hr;
   }
-  /* eMultimedia is okay for now ("Music, movies, narration, [...]").
-     We will need to change this when we distinguish streams by use-case, other
-     possible values being eConsole ("Games, system notification sounds [...]")
-     and eCommunication ("Voice communication"). */
-  hr = enumerator->GetDefaultAudioEndpoint(direction, eMultimedia, device);
+  hr = enumerator->GetDefaultAudioEndpoint(direction, eConsole, device);
   if (FAILED(hr)) {
     LOG("Could not get default audio endpoint: %x\n", hr);
     SafeRelease(enumerator);
@@ -1138,7 +1196,15 @@ void stop_and_join_render_thread(cubeb_stream * stm)
     LOG("Destroy SetEvent failed: %d\n", GetLastError());
   }
 
-  DWORD r = WaitForSingleObject(stm->thread, INFINITE);
+  /* Wait five seconds for the rendering thread to return. It's supposed to
+   * check its event loop very often, five seconds is rather conservative. */
+  DWORD r = WaitForSingleObject(stm->thread, 5000);
+  if (r == WAIT_TIMEOUT) {
+    /* Something weird happened, leak the thread and continue the shutdown
+     * process. */
+    LOG("Destroy WaitForSingleObject on thread timed out,"
+        " leaking the thread: %d\n", GetLastError());
+  }
   if (r == WAIT_FAILED) {
     LOG("Destroy WaitForSingleObject on thread failed: %d\n", GetLastError());
   }
@@ -1205,7 +1271,7 @@ wasapi_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
 }
 
 int
-wasapi_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * latency_ms)
+wasapi_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * latency_frames)
 {
   HRESULT hr;
   IAudioClient * client;
@@ -1243,12 +1309,13 @@ wasapi_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * laten
     return CUBEB_ERROR;
   }
 
-  LOG("default device period: %ld\n", default_period);
+  LOG("default device period: %lld\n", default_period);
 
   /* According to the docs, the best latency we can achieve is by synchronizing
      the stream and the engine.
      http://msdn.microsoft.com/en-us/library/windows/desktop/dd370871%28v=vs.85%29.aspx */
-  *latency_ms = hns_to_ms(default_period);
+
+  *latency_frames = hns_to_frames(params.rate, default_period);
 
   SafeRelease(client);
 
@@ -1430,11 +1497,14 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
   mix_params->format = CUBEB_SAMPLE_FLOAT32NE;
   mix_params->rate = mix_format->nSamplesPerSec;
   mix_params->channels = mix_format->nChannels;
+  LOG("Setup requested=[f=%d r=%u c=%u] mix=[f=%d r=%u c=%u]\n",
+      stream_params->format, stream_params->rate, stream_params->channels,
+      mix_params->format, mix_params->rate, mix_params->channels);
 
   hr = (*audio_client)->Initialize(AUDCLNT_SHAREMODE_SHARED,
                                    AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
                                    AUDCLNT_STREAMFLAGS_NOPERSIST,
-                                   ms_to_hns(stm->latency),
+                                   frames_to_hns(stm, stm->latency),
                                    0,
                                    mix_format,
                                    NULL);
@@ -1452,8 +1522,10 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
     return CUBEB_ERROR;
   }
 
-  if (should_upmix(*stream_params, *mix_params) ||
-      should_downmix(*stream_params, *mix_params)) {
+  // Input is up/down mixed when depacketized in get_input_buffer.
+  if (has_output(stm) &&
+      (should_upmix(*stream_params, *mix_params) ||
+       should_downmix(*stream_params, *mix_params))) {
     stm->mix_buffer = (float *)malloc(frames_to_bytes_before_mix(stm, *buffer_frame_count));
   }
 
@@ -1487,9 +1559,10 @@ int setup_wasapi_stream(cubeb_stream * stm)
     return CUBEB_ERROR;
   }
 
-  XASSERT(!stm->output_client && "WASAPI stream already setup, close it first.");
+  XASSERT((!stm->output_client || !stm->input_client) && "WASAPI stream already setup, close it first.");
 
   if (has_input(stm)) {
+    LOG("Setup capture: device=%x\n", (int)stm->input_device);
     rv = setup_wasapi_stream_one_side(stm,
                                       &stm->input_stream_params,
                                       stm->input_device,
@@ -1506,6 +1579,7 @@ int setup_wasapi_stream(cubeb_stream * stm)
   }
 
   if (has_output(stm)) {
+    LOG("Setup render: device=%x\n", (int)stm->output_device);
     rv = setup_wasapi_stream_one_side(stm,
                                       &stm->output_stream_params,
                                       stm->output_device,
@@ -1547,7 +1621,7 @@ int setup_wasapi_stream(cubeb_stream * stm)
   if (has_input(stm) && has_output(stm)) {
     assert(stm->input_stream_params.rate == stm->output_stream_params.rate);
     target_sample_rate = stm->input_stream_params.rate;
-  }  else if (has_input(stm)) {
+  } else if (has_input(stm)) {
     target_sample_rate = stm->input_stream_params.rate;
   } else {
     XASSERT(has_output(stm));
@@ -1596,7 +1670,7 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
                    cubeb_stream_params * input_stream_params,
                    cubeb_devid output_device,
                    cubeb_stream_params * output_stream_params,
-                   unsigned int latency, cubeb_data_callback data_callback,
+                   unsigned int latency_frames, cubeb_data_callback data_callback,
                    cubeb_state_callback state_callback, void * user_ptr)
 {
   HRESULT hr;
@@ -1606,7 +1680,7 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
     return CUBEB_ERROR;
   }
 
-  XASSERT(context && stream);
+  XASSERT(context && stream && (input_stream_params || output_stream_params));
 
   if (output_stream_params && output_stream_params->format != CUBEB_SAMPLE_FLOAT32NE ||
       input_stream_params && input_stream_params->format != CUBEB_SAMPLE_FLOAT32NE) {
@@ -1630,7 +1704,8 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
     stm->output_stream_params = *output_stream_params;
     stm->output_device = output_device;
   }
-  stm->latency = latency;
+
+  stm->latency = latency_frames;
   stm->volume = 1.0;
 
   stm->stream_reset_lock = new owned_critical_section();
@@ -1748,7 +1823,7 @@ int stream_start_one_side(cubeb_stream * stm, StreamDirection dir)
   HRESULT hr = dir == OUTPUT ? stm->output_client->Start() : stm->input_client->Start();
   if (hr == AUDCLNT_E_DEVICE_INVALIDATED) {
     LOG("audioclient invalidated for %s device, reconfiguring\n",
-        dir == OUTPUT ? "output" : "input", hr);
+        dir == OUTPUT ? "output" : "input");
 
     BOOL ok = ResetEvent(stm->reconfigure_event);
     if (!ok) {
@@ -1763,9 +1838,9 @@ int stream_start_one_side(cubeb_stream * stm, StreamDirection dir)
       return r;
     }
 
-    HRESULT hr = dir == OUTPUT ? stm->output_client->Start() : stm->input_client->Start();
-    if (FAILED(hr)) {
-      LOG("could not start the %s stream after reconfig: %x (%s)\n",
+    HRESULT hr2 = dir == OUTPUT ? stm->output_client->Start() : stm->input_client->Start();
+    if (FAILED(hr2)) {
+      LOG("could not start the %s stream after reconfig: %x\n",
           dir == OUTPUT ? "output" : "input", hr);
       return CUBEB_ERROR;
     }
@@ -1780,20 +1855,20 @@ int stream_start_one_side(cubeb_stream * stm, StreamDirection dir)
 
 int wasapi_stream_start(cubeb_stream * stm)
 {
-  int rv;
+  XASSERT(stm && !stm->thread && !stm->shutdown_event);
+  XASSERT(stm->output_client || stm->input_client);
+
   auto_lock lock(stm->stream_reset_lock);
 
-  XASSERT(stm && !stm->thread && !stm->shutdown_event);
-
   if (stm->output_client) {
-    rv = stream_start_one_side(stm, OUTPUT);
+    int rv = stream_start_one_side(stm, OUTPUT);
     if (rv != CUBEB_OK) {
       return rv;
     }
   }
 
   if (stm->input_client) {
-    rv = stream_start_one_side(stm, INPUT);
+    int rv = stream_start_one_side(stm, INPUT);
     if (rv != CUBEB_OK) {
       return rv;
     }
@@ -1805,7 +1880,7 @@ int wasapi_stream_start(cubeb_stream * stm)
     return CUBEB_ERROR;
   }
 
-  stm->thread = (HANDLE) _beginthreadex(NULL, 256 * 1024, wasapi_stream_render_loop, stm, STACK_SIZE_PARAM_IS_A_RESERVATION, NULL);
+  stm->thread = (HANDLE) _beginthreadex(NULL, 512 * 1024, wasapi_stream_render_loop, stm, STACK_SIZE_PARAM_IS_A_RESERVATION, NULL);
   if (stm->thread == NULL) {
     LOG("could not create WASAPI render thread.\n");
     return CUBEB_ERROR;
@@ -1899,8 +1974,7 @@ int wasapi_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
   if (FAILED(hr)) {
     return CUBEB_ERROR;
   }
-  double latency_s = hns_to_s(latency_hns);
-  *latency = static_cast<uint32_t>(latency_s * stm->output_stream_params.rate);
+  *latency = hns_to_frames(stm, latency_hns);
 
   return CUBEB_OK;
 }
@@ -2049,7 +2123,7 @@ wasapi_create_device(IMMDeviceEnumerator * enumerator, IMMDevice * dev)
   }
 
   ret->preferred = CUBEB_DEVICE_PREF_NONE;
-  if (wasapi_is_default_device(flow, eMultimedia, device_id, enumerator))
+  if (wasapi_is_default_device(flow, eConsole, device_id, enumerator))
     ret->preferred = (cubeb_device_pref)(ret->preferred | CUBEB_DEVICE_PREF_MULTIMEDIA);
   if (wasapi_is_default_device(flow, eCommunications, device_id, enumerator))
     ret->preferred = (cubeb_device_pref)(ret->preferred | CUBEB_DEVICE_PREF_VOICE);
@@ -2093,11 +2167,11 @@ wasapi_create_device(IMMDeviceEnumerator * enumerator, IMMDevice * dev)
 
   if (SUCCEEDED(dev->Activate(__uuidof(IAudioClient), CLSCTX_INPROC_SERVER, NULL, (void**)&client)) &&
       SUCCEEDED(client->GetDevicePeriod(&def_period, &min_period))) {
-    ret->latency_lo_ms = hns_to_ms(min_period);
-    ret->latency_hi_ms = hns_to_ms(def_period);
+    ret->latency_lo = hns_to_frames(ret->default_rate, min_period);
+    ret->latency_hi = hns_to_frames(ret->default_rate, def_period);
   } else {
-    ret->latency_lo_ms = 0;
-    ret->latency_hi_ms = 0;
+    ret->latency_lo = 0;
+    ret->latency_hi = 0;
   }
   SafeRelease(client);
 
@@ -2137,7 +2211,7 @@ wasapi_enumerate_devices(cubeb * context, cubeb_device_type type,
   }
 
   if (type == CUBEB_DEVICE_TYPE_OUTPUT) flow = eRender;
-  else if (type == CUBEB_DEVICE_TYPE_INPUT)  flow = eCapture;
+  else if (type == CUBEB_DEVICE_TYPE_INPUT) flow = eCapture;
   else if (type & (CUBEB_DEVICE_TYPE_INPUT | CUBEB_DEVICE_TYPE_INPUT)) flow = eAll;
   else return CUBEB_ERROR;
 
@@ -2154,6 +2228,9 @@ wasapi_enumerate_devices(cubeb * context, cubeb_device_type type,
   }
   *out = (cubeb_device_collection *) malloc(sizeof(cubeb_device_collection) +
       sizeof(cubeb_device_info*) * (cc > 0 ? cc - 1 : 0));
+  if (!*out) {
+    return CUBEB_ERROR;
+  }
   (*out)->count = 0;
   for (i = 0; i < cc; i++) {
     hr = collection->Item(i, &dev);

@@ -24,7 +24,8 @@ Cubeb for Windows uses win32 threads
 - Run `msys2` (a shortcut has been added to the start menu, or use the `.bat`
   script: `C:\msys32\mingw32_shell.bat`), and issue the following commands to
   install the dependencies:
-```pacman -S git automake autoconf libtool m4 make pkg-config gdb
+```
+pacman -S git automake autoconf libtool m4 make pkg-config gdb
 ```
 - Download a `mingw` compiler with the WIN32 thread model [here](http://sourceforge.net/projects/mingw-w64/files/Toolchains%20targetting%20Win32/Personal%20Builds/mingw-builds/4.9.2/threads-win32/sjlj/i686-4.9.2-release-win32-sjlj-rt_v3-rev0.7z/download). `msys2` does not have `mingw` builds with win32 threads,
 so we have to install another compiler.

@@ -2,7 +2,7 @@
 
 #include <assert.h>
 #include <string.h>
-#include <stdlib.h>
+#include <iostream>
 #include <CoreAudio/CoreAudioTypes.h>
 
 #include "cubeb/cubeb.h"

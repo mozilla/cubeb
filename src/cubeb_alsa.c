@@ -251,8 +251,6 @@ alsa_set_stream_state(cubeb_stream * stm, enum stream_state state)
 static enum stream_state
 alsa_refill_stream(cubeb_stream * stm)
 {
-  int r;
-  unsigned short revents;
   snd_pcm_sframes_t avail;
   long got;
   void * p;
@@ -261,15 +259,6 @@ alsa_refill_stream(cubeb_stream * stm)
   draining = 0;
 
   pthread_mutex_lock(&stm->mutex);
-
-  r = snd_pcm_poll_descriptors_revents(stm->pcm, stm->fds, stm->nfds, &revents);
-  if (r < 0 || revents != POLLOUT) {
-    /* This should be a stream error; it makes no sense for poll(2) to wake
-       for this stream and then have the stream report that it's not ready.
-       Unfortunately, this does happen, so just bail out and try again. */
-    pthread_mutex_unlock(&stm->mutex);
-    return RUNNING;
-  }
 
   avail = snd_pcm_avail_update(stm->pcm);
   if (avail == -EPIPE) {
@@ -785,7 +774,7 @@ alsa_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
                  cubeb_stream_params * input_stream_params,
                  cubeb_devid output_device,
                  cubeb_stream_params * output_stream_params,
-                 unsigned int latency,
+                 unsigned int latency_frames,
                  cubeb_data_callback data_callback, cubeb_state_callback state_callback,
                  void * user_ptr)
 {
@@ -793,10 +782,16 @@ alsa_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
   int r;
   snd_pcm_format_t format;
   snd_pcm_uframes_t period_size;
+  int latency_us = 0;
+
 
   assert(ctx && stream);
 
-  assert(!input_stream_params && "not supported.");
+  if (input_stream_params) {
+    /* Capture support not yet implemented. */
+    return CUBEB_ERROR_NOT_SUPPORTED;
+  }
+
   if (input_device || output_device) {
     /* Device selection not yet implemented. */
     return CUBEB_ERROR_DEVICE_UNAVAILABLE;
@@ -852,16 +847,19 @@ alsa_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
   r = snd_pcm_nonblock(stm->pcm, 1);
   assert(r == 0);
 
+  latency_us = latency_frames * 1e6 / stm->params.rate;
+
   /* Ugly hack: the PA ALSA plugin allows buffer configurations that can't
      possibly work.  See https://bugzilla.mozilla.org/show_bug.cgi?id=761274.
      Only resort to this hack if the handle_underrun workaround failed. */
   if (!ctx->local_config && ctx->is_pa) {
-    latency = latency < 500 ? 500 : latency;
+    const int min_latency = 5e5;
+    latency_us = latency_us < min_latency ? min_latency: latency_us;
   }
 
   r = snd_pcm_set_params(stm->pcm, format, SND_PCM_ACCESS_RW_INTERLEAVED,
                          stm->params.channels, stm->params.rate, 1,
-                         latency * 1000);
+                         latency_us);
   if (r < 0) {
     alsa_stream_destroy(stm);
     return CUBEB_ERROR_INVALID_FORMAT;
@@ -1006,11 +1004,11 @@ alsa_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate) {
 }
 
 static int
-alsa_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * latency_ms)
+alsa_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * latency_frames)
 {
-  /* This is found to be an acceptable minimum, even on a super low-end
+  /* 40ms is found to be an acceptable minimum, even on a super low-end
    * machine. */
-  *latency_ms = 40;
+  *latency_frames = 40 * params.rate / 1000;
 
   return CUBEB_OK;
 }
