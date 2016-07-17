@@ -110,20 +110,6 @@ struct cubeb_stream {
 };
 
 static int
-any_revents(struct pollfd * fds, nfds_t nfds)
-{
-  nfds_t i;
-
-  for (i = 0; i < nfds; ++i) {
-    if (fds[i].revents) {
-      return 1;
-    }
-  }
-
-  return 0;
-}
-
-static int
 cmp_timeval(struct timeval * a, struct timeval * b)
 {
   if (a->tv_sec == b->tv_sec) {
@@ -389,7 +375,13 @@ alsa_run(cubeb * ctx)
 
     for (i = 0; i < CUBEB_STREAM_MAX; ++i) {
       stm = ctx->streams[i];
-      if (stm && stm->state == RUNNING && stm->fds && any_revents(stm->fds, stm->nfds)) {
+      if (stm && stm->state == RUNNING && stm->fds) {
+        unsigned short revents = 0;
+
+        snd_pcm_poll_descriptors_revents(stm->pcm, stm->fds, stm->nfds, &revents);
+        if (revents == 0)
+          continue;
+
         alsa_set_stream_state(stm, PROCESSING);
         pthread_mutex_unlock(&ctx->mutex);
         state = alsa_refill_stream(stm);
