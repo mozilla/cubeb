@@ -247,8 +247,9 @@ alsa_refill_stream(cubeb_stream * stm)
   pthread_mutex_lock(&stm->mutex);
 
   avail = snd_pcm_avail_update(stm->pcm);
-  if (avail == -EPIPE) {
+  if (avail < 0) {
     snd_pcm_recover(stm->pcm, avail, 1);
+    snd_pcm_prepare(stm->pcm);
     avail = snd_pcm_avail_update(stm->pcm);
   }
 
@@ -269,6 +270,7 @@ alsa_refill_stream(cubeb_stream * stm)
      a funky state, so recover and try again. */
   if (avail == 0) {
     snd_pcm_recover(stm->pcm, -EPIPE, 1);
+    snd_pcm_prepare(stm->pcm);
     avail = snd_pcm_avail_update(stm->pcm);
     if (avail <= 0) {
       pthread_mutex_unlock(&stm->mutex);
@@ -303,8 +305,9 @@ alsa_refill_stream(cubeb_stream * stm)
       }
     }
     wrote = snd_pcm_writei(stm->pcm, p, got);
-    if (wrote == -EPIPE) {
+    if (wrote < 0) {
       snd_pcm_recover(stm->pcm, wrote, 1);
+      snd_pcm_prepare(stm->pcm);
       wrote = snd_pcm_writei(stm->pcm, p, got);
     }
     assert(wrote >= 0 && wrote == got);
