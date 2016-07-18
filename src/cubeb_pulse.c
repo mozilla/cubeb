@@ -674,7 +674,7 @@ set_buffering_attribute(unsigned int latency_frames, pa_sample_spec * sample_spe
 {
   pa_buffer_attr battr;
   battr.maxlength = -1;
-  battr.prebuf    = -1;
+  battr.prebuf    = 0;
   battr.tlength   = latency_frames * WRAP(pa_frame_size)(sample_spec);
   battr.minreq    = battr.tlength / 4;
   battr.fragsize  = battr.minreq;
@@ -732,7 +732,9 @@ pulse_stream_init(cubeb * context,
     stm->output_sample_spec = *(WRAP(pa_stream_get_sample_spec)(stm->output_stream));
 
     WRAP(pa_stream_set_state_callback)(stm->output_stream, stream_state_callback, stm);
-    WRAP(pa_stream_set_write_callback)(stm->output_stream, stream_write_callback, stm);
+    // De-register write cb here and register after PA is on ready state
+    // This will avoid calling the callback before stream start
+    WRAP(pa_stream_set_write_callback)(stm->output_stream, NULL, stm);
 
     battr = set_buffering_attribute(latency_frames, &stm->output_sample_spec);
     WRAP(pa_stream_connect_playback)(stm->output_stream,
@@ -767,6 +769,10 @@ pulse_stream_init(cubeb * context,
 
   r = wait_until_stream_ready(stm);
   if (r == 0) {
+    if (output_stream_params) {
+      // Register write callback if needed after PA is in ready state
+      WRAP(pa_stream_set_write_callback)(stm->output_stream, stream_write_callback, stm);
+    }
     /* force a timing update now, otherwise timing info does not become valid
        until some point after initialization has completed. */
     r = stream_update_timing_info(stm);
