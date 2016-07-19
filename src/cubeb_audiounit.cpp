@@ -992,7 +992,7 @@ audiounit_stream_init(cubeb * context,
     }
   } else {
     if (AudioUnitGetProperty(stm->input_unit, kAudioDevicePropertyBufferFrameSize,
-          kAudioUnitScope_Output, 0, &default_frame_count, &size) != 0) {
+          kAudioUnitScope_Input, 0, &default_frame_count, &size) != 0) {
       audiounit_stream_destroy(stm);
       return CUBEB_ERROR;
     }
