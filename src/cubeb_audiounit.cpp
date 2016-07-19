@@ -57,7 +57,7 @@ typedef UInt32  AudioFormatFlags;
 #define CUBEB_AUDIOUNIT_SUBTYPE kAudioUnitSubType_HALOutput
 #endif
 
-//#define LOGGING_ENABLED
+#define LOGGING_ENABLED
 #ifdef LOGGING_ENABLED
 #define LOG(...) do {                           \
     fprintf(stderr, __VA_ARGS__);               \
@@ -159,8 +159,6 @@ struct cubeb_stream {
   /* Hold the input samples in every
    * input callback iteration */
   auto_array_wrapper * input_linear_buffer;
-  /* Buffer used to render input */
-  void * input_data;
   /* Frames on input buffer */
   uint32_t input_buffer_frames;
   /* Frame counters */
@@ -226,16 +224,12 @@ audiounit_render_input(cubeb_stream * stm,
                        UInt32 bus,
                        UInt32 input_frames)
 {
-  /* Create the AudioBuffer to store input. */
-  AudioBuffer audioBuffer;
-  audioBuffer.mDataByteSize =
-      stm->input_desc.mBytesPerFrame * stm->input_buffer_frames;
-  audioBuffer.mData = stm->input_data;
-  audioBuffer.mNumberChannels = stm->input_desc.mChannelsPerFrame;
-
-  /* Wrap it in an AudioBufferList. */
+  /* Create the AudioBufferList to store input. */
   AudioBufferList input_buffer_list;
-  input_buffer_list.mBuffers[0] = audioBuffer;
+  input_buffer_list.mBuffers[0].mDataByteSize =
+      stm->input_desc.mBytesPerFrame * stm->input_buffer_frames;
+  input_buffer_list.mBuffers[0].mData = nullptr;
+  input_buffer_list.mBuffers[0].mNumberChannels = stm->input_desc.mChannelsPerFrame;
   input_buffer_list.mNumberBuffers = 1;
 
   /* Render input samples */
@@ -246,15 +240,15 @@ audiounit_render_input(cubeb_stream * stm,
                                input_frames,
                                &input_buffer_list);
 
-  /* Copy input data in linear buffer. */
-  stm->input_linear_buffer->push(stm->input_data,
-                                 input_frames * stm->input_desc.mChannelsPerFrame);
-
   if (r != noErr) {
     LOG("Input AudioUnitRender failed with error=%d\n", r);
-    audiounit_make_silent(&audioBuffer);
+    audiounit_make_silent(&input_buffer_list.mBuffers[0]);
     return r;
   }
+
+  /* Copy input data in linear buffer. */
+  stm->input_linear_buffer->push(input_buffer_list.mBuffers[0].mData,
+                                 input_frames * stm->input_desc.mChannelsPerFrame);
 
   LOG("- input:  buffers %d, size %d, channels %d, frames %d\n",
       input_buffer_list.mNumberBuffers,
@@ -980,16 +974,12 @@ audiounit_init_input_linear_buffer(cubeb_stream * stream, uint32_t capacity)
     assert(stream->input_linear_buffer->length() == silence_size);
   }
 
-  stream->input_data = operator new(stream->input_buffer_frames *
-                                    stream->input_desc.mBytesPerFrame);
-
   return CUBEB_OK;
 }
 
 static void
 audiounit_destroy_input_linear_buffer(cubeb_stream * stream)
 {
-  operator delete(stream->input_data);
   delete stream->input_linear_buffer;
 }
 
