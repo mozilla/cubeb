@@ -28,6 +28,7 @@
 #include "cubeb_resampler.h"
 #include "cubeb_ring_array.h"
 #include "cubeb_utils.h"
+#include <algorithm>
 
 #if !defined(kCFCoreFoundationVersionNumber10_7)
 /* From CoreFoundation CFBase.h */
@@ -716,7 +717,10 @@ audiounit_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * la
     return CUBEB_ERROR;
   }
 
-  *latency_frames = latency_range.mMinimum;
+  /* Testing empirically, some headsets report a minimal latency that is very
+   * low, but this does not work in practice. Lie and say the minimum is 256
+   * frames. */
+  *latency_frames = std::max<int>(latency_range.mMinimum, 256);
 #endif
 
   return CUBEB_OK;
@@ -973,6 +977,30 @@ audiounit_stream_init(cubeb * context,
 
   /* Init data members where necessary */
   stm->hw_latency_frames = UINT64_MAX;
+
+  /* Silently clamp the latency down to the platform default, because we
+   * synthetize the clock from the callbacks, and we want the clock to update
+   * often. */
+
+  UInt32 default_frame_count;
+  size = sizeof(default_frame_count);
+  if (stm->output_unit) {
+    if (AudioUnitGetProperty(stm->output_unit, kAudioDevicePropertyBufferFrameSize,
+          kAudioUnitScope_Output, 0, &default_frame_count, &size) != 0) {
+      audiounit_stream_destroy(stm);
+      return CUBEB_ERROR;
+    }
+  } else {
+    if (AudioUnitGetProperty(stm->input_unit, kAudioDevicePropertyBufferFrameSize,
+          kAudioUnitScope_Input, 0, &default_frame_count, &size) != 0) {
+      audiounit_stream_destroy(stm);
+      return CUBEB_ERROR;
+    }
+  }
+
+  LOG("Default buffer size: %u frames\n", default_frame_count);
+
+  latency_frames = std::min<uint32_t>(latency_frames, default_frame_count);
 
   /* Setup Input Stream! */
   if (input_stream_params != NULL) {

@@ -213,7 +213,8 @@ int run_panning_volume_test(int is_float)
   }
 
   r = cubeb_stream_init(ctx, &stream, "test tone", NULL, NULL, NULL, &params,
-                        100, is_float ? data_cb_float : data_cb_short, state_cb, synth);
+                        4096, is_float ? data_cb_float : data_cb_short,
+                        state_cb, synth);
   if (r != CUBEB_OK) {
     fprintf(stderr, "Error initializing cubeb stream: %d\n", r);
     goto cleanup;
