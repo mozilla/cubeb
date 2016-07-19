@@ -984,10 +984,18 @@ audiounit_stream_init(cubeb * context,
 
   UInt32 default_frame_count;
   size = sizeof(default_frame_count);
-  if (AudioUnitGetProperty(stm->output_unit, kAudioDevicePropertyBufferFrameSize,
-        kAudioUnitScope_Output, 0, &default_frame_count, &size) != 0) {
-    audiounit_stream_destroy(stm);
-    return CUBEB_ERROR;
+  if (stm->output_unit) {
+    if (AudioUnitGetProperty(stm->output_unit, kAudioDevicePropertyBufferFrameSize,
+          kAudioUnitScope_Output, 0, &default_frame_count, &size) != 0) {
+      audiounit_stream_destroy(stm);
+      return CUBEB_ERROR;
+    }
+  } else {
+    if (AudioUnitGetProperty(stm->input_unit, kAudioDevicePropertyBufferFrameSize,
+          kAudioUnitScope_Output, 0, &default_frame_count, &size) != 0) {
+      audiounit_stream_destroy(stm);
+      return CUBEB_ERROR;
+    }
   }
 
   LOG("Default buffer size: %u frames\n", default_frame_count);
