@@ -58,7 +58,7 @@ typedef UInt32  AudioFormatFlags;
 #define CUBEB_AUDIOUNIT_SUBTYPE kAudioUnitSubType_HALOutput
 #endif
 
-// #define LOGGING_ENABLED
+//#define LOGGING_ENABLED
 #ifdef LOGGING_ENABLED
 #define LOG(...) do {                           \
     fprintf(stderr, __VA_ARGS__);               \
@@ -82,6 +82,65 @@ struct cubeb {
   AudioObjectID * devtype_device_array;
 };
 
+class auto_array_wrapper
+{
+public:
+  explicit auto_array_wrapper(auto_array<float> * ar)
+  : float_ar(ar)
+  , short_ar(nullptr)
+  {assert((float_ar && !short_ar) || (!float_ar && short_ar));}
+
+  explicit auto_array_wrapper(auto_array<short> * ar)
+  : float_ar(nullptr)
+  , short_ar(ar)
+  {assert((float_ar && !short_ar) || (!float_ar && short_ar));}
+
+  ~auto_array_wrapper() {
+    assert((float_ar && !short_ar) || (!float_ar && short_ar));
+    delete float_ar;
+    delete short_ar;
+  }
+
+  void push(void * elements, size_t length){
+    assert((float_ar && !short_ar) || (!float_ar && short_ar));
+    if (float_ar)
+      return float_ar->push(static_cast<float*>(elements), length);
+    return short_ar->push(static_cast<short*>(elements), length);
+  }
+
+  size_t length() const {
+    assert((float_ar && !short_ar) || (!float_ar && short_ar));
+    if (float_ar)
+      return float_ar->length();
+    return short_ar->length();
+  }
+
+  void push_silence(size_t length) {
+    assert((float_ar && !short_ar) || (!float_ar && short_ar));
+    if (float_ar)
+      return float_ar->push_silence(length);
+    return short_ar->push_silence(length);
+  }
+
+  bool pop(void * elements, size_t length) {
+    assert((float_ar && !short_ar) || (!float_ar && short_ar));
+    if (float_ar)
+      return float_ar->pop(static_cast<float*>(elements), length);
+    return short_ar->pop(static_cast<short*>(elements), length);
+  }
+
+  void * data() const {
+    assert((float_ar && !short_ar) || (!float_ar && short_ar));
+    if (float_ar)
+      return float_ar->data();
+    return short_ar->data();
+  }
+
+private:
+  auto_array<float> * float_ar;
+  auto_array<short> * short_ar;
+};
+
 struct cubeb_stream {
   cubeb * context;
   cubeb_data_callback data_callback;
@@ -100,7 +159,7 @@ struct cubeb_stream {
   pthread_mutex_t mutex;
   /* Hold the input samples in every
    * input callback iteration */
-  ring_array input_buffer_array;
+  auto_array_wrapper * input_linear_buffer;
   /* Frames on input buffer */
   uint32_t input_buffer_frames;
   /* Frame counters */
@@ -160,6 +219,52 @@ audiounit_make_silent(AudioBuffer * ioData)
 }
 
 static OSStatus
+audiounit_render_input(cubeb_stream * stm,
+                       AudioUnitRenderActionFlags * flags,
+                       AudioTimeStamp const * tstamp,
+                       UInt32 bus,
+                       UInt32 input_frames)
+{
+  /* Create the AudioBufferList to store input. */
+  AudioBufferList input_buffer_list;
+  input_buffer_list.mBuffers[0].mDataByteSize =
+      stm->input_desc.mBytesPerFrame * stm->input_buffer_frames;
+  input_buffer_list.mBuffers[0].mData = nullptr;
+  input_buffer_list.mBuffers[0].mNumberChannels = stm->input_desc.mChannelsPerFrame;
+  input_buffer_list.mNumberBuffers = 1;
+
+  /* Render input samples */
+  OSStatus r = AudioUnitRender(stm->input_unit,
+                               flags,
+                               tstamp,
+                               bus,
+                               input_frames,
+                               &input_buffer_list);
+
+  if (r != noErr) {
+    LOG("Input AudioUnitRender failed with error=%d\n", r);
+    audiounit_make_silent(&input_buffer_list.mBuffers[0]);
+    return r;
+  }
+
+  /* Copy input data in linear buffer. */
+  stm->input_linear_buffer->push(input_buffer_list.mBuffers[0].mData,
+                                 input_frames * stm->input_desc.mChannelsPerFrame);
+
+  LOG("- input:  buffers %d, size %d, channels %d, frames %d\n",
+      input_buffer_list.mNumberBuffers,
+      input_buffer_list.mBuffers[0].mDataByteSize,
+      input_buffer_list.mBuffers[0].mNumberChannels,
+      input_frames);
+
+  /* Advance input frame counter. */
+  assert(input_frames > 0);
+  stm->frames_read += input_frames;
+
+  return noErr;
+}
+
+static OSStatus
 audiounit_input_callback(void * user_ptr,
                          AudioUnitRenderActionFlags * flags,
                          AudioTimeStamp const * tstamp,
@@ -176,45 +281,15 @@ audiounit_input_callback(void * user_ptr,
   assert(AU_IN_BUS == bus);
 
   if (stm->shutdown) {
+    LOG("- input shutdown\n");
     pthread_mutex_unlock(&stm->mutex);
     return noErr;
   }
 
-  /* Get next store buffer from ring array */
-  AudioBuffer * input_buffer = ring_array_get_free_buffer(&stm->input_buffer_array);
-  if (input_buffer == NULL) {
-    LOG("input: Ring array is full drop one buffer\n");
-    ring_array_get_data_buffer(&stm->input_buffer_array);
-
-    input_buffer = ring_array_get_free_buffer(&stm->input_buffer_array);
-    assert(input_buffer);
-  }
-
-  AudioBufferList input_buffer_list;
-  input_buffer_list.mBuffers[0] = *input_buffer;
-  input_buffer_list.mNumberBuffers = 1;
-
-  /* Render input samples */
-  OSStatus r = AudioUnitRender(stm->input_unit,
-                               flags,
-                               tstamp,
-                               bus,
-                               input_frames,
-                               &input_buffer_list);
+  OSStatus r = audiounit_render_input(stm, flags, tstamp, bus, input_frames);
   if (r != noErr) {
-    LOG("Input AudioUnitRender failed with error=%d", r);
-    audiounit_make_silent(input_buffer);
     return r;
   }
-
-  LOG("- input:  buffers %d, size %d, channels %d, frames %d\n",
-      input_buffer_list.mNumberBuffers,
-      input_buffer_list.mBuffers[0].mDataByteSize,
-      input_buffer_list.mBuffers[0].mNumberChannels,
-      input_frames);
-
-  assert(input_frames > 0);
-  stm->frames_read += input_frames;
 
   // Full Duplex. We'll call data_callback in the AudioUnit output callback.
   if (stm->output_unit != NULL) {
@@ -226,13 +301,14 @@ audiounit_input_callback(void * user_ptr,
   /* Input only. Call the user callback through resampler.
      Resampler will deliver input buffer in the correct rate. */
   frames = input_frames;
-  input_buffer = ring_array_get_data_buffer(&stm->input_buffer_array);
-  assert(input_buffer && "fetch buffer is null in the input");
+  assert(input_frames <= stm->input_linear_buffer->length() / stm->input_desc.mChannelsPerFrame);
   outframes = cubeb_resampler_fill(stm->resampler,
-                                   input_buffer->mData,
+                                   stm->input_linear_buffer->data(),
                                    &frames,
                                    NULL,
                                    0);
+  // Reset input buffer
+  stm->input_linear_buffer->pop(nullptr, frames * stm->input_desc.mChannelsPerFrame);
 
   if (outframes < 0 || outframes != input_frames) {
     stm->shutdown = 1;
@@ -267,14 +343,11 @@ audiounit_output_callback(void * user_ptr,
   pthread_mutex_lock(&stm->mutex);
 
   if (stm->shutdown) {
+    LOG("- output shutdown\n");
     audiounit_make_silent(&outBufferList->mBuffers[0]);
     pthread_mutex_unlock(&stm->mutex);
     return noErr;
   }
-
-  LOG("- output(%p): buffers %d, size %d, channels %d, frames %d\n", stm,
-      outBufferList->mNumberBuffers, outBufferList->mBuffers[0].mDataByteSize,
-      outBufferList->mBuffers[0].mNumberChannels, output_frames);
 
   stm->current_latency_frames = audiotimestamp_to_latency(tstamp, stm);
   if (stm->draining) {
@@ -292,30 +365,22 @@ audiounit_output_callback(void * user_ptr,
   /* Get output buffer. */
   output_buffer = outBufferList->mBuffers[0].mData;
   /* If Full duplex get also input buffer */
-  AudioBuffer * input_aud_buf = NULL;
   if (stm->input_unit != NULL) {
+    /* Output callback came first */
+    if (stm->frames_read == 0) {
+      LOG("Output callback came first send silent.\n");
+      stm->input_linear_buffer->push_silence(stm->input_buffer_frames *
+                                            stm->input_desc.mChannelsPerFrame);
+    }
     /* Input samples stored previously in input callback. */
-    input_aud_buf = ring_array_get_data_buffer(&stm->input_buffer_array);
-    if (input_aud_buf == NULL) {
-      /* Provide silent input. Other than that we could provide silent output and exit without
-       * calling user callback. This is not preferred because the user loose the control of
-       * the output. Also resampler loose frame counting and produce less frame than
-       * expected at some point in the future breaking an assert. */
-      LOG("Input hole. Requested more input than existing.\n");
-
-      /* Avoid here to allocate new memory since we are inside callback. Use the existing
-       * allocated buffers since the ring array is empty and the buffer is not used. */
-      input_aud_buf = ring_array_get_dummy_buffer(&stm->input_buffer_array);
-      /* Output callback came first */
-      if (stm->frames_read == 0) {
-        LOG("Output callback came first send silent.\n");
-      }
-      audiounit_make_silent(input_aud_buf);
+    if (stm->input_linear_buffer->length() == 0) {
+      /* Do nothing, there should be enough pre-buffered data to consume. */
+      LOG("Input hole. Requested more input than ouput.\n");
     }
     // The input buffer
-    input_buffer = input_aud_buf->mData;
+    input_buffer = stm->input_linear_buffer->data();
     // Number of input frames in the buffer
-    input_frames = stm->input_buffer_frames;
+    input_frames = stm->input_linear_buffer->length() / stm->input_desc.mChannelsPerFrame;
   }
 
   /* Call user callback through resampler. */
@@ -325,9 +390,8 @@ audiounit_output_callback(void * user_ptr,
                                    output_buffer,
                                    output_frames);
 
-  /* Cleanup the input buffer to make sure that we have fresh data. */
   if (input_buffer) {
-    audiounit_make_silent(input_aud_buf);
+    stm->input_linear_buffer->pop(nullptr, input_frames * stm->input_desc.mChannelsPerFrame);
   }
 
   if (outframes < 0) {
@@ -885,21 +949,42 @@ audiounit_create_unit(AudioUnit * unit,
 }
 
 static int
-audiounit_init_input_buffer_array(cubeb_stream * stream, uint32_t capacity)
+audiounit_init_input_linear_buffer(cubeb_stream * stream, uint32_t capacity)
 {
-  int r = ring_array_init(&stream->input_buffer_array,
-                          capacity,
-                          stream->input_desc.mBytesPerFrame,
-                          stream->input_desc.mChannelsPerFrame,
-                          stream->input_buffer_frames);
+  if (stream->input_desc.mFormatFlags == kAudioFormatFlagIsSignedInteger) {
+    stream->input_linear_buffer = new auto_array_wrapper(
+        new auto_array<short>(capacity *
+                              stream->input_buffer_frames *
+                              stream->input_desc.mChannelsPerFrame) );
+  } else {
+    stream->input_linear_buffer = new auto_array_wrapper(
+        new auto_array<float>(capacity *
+                              stream->input_buffer_frames *
+                              stream->input_desc.mChannelsPerFrame) );
+  }
 
-  return r;
+  if (!stream->input_linear_buffer) {
+    return CUBEB_ERROR;
+  }
+
+  assert(stream->input_linear_buffer->length() == 0);
+
+  // Pre-buffer silence if needed
+  if (capacity != 1) {
+    size_t silence_size = stream->input_buffer_frames *
+                          stream->input_desc.mChannelsPerFrame;
+    stream->input_linear_buffer->push_silence(silence_size);
+
+    assert(stream->input_linear_buffer->length() == silence_size);
+  }
+
+  return CUBEB_OK;
 }
 
 static void
-audiounit_destroy_input_buffer_array(cubeb_stream * stream)
+audiounit_destroy_input_linear_buffer(cubeb_stream * stream)
 {
-  ring_array_destroy(&stream->input_buffer_array);
+  delete stream->input_linear_buffer;
 }
 
 static int
@@ -1026,8 +1111,12 @@ audiounit_stream_init(cubeb * context,
     }
 
     // Use latency to calculate buffer size
-    stm->input_buffer_frames = latency_frames;
-    LOG("Input buffer frame count %u\n", stm->input_buffer_frames);
+    if (stm->input_hw_rate == input_stream_params->rate) {
+      stm->input_buffer_frames = latency_frames;
+    } else {
+      stm->input_buffer_frames = (latency_frames * stm->input_hw_rate) / input_stream_params->rate;
+    }
+    LOG("Calculated input number of frames %u for latency %u\n", stm->input_buffer_frames, latency_frames);
     if (AudioUnitSetProperty(stm->input_unit,
                              kAudioDevicePropertyBufferFrameSize,
                              kAudioUnitScope_Output,
@@ -1070,7 +1159,7 @@ audiounit_stream_init(cubeb * context,
       // Full-duplex increase capacity
       array_capacity = 8;
     }
-    if (audiounit_init_input_buffer_array(stm, array_capacity) != CUBEB_OK) {
+    if (audiounit_init_input_linear_buffer(stm, array_capacity) != CUBEB_OK) {
       audiounit_stream_destroy(stm);
       return CUBEB_ERROR;
     }
@@ -1125,8 +1214,14 @@ audiounit_stream_init(cubeb * context,
     // Use latency to set number of frames in out buffer. Use the
     // device sampling rate, internal resampler of audiounit will
     // calculate the expected number of frames.
-    uint32_t output_buffer_frames = latency_frames;
-    LOG("Output buffer frame count %u\n", output_buffer_frames);
+    // Use latency to calculate buffer size
+    uint32_t output_buffer_frames = 0;
+    if (output_hw_desc.mSampleRate == output_stream_params->rate) {
+      output_buffer_frames = latency_frames;
+    } else {
+      output_buffer_frames = (latency_frames * output_hw_desc.mSampleRate) / output_stream_params->rate;
+    }
+    LOG("Calculated output number of frames %u for latency %u\n", output_buffer_frames, latency_frames);
     if (AudioUnitSetProperty(stm->output_unit,
                              kAudioDevicePropertyBufferFrameSize,
                              kAudioUnitScope_Input,
@@ -1258,7 +1353,7 @@ audiounit_stream_destroy(cubeb_stream * stm)
     AudioComponentInstanceDispose(stm->input_unit);
   }
 
-  audiounit_destroy_input_buffer_array(stm);
+  audiounit_destroy_input_linear_buffer(stm);
 
   if (stm->output_unit != NULL) {
     AudioOutputUnitStop(stm->output_unit);
