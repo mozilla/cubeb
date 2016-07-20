@@ -591,7 +591,7 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
     preferred_sampling_rate = 0;
     if (opensl_get_min_latency(ctx, *output_stream_params, &latency_frames) != CUBEB_OK) {
       // Default to AudioFlinger's advertised fast track latency of 10ms.
-      latency_frames = 10;
+      latency_frames = 440;
     }
     stm->latency = latency_frames;
   }
