@@ -261,7 +261,7 @@ alsa_refill_stream(cubeb_stream * stm)
   pthread_mutex_lock(&stm->mutex);
 
   avail = snd_pcm_avail_update(stm->pcm);
-  if (avail == -EPIPE) {
+  if (avail < 0) {
     snd_pcm_recover(stm->pcm, avail, 1);
     avail = snd_pcm_avail_update(stm->pcm);
   }
@@ -317,7 +317,7 @@ alsa_refill_stream(cubeb_stream * stm)
       }
     }
     wrote = snd_pcm_writei(stm->pcm, p, got);
-    if (wrote == -EPIPE) {
+    if (wrote < 0) {
       snd_pcm_recover(stm->pcm, wrote, 1);
       wrote = snd_pcm_writei(stm->pcm, p, got);
     }
