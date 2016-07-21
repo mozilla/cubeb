@@ -110,20 +110,6 @@ struct cubeb_stream {
 };
 
 static int
-any_revents(struct pollfd * fds, nfds_t nfds)
-{
-  nfds_t i;
-
-  for (i = 0; i < nfds; ++i) {
-    if (fds[i].revents) {
-      return 1;
-    }
-  }
-
-  return 0;
-}
-
-static int
 cmp_timeval(struct timeval * a, struct timeval * b)
 {
   if (a->tv_sec == b->tv_sec) {
@@ -263,6 +249,7 @@ alsa_refill_stream(cubeb_stream * stm)
   avail = snd_pcm_avail_update(stm->pcm);
   if (avail < 0) {
     snd_pcm_recover(stm->pcm, avail, 1);
+    snd_pcm_prepare(stm->pcm);
     avail = snd_pcm_avail_update(stm->pcm);
   }
 
@@ -283,6 +270,7 @@ alsa_refill_stream(cubeb_stream * stm)
      a funky state, so recover and try again. */
   if (avail == 0) {
     snd_pcm_recover(stm->pcm, -EPIPE, 1);
+    snd_pcm_prepare(stm->pcm);
     avail = snd_pcm_avail_update(stm->pcm);
     if (avail <= 0) {
       pthread_mutex_unlock(&stm->mutex);
@@ -319,6 +307,7 @@ alsa_refill_stream(cubeb_stream * stm)
     wrote = snd_pcm_writei(stm->pcm, p, got);
     if (wrote < 0) {
       snd_pcm_recover(stm->pcm, wrote, 1);
+      snd_pcm_prepare(stm->pcm);
       wrote = snd_pcm_writei(stm->pcm, p, got);
     }
     assert(wrote >= 0 && wrote == got);
@@ -389,7 +378,13 @@ alsa_run(cubeb * ctx)
 
     for (i = 0; i < CUBEB_STREAM_MAX; ++i) {
       stm = ctx->streams[i];
-      if (stm && stm->state == RUNNING && stm->fds && any_revents(stm->fds, stm->nfds)) {
+      if (stm && stm->state == RUNNING && stm->fds) {
+        unsigned short revents = 0;
+
+        snd_pcm_poll_descriptors_revents(stm->pcm, stm->fds, stm->nfds, &revents);
+        if (revents == 0)
+          continue;
+
         alsa_set_stream_state(stm, PROCESSING);
         pthread_mutex_unlock(&ctx->mutex);
         state = alsa_refill_stream(stm);
