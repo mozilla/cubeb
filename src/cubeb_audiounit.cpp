@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <AudioUnit/AudioUnit.h>
 #if !TARGET_OS_IPHONE
+#include <AvailabilityMacros.h>
 #include <CoreAudio/AudioHardware.h>
 #include <CoreAudio/HostTime.h>
 #include <CoreFoundation/CoreFoundation.h>
@@ -43,7 +44,7 @@
 #define AudioComponentInstanceDispose CloseComponent
 #endif
 
-#if MAC_OS_X_VERSION_MIN_REQUIRED < 1080
+#if MAC_OS_X_VERSION_MIN_REQUIRED < 101000
 typedef UInt32  AudioFormatFlags;
 #endif
 

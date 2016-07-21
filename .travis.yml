@@ -4,35 +4,60 @@ sudo: required
 matrix:
   include:
     - compiler: clang
+      os: linux
     - compiler: gcc
       env: COMPILER_CXX=g++-4.8 COMPILER_CC=gcc-4.8
+      os: linux
     - compiler: gcc
       env: HOST=i686-w64-mingw32
+      os: linux
+    - compiler: clang
+      os: osx
+  exclude:
+    - os: osx
+      compiler: gcc
+    - os: linux
+      compiler: gcc
+      env:
+
 before_install:
-  - sudo apt-get update -qq
-  - if [ -z "$HOST" ]; then
-      sudo apt-get install -y libpulse-dev libasound2-dev pulseaudio doxygen;
+  - if [[ $TRAVIS_OS_NAME = "linux" ]]; then
+      sudo apt-get update -qq;
     fi
-  - if [ ! -z "$HOST" ]; then
-      sudo apt-get install -qq mingw-w64 g++-mingw-w64 binutils-mingw-w64;
-      wget http://mirrors.kernel.org/ubuntu/pool/universe/m/mingw-w64/mingw-w64-tools_3.1.0-1_amd64.deb;
-      sudo dpkg -i mingw-w64-tools_3.1.0-1_amd64.deb;
+  - if [[ $TRAVIS_OS_NAME = "linux" ]]; then
+      if [ -z "$HOST" ]; then
+        sudo apt-get install -y libpulse-dev libasound2-dev pulseaudio doxygen;
+      fi
+    fi
+  - if [[ $TRAVIS_OS_NAME = "linux" ]]; then
+      if [ ! -z "$HOST" ]; then
+        sudo apt-get install -qq mingw-w64 g++-mingw-w64 binutils-mingw-w64;
+        wget http://mirrors.kernel.org/ubuntu/pool/universe/m/mingw-w64/mingw-w64-tools_3.1.0-1_amd64.deb;
+        sudo dpkg -i mingw-w64-tools_3.1.0-1_amd64.deb;
+      fi
     fi
 before_script:
-  - if [ ! -z "$HOST" ]; then
-      unset CC;
-      unset CXX;
+  - if [[ $TRAVIS_OS_NAME = "linux" ]]; then
+      if [ ! -z "$HOST" ]; then
+        unset CC;
+        unset CXX;
+      fi
     fi
-  - if [ -z "$COMPILER_CXX"]; then
-      export CC=$COMPILER_CC;
-      export CXX=$COMPILER_CXX;
+  - if [[ $TRAVIS_OS_NAME = "linux" ]]; then
+      if [ -z "$COMPILER_CXX"]; then
+        export CC=$COMPILER_CC;
+        export CXX=$COMPILER_CXX;
+      fi
     fi
   - autoreconf -i
   - ./configure --host=$HOST
 script:
   - make
-  - if [ -z "$HOST" ]; then
-      make check;
+  - if [ -z "$HOST"  ]; then
+      if [ "$TRAVIS_OS_NAME" = "linux" ]; then
+        make check;
+        cat test/*.log;
+      fi
     fi
 addons:
   apt:
