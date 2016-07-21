@@ -67,6 +67,12 @@ typedef UInt32  AudioFormatFlags;
 #define LOG(...)
 #endif
 
+
+/* Testing empirically, some headsets report a minimal latency that is very
+ * low, but this does not work in practice. Lie and say the minimum is 256
+ * frames. */
+const uint32_t SAFE_MIN_LATENCY_FRAMES = 256;
+
 extern cubeb_ops const audiounit_ops;
 
 struct cubeb {
@@ -781,10 +787,8 @@ audiounit_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * la
     return CUBEB_ERROR;
   }
 
-  /* Testing empirically, some headsets report a minimal latency that is very
-   * low, but this does not work in practice. Lie and say the minimum is 256
-   * frames. */
-  *latency_frames = std::max<int>(latency_range.mMinimum, 256);
+  *latency_frames = std::max<uint32_t>(latency_range.mMinimum,
+                                       SAFE_MIN_LATENCY_FRAMES);
 #endif
 
   return CUBEB_OK;
@@ -1085,7 +1089,11 @@ audiounit_stream_init(cubeb * context,
 
   LOG("Default buffer size: %u frames\n", default_frame_count);
 
-  latency_frames = std::min<uint32_t>(latency_frames, default_frame_count);
+  latency_frames = std::max(std::min<uint32_t>(latency_frames,
+                                               default_frame_count),
+                            SAFE_MIN_LATENCY_FRAMES);
+
+  LOG("Clamped buffer size: %u frames\n", latency_frames);
 
   /* Setup Input Stream! */
   if (input_stream_params != NULL) {
