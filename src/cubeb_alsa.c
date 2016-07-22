@@ -280,15 +280,10 @@ alsa_refill_stream(cubeb_stream * stm)
 
   /* poll(2) claims this stream is active, so there should be some space
      available to write.  If avail is still zero here, the stream must be in
-     a funky state, so recover and try again. */
+     a funky state, bail and wait for another wakeup. */
   if (avail == 0) {
-    snd_pcm_recover(stm->pcm, -EPIPE, 1);
-    avail = snd_pcm_avail_update(stm->pcm);
-    if (avail <= 0) {
-      pthread_mutex_unlock(&stm->mutex);
-      stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
-      return ERROR;
-    }
+    pthread_mutex_unlock(&stm->mutex);
+    return RUNNING;
   }
 
   p = calloc(1, snd_pcm_frames_to_bytes(stm->pcm, avail));
