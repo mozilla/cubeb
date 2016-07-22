@@ -58,7 +58,7 @@ typedef UInt32  AudioFormatFlags;
 #define CUBEB_AUDIOUNIT_SUBTYPE kAudioUnitSubType_HALOutput
 #endif
 
-#define LOGGING_ENABLED
+//#define LOGGING_ENABLED
 #ifdef LOGGING_ENABLED
 #define LOG(...) do {                           \
     fprintf(stderr, __VA_ARGS__);               \
