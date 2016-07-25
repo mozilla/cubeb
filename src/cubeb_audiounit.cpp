@@ -62,8 +62,8 @@ typedef UInt32  AudioFormatFlags;
 //#define LOGGING_ENABLED
 #ifdef LOGGING_ENABLED
 #define LOG(...) do {                           \
+    fprintf(stderr, "(line: %d) ", __LINE__);   \
     fprintf(stderr, __VA_ARGS__);               \
-    fprintf(stderr, "(line: %d)\n", __LINE__);  \
   } while(0)
 #else
 #define LOG(...)
@@ -81,6 +81,7 @@ typedef UInt32  AudioFormatFlags;
  * low, but this does not work in practice. Lie and say the minimum is 256
  * frames. */
 const uint32_t SAFE_MIN_LATENCY_FRAMES = 256;
+const uint32_t SAFE_MAX_LATENCY_FRAMES = 512;
 
 extern cubeb_ops const audiounit_ops;
 
@@ -243,7 +244,7 @@ audiounit_render_input(cubeb_stream * stm,
   /* Create the AudioBufferList to store input. */
   AudioBufferList input_buffer_list;
   input_buffer_list.mBuffers[0].mDataByteSize =
-      stm->input_desc.mBytesPerFrame * stm->input_buffer_frames;
+      stm->input_desc.mBytesPerFrame * input_frames;
   input_buffer_list.mBuffers[0].mData = nullptr;
   input_buffer_list.mBuffers[0].mNumberChannels = stm->input_desc.mChannelsPerFrame;
   input_buffer_list.mNumberBuffers = 1;
@@ -1014,6 +1015,70 @@ audiounit_destroy_input_linear_buffer(cubeb_stream * stream)
   delete stream->input_linear_buffer;
 }
 
+static uint32_t
+audiounit_clamp_latency(cubeb_stream * stm,
+                              uint32_t latency_frames)
+{
+  // For the 1st stream set anything within safe min-max
+  if (stm->context->active_streams == 1) {
+    return std::max(std::min<uint32_t>(latency_frames, SAFE_MAX_LATENCY_FRAMES),
+                    SAFE_MIN_LATENCY_FRAMES);
+  }
+
+  // If more than one stream operates in parallel
+  // allow only lower values of latency
+  int r;
+  UInt32 output_buffer_size = 0;
+  UInt32 size = sizeof(output_buffer_size);
+  if (stm->output_unit) {
+    r = AudioUnitGetProperty(stm->output_unit,
+                            kAudioDevicePropertyBufferFrameSize,
+                            kAudioUnitScope_Output,
+                            AU_OUT_BUS,
+                            &output_buffer_size,
+                            &size);
+    if (r != noErr) {
+      PRINT_ERROR_CODE("AudioUnitGetProperty/output/kAudioDevicePropertyBufferFrameSize", r);
+      return 0;
+    }
+
+    output_buffer_size = std::max(std::min<uint32_t>(output_buffer_size, SAFE_MAX_LATENCY_FRAMES),
+                                  SAFE_MIN_LATENCY_FRAMES);
+  }
+
+  UInt32 input_buffer_size = 0;
+  if (stm->input_unit) {
+    r = AudioUnitGetProperty(stm->input_unit,
+                            kAudioDevicePropertyBufferFrameSize,
+                            kAudioUnitScope_Input,
+                            AU_IN_BUS,
+                            &input_buffer_size,
+                            &size);
+    if (r != noErr) {
+      PRINT_ERROR_CODE("AudioUnitGetProperty/input/kAudioDevicePropertyBufferFrameSize", r);
+      return 0;
+    }
+
+    input_buffer_size = std::max(std::min<uint32_t>(input_buffer_size, SAFE_MAX_LATENCY_FRAMES),
+                                 SAFE_MIN_LATENCY_FRAMES);
+  }
+
+  // Every following active streams can only set smaller latency
+  UInt32 upper_latency_limit = 0;
+  if (input_buffer_size != 0 && output_buffer_size != 0) {
+    upper_latency_limit = std::min<uint32_t>(input_buffer_size, output_buffer_size);
+  } else if (input_buffer_size != 0) {
+    upper_latency_limit = input_buffer_size;
+  } else if (output_buffer_size != 0) {
+    upper_latency_limit = output_buffer_size;
+  } else {
+    upper_latency_limit = SAFE_MAX_LATENCY_FRAMES;
+  }
+
+  return std::max(std::min<uint32_t>(latency_frames, upper_latency_limit),
+                  SAFE_MIN_LATENCY_FRAMES);
+}
+
 static int
 audiounit_stream_init(cubeb * context,
                       cubeb_stream ** stream,
@@ -1094,34 +1159,8 @@ audiounit_stream_init(cubeb * context,
   /* Silently clamp the latency down to the platform default, because we
    * synthetize the clock from the callbacks, and we want the clock to update
    * often. */
-
-  UInt32 default_frame_count;
-  size = sizeof(default_frame_count);
-  if (stm->output_unit) {
-    r = AudioUnitGetProperty(stm->output_unit, kAudioDevicePropertyBufferFrameSize,
-        kAudioUnitScope_Output, 0, &default_frame_count, &size);
-    if (r != noErr) {
-      PRINT_ERROR_CODE("AudioUnitGetProperty/output/kAudioDevicePropertyBufferFrameSize", r);
-      audiounit_stream_destroy(stm);
-      return CUBEB_ERROR;
-    }
-  } else {
-    r = AudioUnitGetProperty(stm->input_unit, kAudioDevicePropertyBufferFrameSize,
-        kAudioUnitScope_Input, 0, &default_frame_count, &size);
-    if (r != noErr) {
-      PRINT_ERROR_CODE("AudioUnitGetProperty/input/kAudioDevicePropertyBufferFrameSize", r);
-      audiounit_stream_destroy(stm);
-      return CUBEB_ERROR;
-    }
-  }
-
-  LOG("Default buffer size: %u frames\n", default_frame_count);
-
-  latency_frames = std::max(std::min<uint32_t>(latency_frames,
-                                               default_frame_count),
-                            SAFE_MIN_LATENCY_FRAMES);
-
-  LOG("Clamped buffer size: %u frames\n", latency_frames);
+  latency_frames = audiounit_clamp_latency(stm, latency_frames);
+  assert(latency_frames > 0);
 
   /* Setup Input Stream! */
   if (input_stream_params != NULL) {
@@ -1149,13 +1188,9 @@ audiounit_stream_init(cubeb * context,
       return r;
     }
 
-    // Use latency to calculate buffer size
-    if (stm->input_hw_rate == input_stream_params->rate) {
-      stm->input_buffer_frames = latency_frames;
-    } else {
-      stm->input_buffer_frames = (latency_frames * stm->input_hw_rate) / input_stream_params->rate;
-    }
-    LOG("Calculated input number of frames %u for latency %u\n", stm->input_buffer_frames, latency_frames);
+    // Use latency to set buffer size
+    stm->input_buffer_frames = latency_frames;
+    LOG("Input buffer frame count %u\n", stm->input_buffer_frames);
     r = AudioUnitSetProperty(stm->input_unit,
                              kAudioDevicePropertyBufferFrameSize,
                              kAudioUnitScope_Output,
@@ -1265,13 +1300,7 @@ audiounit_stream_init(cubeb * context,
     }
 
     // Use latency to calculate buffer size
-    uint32_t output_buffer_frames = 0;
-    if (output_hw_desc.mSampleRate == output_stream_params->rate) {
-      output_buffer_frames = latency_frames;
-    } else {
-      output_buffer_frames = (latency_frames * output_hw_desc.mSampleRate) / output_stream_params->rate;
-    }
-    LOG("Calculated output number of frames %u for latency %u\n", output_buffer_frames, latency_frames);
+    uint32_t output_buffer_frames = latency_frames;
     LOG("Output buffer frame count %u\n", output_buffer_frames);
     r = AudioUnitSetProperty(stm->output_unit,
                              kAudioDevicePropertyBufferFrameSize,
