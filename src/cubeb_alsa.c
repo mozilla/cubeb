@@ -295,6 +295,7 @@ alsa_refill_stream(cubeb_stream * stm)
   if (got < 0) {
     pthread_mutex_unlock(&stm->mutex);
     stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
+    free(p);
     return ERROR;
   }
   if (got > 0) {
