@@ -385,6 +385,8 @@ alsa_run(cubeb * ctx)
 
     for (i = 0; i < CUBEB_STREAM_MAX; ++i) {
       stm = ctx->streams[i];
+      /* We can't use snd_pcm_poll_descriptors_revents here because of
+         https://github.com/kinetiknz/cubeb/issues/135. */
       if (stm && stm->state == RUNNING && stm->fds && any_revents(stm->fds, stm->nfds)) {
         alsa_set_stream_state(stm, PROCESSING);
         pthread_mutex_unlock(&ctx->mutex);
