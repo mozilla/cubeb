@@ -996,7 +996,7 @@ HRESULT get_default_endpoint(IMMDevice ** device, EDataFlow direction)
 double
 current_stream_delay(cubeb_stream * stm)
 {
-  stm->stream_reset_lock->assert_current_thread_owns();
+  stm->stream_reset_lock.assert_current_thread_owns();
 
   /* If the default audio endpoint went away during playback and we weren't
      able to configure a new one, it's possible the caller may call this
@@ -1030,7 +1030,7 @@ current_stream_delay(cubeb_stream * stm)
 int
 stream_set_volume(cubeb_stream * stm, float volume)
 {
-  stm->stream_reset_lock->assert_current_thread_owns();
+  stm->stream_reset_lock.assert_current_thread_owns();
 
   if (!stm->audio_stream_volume) {
     return CUBEB_ERROR;
@@ -1384,7 +1384,7 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
   WAVEFORMATEX * mix_format;
   HRESULT hr;
 
-  stm->stream_reset_lock->assert_current_thread_owns();
+  stm->stream_reset_lock.assert_current_thread_owns();
 
   if (devid) {
     std::unique_ptr<const wchar_t> id;
@@ -1485,7 +1485,7 @@ int setup_wasapi_stream(cubeb_stream * stm)
   HRESULT hr;
   int rv;
 
-  stm->stream_reset_lock->assert_current_thread_owns();
+  stm->stream_reset_lock.assert_current_thread_owns();
 
   auto_com com;
   if (!com.ok()) {
