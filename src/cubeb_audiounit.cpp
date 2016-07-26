@@ -87,7 +87,7 @@ extern cubeb_ops const audiounit_ops;
 
 struct cubeb {
   cubeb_ops const * ops;
-  owned_critical_section * mutex;
+  owned_critical_section mutex;
   int active_streams;
   int limit_streams;
   cubeb_device_collection_changed_callback collection_changed_callback;
@@ -172,7 +172,7 @@ struct cubeb_stream {
   AudioUnit output_unit;
   /* Sample rate of input device*/
   Float64 input_hw_rate;
-  owned_critical_section * mutex;
+  owned_critical_section mutex;
   /* Hold the input samples in every
    * input callback iteration */
   auto_array_wrapper * input_linear_buffer;
@@ -448,7 +448,7 @@ audiounit_init(cubeb ** context, char const * context_name)
 
   ctx->ops = &audiounit_ops;
 
-  ctx->mutex = new owned_critical_section();
+  ctx->mutex = owned_critical_section();
 
   ctx->active_streams = 0;
 
@@ -852,8 +852,6 @@ audiounit_destroy(cubeb * ctx)
     audiounit_remove_device_listener(ctx);
   }
 
-  delete ctx->mutex;
-
   delete ctx;
 }
 
@@ -1135,8 +1133,7 @@ audiounit_stream_init(cubeb * context,
   stm->state_callback = state_callback;
   stm->user_ptr = user_ptr;
   stm->device_changed_callback = NULL;
-
-  stm->mutex = new owned_critical_section;
+  stm->mutex = owned_critical_section();
 
   /* Init data members where necessary */
   stm->hw_latency_frames = UINT64_MAX;
@@ -1442,8 +1439,6 @@ audiounit_stream_destroy(cubeb_stream * stm)
 #if !TARGET_OS_IPHONE
   audiounit_uninstall_device_changed_callback(stm);
 #endif
-
-  delete stm->mutex;
 
   {
     auto_lock lock(stm->context->mutex);

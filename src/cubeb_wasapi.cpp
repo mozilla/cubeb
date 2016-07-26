@@ -213,7 +213,7 @@ struct cubeb_stream
   /* The lock protects all members that are touched by the render thread or
      change during a device reset, including: audio_clock, audio_stream_volume,
      client, frames_written, mix_params, total_frames_written, prev_position. */
-  owned_critical_section * stream_reset_lock;
+  owned_critical_section stream_reset_lock;
   /* Maximum number of frames that can be passed down in a callback. */
   uint32_t input_buffer_frame_count;
   /* Maximum number of frames that can be requested in a callback. */
@@ -1641,7 +1641,7 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
   stm->latency = latency_frames;
   stm->volume = 1.0;
 
-  stm->stream_reset_lock = new owned_critical_section();
+  stm->stream_reset_lock = owned_critical_section();
 
   stm->reconfigure_event = CreateEvent(NULL, 0, 0, NULL);
   if (!stm->reconfigure_event) {
@@ -1694,7 +1694,7 @@ void close_wasapi_stream(cubeb_stream * stm)
 {
   XASSERT(stm);
 
-  stm->stream_reset_lock->assert_current_thread_owns();
+  stm->stream_reset_lock.assert_current_thread_owns();
 
   SafeRelease(stm->output_client);
   stm->output_client = NULL;
@@ -1737,8 +1737,6 @@ void wasapi_stream_destroy(cubeb_stream * stm)
     auto_lock lock(stm->stream_reset_lock);
     close_wasapi_stream(stm);
   }
-
-  delete stm->stream_reset_lock;
 
   free(stm);
 }

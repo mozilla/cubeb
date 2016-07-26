@@ -195,17 +195,17 @@ private:
 };
 
 struct auto_lock {
-  auto_lock(owned_critical_section * lock)
+  auto_lock(owned_critical_section & lock)
     : lock(lock)
   {
-    lock->enter();
+    lock.enter();
   }
   ~auto_lock()
   {
-    lock->leave();
+    lock.leave();
   }
 private:
-  owned_critical_section * lock;
+  owned_critical_section & lock;
 };
 
 #endif /* CUBEB_UTILS */
