@@ -549,7 +549,7 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
   stm->user_ptr = user_ptr;
 
   stm->inputrate = output_stream_params->rate;
-  stm->latency = latency;
+  stm->latency = latency_frames;
   stm->stream_type = output_stream_params->stream_type;
   stm->framesize = output_stream_params->channels * sizeof(int16_t);
   stm->lastPosition = -1;
@@ -589,11 +589,11 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
   if (get_android_version() >= ANDROID_VERSION_MARSHMALLOW) {
     // Reset preferred samping rate to trigger fallback to native sampling rate.
     preferred_sampling_rate = 0;
-    if (opensl_get_min_latency(ctx, *output_stream_params, &latency) != CUBEB_OK) {
+    if (opensl_get_min_latency(ctx, *output_stream_params, &latency_frames) != CUBEB_OK) {
       // Default to AudioFlinger's advertised fast track latency of 10ms.
-      latency = 10;
+      latency_frames = 440;
     }
-    stm->latency = latency;
+    stm->latency = latency_frames;
   }
 #endif
 
@@ -622,7 +622,7 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
 
   stm->outputrate = preferred_sampling_rate;
   stm->bytespersec = stm->outputrate * stm->framesize;
-  stm->queuebuf_len = stm->framesize * latency / NBUFS;
+  stm->queuebuf_len = stm->framesize * latency_frames / NBUFS;
   // round up to the next multiple of stm->framesize, if needed.
   if (stm->queuebuf_len % stm->framesize) {
     stm->queuebuf_len += stm->framesize - (stm->queuebuf_len % stm->framesize);

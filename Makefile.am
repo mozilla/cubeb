@@ -3,7 +3,7 @@ ACLOCAL_AMFLAGS = -I m4
 
 AM_CPPFLAGS = -I$(top_srcdir)/include -I$(top_builddir)/include -I. -I$(top_srcdir)/src
 AM_CFLAGS = -ansi -std=gnu99 -Wall -Wextra -Wno-long-long -O2 -g -Wno-unused-parameter
-AM_CXXFLAGS = -std=c++11
+AM_CXXFLAGS = -std=c++11 -Wall -Wextra -g
 
 SUBDIRS = docs
 
