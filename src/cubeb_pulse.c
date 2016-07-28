@@ -73,6 +73,7 @@
   X(pa_stream_set_read_callback)                \
   X(pa_stream_connect_record)                   \
   X(pa_stream_readable_size)                    \
+  X(pa_stream_writable_size)                    \
   X(pa_stream_peek)                             \
   X(pa_stream_drop)                             \
   X(pa_stream_get_buffer_attr)                  \
@@ -682,7 +683,7 @@ set_buffering_attribute(unsigned int latency_frames, pa_sample_spec * sample_spe
 {
   pa_buffer_attr battr;
   battr.maxlength = -1;
-  battr.prebuf    = 0;
+  battr.prebuf    = -1;
   battr.tlength   = latency_frames * WRAP(pa_frame_size)(sample_spec);
   battr.minreq    = battr.tlength / 4;
   battr.fragsize  = battr.minreq;
@@ -777,10 +778,6 @@ pulse_stream_init(cubeb * context,
 
   r = wait_until_stream_ready(stm);
   if (r == 0) {
-    if (output_stream_params) {
-      // Register write callback if needed after PA is in ready state
-      WRAP(pa_stream_set_write_callback)(stm->output_stream, stream_write_callback, stm);
-    }
     /* force a timing update now, otherwise timing info does not become valid
        until some point after initialization has completed. */
     r = stream_update_timing_info(stm);
@@ -848,6 +845,19 @@ static int
 pulse_stream_start(cubeb_stream * stm)
 {
   stream_cork(stm, UNCORK | NOTIFY);
+
+  /* We hook the write callback here in order to avoid the call of
+   * the cb during the setup (and before the start) of the write stream*/
+  if (stm->output_stream) {
+    /* Register write callback if needed after PA is in ready state. */
+    WRAP(pa_stream_set_write_callback)(stm->output_stream, stream_write_callback, stm);
+    /* On input only case need to manually call user cb once. */
+    if (!stm->input_stream) {
+      size_t writeable_size = WRAP(pa_stream_writable_size)(stm->output_stream);
+      trigger_user_callback(stm->output_stream, NULL, writeable_size, stm);
+    }
+  }
+
   return CUBEB_OK;
 }
 
