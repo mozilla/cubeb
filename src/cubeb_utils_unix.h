@@ -18,7 +18,6 @@ class owned_critical_section
 public:
   owned_critical_section()
   {
-    int r;
     pthread_mutexattr_t attr;
     pthread_mutexattr_init(&attr);
 #ifdef DEBUG
@@ -26,15 +25,27 @@ public:
 #else
     pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_NORMAL);
 #endif
-    r = pthread_mutex_init(&mutex, &attr);
+
+#ifdef DEBUG
+    int r =
+#endif
+    pthread_mutex_init(&mutex, &attr);
+#ifdef DEBUG
     assert(r == 0);
+#endif
+
     pthread_mutexattr_destroy(&attr);
   }
 
   ~owned_critical_section()
   {
-    int r = pthread_mutex_destroy(&mutex);
+#ifdef DEBUG
+    int r =
+#endif
+    pthread_mutex_destroy(&mutex);
+#ifdef DEBUG
     assert(r == 0);
+#endif
   }
 
   void enter()
@@ -44,7 +55,7 @@ public:
 #endif
     pthread_mutex_lock(&mutex);
 #ifdef DEBUG
-    assert(r == 0, "Deadlock");
+    assert(r == 0 && "Deadlock");
 #endif
   }
 
@@ -55,7 +66,7 @@ public:
 #endif
     pthread_mutex_unlock(&mutex);
 #ifdef DEBUG
-    assert(r == 0, "Unlocking unlocked mutex");
+    assert(r == 0 && "Unlocking unlocked mutex");
 #endif
   }
 

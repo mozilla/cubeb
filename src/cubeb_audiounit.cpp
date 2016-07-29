@@ -438,7 +438,6 @@ int
 audiounit_init(cubeb ** context, char const * context_name)
 {
   cubeb * ctx;
-  int r;
 
   *context = NULL;
 
@@ -1290,7 +1289,7 @@ audiounit_stream_init(cubeb * context,
                              AU_OUT_BUS,
                              &output_buffer_frames,
                              sizeof(output_buffer_frames));
-    if (noErr != 0) {
+    if (r != noErr) {
       PRINT_ERROR_CODE("AudioUnitSetProperty/output/kAudioDevicePropertyBufferFrameSize", r);
       audiounit_stream_destroy(stm);
       return CUBEB_ERROR;
