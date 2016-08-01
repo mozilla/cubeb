@@ -13,6 +13,16 @@ matrix:
       os: linux
     - compiler: clang
       os: osx
+    - compiler: clang
+      env: SCAN_BUILD=true
+      os: linux
+    - compiler: gcc
+      env: COMPILER_CXX=g++-4.8 COMPILER_CC=gcc-4.8
+      env: SCAN_BUILD=true
+      os: linux
+    - compiler: clang
+      env: SCAN_BUILD=true
+      os: osx
   exclude:
     - os: osx
       compiler: gcc
@@ -21,6 +31,13 @@ matrix:
       env:
 
 before_install:
+  - if [[ -n $SCAN_BUILD ]]; then
+      if [[ $TRAVIS_OS_NAME = "osx" ]]; then
+        . scan-build-install.sh;
+      else
+        export SCAN_BUILD_PATH=scan-build;
+      fi
+    fi
   - if [[ $TRAVIS_OS_NAME = "linux" ]]; then
       sudo apt-get update -qq;
     fi
@@ -50,9 +67,10 @@ before_script:
       fi
     fi
   - autoreconf -i
-  - ./configure --host=$HOST
+  - $SCAN_BUILD_PATH ./configure --host=$HOST
 script:
-  - make
+  - echo $SCAN_BUILD_PATH
+  - $SCAN_BUILD_PATH make
   - if [ -z "$HOST"  ]; then
       if [ "$TRAVIS_OS_NAME" = "linux" ]; then
         make check;
