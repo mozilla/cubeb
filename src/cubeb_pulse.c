@@ -850,12 +850,14 @@ pulse_stream_start(cubeb_stream * stm)
    * the cb during the setup (and before the start) of the write stream*/
   if (stm->output_stream) {
     /* Register write callback if needed after PA is in ready state. */
+    WRAP(pa_threaded_mainloop_lock)(stm->context->mainloop);
     WRAP(pa_stream_set_write_callback)(stm->output_stream, stream_write_callback, stm);
     /* On input only case need to manually call user cb once. */
     if (!stm->input_stream) {
       size_t writeable_size = WRAP(pa_stream_writable_size)(stm->output_stream);
       trigger_user_callback(stm->output_stream, NULL, writeable_size, stm);
     }
+    WRAP(pa_threaded_mainloop_unlock)(stm->context->mainloop);
   }
 
   return CUBEB_OK;
