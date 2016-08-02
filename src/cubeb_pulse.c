@@ -73,6 +73,7 @@
   X(pa_stream_set_read_callback)                \
   X(pa_stream_connect_record)                   \
   X(pa_stream_readable_size)                    \
+  X(pa_stream_writable_size)                    \
   X(pa_stream_peek)                             \
   X(pa_stream_drop)                             \
   X(pa_stream_get_buffer_attr)                  \
@@ -458,6 +459,9 @@ stream_update_timing_info(cubeb_stream * stm)
 
 static void pulse_context_destroy(cubeb * ctx);
 static void pulse_destroy(cubeb * ctx);
+void pulse_subscribe_callback(pa_context * ctx,
+                              pa_subscription_event_type_t t,
+                              uint32_t index, void * userdata);
 
 static int
 pulse_context_init(cubeb * ctx)
@@ -483,6 +487,9 @@ pulse_context_init(cubeb * ctx)
     ctx->context = NULL;
     return -1;
   }
+
+  // Set subscribe callback
+  WRAP(pa_context_set_subscribe_callback)(ctx->context, pulse_subscribe_callback, ctx);
 
   WRAP(pa_threaded_mainloop_unlock)(ctx->mainloop);
 
@@ -602,6 +609,8 @@ pulse_context_destroy(cubeb * ctx)
     WRAP(pa_operation_unref)(o);
   }
   WRAP(pa_context_set_state_callback)(ctx->context, NULL, NULL);
+  WRAP(pa_context_set_subscribe_callback)(ctx->context, NULL, NULL);
+
   WRAP(pa_context_disconnect)(ctx->context);
   WRAP(pa_context_unref)(ctx->context);
   WRAP(pa_threaded_mainloop_unlock)(ctx->mainloop);
@@ -732,7 +741,9 @@ pulse_stream_init(cubeb * context,
     stm->output_sample_spec = *(WRAP(pa_stream_get_sample_spec)(stm->output_stream));
 
     WRAP(pa_stream_set_state_callback)(stm->output_stream, stream_state_callback, stm);
-    WRAP(pa_stream_set_write_callback)(stm->output_stream, stream_write_callback, stm);
+    // De-register write cb here and register after PA is on ready state
+    // This will avoid calling the callback before stream start
+    WRAP(pa_stream_set_write_callback)(stm->output_stream, NULL, stm);
 
     battr = set_buffering_attribute(latency_frames, &stm->output_sample_spec);
     WRAP(pa_stream_connect_playback)(stm->output_stream,
@@ -834,6 +845,21 @@ static int
 pulse_stream_start(cubeb_stream * stm)
 {
   stream_cork(stm, UNCORK | NOTIFY);
+
+  /* We hook the write callback here in order to avoid the call of
+   * the cb during the setup (and before the start) of the write stream*/
+  if (stm->output_stream) {
+    /* Register write callback if needed after PA is in ready state. */
+    WRAP(pa_threaded_mainloop_lock)(stm->context->mainloop);
+    WRAP(pa_stream_set_write_callback)(stm->output_stream, stream_write_callback, stm);
+    /* On input only case need to manually call user cb once. */
+    if (!stm->input_stream) {
+      size_t writeable_size = WRAP(pa_stream_writable_size)(stm->output_stream);
+      trigger_user_callback(stm->output_stream, NULL, writeable_size, stm);
+    }
+    WRAP(pa_threaded_mainloop_unlock)(stm->context->mainloop);
+  }
+
   return CUBEB_OK;
 }
 
@@ -1274,10 +1300,8 @@ int pulse_register_device_collection_changed(cubeb * context,
   pa_subscription_mask_t mask;
   if (context->collection_changed_callback == NULL) {
     // Unregister subscription
-    WRAP(pa_context_set_subscribe_callback)(context->context, NULL, NULL);
     mask = PA_SUBSCRIPTION_MASK_NULL;
   } else {
-    WRAP(pa_context_set_subscribe_callback)(context->context, pulse_subscribe_callback, context);
     if (devtype == CUBEB_DEVICE_TYPE_INPUT)
       mask = PA_SUBSCRIPTION_MASK_SOURCE;
     else if (devtype == CUBEB_DEVICE_TYPE_OUTPUT)
