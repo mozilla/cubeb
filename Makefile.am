@@ -60,7 +60,12 @@ if KAI
 src_libcubeb_la_SOURCES += src/cubeb_kai.c
 endif
 
-src_libcubeb_la_SOURCES += src/cubeb_resampler.cpp src/speex/resample.c
+src_libcubeb_la_SOURCES += src/cubeb_resampler.cpp
+
+noinst_LTLIBRARIES = src/speex/libspeex.la
+src_speex_libspeex_la_SOURCES = src/speex/resample.c
+src_speex_libspeex_la_CFLAGS = -Wno-sign-compare
+src_libcubeb_la_LIBADD = src/speex/libspeex.la
 
 EXTRA_src_libcubeb_la_SOURCES = \
 	src/cubeb.c \
@@ -102,7 +107,7 @@ test_test_devices_SOURCES = test/test_devices.cpp
 test_test_devices_LDADD = -lm src/libcubeb.la $(platform_lib)
 
 test_test_resampler_SOURCES = test/test_resampler.cpp
-test_test_resampler_LDADD = -lm src/libcubeb.la $(platform_lib) src/cubeb_resampler.o src/speex/resample.lo
+test_test_resampler_LDADD = -lm src/libcubeb.la $(platform_lib) src/cubeb_resampler.o src/speex/libspeex.la
 
 test_test_duplex_SOURCES = test/test_duplex.cpp
 test_test_duplex_LDADD = -lm src/libcubeb.la $(platform_lib)
