@@ -39,6 +39,7 @@ cubeb-uninstalled.pc
 cubeb.pc
 src/.dirstamp
 src/libcubeb.la
+src/speex/libspeex.la
 stamp-h1
 test-driver
 test/test_audio
