@@ -37,10 +37,12 @@ dnl --------------------------------------------------
 dnl save $CFLAGS since AC_PROG_CC likes to insert "-g -O2"
 dnl if $CFLAGS is blank
 cflags_save="$CFLAGS"
+cxxflags_save="$CXXFLAGS"
 AC_PROG_CC
 AC_PROG_CPP
 AC_PROG_CXX
 CFLAGS="$cflags_save"
+CXXFLAGS="$cxxflags_save"
 
 AM_PROG_CC_C_O
 AC_LIBTOOL_WIN32_DLL
