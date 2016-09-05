@@ -46,7 +46,9 @@
   X(jack_port_get_latency_range)                \
   X(jack_set_process_callback)                  \
   X(jack_set_xrun_callback)                     \
-  X(jack_set_graph_order_callback)
+  X(jack_set_graph_order_callback)              \
+  X(jack_set_error_function)                    \
+  X(jack_set_info_function)
 
 #define IMPORT_FUNC(x) static decltype(x) * api_##x;
 JACK_API_VISIT(IMPORT_FUNC);
@@ -562,6 +564,11 @@ cbjack_interleave_capture(cubeb_stream * stream, float **in, jack_nframes_t nfra
   }
 }
 
+static void
+silent_jack_error_callback(char const * /*msg*/)
+{
+}
+
 /*static*/ int
 jack_init (cubeb ** context, char const * context_name)
 {
@@ -579,6 +586,9 @@ jack_init (cubeb ** context, char const * context_name)
     cbjack_destroy(ctx);
     return CUBEB_ERROR;
   }
+
+  api_jack_set_error_function(silent_jack_error_callback);
+  api_jack_set_info_function(silent_jack_error_callback);
 
   ctx->ops = &cbjack_ops;
 
