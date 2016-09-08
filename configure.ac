@@ -96,18 +96,6 @@ AS_IF([test "x$with_audiounit" != xno],
        AS_IF([test "x$with_audiounit" = xyes], [AC_MSG_ERROR(AudioUnit not detected)])])])
 AM_CONDITIONAL([AUDIOUNIT], [test $HAVE_AUDIOUNIT -eq 1])
 
-AC_ARG_WITH([audioqueue],
-            AS_HELP_STRING([--with-audioqueue], [with AudioQueue @<:@default=check@:>@]))
-AS_IF([test "x$with_audioqueue" != xno],
-      [AC_CHECK_HEADER([AudioToolbox/AudioToolbox.h], [
-       HAVE_AUDIOQUEUE=1
-       AUDIOQUEUE_LIBS="-framework CoreServices -framework AudioToolbox"
-       AC_DEFINE([USE_AUDIOQUEUE], [], [Use AudioQueue])
-      ], [
-       HAVE_AUDIOQUEUE=0
-       AS_IF([test "x$with_audioqueue" = xyes], [AC_MSG_ERROR(AudioQueue not detected)])])])
-AM_CONDITIONAL([AUDIOQUEUE], [test $HAVE_AUDIOQUEUE -eq 1])
-
 AC_ARG_WITH([sndio],
             AS_HELP_STRING([--with-sndio], [with sndio @<:@default=check@:>@]))
 AS_IF([test "x$with_sndio" != xno],
@@ -142,19 +130,6 @@ AS_IF([test "x$with_audiotrack" != xno],
        AS_IF([test "x$with_audiotrack" = xyes], [AC_MSG_ERROR(AudioTrack not detected)])])])
 AM_CONDITIONAL([AUDIOTRACK], [test $HAVE_AUDIOTRACK -eq 1])
 
-#AC_ARG_WITH([directsound],
-#            AS_HELP_STRING([--with-directsound], [with DirectSound @<:@default=check@:>@]))
-#AS_IF([test "x$with_directsound" != xno],
-#      [AC_CHECK_HEADER([dsound.h], [
-#       HAVE_DIRECTSOUND=1
-#       DIRECTSOUND_LIBS="-ldsound"
-#       AC_DEFINE([USE_DIRECTSOUND], [], [Use DirectSound])
-#      ], [
-       HAVE_DIRECTSOUND=0
-#       AS_IF([test "x$with_directsound" = xyes], [AC_MSG_ERROR(DirectSound not detected)])
-#      ], [#include <windows.h>])])
-AM_CONDITIONAL([DIRECTSOUND], [test $HAVE_DIRECTSOUND -eq 1])
-
 AC_ARG_WITH([wasapi],
             AS_HELP_STRING([--with-wasapi], [with WASAPI @<:@default=check@:>@]))
 AS_IF([test "x$with_wasapi" != xno],
@@ -173,7 +148,7 @@ AC_ARG_WITH([winmm],
 AS_IF([test "x$with_winmm" != xno],
       [AC_CHECK_HEADERS([mmsystem.h], [
        HAVE_WINMM=1
-       DIRECTSOUND_LIBS="-lwinmm"
+       WINMM_LIBS="-lwinmm"
        AC_DEFINE([USE_WINMM], [], [Use WinMM])
       ], [
        HAVE_WINMM=0
@@ -199,7 +174,7 @@ AC_DEFINE([RANDOM_PREFIX], [speex], [Required by the speex resampler.])
 AC_DEFINE([FLOATING_POINT], [], [Tell the resampler to only enable floating point support])
 AC_DEFINE([EXPORT], [], [Tell the resampler to export the symbols by default.])
 
-platform_lib="$PULSE_LIBS $JACK_LIBS $ALSA_LIBS $AUDIOUNIT_LIBS $AUDIOQUEUE_LIBS $SNDIO_LIBS $OPENSL_LIBS $DIRECTSOUND_LIBS $WINMM_LIBS $WASAPI_LIBS $KAI_LIBS"
+platform_lib="$PULSE_LIBS $JACK_LIBS $ALSA_LIBS $AUDIOUNIT_LIBS $SNDIO_LIBS $OPENSL_LIBS $WINMM_LIBS $WASAPI_LIBS $KAI_LIBS"
 
 dnl Check for doxygen
 AC_ARG_ENABLE([doc],

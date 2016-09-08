@@ -35,17 +35,11 @@ endif
 if AUDIOUNIT
 src_libcubeb_la_SOURCES += src/cubeb_audiounit.cpp src/cubeb_osx_run_loop.c
 endif
-if AUDIOQUEUE
-src_libcubeb_la_SOURCES += src/cubeb_audioqueue.c
-endif
 if WASAPI
 src_libcubeb_la_SOURCES += src/cubeb_wasapi.cpp
 endif
 if WINMM
 src_libcubeb_la_SOURCES += src/cubeb_winmm.c
-endif
-if DIRECTSOUND
-src_libcubeb_la_SOURCES += src/cubeb_directsound.cpp
 endif
 if SNDIO
 src_libcubeb_la_SOURCES += src/cubeb_sndio.c
@@ -70,26 +64,30 @@ src_libcubeb_la_LIBADD = src/speex/libspeex.la
 EXTRA_src_libcubeb_la_SOURCES = \
 	src/cubeb.c \
 	src/cubeb_jack.cpp \
-	src/cubeb_alsa.c src/cubeb_pulse.c \
-	src/cubeb_audiounit.cpp src/cubeb_audioqueue.c \
-	src/cubeb_sndio.c src/cubeb_directsound.cpp \
-	src/cubeb_winmm.c src/cubeb_wasapi.cpp src/speex/resample.c \
-	src/cubeb_opensl.c src/cubeb_audiotrack.c \
+	src/cubeb_alsa.c \
+	src/cubeb_pulse.c \
+	src/cubeb_audiounit.cpp \
+	src/cubeb_sndio.c \
+	src/cubeb_winmm.c \
+	src/cubeb_wasapi.cpp \
+	src/speex/resample.c \
+	src/cubeb_opensl.c \
+	src/cubeb_audiotrack.c \
 	$(NULL)
 
 src_libcubeb_la_LDFLAGS = -export-symbols-regex '^cubeb_' $(platform_lib) -no-undefined
 
 check_PROGRAMS = test/test_sanity \
-								 test/test_tone \
-								 test/test_audio \
-								 test/test_latency \
-								 test/test_devices \
-								 test/test_duplex \
-								 test/test_resampler \
-								 test/test_record \
-								 test/test_utils \
-								 test/test_ring_array\
-								 $(NULL)
+		 test/test_tone \
+		 test/test_audio \
+		 test/test_latency \
+		 test/test_devices \
+		 test/test_duplex \
+		 test/test_resampler \
+		 test/test_record \
+		 test/test_utils \
+		 test/test_ring_array\
+		 $(NULL)
 
 test_test_sanity_SOURCES = test/test_sanity.cpp
 test_test_sanity_LDADD = -lm src/libcubeb.la $(platform_lib)
