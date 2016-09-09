@@ -310,6 +310,11 @@ winmm_init(cubeb ** context, char const * context_name)
   XASSERT(context);
   *context = NULL;
 
+  /* Don't initialize a context if there are no devices available. */
+  if (waveOutGetNumDevs() == 0) {
+    return CUBEB_ERROR;
+  }
+
   ctx = calloc(1, sizeof(*ctx));
   XASSERT(ctx);
 
