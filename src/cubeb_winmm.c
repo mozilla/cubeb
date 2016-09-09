@@ -538,23 +538,32 @@ winmm_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
 static void
 winmm_stream_destroy(cubeb_stream * stm)
 {
-  DWORD r;
   int i;
-  int enqueued;
 
   if (stm->waveout) {
+    MMTIME time;
+    MMRESULT r;
+    int device_valid;
+    int enqueued;
+
     EnterCriticalSection(&stm->lock);
     stm->shutdown = 1;
 
     waveOutReset(stm->waveout);
 
+    /* Don't need this value, we just want the result to detect invalid
+       handle/no device errors than waveOutReset doesn't seem to report. */
+    time.wType = TIME_SAMPLES;
+    r = waveOutGetPosition(stm->waveout, &time, sizeof(time));
+    device_valid = !(r == MMSYSERR_INVALHANDLE || r == MMSYSERR_NODRIVER);
+
     enqueued = NBUFS - stm->free_buffers;
     LeaveCriticalSection(&stm->lock);
 
     /* Wait for all blocks to complete. */
-    while (enqueued > 0) {
-      r = WaitForSingleObject(stm->event, INFINITE);
-      XASSERT(r == WAIT_OBJECT_0);
+    while (device_valid && enqueued > 0) {
+      DWORD rv = WaitForSingleObject(stm->event, INFINITE);
+      XASSERT(rv == WAIT_OBJECT_0);
 
       EnterCriticalSection(&stm->lock);
       enqueued = NBUFS - stm->free_buffers;
