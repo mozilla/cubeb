@@ -7,6 +7,6 @@ CASE_SENSE_NAMES       = NO
 SORT_MEMBER_DOCS       = NO
 QUIET                  = YES
 WARN_NO_PARAMDOC       = YES
-INPUT                  = @top_srcdir@/include/cubeb
+INPUT                  = @CMAKE_CURRENT_SOURCE_DIR@/include/cubeb
 GENERATE_HTML          = YES
 GENERATE_LATEX         = NO

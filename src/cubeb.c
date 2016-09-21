@@ -8,9 +8,6 @@
 #include <assert.h>
 #include <stddef.h>
 #include <stdlib.h>
-#if defined(HAVE_CONFIG_H)
-#include "config.h"
-#endif
 #include "cubeb/cubeb.h"
 #include "cubeb-internal.h"
 
@@ -59,7 +56,7 @@ int kai_init(cubeb ** context, char const * context_name);
 #endif
 
 
-int
+static int
 validate_stream_params(cubeb_stream_params * input_stream_params,
                        cubeb_stream_params * output_stream_params)
 {
@@ -101,7 +98,7 @@ validate_stream_params(cubeb_stream_params * input_stream_params,
 
 
 
-int
+static int
 validate_latency(int latency)
 {
   if (latency < 1 || latency > 96000) {
@@ -472,5 +469,4 @@ cubeb_crash()
   abort();
   *((volatile int *) NULL) = 0;
 }
-
 

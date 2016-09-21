@@ -8,6 +8,7 @@
 #define CUBEB_c2f983e9_c96f_e71c_72c3_bbf62992a382
 
 #include <stdint.h>
+#include "cubeb_export.h"
 
 #if defined(__cplusplus)
 extern "C" {
@@ -359,12 +360,12 @@ typedef void (*cubeb_log_callback)(const char * msg);
     @retval CUBEB_OK in case of success.
     @retval CUBEB_ERROR in case of error, for example because the host
                         has no audio hardware. */
-int cubeb_init(cubeb ** context, char const * context_name);
+CUBEB_EXPORT int cubeb_init(cubeb ** context, char const * context_name);
 
 /** Get a read-only string identifying this context's current backend.
     @param context A pointer to the cubeb context.
     @retval Read-only string identifying current backend. */
-char const * cubeb_get_backend_id(cubeb * context);
+CUBEB_EXPORT char const * cubeb_get_backend_id(cubeb * context);
 
 /** Get the maximum possible number of channels.
     @param context A pointer to the cubeb context.
@@ -373,7 +374,7 @@ char const * cubeb_get_backend_id(cubeb * context);
     @retval CUBEB_ERROR_INVALID_PARAMETER
     @retval CUBEB_ERROR_NOT_SUPPORTED
     @retval CUBEB_ERROR */
-int cubeb_get_max_channel_count(cubeb * context, uint32_t * max_channels);
+CUBEB_EXPORT int cubeb_get_max_channel_count(cubeb * context, uint32_t * max_channels);
 
 /** Get the minimal latency value, in frames, that is guaranteed to work
     when creating a stream for the specified sample rate. This is platform,
@@ -386,9 +387,9 @@ int cubeb_get_max_channel_count(cubeb * context, uint32_t * max_channels);
     @retval CUBEB_OK
     @retval CUBEB_ERROR_INVALID_PARAMETER
     @retval CUBEB_ERROR_NOT_SUPPORTED */
-int cubeb_get_min_latency(cubeb * context,
-                          cubeb_stream_params params,
-                          uint32_t * latency_frames);
+CUBEB_EXPORT int cubeb_get_min_latency(cubeb * context,
+                                       cubeb_stream_params params,
+                                       uint32_t * latency_frames);
 
 /** Get the preferred sample rate for this backend: this is hardware and
     platform dependant, and can avoid resampling, and/or trigger fastpaths.
@@ -397,12 +398,12 @@ int cubeb_get_min_latency(cubeb * context,
     @retval CUBEB_OK
     @retval CUBEB_ERROR_INVALID_PARAMETER
     @retval CUBEB_ERROR_NOT_SUPPORTED */
-int cubeb_get_preferred_sample_rate(cubeb * context, uint32_t * rate);
+CUBEB_EXPORT int cubeb_get_preferred_sample_rate(cubeb * context, uint32_t * rate);
 
 /** Destroy an application context. This must be called after all stream have
  *  been destroyed.
     @param context A pointer to the cubeb context.*/
-void cubeb_destroy(cubeb * context);
+CUBEB_EXPORT void cubeb_destroy(cubeb * context);
 
 /** Initialize a stream associated with the supplied application context.
     @param context A pointer to the cubeb context.
@@ -428,41 +429,41 @@ void cubeb_destroy(cubeb * context);
     @retval CUBEB_ERROR
     @retval CUBEB_ERROR_INVALID_FORMAT
     @retval CUBEB_ERROR_DEVICE_UNAVAILABLE */
-int cubeb_stream_init(cubeb * context,
-                      cubeb_stream ** stream,
-                      char const * stream_name,
-                      cubeb_devid input_device,
-                      cubeb_stream_params * input_stream_params,
-                      cubeb_devid output_device,
-                      cubeb_stream_params * output_stream_params,
-                      unsigned int latency_frames,
-                      cubeb_data_callback data_callback,
-                      cubeb_state_callback state_callback,
-                      void * user_ptr);
+CUBEB_EXPORT int cubeb_stream_init(cubeb * context,
+                                   cubeb_stream ** stream,
+                                   char const * stream_name,
+                                   cubeb_devid input_device,
+                                   cubeb_stream_params * input_stream_params,
+                                   cubeb_devid output_device,
+                                   cubeb_stream_params * output_stream_params,
+                                   unsigned int latency_frames,
+                                   cubeb_data_callback data_callback,
+                                   cubeb_state_callback state_callback,
+                                   void * user_ptr);
 
 /** Destroy a stream. `cubeb_stream_stop` MUST be called before destroying a
     stream.
     @param stream The stream to destroy. */
-void cubeb_stream_destroy(cubeb_stream * stream);
+CUBEB_EXPORT void cubeb_stream_destroy(cubeb_stream * stream);
 
 /** Start playback.
     @param stream
     @retval CUBEB_OK
     @retval CUBEB_ERROR */
-int cubeb_stream_start(cubeb_stream * stream);
+CUBEB_EXPORT int cubeb_stream_start(cubeb_stream * stream);
 
 /** Stop playback.
     @param stream
     @retval CUBEB_OK
     @retval CUBEB_ERROR */
-int cubeb_stream_stop(cubeb_stream * stream);
+CUBEB_EXPORT int cubeb_stream_stop(cubeb_stream * stream);
 
 /** Get the current stream playback position.
     @param stream
     @param position Playback position in frames.
     @retval CUBEB_OK
     @retval CUBEB_ERROR */
-int cubeb_stream_get_position(cubeb_stream * stream, uint64_t * position);
+CUBEB_EXPORT int cubeb_stream_get_position(cubeb_stream * stream, uint64_t * position);
 
 /** Get the latency for this stream, in frames. This is the number of frames
     between the time cubeb acquires the data in the callback and the listener
@@ -472,7 +473,7 @@ int cubeb_stream_get_position(cubeb_stream * stream, uint64_t * position);
     @retval CUBEB_OK
     @retval CUBEB_ERROR_NOT_SUPPORTED
     @retval CUBEB_ERROR */
-int cubeb_stream_get_latency(cubeb_stream * stream, uint32_t * latency);
+CUBEB_EXPORT int cubeb_stream_get_latency(cubeb_stream * stream, uint32_t * latency);
 
 /** Set the volume for a stream.
     @param stream the stream for which to adjust the volume.
@@ -481,7 +482,7 @@ int cubeb_stream_get_latency(cubeb_stream * stream, uint32_t * latency);
     @retval CUBEB_ERROR_INVALID_PARAMETER volume is outside [0.0, 1.0] or
             stream is an invalid pointer
     @retval CUBEB_ERROR_NOT_SUPPORTED */
-int cubeb_stream_set_volume(cubeb_stream * stream, float volume);
+CUBEB_EXPORT int cubeb_stream_set_volume(cubeb_stream * stream, float volume);
 
 /** If the stream is stereo, set the left/right panning. If the stream is mono,
     this has no effect.
@@ -495,7 +496,7 @@ int cubeb_stream_set_volume(cubeb_stream * stream, float volume);
             outside the [-1.0, 1.0] range.
     @retval CUBEB_ERROR_NOT_SUPPORTED
     @retval CUBEB_ERROR stream is not mono nor stereo */
-int cubeb_stream_set_panning(cubeb_stream * stream, float panning);
+CUBEB_EXPORT int cubeb_stream_set_panning(cubeb_stream * stream, float panning);
 
 /** Get the current output device for this stream.
     @param stm the stream for which to query the current output device
@@ -504,8 +505,8 @@ int cubeb_stream_set_panning(cubeb_stream * stream, float panning);
     @retval CUBEB_ERROR_INVALID_PARAMETER if either stm, device or count are
             invalid pointers
     @retval CUBEB_ERROR_NOT_SUPPORTED */
-int cubeb_stream_get_current_device(cubeb_stream * stm,
-                                    cubeb_device ** const device);
+CUBEB_EXPORT int cubeb_stream_get_current_device(cubeb_stream * stm,
+                                                 cubeb_device ** const device);
 
 /** Destroy a cubeb_device structure.
     @param stream the stream passed in cubeb_stream_get_current_device
@@ -513,8 +514,8 @@ int cubeb_stream_get_current_device(cubeb_stream * stm,
     @retval CUBEB_OK in case of success
     @retval CUBEB_ERROR_INVALID_PARAMETER if devices is an invalid pointer
     @retval CUBEB_ERROR_NOT_SUPPORTED */
-int cubeb_stream_device_destroy(cubeb_stream * stream,
-                                cubeb_device * devices);
+CUBEB_EXPORT int cubeb_stream_device_destroy(cubeb_stream * stream,
+                                             cubeb_device * devices);
 
 /** Set a callback to be notified when the output device changes.
     @param stream the stream for which to set the callback.
@@ -524,8 +525,8 @@ int cubeb_stream_device_destroy(cubeb_stream * stream,
     @retval CUBEB_ERROR_INVALID_PARAMETER if either stream or
             device_changed_callback are invalid pointers.
     @retval CUBEB_ERROR_NOT_SUPPORTED */
-int cubeb_stream_register_device_changed_callback(cubeb_stream * stream,
-                                                  cubeb_device_changed_callback device_changed_callback);
+CUBEB_EXPORT int cubeb_stream_register_device_changed_callback(cubeb_stream * stream,
+                                                               cubeb_device_changed_callback device_changed_callback);
 
 /** Returns enumerated devices.
     @param context
@@ -534,21 +535,21 @@ int cubeb_stream_register_device_changed_callback(cubeb_stream * stream,
     @retval CUBEB_OK in case of success
     @retval CUBEB_ERROR_INVALID_PARAMETER if collection is an invalid pointer
     @retval CUBEB_ERROR_NOT_SUPPORTED */
-int cubeb_enumerate_devices(cubeb * context,
-                            cubeb_device_type devtype,
-                            cubeb_device_collection ** collection);
+CUBEB_EXPORT int cubeb_enumerate_devices(cubeb * context,
+                                         cubeb_device_type devtype,
+                                         cubeb_device_collection ** collection);
 
 /** Destroy a cubeb_device_collection, and its `cubeb_device_info`.
     @param collection collection to destroy
     @retval CUBEB_OK
     @retval CUBEB_ERROR_INVALID_PARAMETER if collection is an invalid pointer */
-int cubeb_device_collection_destroy(cubeb_device_collection * collection);
+CUBEB_EXPORT int cubeb_device_collection_destroy(cubeb_device_collection * collection);
 
 /** Destroy a cubeb_device_info structure.
     @param info pointer to device info structure
     @retval CUBEB_OK
     @retval CUBEB_ERROR_INVALID_PARAMETER if info is an invalid pointer */
-int cubeb_device_info_destroy(cubeb_device_info * info);
+CUBEB_EXPORT int cubeb_device_info_destroy(cubeb_device_info * info);
 
 /** Registers a callback which is called when the system detects
     a new device or a device is removed.
@@ -559,10 +560,10 @@ int cubeb_device_info_destroy(cubeb_device_info * info);
     @param user_ptr pointer to user specified data which will be present in
            subsequent callbacks.
     @retval CUBEB_ERROR_NOT_SUPPORTED */
-int cubeb_register_device_collection_changed(cubeb * context,
-                                       cubeb_device_type devtype,
-                                       cubeb_device_collection_changed_callback callback,
-                                       void * user_ptr);
+CUBEB_EXPORT int cubeb_register_device_collection_changed(cubeb * context,
+                                                          cubeb_device_type devtype,
+                                                          cubeb_device_collection_changed_callback callback,
+                                                          void * user_ptr);
 
 /** Set a callback to be called with a message.
     @param log_level CUBEB_LOG_VERBOSE, CUBEB_LOG_NORMAL.
@@ -574,8 +575,8 @@ int cubeb_register_device_collection_changed(cubeb * context,
     @retval CUBEB_ERROR_INVALID_PARAMETER if either context or log_callback are
                                           invalid pointers, or if level is not
                                           in cubeb_log_level. */
-int cubeb_set_log_callback(cubeb_log_level log_level,
-                           cubeb_log_callback log_callback);
+CUBEB_EXPORT int cubeb_set_log_callback(cubeb_log_level log_level,
+                                        cubeb_log_callback log_callback);
 
 #if defined(__cplusplus)
 }

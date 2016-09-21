@@ -6,9 +6,6 @@
  */
 #define NOMINMAX
 
-#if defined(HAVE_CONFIG_H)
-#include "config.h"
-#endif
 #include <initguid.h>
 #include <windows.h>
 #include <mmdeviceapi.h>

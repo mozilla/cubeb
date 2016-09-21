@@ -1090,7 +1090,7 @@ alsa_stream_get_position(cubeb_stream * stm, uint64_t * position)
   return CUBEB_OK;
 }
 
-int
+static int
 alsa_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
 {
   snd_pcm_sframes_t delay;
@@ -1105,7 +1105,7 @@ alsa_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
   return CUBEB_OK;
 }
 
-int
+static int
 alsa_stream_set_volume(cubeb_stream * stm, float volume)
 {
   /* setting the volume using an API call does not seem very stable/supported */

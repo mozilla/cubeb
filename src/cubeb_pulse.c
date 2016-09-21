@@ -116,7 +116,7 @@ struct cubeb_stream {
   cubeb_state state;
 };
 
-const float PULSE_NO_GAIN = -1.0;
+static const float PULSE_NO_GAIN = -1.0;
 
 enum cork_state {
   UNCORK = 0,
@@ -636,8 +636,8 @@ pulse_destroy(cubeb * ctx)
 
 static void pulse_stream_destroy(cubeb_stream * stm);
 
-pa_sample_format_t
-cubeb_to_pulse_format(cubeb_sample_format format)
+static pa_sample_format_t
+to_pulse_format(cubeb_sample_format format)
 {
   switch (format) {
   case CUBEB_SAMPLE_S16LE:
@@ -662,7 +662,7 @@ create_pa_stream(cubeb_stream * stm,
   assert(stm && stream_params);
   *pa_stm = NULL;
   pa_sample_spec ss;
-  ss.format = cubeb_to_pulse_format(stream_params->format);
+  ss.format = to_pulse_format(stream_params->format);
   if (ss.format == PA_SAMPLE_INVALID)
     return CUBEB_ERROR_INVALID_FORMAT;
   ss.rate = stream_params->rate;
@@ -835,7 +835,7 @@ pulse_stream_destroy(cubeb_stream * stm)
   free(stm);
 }
 
-void
+static void
 pulse_defer_event_cb(pa_mainloop_api * a, void * userdata)
 {
   cubeb_stream * stm = userdata;
@@ -908,7 +908,7 @@ pulse_stream_get_position(cubeb_stream * stm, uint64_t * position)
   return CUBEB_OK;
 }
 
-int
+static int
 pulse_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
 {
   pa_usec_t r_usec;
@@ -928,14 +928,15 @@ pulse_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
   return CUBEB_OK;
 }
 
-void volume_success(pa_context *c, int success, void *userdata)
+static void
+volume_success(pa_context *c, int success, void *userdata)
 {
   cubeb_stream * stream = userdata;
   assert(success);
   WRAP(pa_threaded_mainloop_signal)(stream->context->mainloop, 0);
 }
 
-int
+static int
 pulse_stream_set_volume(cubeb_stream * stm, float volume)
 {
   uint32_t index;
@@ -980,7 +981,7 @@ pulse_stream_set_volume(cubeb_stream * stm, float volume)
   return CUBEB_OK;
 }
 
-int
+static int
 pulse_stream_set_panning(cubeb_stream * stream, float panning)
 {
   const pa_channel_map * map;
@@ -1222,7 +1223,8 @@ pulse_enumerate_devices(cubeb * context, cubeb_device_type type,
   return CUBEB_OK;
 }
 
-int pulse_stream_get_current_device(cubeb_stream * stm, cubeb_device ** const device)
+static int
+pulse_stream_get_current_device(cubeb_stream * stm, cubeb_device ** const device)
 {
 #if PA_CHECK_VERSION(0, 9, 8)
   *device = calloc(1, sizeof(cubeb_device));
@@ -1245,8 +1247,9 @@ int pulse_stream_get_current_device(cubeb_stream * stm, cubeb_device ** const de
 #endif
 }
 
-int pulse_stream_device_destroy(cubeb_stream * stream,
-                                cubeb_device * device)
+static int
+pulse_stream_device_destroy(cubeb_stream * stream,
+                            cubeb_device * device)
 {
   free(device->input_name);
   free(device->output_name);
@@ -1254,9 +1257,10 @@ int pulse_stream_device_destroy(cubeb_stream * stream,
   return CUBEB_OK;
 }
 
-void pulse_subscribe_callback(pa_context * ctx,
-                              pa_subscription_event_type_t t,
-                              uint32_t index, void * userdata)
+static void
+pulse_subscribe_callback(pa_context * ctx,
+                         pa_subscription_event_type_t t,
+                         uint32_t index, void * userdata)
 {
   cubeb * context = userdata;
 
@@ -1289,17 +1293,19 @@ void pulse_subscribe_callback(pa_context * ctx,
   }
 }
 
-void subscribe_success(pa_context *c, int success, void *userdata)
+static void
+subscribe_success(pa_context *c, int success, void *userdata)
 {
   cubeb * context = userdata;
   assert(success);
   WRAP(pa_threaded_mainloop_signal)(context->mainloop, 0);
 }
 
-int pulse_register_device_collection_changed(cubeb * context,
-                                             cubeb_device_type devtype,
-                                             cubeb_device_collection_changed_callback collection_changed_callback,
-                                             void * user_ptr)
+static int
+pulse_register_device_collection_changed(cubeb * context,
+                                         cubeb_device_type devtype,
+                                         cubeb_device_collection_changed_callback collection_changed_callback,
+                                         void * user_ptr)
 {
   context->collection_changed_callback = collection_changed_callback;
   context->collection_changed_user_ptr = user_ptr;

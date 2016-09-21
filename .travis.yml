@@ -48,13 +48,16 @@ before_install:
     fi
   - if [[ $TRAVIS_OS_NAME = "linux" ]]; then
       if [ ! -z "$HOST" ]; then
-        sudo apt-get install -qq mingw-w64 g++-mingw-w64 binutils-mingw-w64;
-        wget http://mirrors.kernel.org/ubuntu/pool/universe/m/mingw-w64/mingw-w64-tools_3.1.0-1_amd64.deb;
-        sudo dpkg -i mingw-w64-tools_3.1.0-1_amd64.deb;
+        sudo apt-get install -qq mingw-w64 mingw-w64-tools g++-mingw-w64 binutils-mingw-w64;
       fi
     fi
-  - if [ "$TRAVIS_OS_NAME" == "osx" ]; then brew uninstall libtool && brew install libtool; fi
+  - if [[ $TRAVIS_OS_NAME = "osx" ]]; then
+       brew update;
+       brew uninstall libtool && brew install libtool;
+       brew uninstall cmake && brew install cmake;
+    fi
 before_script:
+  - cmake --version
   - if [[ $TRAVIS_OS_NAME = "linux" ]]; then
       if [ ! -z "$HOST" ]; then
         unset CC;
@@ -67,15 +70,23 @@ before_script:
         export CXX=$COMPILER_CXX;
       fi
     fi
-  - autoreconf -i
-  - $SCAN_BUILD_PATH ./configure --host=$HOST
+  - mkdir build
+  - cd build
+  - if [[ $TRAVIS_OS_NAME = "linux" ]]; then
+      if [ ! -z "$HOST" ]; then
+        $SCAN_BUILD_PATH cmake -DCMAKE_TOOLCHAIN_FILE=../cmake/toolchain-cross-mingw.cmake ..;
+      else
+        $SCAN_BUILD_PATH cmake ..;
+      fi
+    else
+        $SCAN_BUILD_PATH cmake ..;
+    fi
 script:
   - echo $SCAN_BUILD_PATH
   - $SCAN_BUILD_PATH make
-  - if [ -z "$HOST"  ]; then
-      if [ "$TRAVIS_OS_NAME" = "linux" ]; then
-        make check;
-        cat test/*.log;
+  - if [[ $TRAVIS_OS_NAME = "linux" ]]; then
+      if [ -z "$HOST"  ]; then
+        make test ARGS=-V;
       fi
     fi
 addons:
