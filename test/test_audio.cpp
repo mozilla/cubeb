@@ -18,7 +18,15 @@
 #include <string.h>
 
 #include "cubeb/cubeb.h"
+namespace test_audio_common {
 #include "common.h"
+}
+using namespace test_audio_common;
+
+#ifdef __ANDROID__
+#include "test_android_decl.h"
+#endif
+
 #ifdef CUBEB_GECKO_BUILD
 #include "TestHarness.h"
 #endif
@@ -280,7 +288,7 @@ void run_channel_rate_test()
 }
 
 
-int main(int /*argc*/, char * /*argv*/[])
+int test_audio()
 {
 #ifdef CUBEB_GECKO_BUILD
   ScopedXPCOM xpcom("test_audio");
@@ -292,3 +300,10 @@ int main(int /*argc*/, char * /*argv*/[])
 
   return CUBEB_OK;
 }
+
+#ifndef __ANDROID__
+int main(int argc, char *argv[])
+{
+  return test_audio();
+}
+#endif

@@ -5,13 +5,19 @@
 #include "cubeb/cubeb.h"
 #include <assert.h>
 #include <stdio.h>
+#include "cubeb/cubeb.h"
+
+#ifdef __ANDROID__
+#include "test_android_decl.h"
+#endif
+
 #ifdef CUBEB_GECKO_BUILD
 #include "TestHarness.h"
 #endif
 
 #define LOG(msg) fprintf(stderr, "%s\n", msg);
 
-int main(int /*argc*/, char * /*argv*/[])
+int test_latency()
 {
 #ifdef CUBEB_GECKO_BUILD
   ScopedXPCOM xpcom("test_latency");
@@ -58,3 +64,10 @@ int main(int /*argc*/, char * /*argv*/[])
   LOG("cubeb_destroy ok");
   return EXIT_SUCCESS;
 }
+
+#ifndef __ANDROID__
+int main(int argc, char *argv[])
+{
+  return test_latency();
+}
+#endif

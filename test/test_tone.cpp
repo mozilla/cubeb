@@ -17,7 +17,16 @@
 #include <limits.h>
 
 #include "cubeb/cubeb.h"
+
+namespace test_tone_common {
 #include "common.h"
+}
+using namespace test_tone_common;
+
+#ifdef __ANDROID__
+#include "test_android_decl.h"
+#endif
+
 #ifdef CUBEB_GECKO_BUILD
 #include "TestHarness.h"
 #endif
@@ -34,7 +43,7 @@ struct cb_user_data {
   long position;
 };
 
-long data_cb(cubeb_stream *stream, void *user, const void* /*inputbuffer*/, void *outputbuffer, long nframes)
+long test_tone_data_cb(cubeb_stream * stream, void * user, const void * /*inputbuffer*/, void * outputbuffer, long nframes)
 {
   struct cb_user_data *u = (struct cb_user_data *)user;
 #if (defined(_WIN32) || defined(__WIN32__))
@@ -77,7 +86,7 @@ long data_cb(cubeb_stream *stream, void *user, const void* /*inputbuffer*/, void
   return nframes;
 }
 
-void state_cb(cubeb_stream *stream, void *user, cubeb_state state)
+void test_tone_state_cb(cubeb_stream *stream, void *user, cubeb_state state)
 {
   struct cb_user_data *u = (struct cb_user_data *)user;
 
@@ -98,7 +107,7 @@ void state_cb(cubeb_stream *stream, void *user, cubeb_state state)
   return;
 }
 
-int main(int /*argc*/, char * /*argv*/[])
+int test_tone()
 {
 #ifdef CUBEB_GECKO_BUILD
   ScopedXPCOM xpcom("test_tone");
@@ -128,7 +137,7 @@ int main(int /*argc*/, char * /*argv*/[])
   user_data->position = 0;
 
   r = cubeb_stream_init(ctx, &stream, "Cubeb tone (mono)", NULL, NULL, NULL, &params,
-                        4096, data_cb, state_cb, user_data);
+                        4096, test_tone_data_cb, test_tone_state_cb, user_data);
   if (r != CUBEB_OK) {
     fprintf(stderr, "Error initializing cubeb stream\n");
     return r;
@@ -147,3 +156,10 @@ int main(int /*argc*/, char * /*argv*/[])
 
   return CUBEB_OK;
 }
+
+#ifndef __ANDROID__
+int main(int argc, char *argv[])
+{
+  return test_tone();
+}
+#endif

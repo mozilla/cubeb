@@ -13,7 +13,16 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+
+namespace test_sanity_common {
 #include "common.h"
+}
+using namespace test_sanity_common;
+
+#ifdef __ANDROID__
+#include "test_android_decl.h"
+#endif
+
 #ifdef CUBEB_GECKO_BUILD
 #include "TestHarness.h"
 #endif
@@ -490,8 +499,8 @@ test_stream_position(void)
   END_TEST;
 }
 
-static int do_drain;
-static int got_drain;
+static int do_drain = 0;
+static int got_drain = 0;
 
 static long
 test_drain_data_callback(cubeb_stream * stm, void * user_ptr, const void * /*inputbuffer*/, void * outputbuffer, long nframes)
@@ -576,6 +585,8 @@ test_drain(void)
 
   cubeb_stream_destroy(stream);
   cubeb_destroy(ctx);
+  got_drain = 0;
+  do_drain = 0;
 
   END_TEST;
 }
@@ -608,7 +619,7 @@ int is_windows_7()
 }
 
 int
-main(int /*argc*/, char * /*argv*/[])
+test_sanity()
 {
 #ifdef CUBEB_GECKO_BUILD
   ScopedXPCOM xpcom("test_sanity");
@@ -653,3 +664,10 @@ main(int /*argc*/, char * /*argv*/[])
 
   return 0;
 }
+
+#ifndef __ANDROID__
+int main(int argc, char *argv[])
+{
+  return test_sanity();
+}
+#endif
