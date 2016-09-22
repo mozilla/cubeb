@@ -7,18 +7,18 @@
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions
    are met:
-   
+
    - Redistributions of source code must retain the above copyright
    notice, this list of conditions and the following disclaimer.
-   
+
    - Redistributions in binary form must reproduce the above copyright
    notice, this list of conditions and the following disclaimer in the
    documentation and/or other materials provided with the distribution.
-   
+
    - Neither the name of the Xiph.org Foundation nor the names of its
    contributors may be used to endorse or promote products derived from
    this software without specific prior written permission.
-   
+
    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
    ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
    LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
@@ -34,14 +34,6 @@
 
 #ifndef ARCH_H
 #define ARCH_H
-
-#ifndef SPEEX_VERSION
-#define SPEEX_MAJOR_VERSION 1         /**< Major Speex version. */
-#define SPEEX_MINOR_VERSION 1         /**< Minor Speex version. */
-#define SPEEX_MICRO_VERSION 15        /**< Micro Speex version. */
-#define SPEEX_EXTRA_VERSION ""        /**< Extra Speex version. */
-#define SPEEX_VERSION "speex-1.2beta3"  /**< Speex version string. */
-#endif
 
 /* A couple test to catch stupid option combinations */
 #ifdef FIXED_POINT
@@ -75,7 +67,7 @@
 #endif
 
 #ifndef OUTSIDE_SPEEX
-#include "../include/speex/speex_types.h"
+#include "speex/speexdsp_types.h"
 #endif
 
 #define ABS(x) ((x) < 0 ? (-(x)) : (x))      /**< Absolute integer value. */
@@ -108,6 +100,8 @@ typedef spx_word32_t spx_sig_t;
 #define LSP_SHIFT    13
 #define SIG_SHIFT    14
 #define GAIN_SHIFT   6
+
+#define WORD2INT(x) ((x) < -32767 ? -32768 : ((x) > 32766 ? 32767 : (x)))
 
 #define VERY_SMALL 0
 #define VERY_LARGE32 ((spx_word32_t)2147483647)
@@ -171,6 +165,7 @@ typedef float spx_word32_t;
 #define VSHR32(a,shift) (a)
 #define SATURATE16(x,a) (x)
 #define SATURATE32(x,a) (x)
+#define SATURATE32PSHR(x,shift,a) (x)
 
 #define PSHR(a,shift)       (a)
 #define SHR(a,shift)       (a)
@@ -210,18 +205,19 @@ typedef float spx_word32_t;
 #define DIV32(a,b)     (((spx_word32_t)(a))/(spx_word32_t)(b))
 #define PDIV32(a,b)     (((spx_word32_t)(a))/(spx_word32_t)(b))
 
-
+#define WORD2INT(x) ((x) < -32767.5f ? -32768 : \
+                    ((x) > 32766.5f ? 32767 : (spx_int16_t)floor(.5 + (x))))
 #endif
 
 
 #if defined (CONFIG_TI_C54X) || defined (CONFIG_TI_C55X)
 
 /* 2 on TI C5x DSP */
-#define BYTES_PER_CHAR 2 
+#define BYTES_PER_CHAR 2
 #define BITS_PER_CHAR 16
 #define LOG2_BITS_PER_CHAR 4
 
-#else 
+#else
 
 #define BYTES_PER_CHAR 1
 #define BITS_PER_CHAR 8
