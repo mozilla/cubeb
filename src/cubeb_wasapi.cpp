@@ -722,6 +722,11 @@ refill_callback_input(cubeb_stream * stm)
     return rv;
   }
 
+  // This can happen at the very beginning of the stream.
+  if (!stm->linear_input_buffer.length()) {
+    return true;
+  }
+
   long read = refill(stm,
                      stm->linear_input_buffer.data(),
                      stm->linear_input_buffer.length(),
