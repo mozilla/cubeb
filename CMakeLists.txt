@@ -52,7 +52,7 @@ check_include_files(AudioUnit/AudioUnit.h USE_AUDIOUNIT)
 if(USE_AUDIOUNIT)
   target_sources(cubeb PRIVATE
     src/cubeb_audiounit.cpp
-    src/cubeb_osx_run_loop.c)
+    src/cubeb_osx_run_loop.cpp)
   target_compile_definitions(cubeb PRIVATE USE_AUDIOUNIT)
   target_link_libraries(cubeb PRIVATE "-framework AudioUnit" "-framework CoreAudio" "-framework CoreServices")
 endif()
