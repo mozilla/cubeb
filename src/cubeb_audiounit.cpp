@@ -510,6 +510,8 @@ audiounit_property_listener_callback(AudioObjectID id, UInt32 address_count,
 {
   cubeb_stream * stm = (cubeb_stream*) user;
 
+  LOG("Audio device changed, %d events.", address_count);
+
   for (UInt32 i = 0; i < address_count; i++) {
     switch(addresses[i].mSelector) {
     case kAudioHardwarePropertyDefaultOutputDevice:
@@ -1407,6 +1409,12 @@ audiounit_stream_init(cubeb * context,
     }
   }
 
+  r = audiounit_install_device_changed_callback(stm);
+  if (r != CUBEB_OK) {
+    LOG("Could not install the device change callback.");
+    return r;
+  }
+
   *stream = stm;
   LOG("Cubeb stream (%p) init successful.", stm);
   return CUBEB_OK;
@@ -1434,7 +1442,10 @@ audiounit_stream_destroy(cubeb_stream * stm)
   cubeb_resampler_destroy(stm->resampler);
 
 #if !TARGET_OS_IPHONE
-  audiounit_uninstall_device_changed_callback(stm);
+  int r = audiounit_uninstall_device_changed_callback(stm);
+  if (r != CUBEB_OK) {
+    LOG("Could not uninstall the device changed callback");
+  }
 #endif
 
   {
@@ -1708,7 +1719,7 @@ int audiounit_stream_device_destroy(cubeb_stream * stream,
 }
 
 int audiounit_stream_register_device_changed_callback(cubeb_stream * stream,
-                                                      cubeb_device_changed_callback  device_changed_callback)
+                                                      cubeb_device_changed_callback device_changed_callback)
 {
   /* Note: second register without unregister first causes 'nope' error.
    * Current implementation requires unregister before register a new cb. */
@@ -1717,16 +1728,8 @@ int audiounit_stream_register_device_changed_callback(cubeb_stream * stream,
   auto_lock lock(stream->mutex);
 
   stream->device_changed_callback = device_changed_callback;
-  int r = CUBEB_OK;
-#if !TARGET_OS_IPHONE
-  if (device_changed_callback) {
-    r = audiounit_install_device_changed_callback(stream);
-  } else {
-    r = audiounit_uninstall_device_changed_callback(stream);
-  }
-#endif
 
-  return r;
+  return CUBEB_OK;
 }
 
 static OSStatus
