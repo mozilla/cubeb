@@ -1469,11 +1469,9 @@ audiounit_stream_init(cubeb * context,
 }
 
 static void
-audiounit_stream_destroy(cubeb_stream * stm)
+close_audiounit_stream(cubeb_stream * stm)
 {
-  stm->shutdown = 1;
-
-  if (stm->input_unit != NULL) {
+  if (has_input(stm)) {
     AudioOutputUnitStop(stm->input_unit);
     AudioUnitUninitialize(stm->input_unit);
     AudioComponentInstanceDispose(stm->input_unit);
@@ -1481,13 +1479,21 @@ audiounit_stream_destroy(cubeb_stream * stm)
 
   audiounit_destroy_input_linear_buffer(stm);
 
-  if (stm->output_unit != NULL) {
+  if (has_output(stm)) {
     AudioOutputUnitStop(stm->output_unit);
     AudioUnitUninitialize(stm->output_unit);
     AudioComponentInstanceDispose(stm->output_unit);
   }
 
   cubeb_resampler_destroy(stm->resampler);
+}
+
+static void
+audiounit_stream_destroy(cubeb_stream * stm)
+{
+  stm->shutdown = 1;
+
+  close_audiounit_stream(stm);
 
 #if !TARGET_OS_IPHONE
   int r = audiounit_uninstall_device_changed_callback(stm);
