@@ -168,6 +168,13 @@ typedef enum {
  *  across calls. */
 typedef void * cubeb_devid;
 
+/** Level (verbosity) of logging for a particular cubeb context. */
+typedef enum {
+  CUBEB_LOG_DISABLED = 0, /** < Logging disabled */
+  CUBEB_LOG_NORMAL = 1, /**< Logging lifetime operation (creation/destruction). */
+  CUBEB_LOG_VERBOSE = 2, /**< Verbose logging of callbacks, can have performance implications. */
+} cubeb_log_level;
+
 /** Stream format initialization parameters. */
 typedef struct {
   cubeb_sample_format format; /**< Requested sample format.  One of
@@ -337,6 +344,11 @@ typedef void (* cubeb_device_changed_callback)(void * user_ptr);
  * @param user_ptr The pointer passed to cubeb_stream_init. */
 typedef void (* cubeb_device_collection_changed_callback)(cubeb * context,
                                                           void * user_ptr);
+
+/**
+ * User supplied callback called when a message needs logging.
+ * @param msg A c-string that contains the message to log. */
+typedef void (*cubeb_log_callback)(const char * msg);
 
 /** Initialize an application context.  This will perform any library or
     application scoped initialization.
@@ -551,6 +563,19 @@ int cubeb_register_device_collection_changed(cubeb * context,
                                        cubeb_device_type devtype,
                                        cubeb_device_collection_changed_callback callback,
                                        void * user_ptr);
+
+/** Set a callback to be called with a message.
+    @param log_level CUBEB_LOG_VERBOSE, CUBEB_LOG_NORMAL.
+    @param log_callback A function called with a message when there is
+                        something to log. Passing stdout or stderr log to
+                        this fd instead. Passing NULL allows unregistering a
+                        function.
+    @retval CUBEB_OK in case of success.
+    @retval CUBEB_ERROR_INVALID_PARAMETER if either context or log_callback are
+                                          invalid pointers, or if level is not
+                                          in cubeb_log_level. */
+CUBEB_EXPORT int cubeb_set_log_callback(cubeb_log_level log_level,
+                                        void * log_callback);
 
 #if defined(__cplusplus)
 }
