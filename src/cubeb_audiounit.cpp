@@ -54,23 +54,9 @@ typedef UInt32  AudioFormatFlags;
 #define AU_OUT_BUS    0
 #define AU_IN_BUS     1
 
-//#define LOGGING_ENABLED
-#ifdef LOGGING_ENABLED
-#define LOG(...) do {                           \
-    fprintf(stderr, __VA_ARGS__);               \
-    fprintf(stderr, "(line: %d)\n", __LINE__);  \
-  } while(0)
-#else
-#define LOG(...)
-#endif
-
-#ifdef LOGGING_ENABLED
 #define PRINT_ERROR_CODE(str, r) do {                                \
-    fprintf(stderr, "Error %s (line: %d) (%d)\n", str, __LINE__, r); \
-  } while (0)
-#else
-#define PRINT_ERROR_CODE(str, r)
-#endif
+  LOG("System call failed: %s (rv: %d)", str, r);                    \
+} while(0)
 
 /* Testing empirically, some headsets report a minimal latency that is very
  * low, but this does not work in practice. Lie and say the minimum is 256
@@ -262,11 +248,11 @@ audiounit_render_input(cubeb_stream * stm,
   stm->input_linear_buffer->push(input_buffer_list.mBuffers[0].mData,
                                  input_frames * stm->input_desc.mChannelsPerFrame);
 
-  LOG("- input:  buffers %d, size %d, channels %d, frames %d.",
-      input_buffer_list.mNumberBuffers,
-      input_buffer_list.mBuffers[0].mDataByteSize,
-      input_buffer_list.mBuffers[0].mNumberChannels,
-      input_frames);
+  LOGV("input:  buffers %d, size %d, channels %d, frames %d.",
+       input_buffer_list.mNumberBuffers,
+       input_buffer_list.mBuffers[0].mDataByteSize,
+       input_buffer_list.mBuffers[0].mNumberChannels,
+       input_frames);
 
   /* Advance input frame counter. */
   assert(input_frames > 0);
@@ -292,7 +278,7 @@ audiounit_input_callback(void * user_ptr,
   assert(AU_IN_BUS == bus);
 
   if (stm->shutdown) {
-    LOG("- input shutdown");
+    LOG("input shutdown");
     return noErr;
   }
 
@@ -340,9 +326,9 @@ audiounit_output_callback(void * user_ptr,
 
   cubeb_stream * stm = static_cast<cubeb_stream *>(user_ptr);
 
-  LOG("- output(%p): buffers %d, size %d, channels %d, frames %d.", stm,
-      outBufferList->mNumberBuffers, outBufferList->mBuffers[0].mDataByteSize,
-      outBufferList->mBuffers[0].mNumberChannels, output_frames);
+  LOGV("output(%p): buffers %d, size %d, channels %d, frames %d.", stm,
+       outBufferList->mNumberBuffers, outBufferList->mBuffers[0].mDataByteSize,
+       outBufferList->mBuffers[0].mNumberChannels, output_frames);
 
   long outframes = 0, input_frames = 0;
   void * output_buffer = NULL, * input_buffer = NULL;
@@ -350,7 +336,7 @@ audiounit_output_callback(void * user_ptr,
   auto_lock lock(stm->mutex);
 
   if (stm->shutdown) {
-    LOG("- output shutdown.");
+    LOG("output shutdown.");
     audiounit_make_silent(&outBufferList->mBuffers[0]);
     return noErr;
   }

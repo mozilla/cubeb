@@ -87,15 +87,6 @@ LIBPULSE_API_VISIT(MAKE_TYPEDEF);
 #undef MAKE_TYPEDEF
 #endif
 
-//#define LOGGING_ENABLED
-#ifdef LOGGING_ENABLED
-#define LOG(...) do {                           \
-    fprintf(stderr, __VA_ARGS__);               \
-  } while(0)
-#else
-#define LOG(...)
-#endif
-
 static struct cubeb_ops const pulse_ops;
 
 struct cubeb {
@@ -226,7 +217,7 @@ trigger_user_callback(pa_stream * s, void const * input_data, size_t nbytes, cub
     assert(size > 0);
     assert(size % frame_size == 0);
 
-    LOG("Trigger user callback with output buffer size=%zd, read_offset=%zd\n", size, read_offset);
+    LOGV("Trigger user callback with output buffer size=%zd, read_offset=%zd", size, read_offset);
     got = stm->data_callback(stm, stm->user_ptr, (uint8_t const *)input_data + read_offset, buffer, size / frame_size);
     if (got < 0) {
       WRAP(pa_stream_cancel_write)(s);
@@ -295,7 +286,7 @@ read_from_input(pa_stream * s, void const ** buffer, size_t * size)
 static void
 stream_write_callback(pa_stream * s, size_t nbytes, void * u)
 {
-  LOG("Output callback to be written buffer size %zd\n", nbytes);
+  LOGV("Output callback to be written buffer size %zd", nbytes);
   cubeb_stream * stm = u;
   if (stm->shutdown ||
       stm->state != CUBEB_STATE_STARTED) {
@@ -313,7 +304,7 @@ stream_write_callback(pa_stream * s, size_t nbytes, void * u)
 static void
 stream_read_callback(pa_stream * s, size_t nbytes, void * u)
 {
-  LOG("Input callback buffer size %zd\n", nbytes);
+  LOGV("Input callback buffer size %zd", nbytes);
   cubeb_stream * stm = u;
   if (stm->shutdown) {
     return;
@@ -691,7 +682,7 @@ set_buffering_attribute(unsigned int latency_frames, pa_sample_spec * sample_spe
   battr.minreq    = battr.tlength / 4;
   battr.fragsize  = battr.minreq;
 
-  LOG("Requested buffer attributes maxlength %u, tlength %u, prebuf %u, minreq %u, fragsize %u\n",
+  LOG("Requested buffer attributes maxlength %u, tlength %u, prebuf %u, minreq %u, fragsize %u",
       battr.maxlength, battr.tlength, battr.prebuf, battr.minreq, battr.fragsize);
 
   return battr;
@@ -793,21 +784,21 @@ pulse_stream_init(cubeb * context,
     return CUBEB_ERROR;
   }
 
-#ifdef LOGGING_ENABLED
-  if (output_stream_params){
-    const pa_buffer_attr * output_att;
-    output_att = WRAP(pa_stream_get_buffer_attr)(stm->output_stream);
-    LOG("Output buffer attributes maxlength %u, tlength %u, prebuf %u, minreq %u, fragsize %u\n",output_att->maxlength, output_att->tlength,
-        output_att->prebuf, output_att->minreq, output_att->fragsize);
-  }
+  if (g_log_level) {
+    if (output_stream_params){
+      const pa_buffer_attr * output_att;
+      output_att = WRAP(pa_stream_get_buffer_attr)(stm->output_stream);
+      LOG("Output buffer attributes maxlength %u, tlength %u, prebuf %u, minreq %u, fragsize %u\n",output_att->maxlength, output_att->tlength,
+          output_att->prebuf, output_att->minreq, output_att->fragsize);
+    }
 
-  if (input_stream_params){
-    const pa_buffer_attr * input_att;
-    input_att = WRAP(pa_stream_get_buffer_attr)(stm->input_stream);
-    LOG("Input buffer attributes maxlength %u, tlength %u, prebuf %u, minreq %u, fragsize %u\n",input_att->maxlength, input_att->tlength,
-        input_att->prebuf, input_att->minreq, input_att->fragsize);
+    if (input_stream_params){
+      const pa_buffer_attr * input_att;
+      input_att = WRAP(pa_stream_get_buffer_attr)(stm->input_stream);
+      LOG("Input buffer attributes maxlength %u, tlength %u, prebuf %u, minreq %u, fragsize %u\n",input_att->maxlength, input_att->tlength,
+          input_att->prebuf, input_att->minreq, input_att->fragsize);
+    }
   }
-#endif
 
   *stream = stm;
 
@@ -1273,20 +1264,22 @@ void pulse_subscribe_callback(pa_context * ctx,
   case PA_SUBSCRIPTION_EVENT_SOURCE:
   case PA_SUBSCRIPTION_EVENT_SINK:
 
-#ifdef LOGGING_ENABLED
-    if ((t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SOURCE &&
-        (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_REMOVE)
-      LOG("Removing sink index %d\n", index);
-    else if ((t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SOURCE &&
-        (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_NEW)
-      LOG("Adding sink index %d\n", index);
-    if ((t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SINK &&
-        (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_REMOVE)
-      LOG("Removing source index %d\n", index);
-    else if ((t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SINK &&
-        (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_NEW)
-      LOG("Adding source index %d\n", index);
-#endif
+    if (g_log_level) {
+      if ((t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SOURCE &&
+          (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_REMOVE) {
+        LOG("Removing sink index %d\n", index);
+      } else if ((t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SOURCE &&
+          (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_NEW) {
+        LOG("Adding sink index %d\n", index);
+      }
+      if ((t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SINK &&
+          (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_REMOVE) {
+        LOG("Removing source index %d\n", index);
+      } else if ((t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SINK &&
+          (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_NEW) {
+        LOG("Adding source index %d\n", index);
+      }
+    }
 
     if ((t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_REMOVE ||
         (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_NEW) {
