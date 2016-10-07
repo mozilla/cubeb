@@ -574,8 +574,8 @@ int cubeb_register_device_collection_changed(cubeb * context,
     @retval CUBEB_ERROR_INVALID_PARAMETER if either context or log_callback are
                                           invalid pointers, or if level is not
                                           in cubeb_log_level. */
-CUBEB_EXPORT int cubeb_set_log_callback(cubeb_log_level log_level,
-                                        void * log_callback);
+int cubeb_set_log_callback(cubeb_log_level log_level,
+                           void * log_callback);
 
 #if defined(__cplusplus)
 }
