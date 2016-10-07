@@ -143,6 +143,11 @@ struct cubeb_stream {
   cubeb_data_callback data_callback;
   cubeb_state_callback state_callback;
   cubeb_device_changed_callback device_changed_callback;
+  /* Stream creation parameters */
+  cubeb_stream_params input_stream_params;
+  cubeb_stream_params output_stream_params;
+  cubeb_devid input_device;
+  cubeb_devid output_device;
   /* User pointer of data_callback */
   void * user_ptr;
   /* Format descriptions */
@@ -165,11 +170,23 @@ struct cubeb_stream {
   uint64_t frames_read;
   int shutdown;
   int draining;
+  /* Latency requested by the user. */
+  uint64_t latency_frames;
   uint64_t current_latency_frames;
   uint64_t hw_latency_frames;
   std::atomic<float> panning;
   cubeb_resampler * resampler;
 };
+
+bool has_input(cubeb_stream * stm)
+{
+  return stm->input_stream_params.rate != 0;
+}
+
+bool has_output(cubeb_stream * stm)
+{
+  return stm->output_stream_params.rate != 0;
+}
 
 #if TARGET_OS_IPHONE
 typedef UInt32 AudioDeviceID;
@@ -1083,19 +1100,8 @@ audiounit_clamp_latency(cubeb_stream * stm,
 }
 
 static int
-audiounit_stream_init(cubeb * context,
-                      cubeb_stream ** stream,
-                      char const * stream_name,
-                      cubeb_devid input_device,
-                      cubeb_stream_params * input_stream_params,
-                      cubeb_devid output_device,
-                      cubeb_stream_params * output_stream_params,
-                      unsigned int latency_frames,
-                      cubeb_data_callback data_callback,
-                      cubeb_state_callback state_callback,
-                      void * user_ptr)
+setup_audiounit_stream(cubeb_stream * stm)
 {
-  cubeb_stream * stm;
   AudioUnit input_unit;
   AudioUnit output_unit;
   int r;
@@ -1103,64 +1109,28 @@ audiounit_stream_init(cubeb * context,
   AURenderCallbackStruct aurcbs_out;
   UInt32 size;
 
-  assert(context);
-  *stream = NULL;
-
-  {
-    auto_lock lock(context->mutex);
-    if (context->limit_streams && context->active_streams >= CUBEB_STREAM_MAX) {
-      LOG("Reached the stream limit of %d", CUBEB_STREAM_MAX);
-      return CUBEB_ERROR;
-    }
-    context->active_streams += 1;
-  }
-
-  if (input_stream_params != NULL) {
+  if (has_input(stm)) {
     r = audiounit_create_unit(&input_unit, true,
-                              input_stream_params,
-                              input_device);
+                              &stm->input_stream_params,
+                              stm->input_device);
     if (r != CUBEB_OK) {
       LOG("AudioUnit creation for input failed.");
       return r;
     }
   }
 
-  if (output_stream_params != NULL) {
+  if (has_output(stm)) {
     r = audiounit_create_unit(&output_unit, false,
-                              output_stream_params,
-                              output_device);
+                              &stm->output_stream_params,
+                              stm->output_device);
     if (r != CUBEB_OK) {
       LOG("AudioUnit creation for output failed.");
       return r;
     }
   }
 
-  stm = (cubeb_stream *) calloc(1, sizeof(cubeb_stream));
-  assert(stm);
-  // Placement new to call the ctors of cubeb_stream members.
-  new (stm) cubeb_stream();
-
-  /* These could be different in the future if we have both
-   * full-duplex stream and different devices for input vs output. */
-  stm->input_unit  = (input_stream_params != NULL) ? input_unit : NULL;
-  stm->output_unit = (output_stream_params != NULL) ? output_unit : NULL;
-  stm->context = context;
-  stm->data_callback = data_callback;
-  stm->state_callback = state_callback;
-  stm->user_ptr = user_ptr;
-  stm->device_changed_callback = NULL;
-
-  /* Init data members where necessary */
-  stm->hw_latency_frames = UINT64_MAX;
-
-  /* Silently clamp the latency down to the platform default, because we
-   * synthetize the clock from the callbacks, and we want the clock to update
-   * often. */
-  latency_frames = audiounit_clamp_latency(stm, latency_frames);
-  assert(latency_frames > 0);
-
   /* Setup Input Stream! */
-  if (input_stream_params != NULL) {
+  if (has_input(stm)) {
     /* Get input device sample rate. */
     AudioStreamBasicDescription input_hw_desc;
     size = sizeof(AudioStreamBasicDescription);
@@ -1178,7 +1148,7 @@ audiounit_stream_init(cubeb * context,
     stm->input_hw_rate = input_hw_desc.mSampleRate;
 
     /* Set format description according to the input params. */
-    r = audio_stream_desc_init(&stm->input_desc, input_stream_params);
+    r = audio_stream_desc_init(&stm->input_desc, &stm->input_stream_params);
     if (r != CUBEB_OK) {
       LOG("Setting format description for input failed.");
       audiounit_stream_destroy(stm);
@@ -1186,7 +1156,7 @@ audiounit_stream_init(cubeb * context,
     }
 
     // Use latency to set buffer size
-    stm->input_buffer_frames = latency_frames;
+    stm->input_buffer_frames = stm->latency_frames;
     LOG("Input buffer frame count %u.", stm->input_buffer_frames);
     r = AudioUnitSetProperty(stm->input_unit,
                              kAudioDevicePropertyBufferFrameSize,
@@ -1232,7 +1202,7 @@ audiounit_stream_init(cubeb * context,
 
     // Input only capacity
     unsigned int array_capacity = 1;
-    if (output_stream_params) {
+    if (has_output(stm)) {
       // Full-duplex increase capacity
       array_capacity = 8;
     }
@@ -1260,8 +1230,8 @@ audiounit_stream_init(cubeb * context,
   }
 
   /* Setup Output Stream! */
-  if (output_stream_params != NULL) {
-    r = audio_stream_desc_init(&stm->output_desc, output_stream_params);
+  if (has_output(stm)) {
+    r = audio_stream_desc_init(&stm->output_desc, &stm->output_stream_params);
     if (r != CUBEB_OK) {
       LOG("Could not initialize the audio stream description.");
       audiounit_stream_destroy(stm);
@@ -1297,7 +1267,7 @@ audiounit_stream_init(cubeb * context,
     }
 
     // Use latency to calculate buffer size
-    uint32_t output_buffer_frames = latency_frames;
+    uint32_t output_buffer_frames = stm->latency_frames;
     LOG("Output buffer frame count %u.", output_buffer_frames);
     r = AudioUnitSetProperty(stm->output_unit,
                              kAudioDevicePropertyBufferFrameSize,
@@ -1378,16 +1348,16 @@ audiounit_stream_init(cubeb * context,
    * Resampler will convert it to the user sample rate
    * and deliver it to the callback. */
   uint32_t target_sample_rate;
-  if (input_stream_params) {
-    target_sample_rate = input_stream_params->rate;
+  if (has_input(stm)) {
+    target_sample_rate = stm->input_stream_params.rate;
   } else {
-    assert(output_stream_params);
-    target_sample_rate = output_stream_params->rate;
+    assert(has_output(stm));
+    target_sample_rate = stm->output_stream_params.rate;
   }
 
   cubeb_stream_params input_unconverted_params;
-  if (input_stream_params) {
-    input_unconverted_params = *input_stream_params;
+  if (has_input(stm)) {
+    input_unconverted_params = stm->input_stream_params;
     /* Use the rate of the input device. */
     input_unconverted_params.rate = stm->input_hw_rate;
   }
@@ -1395,8 +1365,8 @@ audiounit_stream_init(cubeb * context,
   /* Create resampler. Output params are unchanged
    * because we do not need conversion on the output. */
   stm->resampler = cubeb_resampler_create(stm,
-                                          input_stream_params ? &input_unconverted_params : NULL,
-                                          output_stream_params,
+                                          has_input(stm) ? &input_unconverted_params : NULL,
+                                          has_output(stm) ? &stm->output_stream_params : NULL,
                                           target_sample_rate,
                                           stm->data_callback,
                                           stm->user_ptr,
@@ -1424,6 +1394,68 @@ audiounit_stream_init(cubeb * context,
       return CUBEB_ERROR;
     }
   }
+  return CUBEB_OK;
+}
+
+static int
+audiounit_stream_init(cubeb * context,
+                      cubeb_stream ** stream,
+                      char const * stream_name,
+                      cubeb_devid input_device,
+                      cubeb_stream_params * input_stream_params,
+                      cubeb_devid output_device,
+                      cubeb_stream_params * output_stream_params,
+                      unsigned int latency_frames,
+                      cubeb_data_callback data_callback,
+                      cubeb_state_callback state_callback,
+                      void * user_ptr)
+{
+  cubeb_stream * stm;
+  int r;
+
+  assert(context);
+  *stream = NULL;
+
+  {
+    auto_lock lock(context->mutex);
+    if (context->limit_streams && context->active_streams >= CUBEB_STREAM_MAX) {
+      LOG("Reached the stream limit of %d", CUBEB_STREAM_MAX);
+      return CUBEB_ERROR;
+    }
+    context->active_streams += 1;
+  }
+
+  stm = (cubeb_stream *) calloc(1, sizeof(cubeb_stream));
+  assert(stm);
+  // Placement new to call the ctors of cubeb_stream members.
+  new (stm) cubeb_stream();
+
+  /* These could be different in the future if we have both
+   * full-duplex stream and different devices for input vs output. */
+  stm->context = context;
+  stm->data_callback = data_callback;
+  stm->state_callback = state_callback;
+  stm->user_ptr = user_ptr;
+  stm->device_changed_callback = NULL;
+  if (input_stream_params) {
+    stm->input_stream_params = *input_stream_params;
+    stm->input_device = input_device;
+  }
+  if (output_stream_params) {
+    stm->output_stream_params = *output_stream_params;
+    stm->output_device = output_device;
+  }
+
+  /* Init data members where necessary */
+  stm->hw_latency_frames = UINT64_MAX;
+
+  /* Silently clamp the latency down to the platform default, because we
+   * synthetize the clock from the callbacks, and we want the clock to update
+   * often. */
+  stm->latency_frames = audiounit_clamp_latency(stm, latency_frames);
+  assert(latency_frames > 0);
+
+  r = setup_audiounit_stream(stm);
 
   r = audiounit_install_device_changed_callback(stm);
   if (r != CUBEB_OK) {
