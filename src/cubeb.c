@@ -16,6 +16,9 @@
 
 #define NELEMS(x) ((int) (sizeof(x) / sizeof(x[0])))
 
+cubeb_log_level g_log_level;
+void * g_log_callback;
+
 struct cubeb {
   struct cubeb_ops * ops;
 };
@@ -442,7 +445,29 @@ int cubeb_register_device_collection_changed(cubeb * context,
   return context->ops->register_device_collection_changed(context, devtype, callback, user_ptr);
 }
 
-void cubeb_crash()
+int cubeb_set_log_callback(cubeb_log_level log_level,
+                           void * log_callback)
+{
+  if (log_level < CUBEB_LOG_DISABLED ||log_level > CUBEB_LOG_VERBOSE) {
+    return CUBEB_ERROR_INVALID_FORMAT;
+  }
+
+  if (!log_callback && log_level != CUBEB_LOG_DISABLED) {
+    return CUBEB_ERROR_INVALID_PARAMETER;
+  }
+
+  if (g_log_callback && log_callback) {
+    return CUBEB_ERROR_NOT_SUPPORTED;
+  }
+
+  g_log_callback = log_callback;
+  g_log_level = log_level;
+
+  return CUBEB_OK;
+}
+
+void
+cubeb_crash()
 {
   abort();
   *((volatile int *) NULL) = 0;
