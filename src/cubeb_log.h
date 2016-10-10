@@ -22,7 +22,7 @@ extern cubeb_log_callback g_log_callback;
 } while(0)
 
 #define LOG_INTERNAL(level, ...) do {                                \
-  if (g_log_callback && level >= g_log_level) {                      \
+  if (g_log_callback && level <= g_log_level) {                      \
     if ((FILE *)g_log_callback == stderr ||                          \
         (FILE *)g_log_callback == stdout) {                          \
       fprintf((FILE*)g_log_callback, "%s:%d: ", __FILE__, __LINE__); \
