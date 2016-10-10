@@ -10,8 +10,8 @@
 
 #include <stdio.h>
 
-extern void * g_log_callback;
 extern cubeb_log_level g_log_level;
+extern cubeb_log_callback g_log_callback;
 
 #define LOGV(...) do {                               \
   LOG_INTERNAL(CUBEB_LOG_VERBOSE, __VA_ARGS__);      \
