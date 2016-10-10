@@ -575,7 +575,7 @@ int cubeb_register_device_collection_changed(cubeb * context,
                                           invalid pointers, or if level is not
                                           in cubeb_log_level. */
 int cubeb_set_log_callback(cubeb_log_level log_level,
-                           void * log_callback);
+                           cubeb_log_callback log_callback);
 
 #if defined(__cplusplus)
 }
