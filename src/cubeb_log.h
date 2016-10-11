@@ -33,13 +33,13 @@ extern cubeb_log_callback g_log_callback;
       char buf[MAX_MSG_SIZE];                                        \
       int fileandline =                                              \
         snprintf(buf, MAX_MSG_SIZE, "%s:%d: ", __FILE__, __LINE__);  \
-      int rv = snprintf(buf + strlen(buf),                           \
-                        MAX_MSG_SIZE - fileandline,                  \
-                        __VA_ARGS__);                                \
-      if (rv >= MAX_MSG_SIZE) {                                      \
+      int _rv = snprintf(buf + strlen(buf),                          \
+                         MAX_MSG_SIZE - fileandline,                 \
+                         __VA_ARGS__);                               \
+      if (_rv >= MAX_MSG_SIZE) {                                     \
         fprintf(stderr,                                              \
                 "Message truncated (size: %d, max was %d)\n",        \
-                rv, MAX_MSG_SIZE);                                   \
+                _rv, MAX_MSG_SIZE);                                  \
       }                                                              \
       ((cubeb_log_callback)g_log_callback)(buf);                     \
     }                                                                \
