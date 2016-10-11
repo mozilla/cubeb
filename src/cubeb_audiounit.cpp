@@ -64,6 +64,10 @@ typedef UInt32  AudioFormatFlags;
 const uint32_t SAFE_MIN_LATENCY_FRAMES = 256;
 const uint32_t SAFE_MAX_LATENCY_FRAMES = 512;
 
+static int audiounit_stream_start(cubeb_stream * stm);
+static int setup_audiounit_stream(cubeb_stream * stm);
+static void close_audiounit_stream(cubeb_stream * stm);
+
 extern cubeb_ops const audiounit_ops;
 
 struct cubeb {
@@ -526,6 +530,7 @@ audiounit_property_listener_callback(AudioObjectID id, UInt32 address_count,
                                      void * user)
 {
   cubeb_stream * stm = (cubeb_stream*) user;
+  int rv;
 
   LOG("Audio device changed, %d events.", address_count);
 #ifdef LOGGING_ENABLED
@@ -558,6 +563,18 @@ audiounit_property_listener_callback(AudioObjectID id, UInt32 address_count,
         break;
       }
     }
+  }
+
+  close_audiounit_stream(stm);
+  rv = setup_audiounit_stream(stm);
+  if (rv != CUBEB_OK) {
+    LOG("Could not reopen a stream after switching.");
+  }
+
+  stm->frames_read = 0;
+
+  if (!stm->shutdown) {
+    audiounit_stream_start(stm);
   }
 
   return noErr;
