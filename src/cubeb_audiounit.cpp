@@ -388,6 +388,8 @@ audiounit_output_callback(void * user_ptr,
     if (stm->input_linear_buffer->length() == 0) {
       /* Do nothing, there should be enough pre-buffered data to consume. */
       LOG("Input hole. Requested more input than ouput.");
+      stm->input_linear_buffer->push_silence(stm->input_buffer_frames *
+                                            stm->input_desc.mChannelsPerFrame);
     }
     // The input buffer
     input_buffer = stm->input_linear_buffer->data();
