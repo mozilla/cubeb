@@ -1637,7 +1637,8 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
   stm->latency = latency_frames;
   stm->volume = 1.0;
 
-  stm->stream_reset_lock = owned_critical_section();
+  // Call ctor directly because a critical section cannot be copied.
+  stm->stream_reset_lock.owned_critical_section::owned_critical_section();
 
   stm->reconfigure_event = CreateEvent(NULL, 0, 0, NULL);
   if (!stm->reconfigure_event) {

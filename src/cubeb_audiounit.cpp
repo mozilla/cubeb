@@ -429,7 +429,8 @@ audiounit_init(cubeb ** context, char const * context_name)
 
   ctx->ops = &audiounit_ops;
 
-  ctx->mutex = owned_critical_section();
+  // Call ctor directly because a mutex cannot be copied.
+  ctx->mutex.owned_critical_section::owned_critical_section();
 
   ctx->active_streams = 0;
 
@@ -1130,7 +1131,8 @@ audiounit_stream_init(cubeb * context,
   stm->state_callback = state_callback;
   stm->user_ptr = user_ptr;
   stm->device_changed_callback = NULL;
-  stm->mutex = owned_critical_section();
+  // Call ctor directly because a mutex cannot be copied.
+  stm->mutex.owned_critical_section::owned_critical_section();
 
   /* Init data members where necessary */
   stm->hw_latency_frames = UINT64_MAX;
