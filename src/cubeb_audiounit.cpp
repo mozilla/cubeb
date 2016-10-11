@@ -511,6 +511,22 @@ audiounit_property_listener_callback(AudioObjectID id, UInt32 address_count,
   cubeb_stream * stm = (cubeb_stream*) user;
 
   LOG("Audio device changed, %d events.", address_count);
+#ifdef LOGGING_ENABLED
+  for (UInt32 i = 0; i < address_count; i++) {
+    printf("%u", i);
+    switch(addresses[i].mSelector) {
+      case kAudioHardwarePropertyDefaultOutputDevice:
+        printf(" mSelector == kAudioHardwarePropertyDefaultOutputDevice\n");
+        break;
+      case kAudioHardwarePropertyDefaultInputDevice:
+        printf(" mSelector == kAudioHardwarePropertyDefaultInputDevice\n");
+        break;
+      case kAudioDevicePropertyDataSource:
+        printf(" mSelector == kAudioHardwarePropertyDataSource\n");
+        break;
+    }
+  }
+#endif // LOGGING_ENABLED
 
   for (UInt32 i = 0; i < address_count; i++) {
     switch(addresses[i].mSelector) {
