@@ -537,22 +537,22 @@ audiounit_property_listener_callback(AudioObjectID id, UInt32 address_count,
   int rv;
 
   LOG("Audio device changed, %d events.", address_count);
-#ifdef LOGGING_ENABLED
-  for (UInt32 i = 0; i < address_count; i++) {
-    printf("%u", i);
-    switch(addresses[i].mSelector) {
-      case kAudioHardwarePropertyDefaultOutputDevice:
-        printf(" mSelector == kAudioHardwarePropertyDefaultOutputDevice\n");
-        break;
-      case kAudioHardwarePropertyDefaultInputDevice:
-        printf(" mSelector == kAudioHardwarePropertyDefaultInputDevice\n");
-        break;
-      case kAudioDevicePropertyDataSource:
-        printf(" mSelector == kAudioHardwarePropertyDataSource\n");
-        break;
+  if (g_log_level) {
+    for (UInt32 i = 0; i < address_count; i++) {
+      LOG("%u", i);
+      switch(addresses[i].mSelector) {
+        case kAudioHardwarePropertyDefaultOutputDevice:
+          LOG(" mSelector == kAudioHardwarePropertyDefaultOutputDevice\n");
+          break;
+        case kAudioHardwarePropertyDefaultInputDevice:
+          LOG(" mSelector == kAudioHardwarePropertyDefaultInputDevice\n");
+          break;
+        case kAudioDevicePropertyDataSource:
+          LOG(" mSelector == kAudioHardwarePropertyDataSource\n");
+          break;
+      }
     }
   }
-#endif // LOGGING_ENABLED
 
   for (UInt32 i = 0; i < address_count; i++) {
     switch(addresses[i].mSelector) {
