@@ -172,6 +172,8 @@ struct cubeb_stream {
   uint64_t frames_played;
   uint64_t frames_queued;
   uint64_t frames_read;
+  /* shutdown and draining are used on multiple thread, and must avec the stream
+   * lock acquired when accessing them. */
   int shutdown;
   int draining;
   /* Latency requested by the user. */
@@ -567,16 +569,20 @@ audiounit_property_listener_callback(AudioObjectID id, UInt32 address_count,
     }
   }
 
-  close_audiounit_stream(stm);
-  rv = setup_audiounit_stream(stm);
-  if (rv != CUBEB_OK) {
-    LOG("Could not reopen a stream after switching.");
-  }
+  {
+    auto_lock lock(stm->mutex);
+    close_audiounit_stream(stm);
+    rv = setup_audiounit_stream(stm);
+    if (rv != CUBEB_OK) {
+      LOG("Could not reopen a stream after switching.");
+    }
 
-  stm->frames_read = 0;
+    stm->frames_read = 0;
 
-  if (!stm->shutdown) {
-    audiounit_stream_start(stm);
+    if (!stm->shutdown) {
+      auto_unlock lock(stm->mutex);
+      audiounit_stream_start(stm);
+    }
   }
 
   return noErr;
@@ -1121,6 +1127,8 @@ audiounit_clamp_latency(cubeb_stream * stm,
 static int
 setup_audiounit_stream(cubeb_stream * stm)
 {
+  stm->mutex.assert_current_thread_owns();
+
   AudioUnit input_unit;
   AudioUnit output_unit;
   int r;
@@ -1474,7 +1482,13 @@ audiounit_stream_init(cubeb * context,
   stm->latency_frames = audiounit_clamp_latency(stm, latency_frames);
   assert(latency_frames > 0);
 
-  r = setup_audiounit_stream(stm);
+  {
+    // It's not critical to lock here, because no other thread has been started
+    // yet, but it allows to assert that the lock has been taken in
+    // `setup_audiounit_stream`.
+    auto_lock lock(stm->mutex);
+    r = setup_audiounit_stream(stm);
+  }
 
   r = audiounit_install_device_changed_callback(stm);
   if (r != CUBEB_OK) {
@@ -1490,6 +1504,8 @@ audiounit_stream_init(cubeb * context,
 static void
 close_audiounit_stream(cubeb_stream * stm)
 {
+  // We can't take the lock here, it would deadlock inside the platform code.
+  // AudioOutputUnitStop blocks until the audio callback has returned, though.
   if (has_input(stm)) {
     AudioOutputUnitStop(stm->input_unit);
     AudioUnitUninitialize(stm->input_unit);
@@ -1510,9 +1526,11 @@ close_audiounit_stream(cubeb_stream * stm)
 static void
 audiounit_stream_destroy(cubeb_stream * stm)
 {
-  stm->shutdown = 1;
-
-  close_audiounit_stream(stm);
+  {
+    auto_lock lock(stm->mutex);
+    stm->shutdown = 1;
+    close_audiounit_stream(stm);
+  }
 
 #if !TARGET_OS_IPHONE
   int r = audiounit_uninstall_device_changed_callback(stm);
@@ -1534,11 +1552,10 @@ audiounit_stream_destroy(cubeb_stream * stm)
 static int
 audiounit_stream_start(cubeb_stream * stm)
 {
-  {
-    auto_lock lock(stm->mutex);
-    stm->shutdown = 0;
-    stm->draining = 0;
-  }
+  auto_lock lock(stm->mutex);
+
+  stm->shutdown = 0;
+  stm->draining = 0;
 
   OSStatus r;
   if (stm->input_unit != NULL) {
@@ -1549,7 +1566,10 @@ audiounit_stream_start(cubeb_stream * stm)
     r = AudioOutputUnitStart(stm->output_unit);
     assert(r == 0);
   }
-  stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STARTED);
+  {
+    auto_unlock unlock(stm->mutex);
+    stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STARTED);
+  }
   LOG("Cubeb stream (%p) started successfully.", stm);
   return CUBEB_OK;
 }
@@ -1571,7 +1591,9 @@ audiounit_stream_stop(cubeb_stream * stm)
     r = AudioOutputUnitStop(stm->output_unit);
     assert(r == 0);
   }
+
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STOPPED);
+
   LOG("Cubeb stream (%p) stopped successfully.", stm);
   return CUBEB_OK;
 }
