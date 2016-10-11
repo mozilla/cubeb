@@ -423,13 +423,12 @@ audiounit_init(cubeb ** context, char const * context_name)
 
   *context = NULL;
 
-  ctx = new cubeb;
+  ctx = (cubeb *)calloc(1, sizeof(cubeb));
   assert(ctx);
-  PodZero(ctx, 1);
+  // Placement new to call the ctors of cubeb members.
+  new (ctx) cubeb();
 
   ctx->ops = &audiounit_ops;
-
-  ctx->mutex = owned_critical_section();
 
   ctx->active_streams = 0;
 
@@ -1117,9 +1116,10 @@ audiounit_stream_init(cubeb * context,
     }
   }
 
-  stm = new cubeb_stream;
+  stm = (cubeb_stream *) calloc(1, sizeof(cubeb_stream));
   assert(stm);
-  PodZero(stm, 1);
+  // Placement new to call the ctors of cubeb_stream members.
+  new (stm) cubeb_stream();
 
   /* These could be different in the future if we have both
    * full-duplex stream and different devices for input vs output. */
@@ -1130,7 +1130,6 @@ audiounit_stream_init(cubeb * context,
   stm->state_callback = state_callback;
   stm->user_ptr = user_ptr;
   stm->device_changed_callback = NULL;
-  stm->mutex = owned_critical_section();
 
   /* Init data members where necessary */
   stm->hw_latency_frames = UINT64_MAX;
