@@ -575,16 +575,15 @@ audiounit_property_listener_callback(AudioObjectID id, UInt32 address_count,
   LOG("Audio device changed, %d events.", address_count);
   if (g_log_level) {
     for (UInt32 i = 0; i < address_count; i++) {
-      LOG("%u", i);
       switch(addresses[i].mSelector) {
         case kAudioHardwarePropertyDefaultOutputDevice:
-          LOG(" mSelector == kAudioHardwarePropertyDefaultOutputDevice\n");
+          LOG("%d mSelector == kAudioHardwarePropertyDefaultOutputDevice", i);
           break;
         case kAudioHardwarePropertyDefaultInputDevice:
-          LOG(" mSelector == kAudioHardwarePropertyDefaultInputDevice\n");
+          LOG("%d mSelector == kAudioHardwarePropertyDefaultInputDevice", i);
           break;
         case kAudioDevicePropertyDataSource:
-          LOG(" mSelector == kAudioHardwarePropertyDataSource\n");
+          LOG("%d mSelector == kAudioHardwarePropertyDataSource", i);
           break;
       }
     }
