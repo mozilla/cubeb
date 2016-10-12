@@ -97,6 +97,7 @@ public:
   {assert((float_ar && !short_ar) || (!float_ar && short_ar));}
 
   ~auto_array_wrapper() {
+    auto_lock l(lock);
     assert((float_ar && !short_ar) || (!float_ar && short_ar));
     delete float_ar;
     delete short_ar;
@@ -104,13 +105,15 @@ public:
 
   void push(void * elements, size_t length){
     assert((float_ar && !short_ar) || (!float_ar && short_ar));
+    auto_lock l(lock);
     if (float_ar)
       return float_ar->push(static_cast<float*>(elements), length);
     return short_ar->push(static_cast<short*>(elements), length);
   }
 
-  size_t length() const {
+  size_t length() {
     assert((float_ar && !short_ar) || (!float_ar && short_ar));
+    auto_lock l(lock);
     if (float_ar)
       return float_ar->length();
     return short_ar->length();
@@ -118,6 +121,7 @@ public:
 
   void push_silence(size_t length) {
     assert((float_ar && !short_ar) || (!float_ar && short_ar));
+    auto_lock l(lock);
     if (float_ar)
       return float_ar->push_silence(length);
     return short_ar->push_silence(length);
@@ -125,21 +129,34 @@ public:
 
   bool pop(void * elements, size_t length) {
     assert((float_ar && !short_ar) || (!float_ar && short_ar));
+    auto_lock l(lock);
     if (float_ar)
       return float_ar->pop(static_cast<float*>(elements), length);
     return short_ar->pop(static_cast<short*>(elements), length);
   }
 
-  void * data() const {
+  void * data() {
     assert((float_ar && !short_ar) || (!float_ar && short_ar));
+    auto_lock l(lock);
     if (float_ar)
       return float_ar->data();
     return short_ar->data();
   }
 
+  void clear() {
+    assert((float_ar && !short_ar) || (!float_ar && short_ar));
+    auto_lock l(lock);
+    if (float_ar) {
+      float_ar->clear();
+    } else {
+      short_ar->clear();
+    }
+  }
+
 private:
   auto_array<float> * float_ar;
   auto_array<short> * short_ar;
+  owned_critical_section lock;
 };
 
 struct cubeb_stream {
