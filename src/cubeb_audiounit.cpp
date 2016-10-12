@@ -1211,7 +1211,6 @@ setup_audiounit_stream(cubeb_stream * stm)
                             &size);
     if (r != noErr) {
       PRINT_ERROR_CODE("AudioUnitGetProperty/input/kAudioUnitProperty_StreamFormat", r);
-      audiounit_stream_destroy(stm);
       return CUBEB_ERROR;
     }
     stm->input_hw_rate = input_hw_desc.mSampleRate;
@@ -1220,7 +1219,6 @@ setup_audiounit_stream(cubeb_stream * stm)
     r = audio_stream_desc_init(&stm->input_desc, &stm->input_stream_params);
     if (r != CUBEB_OK) {
       LOG("Setting format description for input failed.");
-      audiounit_stream_destroy(stm);
       return r;
     }
 
@@ -1235,7 +1233,6 @@ setup_audiounit_stream(cubeb_stream * stm)
                              sizeof(UInt32));
     if (r != noErr) {
       PRINT_ERROR_CODE("AudioUnitSetProperty/input/kAudioDevicePropertyBufferFrameSize", r);
-      audiounit_stream_destroy(stm);
       return CUBEB_ERROR;
     }
 
@@ -1252,7 +1249,6 @@ setup_audiounit_stream(cubeb_stream * stm)
                              sizeof(AudioStreamBasicDescription));
     if (r != noErr) {
       PRINT_ERROR_CODE("AudioUnitSetProperty/input/kAudioUnitProperty_StreamFormat", r);
-      audiounit_stream_destroy(stm);
       return CUBEB_ERROR;
     }
 
@@ -1265,7 +1261,6 @@ setup_audiounit_stream(cubeb_stream * stm)
                              sizeof(UInt32));
     if (r != noErr) {
       PRINT_ERROR_CODE("AudioUnitSetProperty/input/kAudioUnitProperty_MaximumFramesPerSlice", r);
-      audiounit_stream_destroy(stm);
       return CUBEB_ERROR;
     }
 
@@ -1276,7 +1271,6 @@ setup_audiounit_stream(cubeb_stream * stm)
       array_capacity = 8;
     }
     if (audiounit_init_input_linear_buffer(stm, array_capacity) != CUBEB_OK) {
-      audiounit_stream_destroy(stm);
       return CUBEB_ERROR;
     }
 
@@ -1292,7 +1286,6 @@ setup_audiounit_stream(cubeb_stream * stm)
                              sizeof(aurcbs_in));
     if (r != noErr) {
       PRINT_ERROR_CODE("AudioUnitSetProperty/input/kAudioOutputUnitProperty_SetInputCallback", r);
-      audiounit_stream_destroy(stm);
       return CUBEB_ERROR;
     }
     LOG("Input audiounit init successfully.");
@@ -1303,7 +1296,6 @@ setup_audiounit_stream(cubeb_stream * stm)
     r = audio_stream_desc_init(&stm->output_desc, &stm->output_stream_params);
     if (r != CUBEB_OK) {
       LOG("Could not initialize the audio stream description.");
-      audiounit_stream_destroy(stm);
       return r;
     }
 
@@ -1319,7 +1311,6 @@ setup_audiounit_stream(cubeb_stream * stm)
                              &size);
     if (r != noErr) {
       PRINT_ERROR_CODE("AudioUnitGetProperty/output/tkAudioUnitProperty_StreamFormat", r);
-      audiounit_stream_destroy(stm);
       return CUBEB_ERROR;
     }
 
@@ -1331,7 +1322,6 @@ setup_audiounit_stream(cubeb_stream * stm)
                              sizeof(AudioStreamBasicDescription));
     if (r != noErr) {
       PRINT_ERROR_CODE("AudioUnitSetProperty/output/kAudioUnitProperty_StreamFormat", r);
-      audiounit_stream_destroy(stm);
       return CUBEB_ERROR;
     }
 
@@ -1346,7 +1336,6 @@ setup_audiounit_stream(cubeb_stream * stm)
                              sizeof(output_buffer_frames));
     if (r != noErr) {
       PRINT_ERROR_CODE("AudioUnitSetProperty/output/kAudioDevicePropertyBufferFrameSize", r);
-      audiounit_stream_destroy(stm);
       return CUBEB_ERROR;
     }
 
@@ -1360,7 +1349,6 @@ setup_audiounit_stream(cubeb_stream * stm)
                              &aurcbs_out,
                              sizeof(aurcbs_out));
     if (r != noErr) {
-      audiounit_stream_destroy(stm);
       PRINT_ERROR_CODE("AudioUnitSetProperty/output/kAudioUnitProperty_SetRenderCallback", r);
       return CUBEB_ERROR;
     }
@@ -1376,7 +1364,6 @@ setup_audiounit_stream(cubeb_stream * stm)
    * the requested latency to this acceptable range. */
 #if !TARGET_OS_IPHONE
   if (audiounit_get_acceptable_latency_range(&latency_range) != CUBEB_OK) {
-    audiounit_stream_destroy(stm);
     return CUBEB_ERROR;
   }
 
@@ -1393,7 +1380,6 @@ setup_audiounit_stream(cubeb_stream * stm)
   size = sizeof(default_buffer_size);
   if (AudioUnitGetProperty(stm->output_unit, kAudioDevicePropertyBufferFrameSize,
         kAudioUnitScope_Output, 0, &default_buffer_size, &size) != 0) {
-    audiounit_stream_destroy(stm);
     return CUBEB_ERROR;
   }
 
@@ -1402,7 +1388,6 @@ setup_audiounit_stream(cubeb_stream * stm)
      * effectively setting the latency of the stream. This is process-wide. */
     if (AudioUnitSetProperty(stm->output_unit, kAudioDevicePropertyBufferFrameSize,
           kAudioUnitScope_Output, 0, &buffer_size, sizeof(buffer_size)) != 0) {
-      audiounit_stream_destroy(stm);
       return CUBEB_ERROR;
     }
   }
@@ -1442,7 +1427,6 @@ setup_audiounit_stream(cubeb_stream * stm)
                                           CUBEB_RESAMPLER_QUALITY_DESKTOP);
   if (!stm->resampler) {
     LOG("Could not create resampler.");
-    audiounit_stream_destroy(stm);
     return CUBEB_ERROR;
   }
 
@@ -1450,7 +1434,6 @@ setup_audiounit_stream(cubeb_stream * stm)
     r = AudioUnitInitialize(stm->input_unit);
     if (r != noErr) {
       PRINT_ERROR_CODE("AudioUnitInitialize/input", r);
-      audiounit_stream_destroy(stm);
       return CUBEB_ERROR;
     }
   }
@@ -1459,7 +1442,6 @@ setup_audiounit_stream(cubeb_stream * stm)
     r = AudioUnitInitialize(stm->output_unit);
     if (r != noErr) {
       PRINT_ERROR_CODE("AudioUnitInitialize/output", r);
-      audiounit_stream_destroy(stm);
       return CUBEB_ERROR;
     }
   }
@@ -1529,6 +1511,12 @@ audiounit_stream_init(cubeb * context,
     // `setup_audiounit_stream`.
     auto_lock lock(stm->mutex);
     r = setup_audiounit_stream(stm);
+  }
+
+  if (r != CUBEB_OK) {
+    LOG("Could not setup the audiounit stream.");
+    audiounit_stream_destroy(stm);
+    return r;
   }
 
   r = audiounit_install_device_changed_callback(stm);
