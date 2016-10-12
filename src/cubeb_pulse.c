@@ -788,14 +788,14 @@ pulse_stream_init(cubeb * context,
     if (output_stream_params){
       const pa_buffer_attr * output_att;
       output_att = WRAP(pa_stream_get_buffer_attr)(stm->output_stream);
-      LOG("Output buffer attributes maxlength %u, tlength %u, prebuf %u, minreq %u, fragsize %u\n",output_att->maxlength, output_att->tlength,
+      LOG("Output buffer attributes maxlength %u, tlength %u, prebuf %u, minreq %u, fragsize %u",output_att->maxlength, output_att->tlength,
           output_att->prebuf, output_att->minreq, output_att->fragsize);
     }
 
     if (input_stream_params){
       const pa_buffer_attr * input_att;
       input_att = WRAP(pa_stream_get_buffer_attr)(stm->input_stream);
-      LOG("Input buffer attributes maxlength %u, tlength %u, prebuf %u, minreq %u, fragsize %u\n",input_att->maxlength, input_att->tlength,
+      LOG("Input buffer attributes maxlength %u, tlength %u, prebuf %u, minreq %u, fragsize %u",input_att->maxlength, input_att->tlength,
           input_att->prebuf, input_att->minreq, input_att->fragsize);
     }
   }
@@ -1271,17 +1271,17 @@ pulse_subscribe_callback(pa_context * ctx,
     if (g_log_level) {
       if ((t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SOURCE &&
           (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_REMOVE) {
-        LOG("Removing sink index %d\n", index);
+        LOG("Removing sink index %d", index);
       } else if ((t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SOURCE &&
           (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_NEW) {
-        LOG("Adding sink index %d\n", index);
+        LOG("Adding sink index %d", index);
       }
       if ((t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SINK &&
           (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_REMOVE) {
-        LOG("Removing source index %d\n", index);
+        LOG("Removing source index %d", index);
       } else if ((t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SINK &&
           (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_NEW) {
-        LOG("Adding source index %d\n", index);
+        LOG("Adding source index %d", index);
       }
     }
 
@@ -1330,7 +1330,7 @@ pulse_register_device_collection_changed(cubeb * context,
   pa_operation * o;
   o = WRAP(pa_context_subscribe)(context->context, mask, subscribe_success, context);
   if (o == NULL) {
-    LOG("Context subscribe failed\n");
+    LOG("Context subscribe failed");
     return CUBEB_ERROR;
   }
   operation_wait(context, NULL, o);
