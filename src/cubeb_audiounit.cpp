@@ -189,10 +189,8 @@ struct cubeb_stream {
   uint64_t frames_played;
   uint64_t frames_queued;
   uint64_t frames_read;
-  /* shutdown and draining are used on multiple thread, and must avec the stream
-   * lock acquired when accessing them. */
-  int shutdown;
-  int draining;
+  std::atomic<bool> shutdown;
+  std::atomic<bool> draining;
   /* Latency requested by the user. */
   uint64_t latency_frames;
   uint64_t current_latency_frames;
@@ -312,8 +310,6 @@ audiounit_input_callback(void * user_ptr,
   cubeb_stream * stm = static_cast<cubeb_stream *>(user_ptr);
   long outframes, frames;
 
-  auto_lock lock(stm->mutex);
-
   assert(stm->input_unit != NULL);
   assert(AU_IN_BUS == bus);
 
@@ -346,7 +342,7 @@ audiounit_input_callback(void * user_ptr,
   stm->input_linear_buffer->pop(nullptr, frames * stm->input_desc.mChannelsPerFrame);
 
   if (outframes < 0 || outframes != input_frames) {
-    stm->shutdown = 1;
+    stm->shutdown = true;
     return noErr;
   }
 
@@ -372,8 +368,6 @@ audiounit_output_callback(void * user_ptr,
 
   long outframes = 0, input_frames = 0;
   void * output_buffer = NULL, * input_buffer = NULL;
-
-  auto_lock lock(stm->mutex);
 
   if (stm->shutdown) {
     LOG("output shutdown.");
@@ -428,7 +422,7 @@ audiounit_output_callback(void * user_ptr,
   }
 
   if (outframes < 0) {
-    stm->shutdown = 1;
+    stm->shutdown = true;
     return noErr;
   }
 
@@ -1496,6 +1490,8 @@ audiounit_stream_init(cubeb * context,
   stm->latency_frames = audiounit_clamp_latency(stm, latency_frames);
   assert(latency_frames > 0);
 
+  stm->switching = false;
+
   {
     // It's not critical to lock here, because no other thread has been started
     // yet, but it allows to assert that the lock has been taken in
@@ -1602,6 +1598,14 @@ audiounit_stream_stop(cubeb_stream * stm)
     r = AudioOutputUnitStop(stm->output_unit);
     assert(r == 0);
   }
+}
+
+static int
+audiounit_stream_stop(cubeb_stream * stm)
+{
+  stm->shutdown = true;
+
+  audiounit_stream_stop_internal(stm);
 
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STOPPED);
 
