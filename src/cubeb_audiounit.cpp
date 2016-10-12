@@ -1179,7 +1179,7 @@ setup_audiounit_stream(cubeb_stream * stm)
   UInt32 size;
 
   if (has_input(stm)) {
-    r = audiounit_create_unit(&input_unit, true,
+    r = audiounit_create_unit(&stm->input_unit, true,
                               &stm->input_stream_params,
                               stm->input_device);
     if (r != CUBEB_OK) {
@@ -1189,7 +1189,7 @@ setup_audiounit_stream(cubeb_stream * stm)
   }
 
   if (has_output(stm)) {
-    r = audiounit_create_unit(&output_unit, false,
+    r = audiounit_create_unit(&stm->output_unit, false,
                               &stm->output_stream_params,
                               stm->output_device);
     if (r != CUBEB_OK) {
