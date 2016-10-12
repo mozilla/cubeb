@@ -198,6 +198,8 @@ struct cubeb_stream {
   uint64_t hw_latency_frames;
   std::atomic<float> panning;
   cubeb_resampler * resampler;
+  std::atomic<int> output_callback_in_a_row;
+  std::atomic<bool> switching;
 };
 
 bool has_input(cubeb_stream * stm)
@@ -326,7 +328,18 @@ audiounit_input_callback(void * user_ptr,
 
   // Full Duplex. We'll call data_callback in the AudioUnit output callback.
   if (stm->output_unit != NULL) {
-    // User callback will be called by output callback
+    // This happens when we're finally getting a new input callback after having
+    // switched device, we can clear the input buffer now, only keeping the data
+    // we just got.
+    if (stm->output_callback_in_a_row > 2) {
+      stm->input_linear_buffer->pop(
+          nullptr,
+          stm->input_linear_buffer->length() -
+          input_frames * stm->input_stream_params.channels);
+    }
+
+    stm->output_callback_in_a_row = 0;
+
     return noErr;
   }
 
@@ -363,6 +376,8 @@ audiounit_output_callback(void * user_ptr,
 
   cubeb_stream * stm = static_cast<cubeb_stream *>(user_ptr);
 
+  stm->output_callback_in_a_row++;
+
   LOGV("output(%p): buffers %d, size %d, channels %d, frames %d.", stm,
        outBufferList->mNumberBuffers, outBufferList->mBuffers[0].mDataByteSize,
        outBufferList->mBuffers[0].mNumberChannels, output_frames);
@@ -396,14 +411,17 @@ audiounit_output_callback(void * user_ptr,
     if (stm->frames_read == 0) {
       LOG("Output callback came first send silent.");
       stm->input_linear_buffer->push_silence(stm->input_buffer_frames *
-                                            stm->input_desc.mChannelsPerFrame);
+                                             stm->input_desc.mChannelsPerFrame);
     }
     /* Input samples stored previously in input callback. */
     if (stm->input_linear_buffer->length() == 0) {
-      /* Do nothing, there should be enough pre-buffered data to consume. */
       LOG("Input hole. Requested more input than ouput.");
-      stm->input_linear_buffer->push_silence(stm->input_buffer_frames *
-                                            stm->input_desc.mChannelsPerFrame);
+      // If we're switching devices, we put in a bit of silence in the output to
+      // keep everything flowing.
+      if (stm->output_callback_in_a_row > 2 || stm->switching) {
+        stm->input_linear_buffer->push_silence(stm->input_buffer_frames *
+                                               stm->input_desc.mChannelsPerFrame);
+      }
     }
     // The input buffer
     input_buffer = stm->input_linear_buffer->data();
@@ -547,6 +565,12 @@ audiounit_property_listener_callback(AudioObjectID id, UInt32 address_count,
 {
   cubeb_stream * stm = (cubeb_stream*) user;
   int rv;
+  bool was_running = false;
+
+  stm->switching = true;
+
+  // Note if the stream was running or not
+  was_running = !stm->shutdown;
 
   LOG("Audio device changed, %d events.", address_count);
   if (g_log_level) {
@@ -601,6 +625,8 @@ audiounit_property_listener_callback(AudioObjectID id, UInt32 address_count,
       audiounit_stream_start_internal(stm);
     }
   }
+
+  stm->switching = false;
 
   return noErr;
 }
