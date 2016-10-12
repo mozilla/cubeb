@@ -73,7 +73,7 @@ extern cubeb_ops const audiounit_ops;
 struct cubeb {
   cubeb_ops const * ops;
   owned_critical_section mutex;
-  int active_streams;
+  std::atomic<int> active_streams;
   int limit_streams;
   cubeb_device_collection_changed_callback collection_changed_callback;
   void * collection_changed_user_ptr;
@@ -1443,14 +1443,11 @@ audiounit_stream_init(cubeb * context,
   assert(context);
   *stream = NULL;
 
-  {
-    auto_lock lock(context->mutex);
-    if (context->limit_streams && context->active_streams >= CUBEB_STREAM_MAX) {
-      LOG("Reached the stream limit of %d", CUBEB_STREAM_MAX);
-      return CUBEB_ERROR;
-    }
-    context->active_streams += 1;
+  if (context->limit_streams && context->active_streams >= CUBEB_STREAM_MAX) {
+    LOG("Reached the stream limit of %d", CUBEB_STREAM_MAX);
+    return CUBEB_ERROR;
   }
+  context->active_streams += 1;
 
   stm = (cubeb_stream *) calloc(1, sizeof(cubeb_stream));
   assert(stm);
@@ -1539,11 +1536,8 @@ audiounit_stream_destroy(cubeb_stream * stm)
   }
 #endif
 
-  {
-    auto_lock lock(stm->context->mutex);
-    assert(stm->context->active_streams >= 1);
-    stm->context->active_streams -= 1;
-  }
+  assert(stm->context->active_streams >= 1);
+  stm->context->active_streams -= 1;
 
   stm->~cubeb_stream();
   free(stm);
