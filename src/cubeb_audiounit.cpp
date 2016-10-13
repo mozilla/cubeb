@@ -198,8 +198,13 @@ struct cubeb_stream {
   uint64_t hw_latency_frames;
   std::atomic<float> panning;
   cubeb_resampler * resampler;
+  /* This is the number of output callback we got in a row. This is usually one,
+   * but can be two when the input and output rate are different, and more when
+   * a device has been plugged or unplugged, as there can be some time before
+   * the device is ready. */
   std::atomic<int> output_callback_in_a_row;
-  std::atomic<bool> switching;
+  /* This is true if a device change callback is currently running.  */
+  std::atomic<bool> switching_device;
 };
 
 bool has_input(cubeb_stream * stm)
@@ -418,7 +423,7 @@ audiounit_output_callback(void * user_ptr,
       LOG("Input hole. Requested more input than ouput.");
       // If we're switching devices, we put in a bit of silence in the output to
       // keep everything flowing.
-      if (stm->output_callback_in_a_row > 2 || stm->switching) {
+      if (stm->output_callback_in_a_row > 2 || stm->switching_device) {
         stm->input_linear_buffer->push_silence(stm->input_buffer_frames *
                                                stm->input_desc.mChannelsPerFrame);
       }
@@ -567,7 +572,7 @@ audiounit_property_listener_callback(AudioObjectID id, UInt32 address_count,
   int rv;
   bool was_running = false;
 
-  stm->switching = true;
+  stm->switching_device = true;
 
   // Note if the stream was running or not
   was_running = !stm->shutdown;
@@ -625,7 +630,7 @@ audiounit_property_listener_callback(AudioObjectID id, UInt32 address_count,
     }
   }
 
-  stm->switching = false;
+  stm->switching_device = false;
 
   return noErr;
 }
