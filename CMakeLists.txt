@@ -16,6 +16,12 @@ set(CMAKE_C_VISIBILITY_PRESET hidden)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN 1)
 
+set(CMAKE_CXX_WARNING_LEVEL 4)
+if(NOT MSVC)
+  set(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} "-Wall -Wextra")
+  set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} "-Wall -Wextra")
+endif()
+
 add_library(cubeb
   src/cubeb.c
   src/cubeb_resampler.cpp
