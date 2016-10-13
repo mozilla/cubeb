@@ -48,7 +48,7 @@ DEFINE_PROPERTYKEY(PKEY_Device_InstanceId,      0x78c34fc8, 0x104a, 0x4aca, 0x9e
 namespace {
 template<typename T, size_t N>
 constexpr size_t
-ARRAY_LENGTH(T(&array)[N])
+ARRAY_LENGTH(T(&)[N])
 {
   return N;
 }

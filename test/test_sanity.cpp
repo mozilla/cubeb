@@ -32,7 +32,7 @@
 
 template<typename T, size_t N>
 constexpr size_t
-ARRAY_LENGTH(T(&array)[N])
+ARRAY_LENGTH(T(&)[N])
 {
   return N;
 }
