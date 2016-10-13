@@ -1508,7 +1508,7 @@ audiounit_stream_init(cubeb * context,
   stm->latency_frames = audiounit_clamp_latency(stm, latency_frames);
   assert(latency_frames > 0);
 
-  stm->switching = false;
+  stm->switching_device = false;
 
   {
     // It's not critical to lock here, because no other thread has been started
