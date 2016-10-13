@@ -350,15 +350,15 @@ audiounit_input_callback(void * user_ptr,
 
   /* Input only. Call the user callback through resampler.
      Resampler will deliver input buffer in the correct rate. */
-  frames = input_frames;
   assert(input_frames <= stm->input_linear_buffer->length() / stm->input_desc.mChannelsPerFrame);
+  long total_input_frames = stm->input_linear_buffer->length() / stm->input_desc.mChannelsPerFrame;
   outframes = cubeb_resampler_fill(stm->resampler,
                                    stm->input_linear_buffer->data(),
-                                   &frames,
+                                   &total_input_frames,
                                    NULL,
                                    0);
   // Reset input buffer
-  stm->input_linear_buffer->pop(nullptr, frames * stm->input_desc.mChannelsPerFrame);
+  stm->input_linear_buffer->clear();
 
   if (outframes < 0 || outframes != input_frames) {
     stm->shutdown = true;
