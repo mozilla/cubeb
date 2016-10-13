@@ -412,21 +412,17 @@ audiounit_output_callback(void * user_ptr,
   output_buffer = outBufferList->mBuffers[0].mData;
   /* If Full duplex get also input buffer */
   if (stm->input_unit != NULL) {
-    /* Output callback came first */
-    if (stm->frames_read == 0) {
+    /* If the output callback came first and this is a duplex stream, we need to
+     * fill in some additional silence in the resampler.
+     * Otherwise, if we had more than two callback in a row, or we're currently
+     * switching, we add some silence as well to compensate for the fact that
+     * we're lacking some input data. */
+    if (stm->frames_read == 0 ||
+        (stm->input_linear_buffer->length() == 0 &&
+        (stm->output_callback_in_a_row > 2 || stm->switching_device))) {
       LOG("Output callback came first send silent.");
       stm->input_linear_buffer->push_silence(stm->input_buffer_frames *
                                              stm->input_desc.mChannelsPerFrame);
-    }
-    /* Input samples stored previously in input callback. */
-    if (stm->input_linear_buffer->length() == 0) {
-      LOG("Input hole. Requested more input than ouput.");
-      // If we're switching devices, we put in a bit of silence in the output to
-      // keep everything flowing.
-      if (stm->output_callback_in_a_row > 2 || stm->switching_device) {
-        stm->input_linear_buffer->push_silence(stm->input_buffer_frames *
-                                               stm->input_desc.mChannelsPerFrame);
-      }
     }
     // The input buffer
     input_buffer = stm->input_linear_buffer->data();
