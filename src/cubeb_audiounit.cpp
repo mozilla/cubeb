@@ -185,16 +185,16 @@ struct cubeb_stream {
    * input callback iteration */
   auto_array_wrapper * input_linear_buffer;
   /* Frames on input buffer */
-  uint32_t input_buffer_frames;
+  std::atomic<uint32_t> input_buffer_frames;
   /* Frame counters */
   uint64_t frames_played;
   uint64_t frames_queued;
-  uint64_t frames_read;
+  std::atomic<int64_t> frames_read;
   std::atomic<bool> shutdown;
   std::atomic<bool> draining;
   /* Latency requested by the user. */
   uint64_t latency_frames;
-  uint64_t current_latency_frames;
+  std::atomic<uint64_t> current_latency_frames;
   uint64_t hw_latency_frames;
   std::atomic<float> panning;
   cubeb_resampler * resampler;
@@ -1229,7 +1229,7 @@ setup_audiounit_stream(cubeb_stream * stm)
 
     // Use latency to set buffer size
     stm->input_buffer_frames = stm->latency_frames;
-    LOG("Input buffer frame count %u.", stm->input_buffer_frames);
+    LOG("Input buffer frame count %u.", unsigned(stm->input_buffer_frames));
     r = AudioUnitSetProperty(stm->input_unit,
                              kAudioDevicePropertyBufferFrameSize,
                              kAudioUnitScope_Output,
