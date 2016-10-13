@@ -1555,13 +1555,9 @@ audiounit_stream_destroy(cubeb_stream * stm)
 {
   stm->shutdown = true;
 
-  // Don't take the lock when stopping, it could be that we're switching devices
-  // and that would deadlock.
   audiounit_stream_stop_internal(stm);
 
   {
-    // At this point, the audio callbacks have returned, we can take the lock
-    // and destroy the stream.
     auto_lock lock(stm->mutex);
     close_audiounit_stream(stm);
   }
