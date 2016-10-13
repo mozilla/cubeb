@@ -1381,34 +1381,49 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
   HRESULT hr;
 
   stm->stream_reset_lock.assert_current_thread_owns();
-
-  if (devid) {
-    std::unique_ptr<const wchar_t> id;
-    id.reset(utf8_to_wstr(reinterpret_cast<char*>(devid)));
-    hr = get_endpoint(&device, id.get());
-    if (FAILED(hr)) {
-      LOG("Could not get %s endpoint, error: %x", DIRECTION_NAME, hr);
-      return CUBEB_ERROR;
+  bool try_again = false;
+  // This loops until we find a device that works, or we've exhausted all
+  // possibilities.
+  do {
+    if (devid) {
+      std::unique_ptr<const wchar_t> id;
+      id.reset(utf8_to_wstr(reinterpret_cast<char*>(devid)));
+      hr = get_endpoint(&device, id.get());
+      if (FAILED(hr)) {
+        LOG("Could not get %s endpoint, error: %x\n", DIRECTION_NAME, hr);
+        return CUBEB_ERROR;
+      }
     }
-  } else {
-    hr = get_default_endpoint(&device, direction);
-    if (FAILED(hr)) {
-      LOG("Could not get default %s endpoint, error: %x", DIRECTION_NAME, hr);
-      return CUBEB_ERROR;
+    else {
+      hr = get_default_endpoint(&device, direction);
+      if (FAILED(hr)) {
+        LOG("Could not get default %s endpoint, error: %x\n", DIRECTION_NAME, hr);
+        return CUBEB_ERROR;
+      }
     }
-  }
 
-  /* Get a client. We will get all other interfaces we need from
-   * this pointer. */
-  hr = device->Activate(__uuidof(IAudioClient),
-                        CLSCTX_INPROC_SERVER,
-                        NULL, (void **)audio_client);
-  SafeRelease(device);
-  if (FAILED(hr)) {
-    LOG("Could not activate the device to get an audio"
-        " client for %s: error: %x", DIRECTION_NAME, hr);
-    return CUBEB_ERROR;
-  }
+    /* Get a client. We will get all other interfaces we need from
+     * this pointer. */
+    hr = device->Activate(__uuidof(IAudioClient),
+                          CLSCTX_INPROC_SERVER,
+                          NULL, (void **)audio_client);
+    SafeRelease(device);
+    if (FAILED(hr)) {
+      LOG("Could not activate the device to get an audio"
+          " client for %s: error: %x\n", DIRECTION_NAME, hr);
+      // A particular device can't be activated because it has been
+      // unplugged, try fall back to the default audio device.
+      if (devid && hr == AUDCLNT_E_DEVICE_INVALIDATED) {
+        LOG("Trying again with the default %s audio device.", DIRECTION_NAME);
+        devid = nullptr;
+        try_again = true;
+      } else {
+        return CUBEB_ERROR;
+      }
+    } else {
+      try_again = false;
+    }
+  } while (try_again);
 
   /* We have to distinguish between the format the mixer uses,
    * and the format the stream we want to play uses. */
