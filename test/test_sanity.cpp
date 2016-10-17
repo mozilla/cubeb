@@ -582,8 +582,6 @@ test_drain(void)
 
   cubeb_stream_destroy(stream);
   cubeb_destroy(ctx);
-  got_drain = 0;
-  do_drain = 0;
 
   END_TEST;
 }
