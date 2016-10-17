@@ -127,6 +127,7 @@ enum cork_state {
 static void
 sink_info_callback(pa_context * context, const pa_sink_info * info, int eol, void * u)
 {
+  (void)context;
   cubeb * ctx = u;
   if (!eol) {
     free(ctx->default_sink_info);
@@ -155,6 +156,7 @@ context_state_callback(pa_context * c, void * u)
 static void
 context_notify_callback(pa_context * c, void * u)
 {
+  (void)c;
   cubeb * ctx = u;
   WRAP(pa_threaded_mainloop_signal)(ctx->mainloop, 0);
 }
@@ -162,6 +164,8 @@ context_notify_callback(pa_context * c, void * u)
 static void
 stream_success_callback(pa_stream * s, int success, void * u)
 {
+  (void)s;
+  (void)success;
   cubeb_stream * stm = u;
   WRAP(pa_threaded_mainloop_signal)(stm->context->mainloop, 0);
 }
@@ -176,6 +180,9 @@ stream_state_change_callback(cubeb_stream * stm, cubeb_state s)
 static void
 stream_drain_callback(pa_mainloop_api * a, pa_time_event * e, struct timeval const * tv, void * u)
 {
+  (void)a;
+  (void)e;
+  (void)tv;
   cubeb_stream * stm = u;
   stream_state_change_callback(stm, CUBEB_STATE_DRAINED);
   /* there's no pa_rttime_free, so use this instead. */
@@ -549,12 +556,14 @@ pulse_init(cubeb ** context, char const * context_name)
 static char const *
 pulse_get_backend_id(cubeb * ctx)
 {
+  (void)ctx;
   return "pulse";
 }
 
 static int
 pulse_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
 {
+  (void)ctx;
   assert(ctx && max_channels);
 
   WRAP(pa_threaded_mainloop_lock)(ctx->mainloop);
@@ -572,6 +581,7 @@ static int
 pulse_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
 {
   assert(ctx && rate);
+  (void)ctx;
 
   WRAP(pa_threaded_mainloop_lock)(ctx->mainloop);
   while (!ctx->default_sink_info) {
@@ -587,6 +597,7 @@ pulse_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
 static int
 pulse_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * latency_frames)
 {
+  (void)ctx;
   // According to PulseAudio developers, this is a safe minimum.
   *latency_frames = 25 * params.rate / 1000;
 
@@ -838,6 +849,7 @@ pulse_stream_destroy(cubeb_stream * stm)
 static void
 pulse_defer_event_cb(pa_mainloop_api * a, void * userdata)
 {
+  (void)a;
   cubeb_stream * stm = userdata;
   size_t writable_size = WRAP(pa_stream_writable_size)(stm->output_stream);
   trigger_user_callback(stm->output_stream, NULL, writable_size, stm);
@@ -931,6 +943,8 @@ pulse_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
 static void
 volume_success(pa_context *c, int success, void *userdata)
 {
+  (void)success;
+  (void)c;
   cubeb_stream * stream = userdata;
   assert(success);
   WRAP(pa_threaded_mainloop_signal)(stream->context->mainloop, 0);
@@ -1251,6 +1265,7 @@ static int
 pulse_stream_device_destroy(cubeb_stream * stream,
                             cubeb_device * device)
 {
+  (void)stream;
   free(device->input_name);
   free(device->output_name);
   free(device);
@@ -1262,6 +1277,7 @@ pulse_subscribe_callback(pa_context * ctx,
                          pa_subscription_event_type_t t,
                          uint32_t index, void * userdata)
 {
+  (void)ctx;
   cubeb * context = userdata;
 
   switch (t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) {
@@ -1296,6 +1312,7 @@ pulse_subscribe_callback(pa_context * ctx,
 static void
 subscribe_success(pa_context *c, int success, void *userdata)
 {
+  (void)c;
   cubeb * context = userdata;
   assert(success);
   WRAP(pa_threaded_mainloop_signal)(context->mainloop, 0);
