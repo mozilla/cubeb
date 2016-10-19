@@ -2052,14 +2052,11 @@ audiounit_create_device_from_hwdev(AudioObjectID devid, cubeb_device_type type)
       AudioValueTranslation trl = { &ds, sizeof(ds), &dsname, sizeof(dsname) };
       adr.mSelector = kAudioDevicePropertyDataSourceNameForIDCFString;
       size = sizeof(AudioValueTranslation);
+      // If there is a datasource for this device, use it instead of the device
+      // name.
       if (AudioObjectGetPropertyData(devid, &adr, 0, NULL, &size, &trl) == noErr) {
-        CFStringRef fullstr = CFStringCreateWithFormat(NULL, NULL,
-            CFSTR("%@ (%@)"), str, dsname);
-        CFRelease(dsname);
-        if (fullstr != NULL) {
-          CFRelease(str);
-          str = fullstr;
-        }
+        CFRelease(str);
+        str = dsname;
       }
     }
 
