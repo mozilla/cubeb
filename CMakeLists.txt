@@ -5,6 +5,11 @@ cmake_minimum_required(VERSION 3.1 FATAL_ERROR)
 project(cubeb
   VERSION 0.0.0)
 
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING
+      "Choose the type of build, options are: Debug Release RelWithDebInfo MinSizeRel." FORCE)
+endif()
+
 if(POLICY CMP0063)
   cmake_policy(SET CMP0063 NEW)
 endif()
