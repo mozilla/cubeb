@@ -1028,8 +1028,8 @@ audiounit_create_unit(AudioUnit * unit,
   if (!use_default_output) {
     enable = 1;
     rv = AudioUnitSetProperty(*unit, kAudioOutputUnitProperty_EnableIO,
-			      is_input ? kAudioUnitScope_Input : kAudioUnitScope_Output,
-			      is_input ? AU_IN_BUS : AU_OUT_BUS, &enable, sizeof(UInt32));
+                              is_input ? kAudioUnitScope_Input : kAudioUnitScope_Output,
+                              is_input ? AU_IN_BUS : AU_OUT_BUS, &enable, sizeof(UInt32));
     if (rv != noErr) {
       PRINT_ERROR_CODE("AudioUnitSetProperty/kAudioOutputUnitProperty_EnableIO", rv);
       return CUBEB_ERROR;
@@ -1037,8 +1037,8 @@ audiounit_create_unit(AudioUnit * unit,
 
     enable = 0;
     rv = AudioUnitSetProperty(*unit, kAudioOutputUnitProperty_EnableIO,
-			      is_input ? kAudioUnitScope_Output : kAudioUnitScope_Input,
-			      is_input ? AU_OUT_BUS : AU_IN_BUS, &enable, sizeof(UInt32));
+                              is_input ? kAudioUnitScope_Output : kAudioUnitScope_Input,
+                              is_input ? AU_OUT_BUS : AU_IN_BUS, &enable, sizeof(UInt32));
     if (rv != noErr) {
       PRINT_ERROR_CODE("AudioUnitSetProperty/kAudioOutputUnitProperty_EnableIO", rv);
       return CUBEB_ERROR;
@@ -1051,9 +1051,9 @@ audiounit_create_unit(AudioUnit * unit,
       devid = reinterpret_cast<intptr_t>(device);
     }
     int err = AudioUnitSetProperty(*unit, kAudioOutputUnitProperty_CurrentDevice,
-				   kAudioUnitScope_Global,
-				   is_input ? AU_IN_BUS : AU_OUT_BUS,
-				   &devid, sizeof(AudioDeviceID));
+                                   kAudioUnitScope_Global,
+                                   is_input ? AU_IN_BUS : AU_OUT_BUS,
+                                   &devid, sizeof(AudioDeviceID));
     if (err != noErr) {
       PRINT_ERROR_CODE("AudioUnitSetProperty/kAudioOutputUnitProperty_CurrentDevice", rv);
       return CUBEB_ERROR;
