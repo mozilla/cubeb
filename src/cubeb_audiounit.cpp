@@ -1066,7 +1066,7 @@ audiounit_create_unit(AudioUnit * unit,
 static int
 audiounit_init_input_linear_buffer(cubeb_stream * stream, uint32_t capacity)
 {
-  if (stream->input_desc.mFormatFlags == kAudioFormatFlagIsSignedInteger) {
+  if (stream->input_desc.mFormatFlags & kAudioFormatFlagIsSignedInteger) {
     stream->input_linear_buffer = new auto_array_wrapper(
         new auto_array<short>(capacity *
                               stream->input_buffer_frames *
