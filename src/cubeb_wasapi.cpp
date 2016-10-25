@@ -756,7 +756,6 @@ refill_callback_output(cubeb_stream * stm)
     return true;
   }
 
-
   long got = refill(stm,
                     nullptr,
                     0,
