@@ -1180,6 +1180,7 @@ setup_audiounit_stream(cubeb_stream * stm)
   UInt32 size;
 
   if (has_input(stm)) {
+    LOG("Opening input side, rate: %d", stm->input_stream_params.rate);
     r = audiounit_create_unit(&stm->input_unit, true,
                               &stm->input_stream_params,
                               stm->input_device);
@@ -1190,6 +1191,7 @@ setup_audiounit_stream(cubeb_stream * stm)
   }
 
   if (has_output(stm)) {
+    LOG("Opening output side, rate: %d", stm->input_stream_params.rate);
     r = audiounit_create_unit(&stm->output_unit, false,
                               &stm->output_stream_params,
                               stm->output_device);
