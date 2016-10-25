@@ -619,9 +619,11 @@ bool get_output_buffer(cubeb_stream * stm, float *& buffer, size_t & frame_count
 
   if (stm->draining) {
     if (padding_out == 0) {
+      LOG("Draining finished.");
       stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
       return false;
     }
+    LOG("Draining.");
     return true;
   }
 
@@ -684,6 +686,9 @@ refill_callback_duplex(cubeb_stream * stm)
     stm->linear_input_buffer.push_front_silence(padding * stm->input_stream_params.channels);
   }
 
+  LOGV("Duplex callback: input frames: %zu, output frames: %zu",
+       stm->linear_input_buffer.length(), output_frames);
+
   refill(stm,
          stm->linear_input_buffer.data(),
          stm->linear_input_buffer.length(),
@@ -716,6 +721,8 @@ refill_callback_input(cubeb_stream * stm)
   if (!stm->linear_input_buffer.length()) {
     return true;
   }
+
+  LOGV("Input callback: input frames: %zu", stm->linear_input_buffer.length());
 
   long read = refill(stm,
                      stm->linear_input_buffer.data(),
@@ -754,6 +761,10 @@ refill_callback_output(cubeb_stream * stm)
                     0,
                     output_buffer,
                     output_frames);
+
+  LOGV("Output callback: output frames requested: %zu, got %ld",
+       output_frames, got);
+
   XASSERT(got >= 0);
   XASSERT(got == output_frames || stm->draining);
 
@@ -824,33 +835,41 @@ wasapi_stream_render_loop(LPVOID stream)
     }
     case WAIT_OBJECT_0 + 1: { /* reconfigure */
       XASSERT(stm->output_client || stm->input_client);
+      LOG("Reconfiguring the stream");
       /* Close the stream */
       if (stm->output_client) {
         stm->output_client->Stop();
+        LOG("Output stopped.");
       }
       if (stm->input_client) {
         stm->input_client->Stop();
+        LOG("Input stopped.");
       }
       {
         auto_lock lock(stm->stream_reset_lock);
         close_wasapi_stream(stm);
+        LOG("Stream closed.");
         /* Reopen a stream and start it immediately. This will automatically pick the
            new default device for this role. */
         int r = setup_wasapi_stream(stm);
         if (r != CUBEB_OK) {
+          LOG("Error setting up the stream during reconfigure.");
           /* Don't destroy the stream here, since we expect the caller to do
              so after the error has propagated via the state callback. */
           is_playing = false;
           hr = E_FAIL;
           continue;
         }
+        LOG("Stream setup successfuly.");
       }
       XASSERT(stm->output_client || stm->input_client);
       if (stm->output_client) {
         stm->output_client->Start();
+        LOG("Output started after reconfigure.");
       }
       if (stm->input_client) {
         stm->input_client->Start();
+        LOG("Input started after reconfigure.");
       }
       break;
     }
@@ -866,6 +885,7 @@ wasapi_stream_render_loop(LPVOID stream)
     case WAIT_TIMEOUT:
       XASSERT(stm->shutdown_event == wait_array[0]);
       if (++timeout_count >= timeout_limit) {
+        LOG("Render loop reached the timeout limit.");
         is_playing = false;
         hr = E_FAIL;
       }
@@ -1116,7 +1136,9 @@ int wasapi_init(cubeb ** context, char const * context_name)
 namespace {
 void stop_and_join_render_thread(cubeb_stream * stm)
 {
+  LOG("Stop and join render thread.");
   if (!stm->thread) {
+    LOG("No thread present.");
     return;
   }
 
@@ -1137,6 +1159,8 @@ void stop_and_join_render_thread(cubeb_stream * stm)
   if (r == WAIT_FAILED) {
     LOG("Destroy WaitForSingleObject on thread failed: %d", GetLastError());
   }
+
+  LOG("Closing thread.");
 
   CloseHandle(stm->thread);
   stm->thread = NULL;
@@ -1246,6 +1270,8 @@ wasapi_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * laten
 
   *latency_frames = hns_to_frames(params.rate, default_period);
 
+  LOG("Minimum latency in frames: %u", *latency_frames);
+
   SafeRelease(client);
 
   return CUBEB_OK;
@@ -1283,6 +1309,8 @@ wasapi_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
   }
 
   *rate = mix_format->nSamplesPerSec;
+
+  LOG("Preferred sample rate for output: %u", *rate);
 
   CoTaskMemFree(mix_format);
   SafeRelease(client);
@@ -1500,6 +1528,7 @@ int setup_wasapi_stream(cubeb_stream * stm)
 
   auto_com com;
   if (!com.ok()) {
+    LOG("Failure to initialize COM.");
     return CUBEB_ERROR;
   }
 
@@ -1518,6 +1547,7 @@ int setup_wasapi_stream(cubeb_stream * stm)
                                       &stm->capture_client,
                                       &stm->input_mix_params);
     if (rv != CUBEB_OK) {
+      LOG("Failure to open the input side.");
       return rv;
     }
   }
@@ -1535,6 +1565,7 @@ int setup_wasapi_stream(cubeb_stream * stm)
                                       &stm->render_client,
                                       &stm->output_mix_params);
     if (rv != CUBEB_OK) {
+      LOG("Failure to open the output side.");
       return rv;
     }
 
@@ -1555,6 +1586,7 @@ int setup_wasapi_stream(cubeb_stream * stm)
 
     /* Restore the stream volume over a device change. */
     if (stream_set_volume(stm, stm->volume) != CUBEB_OK) {
+      LOG("Could not set the volume.");
       return CUBEB_ERROR;
     }
   }
@@ -1571,6 +1603,8 @@ int setup_wasapi_stream(cubeb_stream * stm)
     XASSERT(has_output(stm));
     target_sample_rate = stm->output_stream_params.rate;
   }
+
+  LOG("Target sample rate: %d", target_sample_rate);
 
   /* If we are playing/capturing a mono stream, we only resample one channel,
    and copy it over, so we are always resampling the number
@@ -1628,6 +1662,10 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
 
   if (output_stream_params && output_stream_params->format != CUBEB_SAMPLE_FLOAT32NE ||
       input_stream_params && input_stream_params->format != CUBEB_SAMPLE_FLOAT32NE) {
+    LOG("Invalid format, %p %p %d %d",
+        output_stream_params, input_stream_params,
+        output_stream_params && output_stream_params->format,
+        input_stream_params && input_stream_params->format);
     return CUBEB_ERROR_INVALID_FORMAT;
   }
 
