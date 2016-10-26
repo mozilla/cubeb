@@ -384,6 +384,7 @@ int cubeb_stream_register_device_changed_callback(cubeb_stream * stream,
   return stream->context->ops->stream_register_device_changed_callback(stream, device_changed_callback);
 }
 
+static
 void log_device(cubeb_device_info * device_info)
 {
   char devfmts[128] = "";
