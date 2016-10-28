@@ -1,0 +1,10 @@
+version: 1.0.{build}
+before_build:
+- cmd: >-
+    cd c:\projects\cubeb
+    cmake .
+    cmake --build . --config Release
+
+build:
+  verbosity: minimal
+
