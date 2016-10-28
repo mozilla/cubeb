@@ -1,5 +1,5 @@
 version: 1.0.{build}
-before_build:
+build_script:
 - cmd: |-
     cd c:\projects\cubeb
     cmake .
