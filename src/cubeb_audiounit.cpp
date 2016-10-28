@@ -322,7 +322,7 @@ audiounit_input_callback(void * user_ptr,
   assert(AU_IN_BUS == bus);
 
   if (stm->shutdown) {
-    LOG("(%s) input shutdown", stm);
+    LOG("(%p) input shutdown", stm);
     return noErr;
   }
 
@@ -383,7 +383,7 @@ audiounit_output_callback(void * user_ptr,
 
   stm->output_callback_in_a_row++;
 
-  LOGV("(%p) output: buffers %d, size %d, channels %d, frames %d.", stm,
+  LOGV("(%p) output: buffers %d, size %d, channels %d, frames %d.",
        stm, outBufferList->mNumberBuffers,
        outBufferList->mBuffers[0].mDataByteSize,
        outBufferList->mBuffers[0].mNumberChannels, output_frames);
@@ -574,12 +574,12 @@ audiounit_property_listener_callback(AudioObjectID /* id */, UInt32 address_coun
   // Note if the stream was running or not
   was_running = !stm->shutdown;
 
-  LOG("(%s) Audio device changed, %d events.", stm, address_count);
+  LOG("(%p) Audio device changed, %d events.", stm, address_count);
   if (g_log_level) {
     for (UInt32 i = 0; i < address_count; i++) {
       switch(addresses[i].mSelector) {
         case kAudioHardwarePropertyDefaultOutputDevice:
-          LOG("(%d) %d mSelector == kAudioHardwarePropertyDefaultOutputDevice", stm, i);
+          LOG("(%p) %d mSelector == kAudioHardwarePropertyDefaultOutputDevice", stm, i);
           break;
         case kAudioHardwarePropertyDefaultInputDevice:
           LOG("(%p) %d mSelector == kAudioHardwarePropertyDefaultInputDevice", stm, i);
