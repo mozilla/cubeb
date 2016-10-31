@@ -329,6 +329,16 @@ audiounit_input_callback(void * user_ptr,
     return noErr;
   }
 
+  // This happens when we're finally getting a new input callback after having
+  // switched device, we can clear the input buffer now, only keeping the data
+  // we just got.
+  if (stm->output_callback_in_a_row > 2) {
+    stm->input_linear_buffer->pop(
+        nullptr,
+        stm->input_linear_buffer->length() -
+        input_frames * stm->input_stream_params.channels);
+  }
+
   OSStatus r = audiounit_render_input(stm, flags, tstamp, bus, input_frames);
   if (r != noErr) {
     return r;
@@ -336,18 +346,7 @@ audiounit_input_callback(void * user_ptr,
 
   // Full Duplex. We'll call data_callback in the AudioUnit output callback.
   if (stm->output_unit != NULL) {
-    // This happens when we're finally getting a new input callback after having
-    // switched device, we can clear the input buffer now, only keeping the data
-    // we just got.
-    if (stm->output_callback_in_a_row > 2) {
-      stm->input_linear_buffer->pop(
-          nullptr,
-          stm->input_linear_buffer->length() -
-          input_frames * stm->input_stream_params.channels);
-    }
-
     stm->output_callback_in_a_row = 0;
-
     return noErr;
   }
 
