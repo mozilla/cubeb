@@ -332,7 +332,8 @@ audiounit_input_callback(void * user_ptr,
   // This happens when we're finally getting a new input callback after having
   // switched device, we can clear the input buffer now, only keeping the data
   // we just got.
-  if (stm->output_callback_in_a_row > 2) {
+  const int expected_output_callbacks_in_a_row = ceilf(stm->output_hw_rate / stm->input_hw_rate);
+  if (stm->output_callback_in_a_row > expected_output_callbacks_in_a_row) {
     stm->input_linear_buffer->pop(
         nullptr,
         stm->input_linear_buffer->length() -
@@ -420,9 +421,10 @@ audiounit_output_callback(void * user_ptr,
      * Otherwise, if we had more than two callback in a row, or we're currently
      * switching, we add some silence as well to compensate for the fact that
      * we're lacking some input data. */
+    const int expected_output_callbacks_in_a_row = ceilf(stm->output_hw_rate / stm->input_hw_rate);
     if (stm->frames_read == 0 ||
         (stm->input_linear_buffer->length() == 0 &&
-        (stm->output_callback_in_a_row > 2 || stm->switching_device))) {
+        (stm->output_callback_in_a_row > expected_output_callbacks_in_a_row || stm->switching_device))) {
       uint32_t num_of_frames = ceilf(stm->input_hw_rate / stm->output_hw_rate *
           stm->input_buffer_frames);
       stm->input_linear_buffer->push_silence(num_of_frames * stm->input_desc.mChannelsPerFrame);
