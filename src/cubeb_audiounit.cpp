@@ -1182,7 +1182,6 @@ setup_audiounit_stream(cubeb_stream * stm)
   UInt32 size;
 
   if (has_input(stm)) {
-    LOG("(%p) Opening input side, rate: %u", stm, stm->input_stream_params.rate);
     r = audiounit_create_unit(&stm->input_unit, true,
                               &stm->input_stream_params,
                               stm->input_device);
@@ -1193,7 +1192,6 @@ setup_audiounit_stream(cubeb_stream * stm)
   }
 
   if (has_output(stm)) {
-    LOG("(%p) Opening output side, rate: %u", stm, stm->input_stream_params.rate);
     r = audiounit_create_unit(&stm->output_unit, false,
                               &stm->output_stream_params,
                               stm->output_device);
@@ -1205,6 +1203,9 @@ setup_audiounit_stream(cubeb_stream * stm)
 
   /* Setup Input Stream! */
   if (has_input(stm)) {
+    LOG("(%p) Opening input side: rate %u, channels %u, format %d, latency in frames %u.",
+        stm, stm->input_stream_params.rate, stm->input_stream_params.channels,
+        stm->input_stream_params.format, stm->latency_frames);
     /* Get input device sample rate. */
     AudioStreamBasicDescription input_hw_desc;
     size = sizeof(AudioStreamBasicDescription);
@@ -1219,6 +1220,7 @@ setup_audiounit_stream(cubeb_stream * stm)
       return CUBEB_ERROR;
     }
     stm->input_hw_rate = input_hw_desc.mSampleRate;
+    LOG("(%p) Input device sampling rate: %.2f", stm, stm->input_hw_rate);
 
     /* Set format description according to the input params. */
     r = audio_stream_desc_init(&stm->input_desc, &stm->input_stream_params);
@@ -1298,6 +1300,9 @@ setup_audiounit_stream(cubeb_stream * stm)
 
   /* Setup Output Stream! */
   if (has_output(stm)) {
+    LOG("(%p) Opening output side: rate %u, channels %u, format %d, latency in frames %u.",
+        stm, stm->output_stream_params.rate, stm->output_stream_params.channels,
+        stm->output_stream_params.format, stm->latency_frames);
     r = audio_stream_desc_init(&stm->output_desc, &stm->output_stream_params);
     if (r != CUBEB_OK) {
       LOG("(%p) Could not initialize the audio stream description.", stm);
@@ -1318,6 +1323,7 @@ setup_audiounit_stream(cubeb_stream * stm)
       PRINT_ERROR_CODE("AudioUnitGetProperty/output/tkAudioUnitProperty_StreamFormat", r);
       return CUBEB_ERROR;
     }
+    LOG("(%p) Output device sampling rate: %.2f", stm, output_hw_desc.mSampleRate);
 
     r = AudioUnitSetProperty(stm->output_unit,
                              kAudioUnitProperty_StreamFormat,
