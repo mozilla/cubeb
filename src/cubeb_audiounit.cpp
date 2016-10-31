@@ -169,6 +169,7 @@ struct cubeb_stream {
   cubeb_stream_params input_stream_params;
   cubeb_stream_params output_stream_params;
   cubeb_devid input_device;
+  bool is_deafult_input;
   cubeb_devid output_device;
   /* User pointer of data_callback */
   void * user_ptr;
@@ -579,19 +580,35 @@ audiounit_property_listener_callback(AudioObjectID /* id */, UInt32 address_coun
   was_running = !stm->shutdown;
 
   LOG("(%p) Audio device changed, %d events.", stm, address_count);
-  if (g_log_level) {
-    for (UInt32 i = 0; i < address_count; i++) {
-      switch(addresses[i].mSelector) {
-        case kAudioHardwarePropertyDefaultOutputDevice:
-          LOG("(%p) Event[%d] mSelector == kAudioHardwarePropertyDefaultOutputDevice", stm, i);
-          break;
-        case kAudioHardwarePropertyDefaultInputDevice:
-          LOG("(%p) Event[%d] mSelector == kAudioHardwarePropertyDefaultInputDevice", stm, i);
-          break;
-        case kAudioDevicePropertyDataSource:
-          LOG("(%p) Event[%d] mSelector == kAudioHardwarePropertyDataSource", stm, i);
-          break;
-      }
+  for (UInt32 i = 0; i < address_count; i++) {
+    switch(addresses[i].mSelector) {
+      case kAudioHardwarePropertyDefaultOutputDevice: {
+          LOG("Event[%d] - mSelector == kAudioHardwarePropertyDefaultOutputDevice", i);
+          // Allow restart to choose the new default
+          stm->output_device = nullptr;
+        }
+        break;
+      case kAudioHardwarePropertyDefaultInputDevice: {
+          LOG("Event[%d] - mSelector == kAudioHardwarePropertyDefaultInputDevice", i);
+          // Allow restart to choose the new default
+          stm->input_device = nullptr;
+        }
+      break;
+      case kAudioDevicePropertyDeviceIsAlive: {
+          LOG("Event[%d] - mSelector == kAudioDevicePropertyDeviceIsAlive", i);
+          // If this is the default input device ignore the event,
+          // kAudioHardwarePropertyDefaultInputDevice will take care of the switch
+          if (stm->is_deafult_input) {
+            LOG("It's the default input device, ignore the event");
+            return noErr;
+          }
+          // Allow restart to choose the new default. Event register only for input.
+          stm->input_device = nullptr;
+        }
+        break;
+      case kAudioDevicePropertyDataSource:
+        LOG("Event[%d] - mSelector == kAudioHardwarePropertyDataSource", i);
+        break;
     }
   }
 
@@ -599,6 +616,7 @@ audiounit_property_listener_callback(AudioObjectID /* id */, UInt32 address_coun
     switch(addresses[i].mSelector) {
     case kAudioHardwarePropertyDefaultOutputDevice:
     case kAudioHardwarePropertyDefaultInputDevice:
+    case kAudioDevicePropertyDeviceIsAlive:
       /* fall through */
     case kAudioDevicePropertyDataSource: {
         auto_lock lock(stm->mutex);
@@ -712,6 +730,13 @@ audiounit_install_device_changed_callback(cubeb_stream * stm)
 
     /* This event will notify us when the default input device changes. */
     r = audiounit_add_listener(stm, kAudioObjectSystemObject, kAudioHardwarePropertyDefaultInputDevice,
+        kAudioObjectPropertyScopeGlobal, &audiounit_property_listener_callback);
+    if (r != noErr) {
+      return CUBEB_ERROR;
+    }
+
+    /* Event to notify when the input is going away. */
+    r = audiounit_add_listener(stm, reinterpret_cast<intptr_t>(stm->input_device), kAudioDevicePropertyDeviceIsAlive,
         kAudioObjectPropertyScopeGlobal, &audiounit_property_listener_callback);
     if (r != noErr) {
       return CUBEB_ERROR;
@@ -1507,6 +1532,9 @@ audiounit_stream_init(cubeb * context,
   if (output_stream_params) {
     stm->output_stream_params = *output_stream_params;
     stm->output_device = output_device;
+    stm->is_deafult_input = (input_device == nullptr) ||
+                            (audiounit_get_default_device_id(CUBEB_DEVICE_TYPE_INPUT)
+                                == reinterpret_cast<intptr_t>(input_device));
   }
 
   /* Init data members where necessary */
