@@ -178,8 +178,9 @@ struct cubeb_stream {
   /* I/O AudioUnits */
   AudioUnit input_unit;
   AudioUnit output_unit;
-  /* Sample rate of input device*/
+  /* I/O device sample rate */
   Float64 input_hw_rate;
+  Float64 output_hw_rate;
   owned_critical_section mutex;
   /* Hold the input samples in every
    * input callback iteration */
@@ -422,9 +423,11 @@ audiounit_output_callback(void * user_ptr,
     if (stm->frames_read == 0 ||
         (stm->input_linear_buffer->length() == 0 &&
         (stm->output_callback_in_a_row > 2 || stm->switching_device))) {
-      LOG("(%p) Output callback came first send silent.", stm);
-      stm->input_linear_buffer->push_silence(stm->input_buffer_frames *
-                                             stm->input_desc.mChannelsPerFrame);
+      uint32_t num_of_frames = ceilf(stm->input_hw_rate / stm->output_hw_rate *
+          stm->input_buffer_frames);
+      stm->input_linear_buffer->push_silence(num_of_frames * stm->input_desc.mChannelsPerFrame);
+      LOG("%s send %u frames of silent.", (stm->frames_read == 0) ? "Output callback came first," :
+          stm->switching_device ? "Device switching," : "Drop out,", num_of_frames);
     }
     // The input buffer
     input_buffer = stm->input_linear_buffer->data();
@@ -1323,6 +1326,7 @@ setup_audiounit_stream(cubeb_stream * stm)
       PRINT_ERROR_CODE("AudioUnitGetProperty/output/tkAudioUnitProperty_StreamFormat", r);
       return CUBEB_ERROR;
     }
+    stm->output_hw_rate = output_hw_desc.mSampleRate;
     LOG("(%p) Output device sampling rate: %.2f", stm, output_hw_desc.mSampleRate);
 
     r = AudioUnitSetProperty(stm->output_unit,
