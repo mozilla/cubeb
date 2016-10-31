@@ -583,13 +583,13 @@ audiounit_property_listener_callback(AudioObjectID /* id */, UInt32 address_coun
     for (UInt32 i = 0; i < address_count; i++) {
       switch(addresses[i].mSelector) {
         case kAudioHardwarePropertyDefaultOutputDevice:
-          LOG("(%p) %d mSelector == kAudioHardwarePropertyDefaultOutputDevice", stm, i);
+          LOG("(%p) Event[%d] mSelector == kAudioHardwarePropertyDefaultOutputDevice", stm, i);
           break;
         case kAudioHardwarePropertyDefaultInputDevice:
-          LOG("(%p) %d mSelector == kAudioHardwarePropertyDefaultInputDevice", stm, i);
+          LOG("(%p) Event[%d] mSelector == kAudioHardwarePropertyDefaultInputDevice", stm, i);
           break;
         case kAudioDevicePropertyDataSource:
-          LOG("(%p) %d mSelector == kAudioHardwarePropertyDataSource", stm, i);
+          LOG("(%p) Event[%d] mSelector == kAudioHardwarePropertyDataSource", stm, i);
           break;
       }
     }
@@ -1057,11 +1057,11 @@ audiounit_create_unit(AudioUnit * unit,
     } else {
       devid = reinterpret_cast<intptr_t>(device);
     }
-    int err = AudioUnitSetProperty(*unit, kAudioOutputUnitProperty_CurrentDevice,
+    rv = AudioUnitSetProperty(*unit, kAudioOutputUnitProperty_CurrentDevice,
                                    kAudioUnitScope_Global,
                                    is_input ? AU_IN_BUS : AU_OUT_BUS,
                                    &devid, sizeof(AudioDeviceID));
-    if (err != noErr) {
+    if (rv != noErr) {
       PRINT_ERROR_CODE("AudioUnitSetProperty/kAudioOutputUnitProperty_CurrentDevice", rv);
       return CUBEB_ERROR;
     }
