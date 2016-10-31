@@ -169,7 +169,7 @@ struct cubeb_stream {
   cubeb_stream_params input_stream_params;
   cubeb_stream_params output_stream_params;
   cubeb_devid input_device;
-  bool is_deafult_input;
+  bool is_default_input;
   cubeb_devid output_device;
   /* User pointer of data_callback */
   void * user_ptr;
@@ -182,6 +182,9 @@ struct cubeb_stream {
   /* I/O device sample rate */
   Float64 input_hw_rate;
   Float64 output_hw_rate;
+  /* Expected I/O thread interleave,
+   * calculated from I/O hw rate. */
+  int expected_output_callbacks_in_a_row;
   owned_critical_section mutex;
   /* Hold the input samples in every
    * input callback iteration */
@@ -195,7 +198,7 @@ struct cubeb_stream {
   std::atomic<bool> shutdown;
   std::atomic<bool> draining;
   /* Latency requested by the user. */
-  uint64_t latency_frames;
+  uint32_t latency_frames;
   std::atomic<uint64_t> current_latency_frames;
   uint64_t hw_latency_frames;
   std::atomic<float> panning;
@@ -332,8 +335,7 @@ audiounit_input_callback(void * user_ptr,
   // This happens when we're finally getting a new input callback after having
   // switched device, we can clear the input buffer now, only keeping the data
   // we just got.
-  const int expected_output_callbacks_in_a_row = ceilf(stm->output_hw_rate / stm->input_hw_rate);
-  if (stm->output_callback_in_a_row > expected_output_callbacks_in_a_row) {
+  if (stm->output_callback_in_a_row > stm->expected_output_callbacks_in_a_row) {
     stm->input_linear_buffer->pop(
         nullptr,
         stm->input_linear_buffer->length() -
@@ -369,6 +371,26 @@ audiounit_input_callback(void * user_ptr,
   }
 
   return noErr;
+}
+
+static bool is_extra_input_needed(cubeb_stream * stm)
+{
+  /* If the output callback came first and this is a duplex stream, we need to
+    * fill in some additional silence in the resampler.
+    * Otherwise, if we had more than expected callbacks in a row, or we're currently
+    * switching, we add some silence as well to compensate for the fact that
+    * we're lacking some input data. */
+
+  /* If resampling taking place after every output callback
+   * the input buffer expected to be empty.  Any frame left over
+   * from resampling is stored inside the resampler available to
+   * be used in next iteration as needed.
+   * BUT when noop_resampler is operating we have left over
+   * frames since it does not store anything internally. */
+  return stm->frames_read == 0 ||
+         (stm->input_linear_buffer->length() == 0 &&
+            (stm->output_callback_in_a_row > stm->expected_output_callbacks_in_a_row ||
+            stm->switching_device));
 }
 
 static OSStatus
@@ -416,20 +438,12 @@ audiounit_output_callback(void * user_ptr,
   output_buffer = outBufferList->mBuffers[0].mData;
   /* If Full duplex get also input buffer */
   if (stm->input_unit != NULL) {
-    /* If the output callback came first and this is a duplex stream, we need to
-     * fill in some additional silence in the resampler.
-     * Otherwise, if we had more than two callback in a row, or we're currently
-     * switching, we add some silence as well to compensate for the fact that
-     * we're lacking some input data. */
-    const int expected_output_callbacks_in_a_row = ceilf(stm->output_hw_rate / stm->input_hw_rate);
-    if (stm->frames_read == 0 ||
-        (stm->input_linear_buffer->length() == 0 &&
-        (stm->output_callback_in_a_row > expected_output_callbacks_in_a_row || stm->switching_device))) {
-      uint32_t num_of_frames = ceilf(stm->input_hw_rate / stm->output_hw_rate *
-          stm->input_buffer_frames);
-      stm->input_linear_buffer->push_silence(num_of_frames * stm->input_desc.mChannelsPerFrame);
-      LOG("%s send %u frames of silent.", (stm->frames_read == 0) ? "Output callback came first," :
-          stm->switching_device ? "Device switching," : "Drop out,", num_of_frames);
+    if (is_extra_input_needed(stm)) {
+      uint32_t min_input_frames_required = ceilf(stm->input_hw_rate / stm->output_hw_rate *
+                                                                      stm->input_buffer_frames);
+      stm->input_linear_buffer->push_silence(min_input_frames_required * stm->input_desc.mChannelsPerFrame);
+      LOG("%s pushed %u frames of input silence.", stm->frames_read == 0 ? "Input hasn't started," :
+          stm->switching_device ? "Device switching," : "Drop out,", min_input_frames_required);
     }
     // The input buffer
     input_buffer = stm->input_linear_buffer->data();
@@ -599,7 +613,7 @@ audiounit_property_listener_callback(AudioObjectID /* id */, UInt32 address_coun
           LOG("Event[%d] - mSelector == kAudioDevicePropertyDeviceIsAlive", i);
           // If this is the default input device ignore the event,
           // kAudioHardwarePropertyDefaultInputDevice will take care of the switch
-          if (stm->is_deafult_input) {
+          if (stm->is_default_input) {
             LOG("It's the default input device, ignore the event");
             return noErr;
           }
@@ -683,6 +697,8 @@ audiounit_remove_listener(cubeb_stream * stm, AudioDeviceID id,
   return AudioObjectRemovePropertyListener(id, &address, listener, stm);
 }
 
+static AudioObjectID audiounit_get_default_device_id(cubeb_device_type type);
+
 static int
 audiounit_install_device_changed_callback(cubeb_stream * stm)
 {
@@ -701,6 +717,7 @@ audiounit_install_device_changed_callback(cubeb_stream * stm)
     r = audiounit_add_listener(stm, output_dev_id, kAudioDevicePropertyDataSource,
         kAudioDevicePropertyScopeOutput, &audiounit_property_listener_callback);
     if (r != noErr) {
+      PRINT_ERROR_CODE("AudioObjectAddPropertyListener/output/kAudioDevicePropertyDataSource", r);
       return CUBEB_ERROR;
     }
 
@@ -711,6 +728,7 @@ audiounit_install_device_changed_callback(cubeb_stream * stm)
     r = audiounit_add_listener(stm, kAudioObjectSystemObject, kAudioHardwarePropertyDefaultOutputDevice,
         kAudioObjectPropertyScopeGlobal, &audiounit_property_listener_callback);
     if (r != noErr) {
+      PRINT_ERROR_CODE("AudioObjectAddPropertyListener/output/kAudioHardwarePropertyDefaultOutputDevice", r);
       return CUBEB_ERROR;
     }
   }
@@ -726,6 +744,7 @@ audiounit_install_device_changed_callback(cubeb_stream * stm)
     r = audiounit_add_listener(stm, input_dev_id, kAudioDevicePropertyDataSource,
         kAudioDevicePropertyScopeInput, &audiounit_property_listener_callback);
     if (r != noErr) {
+      PRINT_ERROR_CODE("AudioObjectAddPropertyListener/input/kAudioDevicePropertyDataSource", r);
       return CUBEB_ERROR;
     }
 
@@ -733,13 +752,17 @@ audiounit_install_device_changed_callback(cubeb_stream * stm)
     r = audiounit_add_listener(stm, kAudioObjectSystemObject, kAudioHardwarePropertyDefaultInputDevice,
         kAudioObjectPropertyScopeGlobal, &audiounit_property_listener_callback);
     if (r != noErr) {
+      PRINT_ERROR_CODE("AudioObjectAddPropertyListener/input/kAudioHardwarePropertyDefaultInputDevice", r);
       return CUBEB_ERROR;
     }
 
     /* Event to notify when the input is going away. */
-    r = audiounit_add_listener(stm, reinterpret_cast<intptr_t>(stm->input_device), kAudioDevicePropertyDeviceIsAlive,
+    AudioDeviceID dev = stm->input_device ? reinterpret_cast<intptr_t>(stm->input_device) :
+                                            audiounit_get_default_device_id(CUBEB_DEVICE_TYPE_INPUT);
+    r = audiounit_add_listener(stm, dev, kAudioDevicePropertyDeviceIsAlive,
         kAudioObjectPropertyScopeGlobal, &audiounit_property_listener_callback);
     if (r != noErr) {
+      PRINT_ERROR_CODE("AudioObjectAddPropertyListener/input/kAudioDevicePropertyDeviceIsAlive", r);
       return CUBEB_ERROR;
     }
   }
@@ -1084,9 +1107,9 @@ audiounit_create_unit(AudioUnit * unit,
       devid = reinterpret_cast<intptr_t>(device);
     }
     rv = AudioUnitSetProperty(*unit, kAudioOutputUnitProperty_CurrentDevice,
-                                   kAudioUnitScope_Global,
-                                   is_input ? AU_IN_BUS : AU_OUT_BUS,
-                                   &devid, sizeof(AudioDeviceID));
+                              kAudioUnitScope_Global,
+                              is_input ? AU_IN_BUS : AU_OUT_BUS,
+                              &devid, sizeof(AudioDeviceID));
     if (rv != noErr) {
       PRINT_ERROR_CODE("AudioUnitSetProperty/kAudioOutputUnitProperty_CurrentDevice", rv);
       return CUBEB_ERROR;
@@ -1486,6 +1509,14 @@ setup_audiounit_stream(cubeb_stream * stm)
       return CUBEB_ERROR;
     }
   }
+
+  if (stm->input_unit && stm->output_unit) {
+    // According to the I/O hardware rate it is expected a specific pattern of callbacks
+    // for example is input is 44100 and output is 48000 we expected no more than 2
+    // out callback in a row.
+    stm->expected_output_callbacks_in_a_row = ceilf(stm->output_hw_rate / stm->input_hw_rate);
+  }
+
   return CUBEB_OK;
 }
 
@@ -1529,13 +1560,13 @@ audiounit_stream_init(cubeb * context,
   if (input_stream_params) {
     stm->input_stream_params = *input_stream_params;
     stm->input_device = input_device;
+    stm->is_default_input = input_device == nullptr ||
+                            (audiounit_get_default_device_id(CUBEB_DEVICE_TYPE_INPUT) ==
+                                                  reinterpret_cast<intptr_t>(input_device));
   }
   if (output_stream_params) {
     stm->output_stream_params = *output_stream_params;
     stm->output_device = output_device;
-    stm->is_deafult_input = (input_device == nullptr) ||
-                            (audiounit_get_default_device_id(CUBEB_DEVICE_TYPE_INPUT)
-                                == reinterpret_cast<intptr_t>(input_device));
   }
 
   /* Init data members where necessary */
