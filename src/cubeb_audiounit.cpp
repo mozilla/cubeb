@@ -31,6 +31,7 @@
 #include "cubeb_utils.h"
 #include <algorithm>
 #include <atomic>
+#include <vector>
 
 #if !defined(kCFCoreFoundationVersionNumber10_7)
 /* From CoreFoundation CFBase.h */
@@ -82,8 +83,7 @@ struct cubeb {
   void * collection_changed_user_ptr;
   /* Differentiate input from output devices. */
   cubeb_device_type collection_changed_devtype;
-  uint32_t devtype_device_count;
-  AudioObjectID * devtype_device_array;
+  std::vector<AudioObjectID> devtype_device_array;
 };
 
 class auto_array_wrapper
@@ -504,8 +504,6 @@ cubeb::cubeb()
   , collection_changed_callback(nullptr)
   , collection_changed_user_ptr(nullptr)
   , collection_changed_devtype(CUBEB_DEVICE_TYPE_UNKNOWN)
-  , devtype_device_count(0)
-  , devtype_device_array(nullptr)
 {
 }
 
@@ -2252,77 +2250,47 @@ audiounit_enumerate_devices(cubeb * /* context */, cubeb_device_type type,
   return CUBEB_OK;
 }
 
-/* qsort compare method. */
-int compare_devid(const void * a, const void * b)
+static std::vector<AudioObjectID>
+audiounit_get_devices_of_type(cubeb_device_type devtype)
 {
-  return (*(AudioObjectID*)a - *(AudioObjectID*)b);
-}
-
-static uint32_t
-audiounit_get_devices_of_type(cubeb_device_type devtype, AudioObjectID ** devid_array)
-{
-  assert(devid_array == NULL || *devid_array == NULL);
-
   AudioObjectPropertyAddress adr = { kAudioHardwarePropertyDevices,
                                      kAudioObjectPropertyScopeGlobal,
                                      kAudioObjectPropertyElementMaster };
   UInt32 size = 0;
   OSStatus ret = AudioObjectGetPropertyDataSize(kAudioObjectSystemObject, &adr, 0, NULL, &size);
   if (ret != noErr) {
-    return 0;
+    return std::vector<AudioObjectID>();
   }
   /* Total number of input and output devices. */
   uint32_t count = (uint32_t)(size / sizeof(AudioObjectID));
 
-  AudioObjectID devices[count];
-  ret = AudioObjectGetPropertyData(kAudioObjectSystemObject, &adr, 0, NULL, &size, &devices);
+  std::vector<AudioObjectID> devices(count);
+  ret = AudioObjectGetPropertyData(kAudioObjectSystemObject, &adr, 0, NULL, &size, devices.data());
   if (ret != noErr) {
-    return 0;
+    return std::vector<AudioObjectID>();
   }
   /* Expected sorted but did not find anything in the docs. */
-  qsort(devices, count, sizeof(AudioObjectID), compare_devid);
+  std::sort(devices.begin(), devices.end(), [](AudioObjectID a, AudioObjectID b) {
+      return a < b;
+    });
 
   if (devtype == (CUBEB_DEVICE_TYPE_INPUT | CUBEB_DEVICE_TYPE_OUTPUT)) {
-    if (devid_array) {
-      *devid_array = new AudioObjectID[count];
-      assert(*devid_array);
-      memcpy(*devid_array, &devices, count * sizeof(AudioObjectID));
-    }
-    return count;
+    return devices;
   }
 
   AudioObjectPropertyScope scope = (devtype == CUBEB_DEVICE_TYPE_INPUT) ?
                                          kAudioDevicePropertyScopeInput :
                                          kAudioDevicePropertyScopeOutput;
 
-  uint32_t dev_count = 0;
-  AudioObjectID devices_in_scope[count];
-  for(uint32_t i = 0; i < count; ++i) {
+  std::vector<AudioObjectID> devices_in_scope;
+  for (uint32_t i = 0; i < count; ++i) {
     /* For device in the given scope channel must be > 0. */
     if (audiounit_get_channel_count(devices[i], scope) > 0) {
-      devices_in_scope[dev_count] = devices[i];
-      ++dev_count;
+      devices_in_scope.push_back(devices[i]);
     }
   }
 
-  if (devid_array && dev_count > 0) {
-    *devid_array = new AudioObjectID[dev_count];
-    assert(*devid_array);
-    memcpy(*devid_array, &devices_in_scope, dev_count * sizeof(AudioObjectID));
-  }
-  return dev_count;
-}
-
-static uint32_t
-audiounit_equal_arrays(AudioObjectID * left, AudioObjectID * right, uint32_t size)
-{
-  /* Expected sorted arrays. */
-  for (uint32_t i = 0; i < size; ++i) {
-    if (left[i] != right[i]) {
-      return 0;
-    }
-  }
-  return 1;
+  return devices_in_scope;
 }
 
 static OSStatus
@@ -2342,19 +2310,13 @@ audiounit_collection_changed_callback(AudioObjectID /* inObjectID */,
   /* Differentiate input from output changes. */
   if (context->collection_changed_devtype == CUBEB_DEVICE_TYPE_INPUT ||
       context->collection_changed_devtype == CUBEB_DEVICE_TYPE_OUTPUT) {
-    AudioObjectID * devices = NULL;
-    uint32_t new_number_of_devices = audiounit_get_devices_of_type(context->collection_changed_devtype, &devices);
+    std::vector<AudioObjectID> devices = audiounit_get_devices_of_type(context->collection_changed_devtype);
     /* When count is the same examine the devid for the case of coalescing. */
-    if (context->devtype_device_count == new_number_of_devices &&
-        audiounit_equal_arrays(devices, context->devtype_device_array, new_number_of_devices)) {
+    if (context->devtype_device_array == devices) {
       /* Device changed for the other scope, ignore. */
-      delete [] devices;
       return noErr;
     }
-    /* Device on desired scope changed, reset counter and array. */
-    context->devtype_device_count = new_number_of_devices;
-    /* Free the old array before replace. */
-    delete [] context->devtype_device_array;
+    /* Device on desired scope changed. */
     context->devtype_device_array = devices;
   }
 
@@ -2382,15 +2344,14 @@ audiounit_add_device_listener(cubeb * context,
                                                 audiounit_collection_changed_callback,
                                                 context);
   if (ret == noErr) {
-    /* Expected zero after unregister. */
-    assert(context->devtype_device_count == 0);
-    assert(context->devtype_device_array == NULL);
+    /* Expected empty after unregister. */
+    assert(context->devtype_device_array.empty());
     /* Listener works for input and output.
      * When requested one of them we need to differentiate. */
     if (devtype == CUBEB_DEVICE_TYPE_INPUT ||
         devtype == CUBEB_DEVICE_TYPE_OUTPUT) {
       /* Used to differentiate input from output device changes. */
-      context->devtype_device_count = audiounit_get_devices_of_type(devtype, &context->devtype_device_array);
+      context->devtype_device_array = audiounit_get_devices_of_type(devtype);
     }
     context->collection_changed_devtype = devtype;
     context->collection_changed_callback = collection_changed_callback;
@@ -2417,11 +2378,7 @@ audiounit_remove_device_listener(cubeb * context)
     context->collection_changed_devtype = CUBEB_DEVICE_TYPE_UNKNOWN;
     context->collection_changed_callback = NULL;
     context->collection_changed_user_ptr = NULL;
-    context->devtype_device_count = 0;
-    if (context->devtype_device_array) {
-      delete [] context->devtype_device_array;
-      context->devtype_device_array = NULL;
-    }
+    context->devtype_device_array.clear();
   }
   return ret;
 }
