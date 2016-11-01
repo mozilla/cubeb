@@ -90,24 +90,21 @@ class auto_array_wrapper
 {
 public:
   explicit auto_array_wrapper(auto_array<float> * ar)
-  : float_ar(ar)
-  , short_ar(nullptr)
-  {assert((float_ar && !short_ar) || (!float_ar && short_ar));}
+    : float_ar(ar)
+  {}
 
   explicit auto_array_wrapper(auto_array<short> * ar)
-  : float_ar(nullptr)
-  , short_ar(ar)
-  {assert((float_ar && !short_ar) || (!float_ar && short_ar));}
+    : short_ar(ar)
+  {}
 
   ~auto_array_wrapper() {
     auto_lock l(lock);
-    assert((float_ar && !short_ar) || (!float_ar && short_ar));
-    delete float_ar;
-    delete short_ar;
+    // Drop pointers while lock is held to preserve ordering.
+    float_ar.reset();
+    short_ar.reset();
   }
 
   void push(void * elements, size_t length){
-    assert((float_ar && !short_ar) || (!float_ar && short_ar));
     auto_lock l(lock);
     if (float_ar)
       return float_ar->push(static_cast<float*>(elements), length);
@@ -115,7 +112,6 @@ public:
   }
 
   size_t length() {
-    assert((float_ar && !short_ar) || (!float_ar && short_ar));
     auto_lock l(lock);
     if (float_ar)
       return float_ar->length();
@@ -123,7 +119,6 @@ public:
   }
 
   void push_silence(size_t length) {
-    assert((float_ar && !short_ar) || (!float_ar && short_ar));
     auto_lock l(lock);
     if (float_ar)
       return float_ar->push_silence(length);
@@ -131,7 +126,6 @@ public:
   }
 
   bool pop(void * elements, size_t length) {
-    assert((float_ar && !short_ar) || (!float_ar && short_ar));
     auto_lock l(lock);
     if (float_ar)
       return float_ar->pop(static_cast<float*>(elements), length);
@@ -139,7 +133,6 @@ public:
   }
 
   void * data() {
-    assert((float_ar && !short_ar) || (!float_ar && short_ar));
     auto_lock l(lock);
     if (float_ar)
       return float_ar->data();
@@ -147,7 +140,6 @@ public:
   }
 
   void clear() {
-    assert((float_ar && !short_ar) || (!float_ar && short_ar));
     auto_lock l(lock);
     if (float_ar) {
       float_ar->clear();
@@ -157,8 +149,8 @@ public:
   }
 
 private:
-  auto_array<float> * float_ar;
-  auto_array<short> * short_ar;
+  std::unique_ptr<auto_array<float>> float_ar;
+  std::unique_ptr<auto_array<short>> short_ar;
   owned_critical_section lock;
 };
 
