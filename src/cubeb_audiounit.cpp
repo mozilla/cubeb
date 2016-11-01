@@ -192,7 +192,7 @@ struct cubeb_stream {
   owned_critical_section mutex;
   /* Hold the input samples in every
    * input callback iteration */
-  auto_array_wrapper * input_linear_buffer;
+  std::unique_ptr<auto_array_wrapper> input_linear_buffer;
   /* Frames on input buffer */
   std::atomic<uint32_t> input_buffer_frames;
   /* Frame counters */
@@ -1134,19 +1134,15 @@ static int
 audiounit_init_input_linear_buffer(cubeb_stream * stream, uint32_t capacity)
 {
   if (stream->input_desc.mFormatFlags & kAudioFormatFlagIsSignedInteger) {
-    stream->input_linear_buffer = new auto_array_wrapper(
+    stream->input_linear_buffer.reset(new auto_array_wrapper(
         new auto_array<short>(capacity *
                               stream->input_buffer_frames *
-                              stream->input_desc.mChannelsPerFrame) );
+                              stream->input_desc.mChannelsPerFrame)));
   } else {
-    stream->input_linear_buffer = new auto_array_wrapper(
+    stream->input_linear_buffer.reset(new auto_array_wrapper(
         new auto_array<float>(capacity *
                               stream->input_buffer_frames *
-                              stream->input_desc.mChannelsPerFrame) );
-  }
-
-  if (!stream->input_linear_buffer) {
-    return CUBEB_ERROR;
+                              stream->input_desc.mChannelsPerFrame)));
   }
 
   assert(stream->input_linear_buffer->length() == 0);
@@ -1161,12 +1157,6 @@ audiounit_init_input_linear_buffer(cubeb_stream * stream, uint32_t capacity)
   }
 
   return CUBEB_OK;
-}
-
-static void
-audiounit_destroy_input_linear_buffer(cubeb_stream * stream)
-{
-  delete stream->input_linear_buffer;
 }
 
 static uint32_t
@@ -1542,7 +1532,6 @@ cubeb_stream::cubeb_stream()
   , input_unit(nullptr)
   , output_unit(nullptr)
   , input_hw_rate(0)
-  , input_linear_buffer(nullptr)
   , input_buffer_frames(0)
   , frames_played(0)
   , frames_queued(0)
@@ -1653,7 +1642,7 @@ close_audiounit_stream(cubeb_stream * stm)
     AudioComponentInstanceDispose(stm->input_unit);
   }
 
-  audiounit_destroy_input_linear_buffer(stm);
+  stm->input_linear_buffer.reset();
 
   if (stm->output_unit) {
     AudioUnitUninitialize(stm->output_unit);
