@@ -1940,7 +1940,7 @@ int audiounit_stream_register_device_changed_callback(cubeb_stream * stream,
 }
 
 static OSStatus
-audiounit_get_devices(AudioObjectID ** devices, uint32_t * count)
+audiounit_get_devices(std::vector<AudioObjectID> & devices)
 {
   OSStatus ret;
   UInt32 size = 0;
@@ -1953,22 +1953,16 @@ audiounit_get_devices(AudioObjectID ** devices, uint32_t * count)
     return ret;
   }
 
-  *count = static_cast<uint32_t>(size / sizeof(AudioObjectID));
-  if (size >= sizeof(AudioObjectID)) {
-    if (*devices != NULL) {
-      delete [] (*devices);
-    }
-    *devices = new AudioObjectID[*count];
-    PodZero(*devices, *count);
+  uint32_t count = static_cast<uint32_t>(size / sizeof(AudioObjectID));
+  if (count == 0) {
+    return -1;
+  }
+  assert(devices.empty());
+  devices.resize(count);
 
-    ret = AudioObjectGetPropertyData(kAudioObjectSystemObject, &adr, 0, NULL, &size, (void *)*devices);
-    if (ret != noErr) {
-      delete [] (*devices);
-      *devices = NULL;
-    }
-  } else {
-    *devices = NULL;
-    ret = -1;
+  ret = AudioObjectGetPropertyData(kAudioObjectSystemObject, &adr, 0, NULL, &size, devices.data());
+  if (ret != noErr) {
+    devices.clear();
   }
 
   return ret;
@@ -2182,37 +2176,34 @@ static int
 audiounit_enumerate_devices(cubeb * /* context */, cubeb_device_type type,
                             cubeb_device_collection ** collection)
 {
-  AudioObjectID * hwdevs = NULL;
-  uint32_t i, hwdevcount = 0;
+  std::vector<AudioObjectID> hwdevs;
+  uint32_t i;
   OSStatus err;
 
-  if ((err = audiounit_get_devices(&hwdevs, &hwdevcount)) != noErr) {
+  err = audiounit_get_devices(hwdevs);
+  if (err != noErr) {
     return CUBEB_ERROR;
   }
 
   *collection = static_cast<cubeb_device_collection *>(malloc(sizeof(cubeb_device_collection) +
-      sizeof(cubeb_device_info*) * (hwdevcount > 0 ? hwdevcount - 1 : 0)));
+							      sizeof(cubeb_device_info*) * (hwdevs.size() > 0 ? hwdevs.size() - 1 : 0)));
   (*collection)->count = 0;
 
-  if (hwdevcount > 0) {
-    cubeb_device_info * cur;
-
-    if (type & CUBEB_DEVICE_TYPE_OUTPUT) {
-      for (i = 0; i < hwdevcount; i++) {
-        if ((cur = audiounit_create_device_from_hwdev(hwdevs[i], CUBEB_DEVICE_TYPE_OUTPUT)) != NULL)
-          (*collection)->device[(*collection)->count++] = cur;
-      }
-    }
-
-    if (type & CUBEB_DEVICE_TYPE_INPUT) {
-      for (i = 0; i < hwdevcount; i++) {
-        if ((cur = audiounit_create_device_from_hwdev(hwdevs[i], CUBEB_DEVICE_TYPE_INPUT)) != NULL)
-          (*collection)->device[(*collection)->count++] = cur;
-      }
+  if (type & CUBEB_DEVICE_TYPE_OUTPUT) {
+    for (i = 0; i < hwdevs.size(); i++) {
+      cubeb_device_info * cur = audiounit_create_device_from_hwdev(hwdevs[i], CUBEB_DEVICE_TYPE_OUTPUT);
+      if (cur != nullptr)
+	(*collection)->device[(*collection)->count++] = cur;
     }
   }
 
-  delete [] hwdevs;
+  if (type & CUBEB_DEVICE_TYPE_INPUT) {
+    for (i = 0; i < hwdevs.size(); i++) {
+      cubeb_device_info * cur = audiounit_create_device_from_hwdev(hwdevs[i], CUBEB_DEVICE_TYPE_INPUT);
+      if (cur != nullptr)
+	(*collection)->device[(*collection)->count++] = cur;
+    }
+  }
 
   return CUBEB_OK;
 }
