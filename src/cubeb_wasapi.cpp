@@ -105,8 +105,8 @@ int wasapi_stream_stop(cubeb_stream * stm);
 int wasapi_stream_start(cubeb_stream * stm);
 void close_wasapi_stream(cubeb_stream * stm);
 int setup_wasapi_stream(cubeb_stream * stm);
-static char * wstr_to_utf8(const wchar_t * str);
-static std::unique_ptr<const wchar_t[]> utf8_to_wstr(char* str);
+static char const * wstr_to_utf8(wchar_t const * str);
+static std::unique_ptr<wchar_t const []> utf8_to_wstr(char const * str);
 
 }
 
@@ -1414,14 +1414,13 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
   // possibilities.
   do {
     if (devid) {
-      std::unique_ptr<const wchar_t[]> id(utf8_to_wstr(reinterpret_cast<char*>(devid)));
+      std::unique_ptr<wchar_t const []> id(utf8_to_wstr(reinterpret_cast<char const *>(devid)));
       hr = get_endpoint(&device, id.get());
       if (FAILED(hr)) {
         LOG("Could not get %s endpoint, error: %x\n", DIRECTION_NAME, hr);
         return CUBEB_ERROR;
       }
-    }
-    else {
+    } else {
       hr = get_default_endpoint(&device, direction);
       if (FAILED(hr)) {
         LOG("Could not get default %s endpoint, error: %x\n", DIRECTION_NAME, hr);
@@ -1982,33 +1981,29 @@ int wasapi_stream_set_volume(cubeb_stream * stm, float volume)
   return CUBEB_OK;
 }
 
-static char *
+static char const *
 wstr_to_utf8(LPCWSTR str)
 {
-  char * ret = NULL;
-  int size;
-
-  size = ::WideCharToMultiByte(CP_UTF8, 0, str, -1, ret, 0, NULL, NULL);
-  if (size > 0) {
-    ret = static_cast<char *>(malloc(size));
-    ::WideCharToMultiByte(CP_UTF8, 0, str, -1, ret, size, NULL, NULL);
+  int size = ::WideCharToMultiByte(CP_UTF8, 0, str, -1, nullptr, 0, NULL, NULL);
+  if (size <= 0) {
+    return nullptr;
   }
 
+  char * ret = static_cast<char *>(malloc(size));
+  ::WideCharToMultiByte(CP_UTF8, 0, str, -1, ret, size, NULL, NULL);
   return ret;
 }
 
-static std::unique_ptr<const wchar_t[]>
-utf8_to_wstr(char* str)
+static std::unique_ptr<wchar_t const []>
+utf8_to_wstr(char const * str)
 {
-  std::unique_ptr<wchar_t[]> ret;
-  int size;
-
-  size = ::MultiByteToWideChar(CP_UTF8, 0, str, -1, nullptr, 0);
-  if (size > 0) {
-    ret.reset(new wchar_t[size]);
-    ::MultiByteToWideChar(CP_UTF8, 0, str, -1, ret.get(), size);
+  int size = ::MultiByteToWideChar(CP_UTF8, 0, str, -1, nullptr, 0);
+  if (size <= 0) {
+    return nullptr;
   }
 
+  std::unique_ptr<wchar_t []> ret(new wchar_t[size]);
+  ::MultiByteToWideChar(CP_UTF8, 0, str, -1, ret.get(), size);
   return std::move(ret);
 }
 
