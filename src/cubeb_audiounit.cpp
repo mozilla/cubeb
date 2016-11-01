@@ -503,22 +503,11 @@ extern "C" {
 int
 audiounit_init(cubeb ** context, char const * /* context_name */)
 {
-  cubeb * ctx;
-
-  *context = NULL;
-
-  ctx = new cubeb();
-
-  ctx->ops = &audiounit_ops;
-
-  ctx->active_streams = 0;
-
-  ctx->limit_streams = kCFCoreFoundationVersionNumber < kCFCoreFoundationVersionNumber10_7;
 #if !TARGET_OS_IPHONE
   cubeb_set_coreaudio_notification_runloop();
 #endif
 
-  *context = ctx;
+  *context = new cubeb;
 
   return CUBEB_OK;
 }
