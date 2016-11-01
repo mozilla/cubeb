@@ -155,7 +155,7 @@ private:
 };
 
 struct cubeb_stream {
-  cubeb_stream();
+  cubeb_stream(cubeb * context);
 
   cubeb * context;
   cubeb_data_callback data_callback;
@@ -1502,8 +1502,8 @@ setup_audiounit_stream(cubeb_stream * stm)
   return CUBEB_OK;
 }
 
-cubeb_stream::cubeb_stream()
-  : context(nullptr)
+cubeb_stream::cubeb_stream(cubeb * context)
+  : context(context)
   , data_callback(nullptr)
   , state_callback(nullptr)
   , device_changed_callback(nullptr)
@@ -1546,7 +1546,7 @@ audiounit_stream_init(cubeb * context,
                       cubeb_state_callback state_callback,
                       void * user_ptr)
 {
-  cubeb_stream * stm;
+  std::unique_ptr<cubeb_stream, decltype(&audiounit_stream_destroy)> stm(nullptr, audiounit_stream_destroy);
   int r;
 
   assert(context);
@@ -1563,11 +1563,10 @@ audiounit_stream_init(cubeb * context,
   }
   context->active_streams += 1;
 
-  stm = new cubeb_stream();
+  stm.reset(new cubeb_stream(context));
 
   /* These could be different in the future if we have both
    * full-duplex stream and different devices for input vs output. */
-  stm->context = context;
   stm->data_callback = data_callback;
   stm->state_callback = state_callback;
   stm->user_ptr = user_ptr;
@@ -1585,7 +1584,7 @@ audiounit_stream_init(cubeb * context,
   /* Silently clamp the latency down to the platform default, because we
    * synthetize the clock from the callbacks, and we want the clock to update
    * often. */
-  stm->latency_frames = audiounit_clamp_latency(stm, latency_frames);
+  stm->latency_frames = audiounit_clamp_latency(stm.get(), latency_frames);
   assert(latency_frames > 0);
 
   {
@@ -1593,23 +1592,22 @@ audiounit_stream_init(cubeb * context,
     // yet, but it allows to assert that the lock has been taken in
     // `setup_audiounit_stream`.
     auto_lock lock(stm->mutex);
-    r = setup_audiounit_stream(stm);
+    r = setup_audiounit_stream(stm.get());
   }
 
   if (r != CUBEB_OK) {
-    LOG("(%p) Could not setup the audiounit stream.", stm);
-    audiounit_stream_destroy(stm);
+    LOG("(%p) Could not setup the audiounit stream.", stm.get());
     return r;
   }
 
-  r = audiounit_install_device_changed_callback(stm);
+  r = audiounit_install_device_changed_callback(stm.get());
   if (r != CUBEB_OK) {
-    LOG("(%p) Could not install the device change callback.", stm);
+    LOG("(%p) Could not install the device change callback.", stm.get());
     return r;
   }
 
-  *stream = stm;
-  LOG("Cubeb stream (%p) init successful.", stm);
+  *stream = stm.release();
+  LOG("Cubeb stream (%p) init successful.", *stream);
   return CUBEB_OK;
 }
 
