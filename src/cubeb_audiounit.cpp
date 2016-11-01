@@ -198,7 +198,7 @@ struct cubeb_stream {
   std::atomic<uint64_t> current_latency_frames;
   uint64_t hw_latency_frames;
   std::atomic<float> panning;
-  cubeb_resampler * resampler;
+  std::unique_ptr<cubeb_resampler, decltype(&cubeb_resampler_destroy)> resampler;
   /* This is the number of output callback we got in a row. This is usually one,
    * but can be two when the input and output rate are different, and more when
    * a device has been plugged or unplugged, as there can be some time before
@@ -353,7 +353,7 @@ audiounit_input_callback(void * user_ptr,
      Resampler will deliver input buffer in the correct rate. */
   assert(input_frames <= stm->input_linear_buffer->length() / stm->input_desc.mChannelsPerFrame);
   long total_input_frames = stm->input_linear_buffer->length() / stm->input_desc.mChannelsPerFrame;
-  outframes = cubeb_resampler_fill(stm->resampler,
+  outframes = cubeb_resampler_fill(stm->resampler.get(),
                                    stm->input_linear_buffer->data(),
                                    &total_input_frames,
                                    NULL,
@@ -449,7 +449,7 @@ audiounit_output_callback(void * user_ptr,
   }
 
   /* Call user callback through resampler. */
-  outframes = cubeb_resampler_fill(stm->resampler,
+  outframes = cubeb_resampler_fill(stm->resampler.get(),
                                    input_buffer,
                                    input_buffer ? &input_frames : NULL,
                                    output_buffer,
@@ -1475,13 +1475,13 @@ setup_audiounit_stream(cubeb_stream * stm)
 
   /* Create resampler. Output params are unchanged
    * because we do not need conversion on the output. */
-  stm->resampler = cubeb_resampler_create(stm,
-                                          has_input(stm) ? &input_unconverted_params : NULL,
-                                          has_output(stm) ? &stm->output_stream_params : NULL,
-                                          target_sample_rate,
-                                          stm->data_callback,
-                                          stm->user_ptr,
-                                          CUBEB_RESAMPLER_QUALITY_DESKTOP);
+  stm->resampler.reset(cubeb_resampler_create(stm,
+                                              has_input(stm) ? &input_unconverted_params : NULL,
+                                              has_output(stm) ? &stm->output_stream_params : NULL,
+                                              target_sample_rate,
+                                              stm->data_callback,
+                                              stm->user_ptr,
+                                              CUBEB_RESAMPLER_QUALITY_DESKTOP));
   if (!stm->resampler) {
     LOG("(%p) Could not create resampler.", stm);
     return CUBEB_ERROR;
@@ -1534,7 +1534,7 @@ cubeb_stream::cubeb_stream()
   , current_latency_frames(0)
   , hw_latency_frames(0)
   , panning(0)
-  , resampler(nullptr)
+  , resampler(nullptr, cubeb_resampler_destroy)
   , output_callback_in_a_row(0)
   , switching_device(false)
 {
@@ -1641,7 +1641,7 @@ close_audiounit_stream(cubeb_stream * stm)
     AudioComponentInstanceDispose(stm->output_unit);
   }
 
-  cubeb_resampler_destroy(stm->resampler);
+  stm->resampler.reset();
 }
 
 static void
