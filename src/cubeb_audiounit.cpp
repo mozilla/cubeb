@@ -1521,7 +1521,7 @@ cubeb_stream::cubeb_stream()
   , draining(false)
   , latency_frames(0)
   , current_latency_frames(0)
-  , hw_latency_frames(0)
+  , hw_latency_frames(UINT64_MAX)
   , panning(0)
   , resampler(nullptr, cubeb_resampler_destroy)
   , output_callback_in_a_row(0)
@@ -1552,6 +1552,11 @@ audiounit_stream_init(cubeb * context,
   assert(context);
   *stream = NULL;
 
+  if ((input_device && !input_stream_params) ||
+      (output_device && !output_stream_params)) {
+    return CUBEB_ERROR_INVALID_PARAMETER;
+  }
+
   if (context->limit_streams && context->active_streams >= CUBEB_STREAM_MAX) {
     LOG("Reached the stream limit of %d", CUBEB_STREAM_MAX);
     return CUBEB_ERROR;
@@ -1566,7 +1571,6 @@ audiounit_stream_init(cubeb * context,
   stm->data_callback = data_callback;
   stm->state_callback = state_callback;
   stm->user_ptr = user_ptr;
-  stm->device_changed_callback = NULL;
   if (input_stream_params) {
     stm->input_stream_params = *input_stream_params;
     stm->input_device = reinterpret_cast<uintptr_t>(input_device);
@@ -1578,16 +1582,11 @@ audiounit_stream_init(cubeb * context,
     stm->output_device = reinterpret_cast<uintptr_t>(output_device);
   }
 
-  /* Init data members where necessary */
-  stm->hw_latency_frames = UINT64_MAX;
-
   /* Silently clamp the latency down to the platform default, because we
    * synthetize the clock from the callbacks, and we want the clock to update
    * often. */
   stm->latency_frames = audiounit_clamp_latency(stm, latency_frames);
   assert(latency_frames > 0);
-
-  stm->switching_device = false;
 
   {
     // It's not critical to lock here, because no other thread has been started
