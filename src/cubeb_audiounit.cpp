@@ -72,6 +72,8 @@ static int setup_audiounit_stream(cubeb_stream * stm);
 extern cubeb_ops const audiounit_ops;
 
 struct cubeb {
+  cubeb();
+
   cubeb_ops const * ops;
   owned_critical_section mutex;
   std::atomic<int> active_streams;
@@ -161,6 +163,8 @@ private:
 };
 
 struct cubeb_stream {
+  cubeb_stream();
+
   cubeb * context;
   cubeb_data_callback data_callback;
   cubeb_state_callback state_callback;
@@ -493,6 +497,18 @@ audiounit_output_callback(void * user_ptr,
   return noErr;
 }
 
+cubeb::cubeb()
+  : ops(&audiounit_ops)
+  , active_streams(0)
+  , limit_streams(kCFCoreFoundationVersionNumber < kCFCoreFoundationVersionNumber10_7)
+  , collection_changed_callback(nullptr)
+  , collection_changed_user_ptr(nullptr)
+  , collection_changed_devtype(CUBEB_DEVICE_TYPE_UNKNOWN)
+  , devtype_device_count(0)
+  , devtype_device_array(nullptr)
+{
+}
+
 extern "C" {
 int
 audiounit_init(cubeb ** context, char const * /* context_name */)
@@ -501,10 +517,7 @@ audiounit_init(cubeb ** context, char const * /* context_name */)
 
   *context = NULL;
 
-  ctx = (cubeb *)calloc(1, sizeof(cubeb));
-  assert(ctx);
-  // Placement new to call the ctors of cubeb members.
-  new (ctx) cubeb();
+  ctx = new cubeb();
 
   ctx->ops = &audiounit_ops;
 
@@ -992,8 +1005,7 @@ audiounit_destroy(cubeb * ctx)
     audiounit_remove_device_listener(ctx);
   }
 
-  ctx->~cubeb();
-  free(ctx);
+  delete ctx;
 }
 
 static void audiounit_stream_destroy(cubeb_stream * stm);
@@ -1521,6 +1533,38 @@ setup_audiounit_stream(cubeb_stream * stm)
   return CUBEB_OK;
 }
 
+cubeb_stream::cubeb_stream()
+  : context(nullptr)
+  , data_callback(nullptr)
+  , state_callback(nullptr)
+  , device_changed_callback(nullptr)
+  , input_device(0)
+  , output_device(0)
+  , user_ptr(nullptr)
+  , input_unit(nullptr)
+  , output_unit(nullptr)
+  , input_hw_rate(0)
+  , input_linear_buffer(nullptr)
+  , input_buffer_frames(0)
+  , frames_played(0)
+  , frames_queued(0)
+  , frames_read(0)
+  , shutdown(false)
+  , draining(false)
+  , latency_frames(0)
+  , current_latency_frames(0)
+  , hw_latency_frames(0)
+  , panning(0)
+  , resampler(nullptr)
+  , output_callback_in_a_row(0)
+  , switching_device(false)
+{
+  PodZero(&input_stream_params, 1);
+  PodZero(&output_stream_params, 1);
+  PodZero(&input_desc, 1);
+  PodZero(&output_desc, 1);
+}
+
 static int
 audiounit_stream_init(cubeb * context,
                       cubeb_stream ** stream,
@@ -1546,10 +1590,7 @@ audiounit_stream_init(cubeb * context,
   }
   context->active_streams += 1;
 
-  stm = (cubeb_stream *) calloc(1, sizeof(cubeb_stream));
-  assert(stm);
-  // Placement new to call the ctors of cubeb_stream members.
-  new (stm) cubeb_stream();
+  stm = new cubeb_stream();
 
   /* These could be different in the future if we have both
    * full-duplex stream and different devices for input vs output. */
@@ -1646,8 +1687,7 @@ audiounit_stream_destroy(cubeb_stream * stm)
   assert(stm->context->active_streams >= 1);
   stm->context->active_streams -= 1;
 
-  stm->~cubeb_stream();
-  free(stm);
+  delete stm;
 }
 
 void
