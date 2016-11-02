@@ -19,9 +19,6 @@
 
 #include "cubeb/cubeb.h"
 #include "common.h"
-#ifdef CUBEB_GECKO_BUILD
-#include "TestHarness.h"
-#endif
 
 #define MAX_NUM_CHANNELS 32
 
@@ -282,10 +279,6 @@ void run_channel_rate_test()
 
 int main(int /*argc*/, char * /*argv*/[])
 {
-#ifdef CUBEB_GECKO_BUILD
-  ScopedXPCOM xpcom("test_audio");
-#endif
-
   assert(run_panning_volume_test(0) == CUBEB_OK);
   assert(run_panning_volume_test(1) == CUBEB_OK);
   run_channel_rate_test();

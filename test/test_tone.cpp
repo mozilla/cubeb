@@ -18,9 +18,6 @@
 
 #include "cubeb/cubeb.h"
 #include "common.h"
-#ifdef CUBEB_GECKO_BUILD
-#include "TestHarness.h"
-#endif
 
 #define SAMPLE_FREQUENCY 48000
 #if (defined(_WIN32) || defined(__WIN32__))
@@ -100,10 +97,6 @@ void state_cb(cubeb_stream *stream, void *user, cubeb_state state)
 
 int main(int /*argc*/, char * /*argv*/[])
 {
-#ifdef CUBEB_GECKO_BUILD
-  ScopedXPCOM xpcom("test_tone");
-#endif
-
   cubeb *ctx;
   cubeb_stream *stream;
   cubeb_stream_params params;
