@@ -14,6 +14,9 @@
 #include <string.h>
 #include <math.h>
 #include "common.h"
+#ifdef CUBEB_GECKO_BUILD
+#include "TestHarness.h"
+#endif
 
 #define BEGIN_TEST fprintf(stderr, "START %s\n", __func__)
 #define END_TEST fprintf(stderr, "END %s\n", __func__)
@@ -628,6 +631,10 @@ int is_windows_7()
 int
 main(int /*argc*/, char * /*argv*/[])
 {
+#ifdef CUBEB_GECKO_BUILD
+  ScopedXPCOM xpcom("test_sanity");
+#endif
+
   test_init_destroy_context();
   test_init_destroy_multiple_contexts();
   test_context_variables();
