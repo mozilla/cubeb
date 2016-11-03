@@ -144,8 +144,8 @@ struct cubeb_stream
   cubeb_stream_params input_stream_params;
   cubeb_stream_params output_stream_params;
   /* The input and output device, or NULL for default. */
-  cubeb_devid input_device;
-  cubeb_devid output_device;
+  std::unique_ptr<const wchar_t[]> input_device;
+  std::unique_ptr<const wchar_t[]> output_device;
   /* The latency initially requested for this stream, in frames. */
   unsigned latency;
   cubeb_state_callback state_callback;
@@ -1395,7 +1395,7 @@ handle_channel_layout(cubeb_stream * stm,  WAVEFORMATEX ** mix_format, const cub
 template<typename T>
 int setup_wasapi_stream_one_side(cubeb_stream * stm,
                                  cubeb_stream_params * stream_params,
-                                 cubeb_devid devid,
+                                 wchar_t const * devid,
                                  EDataFlow direction,
                                  REFIID riid,
                                  IAudioClient ** audio_client,
@@ -1414,8 +1414,7 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
   // possibilities.
   do {
     if (devid) {
-      std::unique_ptr<wchar_t const []> id(utf8_to_wstr(reinterpret_cast<char const *>(devid)));
-      hr = get_endpoint(&device, id.get());
+      hr = get_endpoint(&device, devid);
       if (FAILED(hr)) {
         LOG("Could not get %s endpoint, error: %x\n", DIRECTION_NAME, hr);
         return CUBEB_ERROR;
@@ -1533,10 +1532,10 @@ int setup_wasapi_stream(cubeb_stream * stm)
   XASSERT((!stm->output_client || !stm->input_client) && "WASAPI stream already setup, close it first.");
 
   if (has_input(stm)) {
-    LOG("Setup capture: device=%x", (int)stm->input_device);
+    LOG("(%p) Setup capture: device=%p", stm, stm->input_device.get());
     rv = setup_wasapi_stream_one_side(stm,
                                       &stm->input_stream_params,
-                                      stm->input_device,
+                                      stm->input_device.get(),
                                       eCapture,
                                       __uuidof(IAudioCaptureClient),
                                       &stm->input_client,
@@ -1551,10 +1550,10 @@ int setup_wasapi_stream(cubeb_stream * stm)
   }
 
   if (has_output(stm)) {
-    LOG("Setup render: device=%x", (int)stm->output_device);
+    LOG("(%p) Setup render: device=%p", stm, stm->output_device.get());
     rv = setup_wasapi_stream_one_side(stm,
                                       &stm->output_stream_params,
-                                      stm->output_device,
+                                      stm->output_device.get(),
                                       eRender,
                                       __uuidof(IAudioRenderClient),
                                       &stm->output_client,
@@ -1678,11 +1677,11 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
   stm->draining = false;
   if (input_stream_params) {
     stm->input_stream_params = *input_stream_params;
-    stm->input_device = input_device;
+    stm->input_device = utf8_to_wstr(reinterpret_cast<char const *>(input_device));
   }
   if (output_stream_params) {
     stm->output_stream_params = *output_stream_params;
-    stm->output_device = output_device;
+    stm->output_device = utf8_to_wstr(reinterpret_cast<char const *>(output_device));
   }
 
   stm->latency = latency_frames;
@@ -2084,7 +2083,8 @@ wasapi_create_device(IMMDeviceEnumerator * enumerator, IMMDevice * dev)
 
   ret = (cubeb_device_info *)calloc(1, sizeof(cubeb_device_info));
 
-  ret->devid = ret->device_id = wstr_to_utf8(device_id);
+  ret->device_id = wstr_to_utf8(device_id);
+  ret->devid = reinterpret_cast<cubeb_devid>(ret->device_id);
   hr = propstore->GetValue(PKEY_Device_FriendlyName, &propvar);
   if (SUCCEEDED(hr))
     ret->friendly_name = wstr_to_utf8(propvar.pwszVal);
