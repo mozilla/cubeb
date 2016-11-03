@@ -5,8 +5,10 @@ matrix:
   include:
     - compiler: clang
       os: linux
+    - compiler: clang
+      env: SCAN_BUILD=true
+      os: linux
     - compiler: gcc
-      env: COMPILER_CXX=g++-4.8 COMPILER_CC=gcc-4.8
       os: linux
     - compiler: gcc
       env: HOST=i686-w64-mingw32
@@ -15,20 +17,7 @@ matrix:
       os: osx
     - compiler: clang
       env: SCAN_BUILD=true
-      os: linux
-    - compiler: gcc
-      env: COMPILER_CXX=g++-4.8 COMPILER_CC=gcc-4.8
-      env: SCAN_BUILD=true
-      os: linux
-    - compiler: clang
-      env: SCAN_BUILD=true
       os: osx
-  exclude:
-    - os: osx
-      compiler: gcc
-    - os: linux
-      compiler: gcc
-      env:
 
 before_install:
   - if [[ -n $SCAN_BUILD ]]; then
@@ -40,15 +29,10 @@ before_install:
     fi
   - if [[ $TRAVIS_OS_NAME = "linux" ]]; then
       sudo apt-get update -qq;
-    fi
-  - if [[ $TRAVIS_OS_NAME = "linux" ]]; then
       if [ -z "$HOST" ]; then
         sudo apt-get install -y libpulse-dev libasound2-dev pulseaudio doxygen;
-      fi
-    fi
-  - if [[ $TRAVIS_OS_NAME = "linux" ]]; then
-      if [ ! -z "$HOST" ]; then
-        sudo apt-get install -qq mingw-w64 mingw-w64-tools g++-mingw-w64 binutils-mingw-w64;
+      else
+        sudo apt-get install -qq mingw-w64 mingw-w64-tools;
       fi
     fi
   - if [[ $TRAVIS_OS_NAME = "osx" ]]; then
@@ -58,28 +42,12 @@ before_install:
     fi
 before_script:
   - cmake --version
-  - if [[ $TRAVIS_OS_NAME = "linux" ]]; then
-      if [ ! -z "$HOST" ]; then
-        unset CC;
-        unset CXX;
-      fi
-    fi
-  - if [[ $TRAVIS_OS_NAME = "linux" ]]; then
-      if [ -z "$COMPILER_CXX"]; then
-        export CC=$COMPILER_CC;
-        export CXX=$COMPILER_CXX;
-      fi
-    fi
   - mkdir build
   - cd build
-  - if [[ $TRAVIS_OS_NAME = "linux" ]]; then
-      if [ ! -z "$HOST" ]; then
-        $SCAN_BUILD_PATH cmake -DCMAKE_TOOLCHAIN_FILE=../cmake/toolchain-cross-mingw.cmake ..;
-      else
-        $SCAN_BUILD_PATH cmake ..;
-      fi
+  - if [ ! -z "$HOST" ]; then
+      $SCAN_BUILD_PATH cmake -DCMAKE_TOOLCHAIN_FILE=../cmake/toolchain-cross-mingw.cmake ..;
     else
-        $SCAN_BUILD_PATH cmake ..;
+      $SCAN_BUILD_PATH cmake ..;
     fi
 script:
   - echo $SCAN_BUILD_PATH
@@ -91,9 +59,5 @@ script:
     fi
 addons:
   apt:
-    sources:
-      - ubuntu-toolchain-r-test
     packages:
       - clang
-      - g++-4.8
-      - gcc-4.8
