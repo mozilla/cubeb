@@ -48,6 +48,15 @@ DEFINE_PROPERTYKEY(PKEY_Device_InstanceId,      0x78c34fc8, 0x104a, 0x4aca, 0x9e
 #endif
 
 namespace {
+struct com_heap_ptr_deleter {
+  void operator()(void * ptr) const noexcept {
+    CoTaskMemFree(ptr);
+  }
+};
+
+template <typename T>
+using com_heap_ptr = std::unique_ptr<T, com_heap_ptr_deleter>;
+
 template<typename T, size_t N>
 constexpr size_t
 ARRAY_LENGTH(T(&)[N])
@@ -1250,7 +1259,6 @@ int
 wasapi_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
 {
   HRESULT hr;
-  WAVEFORMATEX * mix_format;
   auto_com com;
   if (!com.ok()) {
     return CUBEB_ERROR;
@@ -1272,14 +1280,14 @@ wasapi_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
     return CUBEB_ERROR;
   }
 
-  hr = client->GetMixFormat(&mix_format);
+  WAVEFORMATEX * tmp = nullptr;
+  hr = client->GetMixFormat(&tmp);
   if (FAILED(hr)) {
     return CUBEB_ERROR;
   }
+  com_heap_ptr<WAVEFORMATEX> mix_format(tmp);
 
   *max_channels = mix_format->nChannels;
-
-  CoTaskMemFree(mix_format);
 
   return CUBEB_OK;
 }
@@ -1338,7 +1346,6 @@ int
 wasapi_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
 {
   HRESULT hr;
-  WAVEFORMATEX * mix_format;
   auto_com com;
   if (!com.ok()) {
     return CUBEB_ERROR;
@@ -1358,16 +1365,16 @@ wasapi_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
     return CUBEB_ERROR;
   }
 
-  hr = client->GetMixFormat(&mix_format);
+  WAVEFORMATEX * tmp = nullptr;
+  hr = client->GetMixFormat(&tmp);
   if (FAILED(hr)) {
     return CUBEB_ERROR;
   }
+  com_heap_ptr<WAVEFORMATEX> mix_format(tmp);
 
   *rate = mix_format->nSamplesPerSec;
 
   LOG("Preferred sample rate for output: %u", *rate);
-
-  CoTaskMemFree(mix_format);
 
   return CUBEB_OK;
 }
@@ -1377,11 +1384,11 @@ void wasapi_stream_destroy(cubeb_stream * stm);
 /* Based on the mix format and the stream format, try to find a way to play
    what the user requested. */
 static void
-handle_channel_layout(cubeb_stream * stm,  WAVEFORMATEX ** mix_format, const cubeb_stream_params * stream_params)
+handle_channel_layout(cubeb_stream * stm,  com_heap_ptr<WAVEFORMATEX> & mix_format, const cubeb_stream_params * stream_params)
 {
   /* Common case: the hardware is stereo. Up-mixing and down-mixing will be
      handled in the callback. */
-  if ((*mix_format)->nChannels <= 2) {
+  if (mix_format->nChannels <= 2) {
     return;
   }
 
@@ -1390,11 +1397,11 @@ handle_channel_layout(cubeb_stream * stm,  WAVEFORMATEX ** mix_format, const cub
      true, and we just want to bail out and let the rest of the code find a good
      conversion path instead of trying to make WASAPI do it by itself.
      [1]: http://msdn.microsoft.com/en-us/library/windows/desktop/dd370811%28v=vs.85%29.aspx*/
-  if ((*mix_format)->wFormatTag != WAVE_FORMAT_EXTENSIBLE) {
+  if (mix_format->wFormatTag != WAVE_FORMAT_EXTENSIBLE) {
     return;
   }
 
-  WAVEFORMATEXTENSIBLE * format_pcm = reinterpret_cast<WAVEFORMATEXTENSIBLE *>(*mix_format);
+  WAVEFORMATEXTENSIBLE * format_pcm = reinterpret_cast<WAVEFORMATEXTENSIBLE *>(mix_format.get());
 
   /* Stash a copy of the original mix format in case we need to restore it later. */
   WAVEFORMATEXTENSIBLE hw_mix_format = *format_pcm;
@@ -1412,17 +1419,17 @@ handle_channel_layout(cubeb_stream * stm,  WAVEFORMATEX ** mix_format, const cub
       XASSERT(false && "Channel layout not supported.");
       break;
   }
-  (*mix_format)->nChannels = stream_params->channels;
-  (*mix_format)->nBlockAlign = ((*mix_format)->wBitsPerSample * (*mix_format)->nChannels) / 8;
-  (*mix_format)->nAvgBytesPerSec = (*mix_format)->nSamplesPerSec * (*mix_format)->nBlockAlign;
+  mix_format->nChannels = stream_params->channels;
+  mix_format->nBlockAlign = mix_format->wBitsPerSample * mix_format->nChannels / 8;
+  mix_format->nAvgBytesPerSec = mix_format->nSamplesPerSec * mix_format->nBlockAlign;
   format_pcm->SubFormat = KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
-  (*mix_format)->wBitsPerSample = 32;
-  format_pcm->Samples.wValidBitsPerSample = (*mix_format)->wBitsPerSample;
+  mix_format->wBitsPerSample = 32;
+  format_pcm->Samples.wValidBitsPerSample = mix_format->wBitsPerSample;
 
   /* Check if wasapi will accept our channel layout request. */
   WAVEFORMATEX * closest;
   HRESULT hr = stm->output_client->IsFormatSupported(AUDCLNT_SHAREMODE_SHARED,
-                                                     *mix_format,
+                                                     mix_format.get(),
                                                      &closest);
   if (hr == S_FALSE) {
     /* Not supported, but WASAPI gives us a suggestion. Use it, and handle the
@@ -1430,13 +1437,12 @@ handle_channel_layout(cubeb_stream * stm,  WAVEFORMATEX ** mix_format, const cub
     LOG("Using WASAPI suggested format: channels: %d", closest->nChannels);
     WAVEFORMATEXTENSIBLE * closest_pcm = reinterpret_cast<WAVEFORMATEXTENSIBLE *>(closest);
     XASSERT(closest_pcm->SubFormat == format_pcm->SubFormat);
-    CoTaskMemFree(*mix_format);
-    *mix_format = closest;
+    mix_format.reset(closest);
   } else if (hr == AUDCLNT_E_UNSUPPORTED_FORMAT) {
     /* Not supported, no suggestion. This should not happen, but it does in the
        field with some sound cards. We restore the mix format, and let the rest
        of the code figure out the right conversion path. */
-    *reinterpret_cast<WAVEFORMATEXTENSIBLE *>(*mix_format) = hw_mix_format;
+    *reinterpret_cast<WAVEFORMATEXTENSIBLE *>(mix_format.get()) = hw_mix_format;
   } else if (hr == S_OK) {
     LOG("Requested format accepted by WASAPI.");
   } else {
@@ -1459,7 +1465,6 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
                                  cubeb_stream_params * mix_params)
 {
   com_ptr<IMMDevice> device;
-  WAVEFORMATEX * mix_format;
   HRESULT hr;
 
   stm->stream_reset_lock.assert_current_thread_owns();
@@ -1505,14 +1510,16 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
 
   /* We have to distinguish between the format the mixer uses,
    * and the format the stream we want to play uses. */
-  hr = audio_client->GetMixFormat(&mix_format);
+  WAVEFORMATEX * tmp = nullptr;
+  hr = audio_client->GetMixFormat(&tmp);
   if (FAILED(hr)) {
     LOG("Could not fetch current mix format from the audio"
         " client for %s: error: %x", DIRECTION_NAME, hr);
     return CUBEB_ERROR;
   }
+  com_heap_ptr<WAVEFORMATEX> mix_format(tmp);
 
-  handle_channel_layout(stm, &mix_format, stream_params);
+  handle_channel_layout(stm, mix_format, stream_params);
 
   /* Shared mode WASAPI always supports float32 sample format, so this
    * is safe. */
@@ -1528,14 +1535,12 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
                                 AUDCLNT_STREAMFLAGS_NOPERSIST,
                                 frames_to_hns(stm, stm->latency),
                                 0,
-                                mix_format,
+                                mix_format.get(),
                                 NULL);
   if (FAILED(hr)) {
     LOG("Unable to initialize audio client for %s: %x.", DIRECTION_NAME, hr);
     return CUBEB_ERROR;
   }
-
-  CoTaskMemFree(mix_format);
 
   hr = audio_client->GetBufferSize(buffer_frame_count);
   if (FAILED(hr)) {
@@ -2057,11 +2062,11 @@ wasapi_get_device_node(IMMDeviceEnumerator * enumerator, IMMDevice * dev)
 
   if (SUCCEEDED(dev->Activate(__uuidof(IDeviceTopology), CLSCTX_ALL, NULL, devtopo.receive_vpp())) &&
       SUCCEEDED(devtopo->GetConnector(0, connector.receive()))) {
-    LPWSTR filterid;
-    if (SUCCEEDED(connector->GetDeviceIdConnectedTo(&filterid))) {
-      if (FAILED(enumerator->GetDevice(filterid, ret.receive())))
+    wchar_t * tmp = nullptr;
+    if (SUCCEEDED(connector->GetDeviceIdConnectedTo(&tmp))) {
+      com_heap_ptr<wchar_t> filterid(tmp);
+      if (FAILED(enumerator->GetDevice(filterid.get(), ret.receive())))
         ret = NULL;
-      CoTaskMemFree(filterid);
     }
   }
 
@@ -2078,11 +2083,11 @@ wasapi_is_default_device(EDataFlow flow, ERole role, LPCWSTR device_id,
 
   hr = enumerator->GetDefaultAudioEndpoint(flow, role, dev.receive());
   if (SUCCEEDED(hr)) {
-    LPWSTR defdevid = NULL;
-    if (SUCCEEDED(dev->GetId(&defdevid)))
-      ret = (wcscmp(defdevid, device_id) == 0);
-    if (defdevid != NULL)
-      CoTaskMemFree(defdevid);
+    wchar_t * tmp = nullptr;
+    if (SUCCEEDED(dev->GetId(&tmp))) {
+      com_heap_ptr<wchar_t> defdevid(tmp);
+      ret = (wcscmp(defdevid.get(), device_id) == 0);
+    }
   }
 
   return ret;
@@ -2096,57 +2101,63 @@ wasapi_create_device(IMMDeviceEnumerator * enumerator, IMMDevice * dev)
   com_ptr<IAudioClient> client;
   cubeb_device_info * ret = NULL;
   EDataFlow flow;
-  LPWSTR device_id = NULL;
   DWORD state = DEVICE_STATE_NOTPRESENT;
   com_ptr<IPropertyStore> propstore;
-  PROPVARIANT propvar;
   REFERENCE_TIME def_period, min_period;
   HRESULT hr;
 
-  PropVariantInit(&propvar);
-
+  struct prop_variant : public PROPVARIANT {
+    prop_variant() { PropVariantInit(this); }
+    ~prop_variant() { PropVariantClear(this); }
+    prop_variant(prop_variant const &) = delete;
+    prop_variant & operator=(prop_variant const &) = delete;
+  };
+  
   hr = dev->QueryInterface(IID_PPV_ARGS(endpoint.receive()));
-  if (FAILED(hr)) goto done;
+  if (FAILED(hr)) return nullptr;
 
   hr = endpoint->GetDataFlow(&flow);
-  if (FAILED(hr)) goto done;
+  if (FAILED(hr)) return nullptr;
 
-  hr = dev->GetId(&device_id);
-  if (FAILED(hr)) goto done;
+  wchar_t * tmp = nullptr;
+  hr = dev->GetId(&tmp);
+  if (FAILED(hr)) return nullptr;
+  com_heap_ptr<wchar_t> device_id(tmp);
 
   hr = dev->OpenPropertyStore(STGM_READ, propstore.receive());
-  if (FAILED(hr)) goto done;
+  if (FAILED(hr)) return nullptr;
 
   hr = dev->GetState(&state);
-  if (FAILED(hr)) goto done;
+  if (FAILED(hr)) return nullptr;
 
   ret = (cubeb_device_info *)calloc(1, sizeof(cubeb_device_info));
 
-  ret->device_id = wstr_to_utf8(device_id);
+  ret->device_id = wstr_to_utf8(device_id.get());
   ret->devid = reinterpret_cast<cubeb_devid>(ret->device_id);
-  hr = propstore->GetValue(PKEY_Device_FriendlyName, &propvar);
+  prop_variant namevar;
+  hr = propstore->GetValue(PKEY_Device_FriendlyName, &namevar);
   if (SUCCEEDED(hr))
-    ret->friendly_name = wstr_to_utf8(propvar.pwszVal);
+    ret->friendly_name = wstr_to_utf8(namevar.pwszVal);
 
   devnode = wasapi_get_device_node(enumerator, dev);
   if (devnode) {
     com_ptr<IPropertyStore> ps;
     hr = devnode->OpenPropertyStore(STGM_READ, ps.receive());
-    if (FAILED(hr)) goto done;
+    if (FAILED(hr)) return ret;
 
-    PropVariantClear(&propvar);
-    hr = ps->GetValue(PKEY_Device_InstanceId, &propvar);
+    prop_variant instancevar;
+    hr = ps->GetValue(PKEY_Device_InstanceId, &instancevar);
     if (SUCCEEDED(hr)) {
-      ret->group_id = wstr_to_utf8(propvar.pwszVal);
+      ret->group_id = wstr_to_utf8(instancevar.pwszVal);
     }
   }
 
   ret->preferred = CUBEB_DEVICE_PREF_NONE;
-  if (wasapi_is_default_device(flow, eConsole, device_id, enumerator))
+  if (wasapi_is_default_device(flow, eConsole, device_id.get(), enumerator))
     ret->preferred = (cubeb_device_pref)(ret->preferred | CUBEB_DEVICE_PREF_MULTIMEDIA);
-  if (wasapi_is_default_device(flow, eCommunications, device_id, enumerator))
+  if (wasapi_is_default_device(flow, eCommunications, device_id.get(), enumerator))
     ret->preferred = (cubeb_device_pref)(ret->preferred | CUBEB_DEVICE_PREF_VOICE);
-  if (wasapi_is_default_device(flow, eConsole, device_id, enumerator))
+  if (wasapi_is_default_device(flow, eConsole, device_id.get(), enumerator))
     ret->preferred = (cubeb_device_pref)(ret->preferred | CUBEB_DEVICE_PREF_NOTIFICATION);
 
   if (flow == eRender) ret->type = CUBEB_DEVICE_TYPE_OUTPUT;
@@ -2165,18 +2176,18 @@ wasapi_create_device(IMMDeviceEnumerator * enumerator, IMMDevice * dev)
 
   ret->format = CUBEB_DEVICE_FMT_F32NE; /* cubeb only supports 32bit float at the moment */
   ret->default_format = CUBEB_DEVICE_FMT_F32NE;
-  PropVariantClear(&propvar);
-  hr = propstore->GetValue(PKEY_AudioEngine_DeviceFormat, &propvar);
-  if (SUCCEEDED(hr) && propvar.vt == VT_BLOB) {
-    if (propvar.blob.cbSize == sizeof(PCMWAVEFORMAT)) {
-      const PCMWAVEFORMAT * pcm = reinterpret_cast<const PCMWAVEFORMAT *>(propvar.blob.pBlobData);
+  prop_variant fmtvar;
+  hr = propstore->GetValue(PKEY_AudioEngine_DeviceFormat, &fmtvar);
+  if (SUCCEEDED(hr) && fmtvar.vt == VT_BLOB) {
+    if (fmtvar.blob.cbSize == sizeof(PCMWAVEFORMAT)) {
+      const PCMWAVEFORMAT * pcm = reinterpret_cast<const PCMWAVEFORMAT *>(fmtvar.blob.pBlobData);
 
       ret->max_rate = ret->min_rate = ret->default_rate = pcm->wf.nSamplesPerSec;
       ret->max_channels = pcm->wf.nChannels;
-    } else if (propvar.blob.cbSize >= sizeof(WAVEFORMATEX)) {
-      WAVEFORMATEX* wfx = reinterpret_cast<WAVEFORMATEX*>(propvar.blob.pBlobData);
+    } else if (fmtvar.blob.cbSize >= sizeof(WAVEFORMATEX)) {
+      WAVEFORMATEX* wfx = reinterpret_cast<WAVEFORMATEX*>(fmtvar.blob.pBlobData);
 
-      if (propvar.blob.cbSize >= sizeof(WAVEFORMATEX) + wfx->cbSize ||
+      if (fmtvar.blob.cbSize >= sizeof(WAVEFORMATEX) + wfx->cbSize ||
           wfx->wFormatTag == WAVE_FORMAT_PCM) {
         ret->max_rate = ret->min_rate = ret->default_rate = wfx->nSamplesPerSec;
         ret->max_channels = wfx->nChannels;
@@ -2193,10 +2204,6 @@ wasapi_create_device(IMMDeviceEnumerator * enumerator, IMMDevice * dev)
     ret->latency_hi = 0;
   }
 
-done:
-  if (device_id != NULL)
-    CoTaskMemFree(device_id);
-  PropVariantClear(&propvar);
   return ret;
 }
 
