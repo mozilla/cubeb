@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <assert.h>
+#include <mutex>
 #include <type_traits>
 #if defined(WIN32)
 #include "cubeb_utils_win.h"
@@ -201,18 +202,6 @@ private:
   size_t length_;
 };
 
-struct auto_lock {
-  explicit auto_lock(owned_critical_section & lock)
-    : lock(lock)
-  {
-    lock.enter();
-  }
-  ~auto_lock()
-  {
-    lock.leave();
-  }
-private:
-  owned_critical_section & lock;
-};
+using auto_lock = std::lock_guard<owned_critical_section>;
 
 #endif /* CUBEB_UTILS */
