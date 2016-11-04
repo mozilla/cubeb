@@ -23,6 +23,7 @@
 #include <memory>
 #include <limits>
 #include <atomic>
+#include <vector>
 
 #include "cubeb/cubeb.h"
 #include "cubeb-internal.h"
@@ -270,9 +271,9 @@ struct cubeb_stream {
   /* Maximum number of frames that can be requested in a callback. */
   uint32_t output_buffer_frame_count = 0;
   /* Resampler instance. Resampling will only happen if necessary. */
-  cubeb_resampler * resampler = nullptr;
+  std::unique_ptr<cubeb_resampler, decltype(&cubeb_resampler_destroy)> resampler = { nullptr, cubeb_resampler_destroy };
   /* A buffer for up/down mixing multi-channel audio. */
-  float * mix_buffer = nullptr;
+  std::vector<float> mix_buffer;
   /* WASAPI input works in "packets". We re-linearize the audio packets
    * into this buffer before handing it to the resampler. */
   auto_array<float> linear_input_buffer;
@@ -533,13 +534,13 @@ refill(cubeb_stream * stm, float * input_buffer, long input_frames_count,
   if (has_output(stm)) {
     if (should_upmix(stm->output_stream_params, stm->output_mix_params) ||
         should_downmix(stm->output_stream_params, stm->output_mix_params)) {
-      dest = stm->mix_buffer;
+      dest = stm->mix_buffer.data();
     } else {
       dest = output_buffer;
     }
   }
 
-  long out_frames = cubeb_resampler_fill(stm->resampler,
+  long out_frames = cubeb_resampler_fill(stm->resampler.get(),
                                          input_buffer,
                                          &input_frames_count,
                                          dest,
@@ -1542,12 +1543,11 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
         " for %s %x.", DIRECTION_NAME, hr);
     return CUBEB_ERROR;
   }
-
   // Input is up/down mixed when depacketized in get_input_buffer.
   if (has_output(stm) &&
       (should_upmix(*stream_params, *mix_params) ||
        should_downmix(*stream_params, *mix_params))) {
-    stm->mix_buffer = (float *)malloc(frames_to_bytes_before_mix(stm, *buffer_frame_count));
+    stm->mix_buffer.resize(frames_to_bytes_before_mix(stm, *buffer_frame_count));
   }
 
   hr = audio_client->SetEventHandle(event);
@@ -1664,14 +1664,14 @@ int setup_wasapi_stream(cubeb_stream * stm)
   cubeb_stream_params output_params = stm->output_mix_params;
   output_params.channels = stm->output_stream_params.channels;
 
-  stm->resampler =
+  stm->resampler.reset(
     cubeb_resampler_create(stm,
                            has_input(stm) ? &input_params : nullptr,
                            has_output(stm) ? &output_params : nullptr,
                            target_sample_rate,
                            stm->data_callback,
                            stm->user_ptr,
-                           CUBEB_RESAMPLER_QUALITY_DESKTOP);
+                           CUBEB_RESAMPLER_QUALITY_DESKTOP));
   if (!stm->resampler) {
     LOG("Could not get a resampler");
     return CUBEB_ERROR;
@@ -1799,13 +1799,9 @@ void close_wasapi_stream(cubeb_stream * stm)
   stm->total_frames_written += static_cast<UINT64>(round(stm->frames_written * stream_to_mix_samplerate_ratio(stm->output_stream_params, stm->output_mix_params)));
   stm->frames_written = 0;
 
-  if (stm->resampler) {
-    cubeb_resampler_destroy(stm->resampler);
-    stm->resampler = NULL;
-  }
+  stm->resampler.reset();
 
-  free(stm->mix_buffer);
-  stm->mix_buffer = NULL;
+  stm->mix_buffer.clear();
 }
 
 void wasapi_stream_destroy(cubeb_stream * stm)
