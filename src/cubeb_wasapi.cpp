@@ -173,14 +173,13 @@ static std::unique_ptr<wchar_t const []> utf8_to_wstr(char const * str);
 
 }
 
-struct cubeb
-{
-  cubeb_ops const * ops;
+struct cubeb {
+  cubeb_ops const * ops = &wasapi_ops;
   /* Library dynamically opened to increase the render thread priority, and
      the two function pointers we need. */
-  HMODULE mmcss_module;
-  set_mm_thread_characteristics_function set_mm_thread_characteristics;
-  revert_mm_thread_characteristics_function revert_mm_thread_characteristics;
+  HMODULE mmcss_module = nullptr;
+  set_mm_thread_characteristics_function set_mm_thread_characteristics = nullptr;
+  revert_mm_thread_characteristics_function revert_mm_thread_characteristics = nullptr;
 };
 
 class wasapi_endpoint_notification_client;
@@ -194,27 +193,26 @@ class wasapi_endpoint_notification_client;
  */
 typedef bool (*wasapi_refill_callback)(cubeb_stream * stm);
 
-struct cubeb_stream
-{
-  cubeb * context;
+struct cubeb_stream {
+  cubeb * context = nullptr;
   /* Mixer pameters. We need to convert the input stream to this
      samplerate/channel layout, as WASAPI does not resample nor upmix
      itself. */
-  cubeb_stream_params input_mix_params;
-  cubeb_stream_params output_mix_params;
+  cubeb_stream_params input_mix_params = { CUBEB_SAMPLE_FLOAT32NE, 0, 0 };
+  cubeb_stream_params output_mix_params = { CUBEB_SAMPLE_FLOAT32NE, 0, 0 };
   /* Stream parameters. This is what the client requested,
    * and what will be presented in the callback. */
-  cubeb_stream_params input_stream_params;
-  cubeb_stream_params output_stream_params;
+  cubeb_stream_params input_stream_params = { CUBEB_SAMPLE_FLOAT32NE, 0, 0 };
+  cubeb_stream_params output_stream_params = { CUBEB_SAMPLE_FLOAT32NE, 0, 0 };
   /* The input and output device, or NULL for default. */
   std::unique_ptr<const wchar_t[]> input_device;
   std::unique_ptr<const wchar_t[]> output_device;
   /* The latency initially requested for this stream, in frames. */
-  unsigned latency;
-  cubeb_state_callback state_callback;
-  cubeb_data_callback data_callback;
-  wasapi_refill_callback refill_callback;
-  void * user_ptr;
+  unsigned latency = 0;
+  cubeb_state_callback state_callback = nullptr;
+  cubeb_data_callback data_callback = nullptr;
+  wasapi_refill_callback refill_callback = nullptr;
+  void * user_ptr = nullptr;
   /* Lifetime considerations:
      - client, render_client, audio_clock and audio_stream_volume are interface
        pointer to the IAudioClient.
@@ -231,13 +229,13 @@ struct cubeb_stream
   com_ptr<IAudioClock> audio_clock;
   /* Frames written to the stream since it was opened. Reset on device
      change. Uses mix_params.rate. */
-  UINT64 frames_written;
+  UINT64 frames_written = 0;
   /* Frames written to the (logical) stream since it was first
      created. Updated on device change. Uses stream_params.rate. */
-  UINT64 total_frames_written;
+  UINT64 total_frames_written = 0;
   /* Last valid reported stream position.  Used to ensure the position
      reported by stream_get_position increases monotonically. */
-  UINT64 prev_position;
+  UINT64 prev_position = 0;
   /* Device enumerator to be able to be notified when the default
      device change. */
   com_ptr<IMMDeviceEnumerator> device_enumerator;
@@ -251,38 +249,38 @@ struct cubeb_stream
   com_ptr<IAudioCaptureClient> capture_client;
   /* This event is set by the stream_stop and stream_destroy
      function, so the render loop can exit properly. */
-  HANDLE shutdown_event;
+  HANDLE shutdown_event = 0;
   /* Set by OnDefaultDeviceChanged when a stream reconfiguration is required.
      The reconfiguration is handled by the render loop thread. */
-  HANDLE reconfigure_event;
+  HANDLE reconfigure_event = 0;
   /* This is set by WASAPI when we should refill the stream. */
-  HANDLE refill_event;
+  HANDLE refill_event = 0;
   /* This is set by WASAPI when we should read from the input stream. In
    * practice, we read from the input stream in the output callback, so
    * this is not used, but it is necessary to start getting input data. */
-  HANDLE input_available_event;
+  HANDLE input_available_event = 0;
   /* Each cubeb_stream has its own thread. */
-  HANDLE thread;
+  HANDLE thread = 0;
   /* The lock protects all members that are touched by the render thread or
      change during a device reset, including: audio_clock, audio_stream_volume,
      client, frames_written, mix_params, total_frames_written, prev_position. */
   owned_critical_section stream_reset_lock;
   /* Maximum number of frames that can be passed down in a callback. */
-  uint32_t input_buffer_frame_count;
+  uint32_t input_buffer_frame_count = 0;
   /* Maximum number of frames that can be requested in a callback. */
-  uint32_t output_buffer_frame_count;
+  uint32_t output_buffer_frame_count = 0;
   /* Resampler instance. Resampling will only happen if necessary. */
-  cubeb_resampler * resampler;
+  cubeb_resampler * resampler = nullptr;
   /* A buffer for up/down mixing multi-channel audio. */
-  float * mix_buffer;
+  float * mix_buffer = nullptr;
   /* WASAPI input works in "packets". We re-linearize the audio packets
    * into this buffer before handing it to the resampler. */
   auto_array<float> linear_input_buffer;
   /* Stream volume.  Set via stream_set_volume and used to reset volume on
      device changes. */
-  float volume;
+  float volume = 1.0;
   /* True if the stream is draining. */
-  bool draining;
+  bool draining = false;
   /* True when we've destroyed the stream. This pointer is leaked on stream
    * destruction if we could not join the thread. */
   std::atomic<std::atomic<bool>*> emergency_bailout;
@@ -1160,10 +1158,7 @@ int wasapi_init(cubeb ** context, char const * context_name)
     return CUBEB_ERROR;
   }
 
-  cubeb * ctx = (cubeb *)calloc(1, sizeof(cubeb));
-  if (!ctx) {
-    return CUBEB_ERROR;
-  }
+  cubeb * ctx = new cubeb();
 
   ctx->ops = &wasapi_ops;
 
@@ -1242,7 +1237,7 @@ void wasapi_destroy(cubeb * context)
   if (context->mmcss_module) {
     FreeLibrary(context->mmcss_module);
   }
-  free(context);
+  delete context;
 }
 
 char const * wasapi_get_backend_id(cubeb * context)
@@ -1723,15 +1718,12 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
     return CUBEB_ERROR_INVALID_FORMAT;
   }
 
-  cubeb_stream * stm = (cubeb_stream *)calloc(1, sizeof(cubeb_stream));
-
-  XASSERT(stm);
+  cubeb_stream * stm = new cubeb_stream();
 
   stm->context = context;
   stm->data_callback = data_callback;
   stm->state_callback = state_callback;
   stm->user_ptr = user_ptr;
-  stm->draining = false;
   if (input_stream_params) {
     stm->input_stream_params = *input_stream_params;
     stm->input_device = utf8_to_wstr(reinterpret_cast<char const *>(input_device));
@@ -1742,10 +1734,6 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
   }
 
   stm->latency = latency_frames;
-  stm->volume = 1.0;
-
-  // Placement new to call ctor.
-  new (&stm->stream_reset_lock) owned_critical_section();
 
   stm->reconfigure_event = CreateEvent(NULL, 0, 0, NULL);
   if (!stm->reconfigure_event) {
@@ -1768,7 +1756,6 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
     wasapi_stream_destroy(stm);
     return CUBEB_ERROR;
   }
-
 
   {
     /* Locking here is not strictly necessary, because we don't have a
@@ -1847,10 +1834,7 @@ void wasapi_stream_destroy(cubeb_stream * stm)
     close_wasapi_stream(stm);
   }
 
-  // Need to call dtor to free the resource in owned_critical_section.
-  stm->stream_reset_lock.~owned_critical_section();
-
-  free(stm);
+  delete stm;
 }
 
 enum StreamDirection {
