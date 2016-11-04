@@ -1718,7 +1718,7 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
     return CUBEB_ERROR_INVALID_FORMAT;
   }
 
-  cubeb_stream * stm = new cubeb_stream();
+  std::unique_ptr<cubeb_stream, decltype(&wasapi_stream_destroy)> stm(new cubeb_stream(), wasapi_stream_destroy);
 
   stm->context = context;
   stm->data_callback = data_callback;
@@ -1738,7 +1738,6 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
   stm->reconfigure_event = CreateEvent(NULL, 0, 0, NULL);
   if (!stm->reconfigure_event) {
     LOG("Can't create the reconfigure event, error: %x", GetLastError());
-    wasapi_stream_destroy(stm);
     return CUBEB_ERROR;
   }
 
@@ -1746,14 +1745,12 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
   stm->refill_event = CreateEvent(NULL, 0, 0, NULL);
   if (!stm->refill_event) {
     LOG("Can't create the refill event, error: %x", GetLastError());
-    wasapi_stream_destroy(stm);
     return CUBEB_ERROR;
   }
 
   stm->input_available_event = CreateEvent(NULL, 0, 0, NULL);
   if (!stm->input_available_event) {
     LOG("Can't create the input available event , error: %x", GetLastError());
-    wasapi_stream_destroy(stm);
     return CUBEB_ERROR;
   }
 
@@ -1762,21 +1759,20 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
        notification client that can reset the stream yet, but it lets us
        assert that the lock is held in the function. */
     auto_lock lock(stm->stream_reset_lock);
-    rv = setup_wasapi_stream(stm);
+    rv = setup_wasapi_stream(stm.get());
   }
   if (rv != CUBEB_OK) {
-    wasapi_stream_destroy(stm);
     return rv;
   }
 
-  hr = register_notification_client(stm);
+  hr = register_notification_client(stm.get());
   if (FAILED(hr)) {
     /* this is not fatal, we can still play audio, but we won't be able
        to keep using the default audio endpoint if it changes. */
     LOG("failed to register notification client, %x", hr);
   }
 
-  *stream = stm;
+  *stream = stm.release();
 
   return CUBEB_OK;
 }
