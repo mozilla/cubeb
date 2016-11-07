@@ -373,7 +373,8 @@ audiounit_input_callback(void * user_ptr,
   return noErr;
 }
 
-static bool is_extra_input_needed(cubeb_stream * stm)
+static bool
+is_extra_input_needed(cubeb_stream * stm)
 {
   /* If the output callback came first and this is a duplex stream, we need to
     * fill in some additional silence in the resampler.
@@ -381,7 +382,7 @@ static bool is_extra_input_needed(cubeb_stream * stm)
     * switching, we add some silence as well to compensate for the fact that
     * we're lacking some input data. */
 
-  /* If resampling taking place after every output callback
+  /* If resampling is taking place after every output callback
    * the input buffer expected to be empty.  Any frame left over
    * from resampling is stored inside the resampler available to
    * be used in next iteration as needed.
@@ -389,8 +390,8 @@ static bool is_extra_input_needed(cubeb_stream * stm)
    * frames since it does not store anything internally. */
   return stm->frames_read == 0 ||
          (stm->input_linear_buffer->length() == 0 &&
-            (stm->output_callback_in_a_row > stm->expected_output_callbacks_in_a_row ||
-            stm->switching_device));
+         (stm->output_callback_in_a_row > stm->expected_output_callbacks_in_a_row ||
+         stm->switching_device));
 }
 
 static OSStatus
@@ -442,7 +443,7 @@ audiounit_output_callback(void * user_ptr,
       uint32_t min_input_frames_required = ceilf(stm->input_hw_rate / stm->output_hw_rate *
                                                                       stm->input_buffer_frames);
       stm->input_linear_buffer->push_silence(min_input_frames_required * stm->input_desc.mChannelsPerFrame);
-      LOG("%s pushed %u frames of input silence.", stm->frames_read == 0 ? "Input hasn't started," :
+      LOG("(%p) %s pushed %u frames of input silence.", stm, stm->frames_read == 0 ? "Input hasn't started," :
           stm->switching_device ? "Device switching," : "Drop out,", min_input_frames_required);
     }
     // The input buffer
