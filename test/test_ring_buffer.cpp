@@ -1,7 +1,6 @@
 #include "cubeb_ringbuffer.h"
 #include <iostream>
 #include <thread>
-#include <unistd.h>
 #include <chrono>
 
 /* Generate a monotonically increasing sequence of numbers. */
