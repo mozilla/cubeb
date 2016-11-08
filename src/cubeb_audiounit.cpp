@@ -68,72 +68,61 @@ struct cubeb {
   std::vector<AudioObjectID> devtype_device_array;
 };
 
-class auto_array_wrapper
-{
-public:
-  explicit auto_array_wrapper(auto_array<float> * ar)
-    : float_ar(ar)
+struct auto_array_wrapper {
+  virtual void push(void * elements, size_t length) = 0;
+  virtual size_t length() = 0;
+  virtual void push_silence(size_t length) = 0;
+  virtual bool pop(size_t length) = 0;
+  virtual void * data() = 0;
+  virtual void clear() = 0;
+  virtual ~auto_array_wrapper() {}
+};
+
+template <typename T>
+struct auto_array_wrapper_impl : public auto_array_wrapper {
+  explicit auto_array_wrapper_impl(uint32_t size)
+    : ar(size)
   {}
 
-  explicit auto_array_wrapper(auto_array<short> * ar)
-    : short_ar(ar)
-  {}
-
-  ~auto_array_wrapper() {
+  void push(void * elements, size_t length) override {
     auto_lock l(lock);
-    // Drop pointers while lock is held to preserve ordering.
-    float_ar.reset();
-    short_ar.reset();
+    ar.push(static_cast<T *>(elements), length);
   }
 
-  void push(void * elements, size_t length){
+  size_t length() override {
     auto_lock l(lock);
-    if (float_ar)
-      return float_ar->push(static_cast<float*>(elements), length);
-    return short_ar->push(static_cast<short*>(elements), length);
+    return ar.length();
   }
 
-  size_t length() {
+  void push_silence(size_t length) override {
     auto_lock l(lock);
-    if (float_ar)
-      return float_ar->length();
-    return short_ar->length();
+    ar.push_silence(length);
   }
 
-  void push_silence(size_t length) {
+  bool pop(size_t length) override {
     auto_lock l(lock);
-    if (float_ar)
-      return float_ar->push_silence(length);
-    return short_ar->push_silence(length);
+    return ar.pop(nullptr, length);
   }
 
-  bool pop(void * elements, size_t length) {
+  // XXX: Taking the lock here is pointless.
+  void * data() override {
     auto_lock l(lock);
-    if (float_ar)
-      return float_ar->pop(static_cast<float*>(elements), length);
-    return short_ar->pop(static_cast<short*>(elements), length);
+    return ar.data();
   }
 
-  void * data() {
+  void clear() override {
     auto_lock l(lock);
-    if (float_ar)
-      return float_ar->data();
-    return short_ar->data();
+    ar.clear();
   }
 
-  void clear() {
+  ~auto_array_wrapper_impl() {
     auto_lock l(lock);
-    if (float_ar) {
-      float_ar->clear();
-    } else {
-      short_ar->clear();
-    }
+    ar.clear();
   }
 
 private:
-  std::unique_ptr<auto_array<float>> float_ar;
-  std::unique_ptr<auto_array<short>> short_ar;
   owned_critical_section lock;
+  auto_array<T> ar;
 };
 
 struct cubeb_stream {
@@ -315,7 +304,6 @@ audiounit_input_callback(void * user_ptr,
   // we just got.
   if (stm->output_callback_in_a_row > stm->expected_output_callbacks_in_a_row) {
     stm->input_linear_buffer->pop(
-        nullptr,
         stm->input_linear_buffer->length() -
         input_frames * stm->input_stream_params.channels);
   }
@@ -438,7 +426,7 @@ audiounit_output_callback(void * user_ptr,
                                    output_frames);
 
   if (input_buffer) {
-    stm->input_linear_buffer->pop(nullptr, input_frames * stm->input_desc.mChannelsPerFrame);
+    stm->input_linear_buffer->pop(input_frames * stm->input_desc.mChannelsPerFrame);
   }
 
   if (outframes < 0) {
@@ -1089,16 +1077,11 @@ audiounit_create_unit(AudioUnit * unit,
 static int
 audiounit_init_input_linear_buffer(cubeb_stream * stream, uint32_t capacity)
 {
+  uint32_t size = capacity * stream->input_buffer_frames * stream->input_desc.mChannelsPerFrame;
   if (stream->input_desc.mFormatFlags & kAudioFormatFlagIsSignedInteger) {
-    stream->input_linear_buffer.reset(new auto_array_wrapper(
-        new auto_array<short>(capacity *
-                              stream->input_buffer_frames *
-                              stream->input_desc.mChannelsPerFrame)));
+    stream->input_linear_buffer.reset(new auto_array_wrapper_impl<short>(size));
   } else {
-    stream->input_linear_buffer.reset(new auto_array_wrapper(
-        new auto_array<float>(capacity *
-                              stream->input_buffer_frames *
-                              stream->input_desc.mChannelsPerFrame)));
+    stream->input_linear_buffer.reset(new auto_array_wrapper_impl<float>(size));
   }
 
   assert(stream->input_linear_buffer->length() == 0);
