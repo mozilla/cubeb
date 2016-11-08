@@ -33,24 +33,9 @@
 #include <atomic>
 #include <vector>
 
-#if !defined(kCFCoreFoundationVersionNumber10_7)
-/* From CoreFoundation CFBase.h */
-#define kCFCoreFoundationVersionNumber10_7 635.00
-#endif
-
-#if !TARGET_OS_IPHONE && MAC_OS_X_VERSION_MIN_REQUIRED < 1060
-#define AudioComponent Component
-#define AudioComponentDescription ComponentDescription
-#define AudioComponentFindNext FindNextComponent
-#define AudioComponentInstanceNew OpenAComponent
-#define AudioComponentInstanceDispose CloseComponent
-#endif
-
 #if MAC_OS_X_VERSION_MIN_REQUIRED < 101000
 typedef UInt32  AudioFormatFlags;
 #endif
-
-#define CUBEB_STREAM_MAX 8
 
 #define AU_OUT_BUS    0
 #define AU_IN_BUS     1
@@ -76,7 +61,6 @@ struct cubeb {
   cubeb_ops const * ops = &audiounit_ops;
   owned_critical_section mutex;
   std::atomic<int> active_streams{ 0 };
-  int limit_streams = kCFCoreFoundationVersionNumber < kCFCoreFoundationVersionNumber10_7;
   cubeb_device_collection_changed_callback collection_changed_callback = nullptr;
   void * collection_changed_user_ptr = nullptr;
   /* Differentiate input from output devices. */
@@ -1522,10 +1506,6 @@ audiounit_stream_init(cubeb * context,
     return CUBEB_ERROR_INVALID_PARAMETER;
   }
 
-  if (context->limit_streams && context->active_streams >= CUBEB_STREAM_MAX) {
-    LOG("Reached the stream limit of %d", CUBEB_STREAM_MAX);
-    return CUBEB_ERROR;
-  }
   context->active_streams += 1;
 
   stm.reset(new cubeb_stream(context));
