@@ -204,3 +204,8 @@ target_include_directories(test_utils PRIVATE ${gtest_SOURCE_DIR}/include)
 target_include_directories(test_utils PRIVATE src)
 target_link_libraries(test_utils PRIVATE cubeb gtest_main)
 add_test(utils test_utils)
+
+add_executable(test_ring_buffer test/test_ring_buffer.cpp)
+target_include_directories(test_ring_buffer PRIVATE src)
+target_link_libraries(test_ring_buffer PRIVATE cubeb)
+add_test(ring_buffer test_ring_buffer)
