@@ -949,6 +949,9 @@ audiounit_destroy(cubeb * ctx)
 {
   // Disabling this assert for bug 1083664 -- we seem to leak a stream
   // assert(ctx->active_streams == 0);
+  if (ctx->active_streams > 0) {
+    LOG("(%p) API misuse, %d streams active when context destroyed!", ctx, ctx->active_streams.load());
+  }
 
   /* Unregister the callback if necessary. */
   if(ctx->collection_changed_callback) {
