@@ -95,7 +95,7 @@ void test_ring_multi(lock_free_queue<T>& buf, int channels, int capacity_frames)
 
   const int block_size = 128;
 
-  std::thread t([&buf, capacity_frames, channels] {
+  std::thread t([&buf, capacity_frames, channels, block_size] {
     int iterations = 1002;
     std::unique_ptr<T[]> in_buffer(new T[capacity_frames * channels]);
     sequence_generator<T> gen(channels);
