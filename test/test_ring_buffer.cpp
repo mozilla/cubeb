@@ -1,3 +1,12 @@
+/*
+ * Copyright © 2016 Mozilla Foundation
+ *
+ * This program is made available under an ISC-style license.  See the
+ * accompanying file LICENSE for details.
+ */
+
+#define NOMINMAX
+
 #include "cubeb_ringbuffer.h"
 #include <iostream>
 #include <thread>
