@@ -15,20 +15,20 @@ TEST(latency, main)
 
   LOG("latency_test start");
   r = cubeb_init(&ctx, "Cubeb audio test");
-  ASSERT_TRUE(r == CUBEB_OK && "Cubeb init failed.");
+  ASSERT_EQ(r, CUBEB_OK);
   LOG("cubeb_init ok");
 
   r = cubeb_get_max_channel_count(ctx, &max_channels);
   ASSERT_TRUE(r == CUBEB_OK || r == CUBEB_ERROR_NOT_SUPPORTED);
   if (r == CUBEB_OK) {
-    ASSERT_TRUE(max_channels > 0 && "Invalid max channel count.");
+    ASSERT_GT(max_channels, 0u);
     LOG("cubeb_get_max_channel_count ok");
   }
 
   r = cubeb_get_preferred_sample_rate(ctx, &preferred_rate);
   ASSERT_TRUE(r == CUBEB_OK || r == CUBEB_ERROR_NOT_SUPPORTED);
   if (r == CUBEB_OK) {
-    ASSERT_TRUE(preferred_rate > 0 && "Invalid preferred sample rate.");
+    ASSERT_GT(preferred_rate, 0u);
     LOG("cubeb_get_preferred_sample_rate ok");
   }
 
@@ -40,7 +40,7 @@ TEST(latency, main)
   r = cubeb_get_min_latency(ctx, params, &latency_frames);
   ASSERT_TRUE(r == CUBEB_OK || r == CUBEB_ERROR_NOT_SUPPORTED);
   if (r == CUBEB_OK) {
-    ASSERT_TRUE(latency_frames > 0 && "Invalid minimal latency.");
+    ASSERT_GT(latency_frames, 0u);
     LOG("cubeb_get_min_latency ok");
   }
 

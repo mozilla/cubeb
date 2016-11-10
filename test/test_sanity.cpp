@@ -67,7 +67,8 @@ test_init_destroy_context(void)
   BEGIN_TEST;
 
   r = cubeb_init(&ctx, "test_sanity");
-  ASSERT_TRUE(r == 0 && ctx);
+  ASSERT_EQ(r, CUBEB_OK);
+  ASSERT_NE(ctx, nullptr);
 
 
   backend_id = cubeb_get_backend_id(ctx);
@@ -87,13 +88,14 @@ test_init_destroy_multiple_contexts(void)
   int r;
   cubeb * ctx[4];
   int order[4] = {2, 0, 3, 1};
-  ASSERT_TRUE(ARRAY_LENGTH(ctx) == ARRAY_LENGTH(order));
+  ASSERT_EQ(ARRAY_LENGTH(ctx), ARRAY_LENGTH(order));
 
   BEGIN_TEST;
 
   for (i = 0; i < ARRAY_LENGTH(ctx); ++i) {
     r = cubeb_init(&ctx[i], NULL);
-    ASSERT_TRUE(r == 0 && ctx[i]);
+    ASSERT_EQ(r, CUBEB_OK);
+    ASSERT_NE(ctx[i], nullptr);
   }
 
   /* destroy in a different order */
@@ -115,7 +117,8 @@ test_context_variables(void)
   BEGIN_TEST;
 
   r = cubeb_init(&ctx, "test_context_variables");
-  ASSERT_TRUE(r == 0 && ctx);
+  ASSERT_EQ(r, CUBEB_OK);
+  ASSERT_NE(ctx, nullptr);
 
   params.channels = STREAM_CHANNELS;
   params.format = STREAM_FORMAT;
@@ -151,7 +154,8 @@ test_init_destroy_stream(void)
   BEGIN_TEST;
 
   r = cubeb_init(&ctx, "test_sanity");
-  ASSERT_TRUE(r == 0 && ctx);
+  ASSERT_EQ(r, CUBEB_OK);
+  ASSERT_NE(ctx, nullptr);
 
   params.format = STREAM_FORMAT;
   params.rate = STREAM_RATE;
@@ -162,7 +166,8 @@ test_init_destroy_stream(void)
 
   r = cubeb_stream_init(ctx, &stream, "test", NULL, NULL, NULL, &params, STREAM_LATENCY,
                         test_data_callback, test_state_callback, &dummy);
-  ASSERT_TRUE(r == 0 && stream);
+  ASSERT_EQ(r, CUBEB_OK);
+  ASSERT_NE(stream, nullptr);
 
   cubeb_stream_destroy(stream);
   cubeb_destroy(ctx);
@@ -182,7 +187,8 @@ test_init_destroy_multiple_streams(void)
   BEGIN_TEST;
 
   r = cubeb_init(&ctx, "test_sanity");
-  ASSERT_TRUE(r == 0 && ctx);
+  ASSERT_EQ(r, CUBEB_OK);
+  ASSERT_NE(ctx, nullptr);
 
   params.format = STREAM_FORMAT;
   params.rate = STREAM_RATE;
@@ -194,8 +200,8 @@ test_init_destroy_multiple_streams(void)
   for (i = 0; i < ARRAY_LENGTH(stream); ++i) {
     r = cubeb_stream_init(ctx, &stream[i], "test", NULL, NULL, NULL, &params, STREAM_LATENCY,
                           test_data_callback, test_state_callback, &dummy);
-    ASSERT_TRUE(r == 0);
-    ASSERT_TRUE(stream[i]);
+    ASSERT_EQ(r, CUBEB_OK);
+    ASSERT_NE(stream[i], nullptr);
   }
 
   for (i = 0; i < ARRAY_LENGTH(stream); ++i) {
@@ -218,7 +224,8 @@ test_configure_stream(void)
   BEGIN_TEST;
 
   r = cubeb_init(&ctx, "test_sanity");
-  ASSERT_TRUE(r == 0 && ctx);
+  ASSERT_EQ(r, CUBEB_OK);
+  ASSERT_NE(ctx, nullptr);
 
   params.format = STREAM_FORMAT;
   params.rate = STREAM_RATE;
@@ -229,7 +236,8 @@ test_configure_stream(void)
 
   r = cubeb_stream_init(ctx, &stream, "test", NULL, NULL, NULL, &params, STREAM_LATENCY,
                         test_data_callback, test_state_callback, &dummy);
-  ASSERT_TRUE(r == 0 && stream);
+  ASSERT_EQ(r, CUBEB_OK);
+  ASSERT_NE(stream, nullptr);
 
   r = cubeb_stream_set_volume(stream, 1.0f);
   ASSERT_TRUE(r == 0 || r == CUBEB_ERROR_NOT_SUPPORTED);
@@ -254,7 +262,8 @@ test_init_start_stop_destroy_multiple_streams(int early, int delay_ms)
   BEGIN_TEST;
 
   r = cubeb_init(&ctx, "test_sanity");
-  ASSERT_TRUE(r == 0 && ctx);
+  ASSERT_EQ(r, CUBEB_OK);
+  ASSERT_NE(ctx, nullptr);
 
   params.format = STREAM_FORMAT;
   params.rate = STREAM_RATE;
@@ -266,11 +275,11 @@ test_init_start_stop_destroy_multiple_streams(int early, int delay_ms)
   for (i = 0; i < ARRAY_LENGTH(stream); ++i) {
     r = cubeb_stream_init(ctx, &stream[i], "test", NULL, NULL, NULL, &params, STREAM_LATENCY,
                           test_data_callback, test_state_callback, &dummy);
-    ASSERT_TRUE(r == 0);
-    ASSERT_TRUE(stream[i]);
+    ASSERT_EQ(r, CUBEB_OK);
+    ASSERT_NE(stream[i], nullptr);
     if (early) {
       r = cubeb_stream_start(stream[i]);
-      ASSERT_TRUE(r == 0);
+      ASSERT_EQ(r, CUBEB_OK);
     }
   }
 
@@ -278,7 +287,7 @@ test_init_start_stop_destroy_multiple_streams(int early, int delay_ms)
   if (!early) {
     for (i = 0; i < ARRAY_LENGTH(stream); ++i) {
       r = cubeb_stream_start(stream[i]);
-      ASSERT_TRUE(r == 0);
+      ASSERT_EQ(r, CUBEB_OK);
     }
   }
 
@@ -289,14 +298,14 @@ test_init_start_stop_destroy_multiple_streams(int early, int delay_ms)
   if (!early) {
     for (i = 0; i < ARRAY_LENGTH(stream); ++i) {
       r = cubeb_stream_stop(stream[i]);
-      ASSERT_TRUE(r == 0);
+      ASSERT_EQ(r, CUBEB_OK);
     }
   }
 
   for (i = 0; i < ARRAY_LENGTH(stream); ++i) {
     if (early) {
       r = cubeb_stream_stop(stream[i]);
-      ASSERT_TRUE(r == 0);
+      ASSERT_EQ(r, CUBEB_OK);
     }
     cubeb_stream_destroy(stream[i]);
   }
@@ -315,7 +324,7 @@ test_init_destroy_multiple_contexts_and_streams(void)
   cubeb_stream * stream[8];
   cubeb_stream_params params;
   size_t streams_per_ctx = ARRAY_LENGTH(stream) / ARRAY_LENGTH(ctx);
-  ASSERT_TRUE(ARRAY_LENGTH(ctx) * streams_per_ctx == ARRAY_LENGTH(stream));
+  ASSERT_EQ(ARRAY_LENGTH(ctx) * streams_per_ctx, ARRAY_LENGTH(stream));
 
   BEGIN_TEST;
 
@@ -328,13 +337,14 @@ test_init_destroy_multiple_contexts_and_streams(void)
 
   for (i = 0; i < ARRAY_LENGTH(ctx); ++i) {
     r = cubeb_init(&ctx[i], "test_sanity");
-    ASSERT_TRUE(r == 0 && ctx[i]);
+    ASSERT_EQ(r, CUBEB_OK);
+    ASSERT_NE(ctx[i], nullptr);
 
     for (j = 0; j < streams_per_ctx; ++j) {
       r = cubeb_stream_init(ctx[i], &stream[i * streams_per_ctx + j], "test", NULL, NULL, NULL, &params, STREAM_LATENCY,
                             test_data_callback, test_state_callback, &dummy);
-      ASSERT_TRUE(r == 0);
-      ASSERT_TRUE(stream[i * streams_per_ctx + j]);
+      ASSERT_EQ(r, CUBEB_OK);
+      ASSERT_NE(stream[i * streams_per_ctx + j], nullptr);
     }
   }
 
@@ -360,7 +370,8 @@ test_basic_stream_operations(void)
   BEGIN_TEST;
 
   r = cubeb_init(&ctx, "test_sanity");
-  ASSERT_TRUE(r == 0 && ctx);
+  ASSERT_EQ(r, CUBEB_OK);
+  ASSERT_NE(ctx, nullptr);
 
   params.format = STREAM_FORMAT;
   params.rate = STREAM_RATE;
@@ -371,25 +382,27 @@ test_basic_stream_operations(void)
 
   r = cubeb_stream_init(ctx, &stream, "test", NULL, NULL, NULL, &params, STREAM_LATENCY,
                         test_data_callback, test_state_callback, &dummy);
-  ASSERT_TRUE(r == 0 && stream);
+  ASSERT_EQ(r, CUBEB_OK);
+  ASSERT_NE(stream, nullptr);
 
   /* position and volume before stream has started */
   r = cubeb_stream_get_position(stream, &position);
-  ASSERT_TRUE(r == 0 && position == 0);
+  ASSERT_EQ(r, CUBEB_OK);
+  ASSERT_EQ(position, 0u);
 
   r = cubeb_stream_start(stream);
-  ASSERT_TRUE(r == 0);
+  ASSERT_EQ(r, CUBEB_OK);
 
   /* position and volume after while stream running */
   r = cubeb_stream_get_position(stream, &position);
-  ASSERT_TRUE(r == 0);
+  ASSERT_EQ(r, CUBEB_OK);
 
   r = cubeb_stream_stop(stream);
-  ASSERT_TRUE(r == 0);
+  ASSERT_EQ(r, CUBEB_OK);
 
   /* position and volume after stream has stopped */
   r = cubeb_stream_get_position(stream, &position);
-  ASSERT_TRUE(r == 0);
+  ASSERT_EQ(r, CUBEB_OK);
 
   cubeb_stream_destroy(stream);
   cubeb_destroy(ctx);
@@ -412,7 +425,8 @@ test_stream_position(void)
   total_frames_written = 0;
 
   r = cubeb_init(&ctx, "test_sanity");
-  ASSERT_TRUE(r == 0 && ctx);
+  ASSERT_EQ(r, CUBEB_OK);
+  ASSERT_NE(ctx, nullptr);
 
   params.format = STREAM_FORMAT;
   params.rate = STREAM_RATE;
@@ -423,20 +437,23 @@ test_stream_position(void)
 
   r = cubeb_stream_init(ctx, &stream, "test", NULL, NULL, NULL, &params, STREAM_LATENCY,
                         test_data_callback, test_state_callback, &dummy);
-  ASSERT_TRUE(r == 0 && stream);
+  ASSERT_EQ(r, CUBEB_OK);
+  ASSERT_NE(stream, nullptr);
 
   /* stream position should not advance before starting playback */
   r = cubeb_stream_get_position(stream, &position);
-  ASSERT_TRUE(r == 0 && position == 0);
+  ASSERT_EQ(r, CUBEB_OK);
+  ASSERT_EQ(position, 0u);
 
   delay(500);
 
   r = cubeb_stream_get_position(stream, &position);
-  ASSERT_TRUE(r == 0 && position == 0);
+  ASSERT_EQ(r, CUBEB_OK);
+  ASSERT_EQ(position, 0u);
 
   /* stream position should advance during playback */
   r = cubeb_stream_start(stream);
-  ASSERT_TRUE(r == 0);
+  ASSERT_EQ(r, CUBEB_OK);
 
   /* XXX let start happen */
   delay(500);
@@ -445,22 +462,22 @@ test_stream_position(void)
   ASSERT_TRUE(total_frames_written > 0);
 
   r = cubeb_stream_get_position(stream, &position);
-  ASSERT_TRUE(r == 0);
+  ASSERT_EQ(r, CUBEB_OK);
   last_position = position;
 
   delay(500);
 
   r = cubeb_stream_get_position(stream, &position);
-  ASSERT_TRUE(r == 0);
-  ASSERT_TRUE(position >= last_position);
+  ASSERT_EQ(r, CUBEB_OK);
+  ASSERT_GE(position, last_position);
   last_position = position;
 
   /* stream position should not exceed total frames written */
   for (i = 0; i < 5; ++i) {
     r = cubeb_stream_get_position(stream, &position);
-    ASSERT_TRUE(r == 0);
-    ASSERT_TRUE(position >= last_position);
-    ASSERT_TRUE(position <= total_frames_written);
+    ASSERT_EQ(r, CUBEB_OK);
+    ASSERT_GE(position, last_position);
+    ASSERT_LE(position, total_frames_written);
     last_position = position;
     delay(500);
   }
@@ -469,35 +486,35 @@ test_stream_position(void)
    * stopping the stream.  */
   for (i = 0; i < 5; ++i) {
     r = cubeb_stream_stop(stream);
-    ASSERT_TRUE(r == 0);
+    ASSERT_EQ(r, CUBEB_OK);
     r = cubeb_stream_get_position(stream, &position);
-    ASSERT_TRUE(r == 0);
+    ASSERT_EQ(r, CUBEB_OK);
     ASSERT_TRUE(last_position < position);
     last_position = position;
     delay(500);
     r = cubeb_stream_start(stream);
-    ASSERT_TRUE(r == 0);
+    ASSERT_EQ(r, CUBEB_OK);
     delay(500);
   }
 
-  ASSERT_TRUE(last_position != 0);
+  ASSERT_NE(last_position, 0u);
 
   /* stream position should not advance after stopping playback */
   r = cubeb_stream_stop(stream);
-  ASSERT_TRUE(r == 0);
+  ASSERT_EQ(r, CUBEB_OK);
 
   /* XXX allow stream to settle */
   delay(500);
 
   r = cubeb_stream_get_position(stream, &position);
-  ASSERT_TRUE(r == 0);
+  ASSERT_EQ(r, CUBEB_OK);
   last_position = position;
 
   delay(500);
 
   r = cubeb_stream_get_position(stream, &position);
-  ASSERT_TRUE(r == 0);
-  ASSERT_TRUE(position == last_position);
+  ASSERT_EQ(r, CUBEB_OK);
+  ASSERT_EQ(position, last_position);
 
   cubeb_stream_destroy(stream);
   cubeb_destroy(ctx);
@@ -550,7 +567,8 @@ test_drain(void)
   total_frames_written = 0;
 
   r = cubeb_init(&ctx, "test_sanity");
-  ASSERT_TRUE(r == 0 && ctx);
+  ASSERT_EQ(r, CUBEB_OK);
+  ASSERT_NE(ctx, nullptr);
 
   params.format = STREAM_FORMAT;
   params.rate = STREAM_RATE;
@@ -561,10 +579,11 @@ test_drain(void)
 
   r = cubeb_stream_init(ctx, &stream, "test", NULL, NULL, NULL, &params, STREAM_LATENCY,
                         test_drain_data_callback, test_drain_state_callback, &dummy);
-  ASSERT_TRUE(r == 0 && stream);
+  ASSERT_EQ(r, CUBEB_OK);
+  ASSERT_NE(stream, nullptr);
 
   r = cubeb_stream_start(stream);
-  ASSERT_TRUE(r == 0);
+  ASSERT_EQ(r, CUBEB_OK);
 
   delay(500);
 
@@ -572,22 +591,22 @@ test_drain(void)
 
   for (;;) {
     r = cubeb_stream_get_position(stream, &position);
-    ASSERT_TRUE(r == 0);
+    ASSERT_EQ(r, CUBEB_OK);
     if (got_drain) {
       break;
     } else {
-      ASSERT_TRUE(position <= total_frames_written);
+      ASSERT_LE(position, total_frames_written);
     }
     delay(500);
   }
 
   r = cubeb_stream_get_position(stream, &position);
-  ASSERT_TRUE(r == 0);
+  ASSERT_EQ(r, CUBEB_OK);
   ASSERT_TRUE(got_drain);
 
   // Really, we should be able to rely on position reaching our final written frame, but
   // for now let's make sure it doesn't continue beyond that point.
-  //ASSERT_TRUE(position <= total_frames_written);
+  //ASSERT_LE(position, total_frames_written);
 
   cubeb_stream_destroy(stream);
   cubeb_destroy(ctx);
