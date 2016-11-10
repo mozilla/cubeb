@@ -7,16 +7,12 @@
 
 /* libcubeb api/function exhaustive test. Plays a series of tones in different
  * conditions. */
-#ifdef NDEBUG
-#undef NDEBUG
-#endif
 #define _XOPEN_SOURCE 600
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#include <assert.h>
 #include <string.h>
-
+#include "gtest/gtest.h"
 #include "cubeb/cubeb.h"
 #include "common.h"
 
@@ -268,20 +264,18 @@ void run_channel_rate_test()
 
   for(int j = 0; j < NELEMS(channel_values); ++j) {
     for(int i = 0; i < NELEMS(freq_values); ++i) {
-      assert(channel_values[j] < MAX_NUM_CHANNELS);
+      ASSERT_TRUE(channel_values[j] < MAX_NUM_CHANNELS);
       fprintf(stderr, "--------------------------\n");
-      assert(run_test(channel_values[j], freq_values[i], 0) == CUBEB_OK);
-      assert(run_test(channel_values[j], freq_values[i], 1) == CUBEB_OK);
+      ASSERT_TRUE(run_test(channel_values[j], freq_values[i], 0) == CUBEB_OK);
+      ASSERT_TRUE(run_test(channel_values[j], freq_values[i], 1) == CUBEB_OK);
     }
   }
 }
 
 
-int main(int /*argc*/, char * /*argv*/[])
+TEST(audio, main)
 {
-  assert(run_panning_volume_test(0) == CUBEB_OK);
-  assert(run_panning_volume_test(1) == CUBEB_OK);
+  ASSERT_TRUE(run_panning_volume_test(0) == CUBEB_OK);
+  ASSERT_TRUE(run_panning_volume_test(1) == CUBEB_OK);
   run_channel_rate_test();
-
-  return CUBEB_OK;
 }

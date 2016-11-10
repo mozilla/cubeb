@@ -166,7 +166,7 @@ target_include_directories(test_record PRIVATE ${gtest_SOURCE_DIR}/include)
 target_link_libraries(test_record PRIVATE cubeb gtest_main)
 add_test(record test_record)
 
-add_executable(test_devices test/test_devices.c)
+add_executable(test_devices test/test_devices.cpp)
 target_include_directories(test_devices PRIVATE ${gtest_SOURCE_DIR}/include)
 target_link_libraries(test_devices PRIVATE cubeb gtest_main)
 add_test(devices test_devices)

@@ -7,15 +7,11 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif // NOMINMAX
-
-#ifdef NDEBUG
-#undef NDEBUG
-#endif
 #include "cubeb_resampler_internal.h"
-#include <assert.h>
 #include <stdio.h>
 #include <algorithm>
 #include <iostream>
+#include "gtest/gtest.h"
 
 /* Windows cmath USE_MATH_DEFINE thing... */
 const float PI = 3.14159265359f;
@@ -154,7 +150,7 @@ void test_delay_lines(uint32_t delay_frames, uint32_t channels, uint32_t chunk_m
 
   // Check the diracs have been shifted by `delay_frames` frames.
   for (uint32_t i = 0; i < output.length() - delay_frames * channels + 1; i+=100) {
-    assert(output.data()[i + channel + delay_frames * channels] == 0.5);
+    ASSERT_TRUE(output.data()[i + channel + delay_frames * channels] == 0.5);
     channel = (channel + 1) % channels;
   }
 
@@ -232,7 +228,7 @@ void test_resampler_one_way(uint32_t channels, uint32_t source_rate, uint32_t ta
       fuzzy_equal = false;
     }
   }
-  assert(fuzzy_equal);
+  ASSERT_TRUE(fuzzy_equal);
 }
 
 template<typename T>
@@ -397,8 +393,8 @@ void test_resampler_duplex(uint32_t input_channels, uint32_t output_channels,
   dump("input.raw", state.input.data(), state.input.length());
   dump("output.raw", state.output.data(), state.output.length());
 
-  assert(array_fuzzy_equal(state.input, expected_resampled_input, epsilon<T>(input_rate/target_rate)));
-  assert(array_fuzzy_equal(state.output, expected_resampled_output, epsilon<T>(output_rate/target_rate)));
+  ASSERT_TRUE(array_fuzzy_equal(state.input, expected_resampled_input, epsilon<T>(input_rate/target_rate)));
+  ASSERT_TRUE(array_fuzzy_equal(state.output, expected_resampled_output, epsilon<T>(output_rate/target_rate)));
 
   cubeb_resampler_destroy(resampler);
 }
@@ -468,8 +464,8 @@ long test_output_only_noop_data_cb(cubeb_stream * /*stm*/, void * /*user_ptr*/,
                                    const void * input_buffer,
                                    void * output_buffer, long frame_count)
 {
-  assert(output_buffer);
-  assert(!input_buffer);
+  EXPECT_TRUE(output_buffer);
+  EXPECT_TRUE(!input_buffer);
   return frame_count;
 }
 
@@ -495,7 +491,7 @@ void test_output_only_noop()
   got = cubeb_resampler_fill(resampler, nullptr, nullptr,
                              out_buffer, out_frames);
 
-  assert(got == out_frames);
+  ASSERT_TRUE(got == out_frames);
 
   cubeb_resampler_destroy(resampler);
 }
@@ -504,8 +500,8 @@ long test_drain_data_cb(cubeb_stream * /*stm*/, void * /*user_ptr*/,
                         const void * input_buffer,
                         void * output_buffer, long frame_count)
 {
-  assert(output_buffer);
-  assert(!input_buffer);
+  EXPECT_TRUE(output_buffer);
+  EXPECT_TRUE(!input_buffer);
   return frame_count - 10;
 }
 
@@ -535,12 +531,12 @@ void test_resampler_drain()
 
   /* If the above is not an infinite loop, the drain was a success, just mark
    * this test as such. */
-  assert(true);
+  ASSERT_TRUE(true);
 
   cubeb_resampler_destroy(resampler);
 }
 
-int main()
+TEST(resampler, main)
 {
   test_resamplers_one_way();
   test_delay_line();
@@ -549,6 +545,4 @@ int main()
   // test_resamplers_duplex();
   test_output_only_noop();
   test_resampler_drain();
-
-  return 0;
 }

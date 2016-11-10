@@ -7,15 +7,11 @@
 
 /* libcubeb api/function test. Loops input back to output and check audio
  * is flowing. */
-#ifdef NDEBUG
-#undef NDEBUG
-#endif
 #define _XOPEN_SOURCE 600
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#include <assert.h>
-
+#include "gtest/gtest.h"
 #include "cubeb/cubeb.h"
 #include "common.h"
 
@@ -86,7 +82,7 @@ void state_cb(cubeb_stream * stream, void * /*user*/, cubeb_state state)
   return;
 }
 
-int main(int /*argc*/, char * /*argv*/[])
+TEST(duplex, main)
 {
   cubeb *ctx;
   cubeb_stream *stream;
@@ -99,13 +95,13 @@ int main(int /*argc*/, char * /*argv*/[])
   r = cubeb_init(&ctx, "Cubeb duplex example");
   if (r != CUBEB_OK) {
     fprintf(stderr, "Error initializing cubeb library\n");
-    return r;
+    ASSERT_EQ(r, CUBEB_OK);
   }
 
   /* This test needs an available input device, skip it if this host does not
    * have one. */
   if (!has_available_input_device(ctx)) {
-    return 0;
+    return;
   }
 
   /* typical user-case: mono input, stereo output, low latency. */
@@ -120,7 +116,7 @@ int main(int /*argc*/, char * /*argv*/[])
 
   if (r != CUBEB_OK) {
     fprintf(stderr, "Could not get minimal latency\n");
-    return r;
+    ASSERT_EQ(r, CUBEB_OK);
   }
 
   r = cubeb_stream_init(ctx, &stream, "Cubeb duplex",
@@ -128,7 +124,7 @@ int main(int /*argc*/, char * /*argv*/[])
                         latency_frames, data_cb, state_cb, &stream_state);
   if (r != CUBEB_OK) {
     fprintf(stderr, "Error initializing cubeb stream\n");
-    return r;
+    ASSERT_EQ(r, CUBEB_OK);
   }
 
   cubeb_stream_start(stream);
@@ -138,7 +134,5 @@ int main(int /*argc*/, char * /*argv*/[])
   cubeb_stream_destroy(stream);
   cubeb_destroy(ctx);
 
-  assert(stream_state.seen_noise);
-
-  return CUBEB_OK;
+  ASSERT_TRUE(stream_state.seen_noise);
 }
