@@ -17,7 +17,10 @@ set(CMAKE_C_STANDARD 99)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_definitions(-DGTEST_USE_OWN_TR1_TUPLE=1)
+if(APPLE)
+  add_definitions(-DGTEST_USE_OWN_TR1_TUPLE=1)
+endif()
+set(gtest_force_shared_crt ON CACHE BOOL "")
 add_subdirectory(googletest)
 
 set(CMAKE_C_VISIBILITY_PRESET hidden)
