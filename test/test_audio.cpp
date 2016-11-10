@@ -266,8 +266,8 @@ void run_channel_rate_test()
     for(int i = 0; i < NELEMS(freq_values); ++i) {
       ASSERT_TRUE(channel_values[j] < MAX_NUM_CHANNELS);
       fprintf(stderr, "--------------------------\n");
-      ASSERT_TRUE(run_test(channel_values[j], freq_values[i], 0) == CUBEB_OK);
-      ASSERT_TRUE(run_test(channel_values[j], freq_values[i], 1) == CUBEB_OK);
+      ASSERT_EQ(run_test(channel_values[j], freq_values[i], 0), CUBEB_OK);
+      ASSERT_EQ(run_test(channel_values[j], freq_values[i], 1), CUBEB_OK);
     }
   }
 }
@@ -275,7 +275,7 @@ void run_channel_rate_test()
 
 TEST(audio, main)
 {
-  ASSERT_TRUE(run_panning_volume_test(0) == CUBEB_OK);
-  ASSERT_TRUE(run_panning_volume_test(1) == CUBEB_OK);
+  ASSERT_EQ(run_panning_volume_test(0), CUBEB_OK);
+  ASSERT_EQ(run_panning_volume_test(1), CUBEB_OK);
   run_channel_rate_test();
 }

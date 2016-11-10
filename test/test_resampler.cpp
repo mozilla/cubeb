@@ -150,7 +150,7 @@ void test_delay_lines(uint32_t delay_frames, uint32_t channels, uint32_t chunk_m
 
   // Check the diracs have been shifted by `delay_frames` frames.
   for (uint32_t i = 0; i < output.length() - delay_frames * channels + 1; i+=100) {
-    ASSERT_TRUE(output.data()[i + channel + delay_frames * channels] == 0.5);
+    ASSERT_EQ(output.data()[i + channel + delay_frames * channels], 0.5);
     channel = (channel + 1) % channels;
   }
 
@@ -491,7 +491,7 @@ void test_output_only_noop()
   got = cubeb_resampler_fill(resampler, nullptr, nullptr,
                              out_buffer, out_frames);
 
-  ASSERT_TRUE(got == out_frames);
+  ASSERT_EQ(got, out_frames);
 
   cubeb_resampler_destroy(resampler);
 }

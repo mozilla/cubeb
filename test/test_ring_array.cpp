@@ -10,8 +10,8 @@ void test_ring_array()
 {
   ring_array ra;
 
-  ASSERT_TRUE(ring_array_init(&ra, 0, 0, 1, 1) == CUBEB_ERROR_INVALID_PARAMETER);
-  ASSERT_TRUE(ring_array_init(&ra, 1, 0, 0, 1) == CUBEB_ERROR_INVALID_PARAMETER);
+  ASSERT_EQ(ring_array_init(&ra, 0, 0, 1, 1), CUBEB_ERROR_INVALID_PARAMETER);
+  ASSERT_EQ(ring_array_init(&ra, 1, 0, 0, 1), CUBEB_ERROR_INVALID_PARAMETER);
 
   unsigned int capacity = 8;
   ring_array_init(&ra, capacity, sizeof(int), 1, 1);
@@ -21,45 +21,47 @@ void test_ring_array()
   for (unsigned int i = 0; i < capacity; ++i) {
     verify_data[i] = i; // in case capacity change value
     *(int*)ra.buffer_array[i].mData = i;
-    ASSERT_TRUE(ra.buffer_array[i].mDataByteSize == 1 * sizeof(int));
-    ASSERT_TRUE(ra.buffer_array[i].mNumberChannels == 1);
+    ASSERT_EQ(ra.buffer_array[i].mDataByteSize, sizeof(int));
+    ASSERT_EQ(ra.buffer_array[i].mNumberChannels, 1u);
   }
 
   /* Get store buffers*/
   for (unsigned int i = 0; i < capacity; ++i) {
     p_data = ring_array_get_free_buffer(&ra);
-    ASSERT_TRUE(p_data && *(int*)p_data->mData == verify_data[i]);
+    ASSERT_NE(p_data, nullptr);
+    ASSERT_EQ(*(int*)p_data->mData, verify_data[i]);
   }
   /*Now array is full extra store should give NULL*/
-  ASSERT_TRUE(NULL == ring_array_get_free_buffer(&ra));
+  ASSERT_EQ(ring_array_get_free_buffer(&ra), nullptr);
   /* Get fetch buffers*/
   for (unsigned int i = 0; i < capacity; ++i) {
     p_data = ring_array_get_data_buffer(&ra);
-    ASSERT_TRUE(p_data && *(int*)p_data->mData == verify_data[i]);
+    ASSERT_NE(p_data, nullptr);
+    ASSERT_EQ(*(int*)p_data->mData, verify_data[i]);
   }
   /*Now array is empty extra fetch should give NULL*/
-  ASSERT_TRUE(NULL == ring_array_get_data_buffer(&ra));
+  ASSERT_EQ(ring_array_get_data_buffer(&ra), nullptr);
 
   p_data = NULL;
   /* Repeated store fetch should can go for ever*/
   for (unsigned int i = 0; i < 2*capacity; ++i) {
     p_data = ring_array_get_free_buffer(&ra);
-    ASSERT_TRUE(p_data);
-    ASSERT_TRUE(ring_array_get_data_buffer(&ra) == p_data);
+    ASSERT_NE(p_data, nullptr);
+    ASSERT_EQ(ring_array_get_data_buffer(&ra), p_data);
   }
 
   p_data = NULL;
   /* Verify/modify buffer data*/
   for (unsigned int i = 0; i < capacity; ++i) {
     p_data = ring_array_get_free_buffer(&ra);
-    ASSERT_TRUE(p_data);
-    ASSERT_TRUE(*((int*)p_data->mData) == verify_data[i]);
+    ASSERT_NE(p_data, nullptr);
+    ASSERT_EQ(*((int*)p_data->mData), verify_data[i]);
     (*((int*)p_data->mData))++; // Modify data
   }
   for (unsigned int i = 0; i < capacity; ++i) {
     p_data = ring_array_get_data_buffer(&ra);
-    ASSERT_TRUE(p_data);
-    ASSERT_TRUE(*((int*)p_data->mData) == verify_data[i]+1); // Verify modified data
+    ASSERT_NE(p_data, nullptr);
+    ASSERT_EQ(*((int*)p_data->mData), verify_data[i]+1); // Verify modified data
   }
 
   ring_array_destroy(&ra);
