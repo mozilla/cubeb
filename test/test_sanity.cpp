@@ -12,9 +12,6 @@
 #include "common.h"
 #include "gtest/gtest.h"
 
-#define BEGIN_TEST fprintf(stderr, "START %s\n", __func__)
-#define END_TEST fprintf(stderr, "END %s\n", __func__)
-
 #define STREAM_RATE 44100
 #define STREAM_LATENCY 100 * STREAM_RATE / 1000
 #define STREAM_CHANNELS 1
@@ -90,8 +87,6 @@ TEST(sanity, init_destroy_context)
   cubeb * ctx;
   char const* backend_id;
 
-  BEGIN_TEST;
-
   r = cubeb_init(&ctx, "test_sanity");
   ASSERT_EQ(r, CUBEB_OK);
   ASSERT_NE(ctx, nullptr);
@@ -103,8 +98,6 @@ TEST(sanity, init_destroy_context)
   fprintf(stderr, "Backend: %s\n", backend_id);
 
   cubeb_destroy(ctx);
-
-  END_TEST;
 }
 
 TEST(sanity, init_destroy_multiple_contexts)
@@ -114,8 +107,6 @@ TEST(sanity, init_destroy_multiple_contexts)
   cubeb * ctx[4];
   int order[4] = {2, 0, 3, 1};
   ASSERT_EQ(ARRAY_LENGTH(ctx), ARRAY_LENGTH(order));
-
-  BEGIN_TEST;
 
   for (i = 0; i < ARRAY_LENGTH(ctx); ++i) {
     r = cubeb_init(&ctx[i], NULL);
@@ -127,8 +118,6 @@ TEST(sanity, init_destroy_multiple_contexts)
   for (i = 0; i < ARRAY_LENGTH(ctx); ++i) {
     cubeb_destroy(ctx[order[i]]);
   }
-
-  END_TEST;
 }
 
 TEST(sanity, context_variables)
@@ -137,8 +126,6 @@ TEST(sanity, context_variables)
   cubeb * ctx;
   uint32_t value;
   cubeb_stream_params params;
-
-  BEGIN_TEST;
 
   r = cubeb_init(&ctx, "test_context_variables");
   ASSERT_EQ(r, CUBEB_OK);
@@ -163,8 +150,6 @@ TEST(sanity, context_variables)
   }
 
   cubeb_destroy(ctx);
-
-  END_TEST;
 }
 
 TEST(sanity, init_destroy_stream)
@@ -173,8 +158,6 @@ TEST(sanity, init_destroy_stream)
   cubeb * ctx;
   cubeb_stream * stream;
   cubeb_stream_params params;
-
-  BEGIN_TEST;
 
   r = cubeb_init(&ctx, "test_sanity");
   ASSERT_EQ(r, CUBEB_OK);
@@ -194,8 +177,6 @@ TEST(sanity, init_destroy_stream)
 
   cubeb_stream_destroy(stream);
   cubeb_destroy(ctx);
-
-  END_TEST;
 }
 
 TEST(sanity, init_destroy_multiple_streams)
@@ -205,8 +186,6 @@ TEST(sanity, init_destroy_multiple_streams)
   cubeb * ctx;
   cubeb_stream * stream[8];
   cubeb_stream_params params;
-
-  BEGIN_TEST;
 
   r = cubeb_init(&ctx, "test_sanity");
   ASSERT_EQ(r, CUBEB_OK);
@@ -231,8 +210,6 @@ TEST(sanity, init_destroy_multiple_streams)
   }
 
   cubeb_destroy(ctx);
-
-  END_TEST;
 }
 
 TEST(sanity, configure_stream)
@@ -241,8 +218,6 @@ TEST(sanity, configure_stream)
   cubeb * ctx;
   cubeb_stream * stream;
   cubeb_stream_params params;
-
-  BEGIN_TEST;
 
   r = cubeb_init(&ctx, "test_sanity");
   ASSERT_EQ(r, CUBEB_OK);
@@ -268,7 +243,6 @@ TEST(sanity, configure_stream)
 
   cubeb_stream_destroy(stream);
   cubeb_destroy(ctx);
-  END_TEST;
 }
 
 static void
@@ -279,8 +253,6 @@ test_init_start_stop_destroy_multiple_streams(int early, int delay_ms)
   cubeb * ctx;
   cubeb_stream * stream[8];
   cubeb_stream_params params;
-
-  BEGIN_TEST;
 
   r = cubeb_init(&ctx, "test_sanity");
   ASSERT_EQ(r, CUBEB_OK);
@@ -332,8 +304,6 @@ test_init_start_stop_destroy_multiple_streams(int early, int delay_ms)
   }
 
   cubeb_destroy(ctx);
-
-  END_TEST;
 }
 
 TEST(sanity, init_start_stop_destroy_multiple_streams)
@@ -375,8 +345,6 @@ TEST(sanity, init_destroy_multiple_contexts_and_streams)
   if (is_windows_7())
     return;
 
-  BEGIN_TEST;
-
   params.format = STREAM_FORMAT;
   params.rate = STREAM_RATE;
   params.channels = STREAM_CHANNELS;
@@ -403,8 +371,6 @@ TEST(sanity, init_destroy_multiple_contexts_and_streams)
     }
     cubeb_destroy(ctx[i]);
   }
-
-  END_TEST;
 }
 
 TEST(sanity, basic_stream_operations)
@@ -414,8 +380,6 @@ TEST(sanity, basic_stream_operations)
   cubeb_stream * stream;
   cubeb_stream_params params;
   uint64_t position;
-
-  BEGIN_TEST;
 
   r = cubeb_init(&ctx, "test_sanity");
   ASSERT_EQ(r, CUBEB_OK);
@@ -454,8 +418,6 @@ TEST(sanity, basic_stream_operations)
 
   cubeb_stream_destroy(stream);
   cubeb_destroy(ctx);
-
-  END_TEST;
 }
 
 TEST(sanity, stream_position)
@@ -466,8 +428,6 @@ TEST(sanity, stream_position)
   cubeb_stream * stream;
   cubeb_stream_params params;
   uint64_t position, last_position;
-
-  BEGIN_TEST;
 
   total_frames_written = 0;
 
@@ -565,8 +525,6 @@ TEST(sanity, stream_position)
 
   cubeb_stream_destroy(stream);
   cubeb_destroy(ctx);
-
-  END_TEST;
 }
 
 static int do_drain;
@@ -607,8 +565,6 @@ TEST(sanity, drain)
   cubeb_stream * stream;
   cubeb_stream_params params;
   uint64_t position;
-
-  BEGIN_TEST;
 
   delay_callback = 0;
   total_frames_written = 0;
@@ -657,8 +613,6 @@ TEST(sanity, drain)
 
   cubeb_stream_destroy(stream);
   cubeb_destroy(ctx);
-
-  END_TEST;
 }
 
 TEST(sanity, DISABLED_eos_during_prefill)
