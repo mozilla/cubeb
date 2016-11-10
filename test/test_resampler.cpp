@@ -401,7 +401,7 @@ void test_resampler_duplex(uint32_t input_channels, uint32_t output_channels,
 
 #define array_size(x) (sizeof(x) / sizeof(x[0]))
 
-void test_resamplers_one_way()
+TEST(resampler, one_way)
 {
   /* Test one way resamplers */
   for (uint32_t channels = 1; channels <= max_channels; channels++) {
@@ -418,9 +418,11 @@ void test_resamplers_one_way()
   }
 }
 
-void test_resamplers_duplex()
+// This is disabled because the latency estimation in the resampler code is
+// slightly off so we can generate expected vectors.
+// See https://github.com/kinetiknz/cubeb/issues/93
+TEST(resampler, DISABLED_duplex)
 {
-  /* Test duplex resamplers */
   for (uint32_t input_channels = 1; input_channels <= max_channels; input_channels++) {
     for (uint32_t output_channels = 1; output_channels <= max_channels; output_channels++) {
       for (uint32_t source_rate_input = 0; source_rate_input < array_size(sample_rates); source_rate_input++) {
@@ -447,7 +449,7 @@ void test_resamplers_duplex()
   }
 }
 
-void test_delay_line()
+TEST(resampler, delay_line)
 {
   for (uint32_t channel = 1; channel <= 2; channel++) {
     for (uint32_t delay_frames = 4; delay_frames <= 40; delay_frames+=chunk_increment) {
@@ -469,7 +471,7 @@ long test_output_only_noop_data_cb(cubeb_stream * /*stm*/, void * /*user_ptr*/,
   return frame_count;
 }
 
-void test_output_only_noop()
+TEST(resampler, output_only_noop)
 {
   cubeb_stream_params output_params;
   int target_rate;
@@ -505,7 +507,7 @@ long test_drain_data_cb(cubeb_stream * /*stm*/, void * /*user_ptr*/,
   return frame_count - 10;
 }
 
-void test_resampler_drain()
+TEST(resampler, drain)
 {
   cubeb_stream_params output_params;
   int target_rate;
@@ -536,13 +538,3 @@ void test_resampler_drain()
   cubeb_resampler_destroy(resampler);
 }
 
-TEST(resampler, main)
-{
-  test_resamplers_one_way();
-  test_delay_line();
-  // This is disabled because the latency estimation in the resampler code is
-  // slightly off so we can generate expected vectors.
-  // test_resamplers_duplex();
-  test_output_only_noop();
-  test_resampler_drain();
-}

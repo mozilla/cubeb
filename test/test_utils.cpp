@@ -1,7 +1,7 @@
 #include "gtest/gtest.h"
 #include "cubeb_utils.h"
 
-void test_auto_array()
+TEST(utils, auto_array)
 {
   auto_array<uint32_t> array;
   auto_array<uint32_t> array2(10);
@@ -70,7 +70,3 @@ void test_auto_array()
   ASSERT_EQ(array.capacity(), 20u);
 }
 
-TEST(utils, main)
-{
-  test_auto_array();
-}

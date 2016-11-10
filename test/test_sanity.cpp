@@ -31,6 +31,33 @@ ARRAY_LENGTH(T(&)[N])
   return N;
 }
 
+int is_windows_7()
+{
+#ifdef __MINGW32__
+  printf("Warning: this test was built with MinGW.\n"
+         "MinGW does not contain necessary version checking infrastructure. Claiming to be Windows 7, even if we're not.\n");
+  return 1;
+#endif
+#if (defined(_WIN32) || defined(__WIN32__)) && ( !defined(__MINGW32__))
+  OSVERSIONINFOEX osvi;
+  DWORDLONG condition_mask = 0;
+
+  ZeroMemory(&osvi, sizeof(OSVERSIONINFOEX));
+  osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
+
+  // NT 6.1 is Windows 7
+  osvi.dwMajorVersion = 6;
+  osvi.dwMinorVersion = 1;
+
+  VER_SET_CONDITION(condition_mask, VER_MAJORVERSION, VER_EQUAL);
+  VER_SET_CONDITION(condition_mask, VER_MINORVERSION, VER_GREATER_EQUAL);
+
+  return VerifyVersionInfo(&osvi, VER_MAJORVERSION | VER_MINORVERSION, condition_mask);
+#else
+  return 0;
+#endif
+}
+
 static int dummy;
 static uint64_t total_frames_written;
 static int delay_callback;
@@ -57,8 +84,7 @@ test_state_callback(cubeb_stream * /*stm*/, void * /*user_ptr*/, cubeb_state /*s
 {
 }
 
-static void
-test_init_destroy_context(void)
+TEST(sanity, init_destroy_context)
 {
   int r;
   cubeb * ctx;
@@ -81,8 +107,7 @@ test_init_destroy_context(void)
   END_TEST;
 }
 
-static void
-test_init_destroy_multiple_contexts(void)
+TEST(sanity, init_destroy_multiple_contexts)
 {
   size_t i;
   int r;
@@ -106,8 +131,7 @@ test_init_destroy_multiple_contexts(void)
   END_TEST;
 }
 
-static void
-test_context_variables(void)
+TEST(sanity, context_variables)
 {
   int r;
   cubeb * ctx;
@@ -143,8 +167,7 @@ test_context_variables(void)
   END_TEST;
 }
 
-static void
-test_init_destroy_stream(void)
+TEST(sanity, init_destroy_stream)
 {
   int r;
   cubeb * ctx;
@@ -175,8 +198,7 @@ test_init_destroy_stream(void)
   END_TEST;
 }
 
-static void
-test_init_destroy_multiple_streams(void)
+TEST(sanity, init_destroy_multiple_streams)
 {
   size_t i;
   int r;
@@ -213,8 +235,7 @@ test_init_destroy_multiple_streams(void)
   END_TEST;
 }
 
-static void
-test_configure_stream(void)
+TEST(sanity, configure_stream)
 {
   int r;
   cubeb * ctx;
@@ -315,8 +336,28 @@ test_init_start_stop_destroy_multiple_streams(int early, int delay_ms)
   END_TEST;
 }
 
-static void
-test_init_destroy_multiple_contexts_and_streams(void)
+TEST(sanity, init_start_stop_destroy_multiple_streams)
+{
+  /* Sometimes, when using WASAPI on windows 7 (vista and 8 are okay), and
+   * calling Activate a lot on an AudioClient, 0x800700b7 is returned. This is
+   * the HRESULT value for "Cannot create a file when that file already exists",
+   * and is not documented as a possible return value for this call. Hence, we
+   * try to limit the number of streams we create in this test. */
+  if (!is_windows_7()) {
+    delay_callback = 0;
+    test_init_start_stop_destroy_multiple_streams(0, 0);
+    test_init_start_stop_destroy_multiple_streams(1, 0);
+    test_init_start_stop_destroy_multiple_streams(0, 150);
+    test_init_start_stop_destroy_multiple_streams(1, 150);
+    delay_callback = 1;
+    test_init_start_stop_destroy_multiple_streams(0, 0);
+    test_init_start_stop_destroy_multiple_streams(1, 0);
+    test_init_start_stop_destroy_multiple_streams(0, 150);
+    test_init_start_stop_destroy_multiple_streams(1, 150);
+  }
+}
+
+TEST(sanity, init_destroy_multiple_contexts_and_streams)
 {
   size_t i, j;
   int r;
@@ -325,6 +366,14 @@ test_init_destroy_multiple_contexts_and_streams(void)
   cubeb_stream_params params;
   size_t streams_per_ctx = ARRAY_LENGTH(stream) / ARRAY_LENGTH(ctx);
   ASSERT_EQ(ARRAY_LENGTH(ctx) * streams_per_ctx, ARRAY_LENGTH(stream));
+
+  /* Sometimes, when using WASAPI on windows 7 (vista and 8 are okay), and
+   * calling Activate a lot on an AudioClient, 0x800700b7 is returned. This is
+   * the HRESULT value for "Cannot create a file when that file already exists",
+   * and is not documented as a possible return value for this call. Hence, we
+   * try to limit the number of streams we create in this test. */
+  if (is_windows_7())
+    return;
 
   BEGIN_TEST;
 
@@ -358,8 +407,7 @@ test_init_destroy_multiple_contexts_and_streams(void)
   END_TEST;
 }
 
-static void
-test_basic_stream_operations(void)
+TEST(sanity, basic_stream_operations)
 {
   int r;
   cubeb * ctx;
@@ -410,8 +458,7 @@ test_basic_stream_operations(void)
   END_TEST;
 }
 
-static void
-test_stream_position(void)
+TEST(sanity, stream_position)
 {
   size_t i;
   int r;
@@ -553,8 +600,7 @@ test_drain_state_callback(cubeb_stream * /*stm*/, void * /*user_ptr*/, cubeb_sta
   }
 }
 
-static void
-test_drain(void)
+TEST(sanity, drain)
 {
   int r;
   cubeb * ctx;
@@ -564,6 +610,7 @@ test_drain(void)
 
   BEGIN_TEST;
 
+  delay_callback = 0;
   total_frames_written = 0;
 
   r = cubeb_init(&ctx, "test_sanity");
@@ -614,69 +661,12 @@ test_drain(void)
   END_TEST;
 }
 
-int is_windows_7()
+TEST(sanity, DISABLED_eos_during_prefill)
 {
-#ifdef __MINGW32__
-  printf("Warning: this test was built with MinGW.\n"
-         "MinGW does not contain necessary version checking infrastructure. Claiming to be Windows 7, even if we're not.\n");
-  return 1;
-#endif
-#if (defined(_WIN32) || defined(__WIN32__)) && ( !defined(__MINGW32__))
-  OSVERSIONINFOEX osvi;
-  DWORDLONG condition_mask = 0;
-
-  ZeroMemory(&osvi, sizeof(OSVERSIONINFOEX));
-  osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
-
-  // NT 6.1 is Windows 7
-  osvi.dwMajorVersion = 6;
-  osvi.dwMinorVersion = 1;
-
-  VER_SET_CONDITION(condition_mask, VER_MAJORVERSION, VER_EQUAL);
-  VER_SET_CONDITION(condition_mask, VER_MINORVERSION, VER_GREATER_EQUAL);
-
-  return VerifyVersionInfo(&osvi, VER_MAJORVERSION | VER_MINORVERSION, condition_mask);
-#else
-  return 0;
-#endif
+  // This test needs to be implemented.
 }
 
-TEST(sanity, main)
+TEST(sanity, DISABLED_stream_destroy_pending_drain)
 {
-  test_init_destroy_context();
-  test_init_destroy_multiple_contexts();
-  test_context_variables();
-  test_init_destroy_stream();
-  test_init_destroy_multiple_streams();
-  test_configure_stream();
-  test_basic_stream_operations();
-  test_stream_position();
-
-  /* Sometimes, when using WASAPI on windows 7 (vista and 8 are okay), and
-   * calling Activate a lot on an AudioClient, 0x800700b7 is returned. This is
-   * the HRESULT value for "Cannot create a file when that file already exists",
-   * and is not documented as a possible return value for this call. Hence, we
-   * try to limit the number of streams we create in this test. */
-  if (!is_windows_7()) {
-    test_init_destroy_multiple_contexts_and_streams();
-
-    delay_callback = 0;
-    test_init_start_stop_destroy_multiple_streams(0, 0);
-    test_init_start_stop_destroy_multiple_streams(1, 0);
-    test_init_start_stop_destroy_multiple_streams(0, 150);
-    test_init_start_stop_destroy_multiple_streams(1, 150);
-    delay_callback = 1;
-    test_init_start_stop_destroy_multiple_streams(0, 0);
-    test_init_start_stop_destroy_multiple_streams(1, 0);
-    test_init_start_stop_destroy_multiple_streams(0, 150);
-    test_init_start_stop_destroy_multiple_streams(1, 150);
-  }
-  delay_callback = 0;
-  test_drain();
-/*
-  to implement:
-  test_eos_during_prefill();
-  test_stream_destroy_pending_drain();
-*/
-  printf("\n");
+  // This test needs to be implemented.
 }
