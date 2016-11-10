@@ -1162,9 +1162,9 @@ bool stop_and_join_render_thread(cubeb_stream * stm)
   if (r == WAIT_TIMEOUT) {
     /* Something weird happened, leak the thread and continue the shutdown
      * process. */
+    *(stm->emergency_bailout) = true;
     LOG("Destroy WaitForSingleObject on thread timed out,"
         " leaking the thread: %d", GetLastError());
-    *(stm->emergency_bailout) = true;
     rv = false;
   }
   if (r == WAIT_FAILED) {
@@ -1794,10 +1794,8 @@ void wasapi_stream_destroy(cubeb_stream * stm)
   // If we could not join the thread, stm->emergency_bailout is true 
   // and is still alive until the thread wakes up and exits cleanly.
   if (stop_and_join_render_thread(stm)) {
-    if (stm->emergency_bailout.load()) {
-      delete stm->emergency_bailout.load();
-      stm->emergency_bailout = nullptr;
-    }
+    delete stm->emergency_bailout.load();
+    stm->emergency_bailout = nullptr;
   } else {
     // If we're leaking, it must be that this is true.
     assert(*(stm->emergency_bailout));
