@@ -6,15 +6,11 @@
  */
 
 /* libcubeb api/function test. Record the mic and check there is sound. */
-#ifdef NDEBUG
-#undef NDEBUG
-#endif
 #define _XOPEN_SOURCE 600
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#include <assert.h>
-
+#include "gtest/gtest.h"
 #include "cubeb/cubeb.h"
 #include "common.h"
 
@@ -74,7 +70,7 @@ void state_cb(cubeb_stream * stream, void * /*user*/, cubeb_state state)
   return;
 }
 
-int main(int /*argc*/, char * /*argv*/[])
+TEST(record, main)
 {
   cubeb *ctx;
   cubeb_stream *stream;
@@ -85,13 +81,13 @@ int main(int /*argc*/, char * /*argv*/[])
   r = cubeb_init(&ctx, "Cubeb record example");
   if (r != CUBEB_OK) {
     fprintf(stderr, "Error initializing cubeb library\n");
-    return r;
+    ASSERT_EQ(r, CUBEB_OK);
   }
 
   /* This test needs an available input device, skip it if this host does not
    * have one. */
   if (!has_available_input_device(ctx)) {
-    return 0;
+    return;
   }
 
   params.format = STREAM_FORMAT;
@@ -102,7 +98,7 @@ int main(int /*argc*/, char * /*argv*/[])
                         4096, data_cb, state_cb, &stream_state);
   if (r != CUBEB_OK) {
     fprintf(stderr, "Error initializing cubeb stream\n");
-    return r;
+    ASSERT_EQ(r, CUBEB_OK);
   }
 
   cubeb_stream_start(stream);
@@ -112,7 +108,5 @@ int main(int /*argc*/, char * /*argv*/[])
   cubeb_stream_destroy(stream);
   cubeb_destroy(ctx);
 
-  assert(stream_state.seen_noise);
-
-  return CUBEB_OK;
+  ASSERT_TRUE(stream_state.seen_noise);
 }

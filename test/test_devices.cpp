@@ -7,16 +7,11 @@
 
 /* libcubeb enumerate device test/example.
  * Prints out a list of devices enumerated. */
-#ifdef NDEBUG
-#undef NDEBUG
-#endif
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include "gtest/gtest.h"
 #include "cubeb/cubeb.h"
-
 
 static void
 print_device_info(cubeb_device_info * info, FILE * f)
@@ -158,13 +153,11 @@ cleanup:
   return r;
 }
 
-int main(int argc, char *argv[])
+TEST(devices, main)
 {
-  (void)argc;
-  (void)argv;
   int ret;
 
   ret = run_enumerate_devices();
 
-  return ret;
+  ASSERT_EQ(ret, 0);
 }

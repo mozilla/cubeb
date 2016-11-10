@@ -6,16 +6,12 @@
  */
 
 /* libcubeb api/function test. Plays a simple tone. */
-#ifdef NDEBUG
-#undef NDEBUG
-#endif
 #define _XOPEN_SOURCE 600
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#include <assert.h>
 #include <limits.h>
-
+#include "gtest/gtest.h"
 #include "cubeb/cubeb.h"
 #include "common.h"
 
@@ -95,7 +91,7 @@ void state_cb(cubeb_stream *stream, void *user, cubeb_state state)
   return;
 }
 
-int main(int /*argc*/, char * /*argv*/[])
+TEST(tone, main)
 {
   cubeb *ctx;
   cubeb_stream *stream;
@@ -106,7 +102,7 @@ int main(int /*argc*/, char * /*argv*/[])
   r = cubeb_init(&ctx, "Cubeb tone example");
   if (r != CUBEB_OK) {
     fprintf(stderr, "Error initializing cubeb library\n");
-    return r;
+    ASSERT_EQ(r, CUBEB_OK);
   }
 
   params.format = STREAM_FORMAT;
@@ -116,7 +112,7 @@ int main(int /*argc*/, char * /*argv*/[])
   user_data = (struct cb_user_data *) malloc(sizeof(*user_data));
   if (user_data == NULL) {
     fprintf(stderr, "Error allocating user data\n");
-    return CUBEB_ERROR;
+    ASSERT_EQ(r, CUBEB_OK);
   }
   user_data->position = 0;
 
@@ -124,7 +120,7 @@ int main(int /*argc*/, char * /*argv*/[])
                         4096, data_cb, state_cb, user_data);
   if (r != CUBEB_OK) {
     fprintf(stderr, "Error initializing cubeb stream\n");
-    return r;
+    ASSERT_EQ(r, CUBEB_OK);
   }
 
   cubeb_stream_start(stream);
@@ -134,9 +130,7 @@ int main(int /*argc*/, char * /*argv*/[])
   cubeb_stream_destroy(stream);
   cubeb_destroy(ctx);
 
-  assert(user_data->position);
+  ASSERT_TRUE(user_data->position);
 
   free(user_data);
-
-  return CUBEB_OK;
 }
