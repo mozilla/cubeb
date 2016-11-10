@@ -18,14 +18,16 @@ enum ThreadSafety
   /* No attempt to synchronize the queue is made. The queue is only safe when
    * used on a single thread. */
   Unsafe,
-  /** Atomics are used to synchronize read and write. The queue is safe to used
-   * from two thread: one producer, one consumer. */
+  /** Atomics are used to synchronize read and write. The queue is safe when
+   * used from two thread: one producer, one consumer. */
   Safe
 };
 
 /** Policy to enable thread safety on the queue. */
 template<ThreadSafety>
 struct ThreadSafePolicy;
+
+typedef int RingBufferIndex;
 
 /** Policy for thread-safe internal index for the queue.
  *
@@ -36,7 +38,7 @@ struct ThreadSafePolicy;
 template<>
 struct ThreadSafePolicy<Safe>
 {
-  typedef std::atomic<int> IndexType;
+  typedef std::atomic<RingBufferIndex> IndexType;
 };
 
 /**
@@ -46,7 +48,7 @@ struct ThreadSafePolicy<Safe>
 template<>
 struct ThreadSafePolicy<Unsafe>
 {
-  typedef int IndexType;
+  typedef RingBufferIndex IndexType;
 };
 
 /**
@@ -58,30 +60,31 @@ struct ThreadSafePolicy<Unsafe>
  * to disable the use of atomics at compile time and only use this data
  * structure on one thread.
  *
- * The role for the producer and the consumer must be constant, i.e., the same
- * thread should always be the producer and another thread should always be the
- * consumer.
+ * The role for the producer and the consumer must be constant, i.e., the
+ * producer should always be on one thread and the consumer should always be on
+ * another thread.
  *
  * The public interface of this class uses frames.
  *
  * Some words about the inner workings of this class:
  * - Capacity is fixed. Only one allocation is performed, in the constructor.
- *   When reading and writing, the return value of the method allow checking is
+ *   When reading and writing, the return value of the method allow checking if
  *   the ring buffer is empty or full.
- * - We always keep the read index at least one element ahead of the write
+ * - We always keep the read index at least one frame ahead of the write
  *   index, so we can distinguish between an empty and a full ring buffer: an
  *   empty ring buffer is when the write index is at the same position as the
- *   write index. A full buffer is when the write index is exactly one position
+ *   read index. A full buffer is when the write index is exactly one position
  *   before the read index.
  * - We synchronize updates to the read index after having read the data, and
  *   the write index after having written the data. This means that the each
  *   thread can only touch a portion of the buffer that is not touched by the
  *   other thread.
- * - Caller is expected to provide an output buffer. When writing to the queue,
- *   elements are copied. When reading from the queue, the user is expected to
- *   provide a buffer. Because this is a ring buffer, data might not be
- *   contiguous in memory, providing an external buffer to copy into is an easy
- *   way to have linear data for further processing.
+ * - Callers are expected to provide buffers. When writing to the queue,
+ *   frames are copied into the internal storage from the buffer passed in.
+ *   When reading from the queue, the user is expected to provide a buffer.
+ *   Because this is a ring buffer, data might not be contiguous in memory,
+ *   providing an external buffer to copy into is an easy way to have linear
+ *   data for further processing.
  */
 template <typename T,
           ThreadSafety Safety = ThreadSafety::Safe>
@@ -101,13 +104,14 @@ public:
     : read_index_(0)
     , write_index_(0)
     , channel_count_(channel_count)
-    /* One element more to distinguish from emtpy and full buffer. */
+    /* One frame more to distinguish from emtpy and full buffer. */
     , capacity_(frames_to_samples(capacity_in_frames + 1))
   {
     static_assert(std::is_trivial<T>::value,
                   "ring_buffer_base requires trivial type");
 
-    assert(storage_capacity() < std::numeric_limits<T>::max() &&
+    assert(storage_capacity() <
+           std::numeric_limits<RingBufferIndex>::max() &&
            "buffer to large for the type of index used.");
     assert(channel_count_ > 0);
     assert(capacity_in_frames > 0);
@@ -132,33 +136,33 @@ public:
    *
    * Only safely called on the producer thread.
    *
-   * @param elements a pointer to a buffer containing at least `count` audio
-   * frames. If `elements` is `nullptr`, silence is enqueued.
-   * @param count The number of audio frames to read from `elements`
-   * @return The number of frames successfully copy from elements and inserted
+   * @param frames a pointer to a buffer containing at least `count` audio
+   * frames. If `frames` is `nullptr`, silence is enqueued.
+   * @param count The number of audio frames to read from `frames`
+   * @return The number of frames successfully copy from `frames` and inserted
    * into the ring buffer.
    */
-  int enqueue(T * elements, int count)
+  int enqueue(T * frames, int count)
   {
     int rd_idx = read_index_;
     int wr_idx = write_index_;
 
-    if (full_internal(rd_idx, wr_idx)) {
+    if (full_internal_samples(rd_idx, wr_idx)) {
       return 0;
     }
 
-    int to_write = std::min(available_write_internal(rd_idx, wr_idx),
+    int to_write = std::min(available_write_internal_samples(rd_idx, wr_idx),
                             frames_to_samples(count));
 
     /* First part, from the write index to the end of the array. */
     int first_part = std::min(storage_capacity() - wr_idx,
                               to_write);
     /* Second part, from the beginning of the array */
-    int second_part = std::max(to_write - first_part, 0);
+    int second_part = to_write - first_part;
 
-    if (elements) {
-      PodCopy(data_.get() + wr_idx, elements, first_part);
-      PodCopy(data_.get(), elements + first_part, second_part);
+    if (frames) {
+      PodCopy(data_.get() + wr_idx, frames, first_part);
+      PodCopy(data_.get(), frames + first_part, second_part);
     } else {
       PodZero(data_.get() + wr_idx, first_part);
       PodZero(data_.get(), second_part);
@@ -172,33 +176,33 @@ public:
   }
   /**
    * Retrieve at most `count` frames from the ring buffer, and copy them to
-   * `elements`, if non-null.
+   * `frames`, if non-null.
    *
    * Only safely called on the consumer side.
    *
-   * @param elements A pointer to a buffer with space for at least `count`
-   * frames of audio. If `elements` is `nullptr`, elements will be discarded.
-   * @param count The maximum number of elements to dequeue.
-   * @return The number of frames of audio written to `elements`.
+   * @param frames A pointer to a buffer with space for at least `count`
+   * frames of audio. If `frames` is `nullptr`, count frames will be discarded.
+   * @param count The maximum number of frames to dequeue.
+   * @return The number of frames of audio written to `frames`.
    */
-  int dequeue(T * elements, int count)
+  int dequeue(T * frames, int count)
   {
     int wr_idx = write_index_;
     int rd_idx = read_index_;
 
-    if (empty_internal(rd_idx, wr_idx)) {
+    if (empty_internal_samples(rd_idx, wr_idx)) {
       return 0;
     }
 
-    int to_read = std::min(available_read_internal(rd_idx, wr_idx),
+    int to_read = std::min(available_read_internal_samples(rd_idx, wr_idx),
                            frames_to_samples(count));
 
     int first_part = std::min(storage_capacity() - rd_idx, to_read);
-    int second_part = std::max(to_read - first_part, 0);
+    int second_part = to_read - first_part;
 
-    if (elements) {
-      PodCopy(elements, data_.get() + rd_idx, first_part); 
-      PodCopy(elements + first_part, data_.get(), second_part);
+    if (frames) {
+      PodCopy(frames, data_.get() + rd_idx, first_part); 
+      PodCopy(frames + first_part, data_.get(), second_part);
     }
 
     increment_index(rd_idx, to_read);
@@ -216,8 +220,8 @@ public:
    */
   int available_read() const
   {
-    return samples_to_frames(available_read_internal(read_index_,
-                                                     write_index_));
+    return samples_to_frames(available_read_internal_samples(read_index_,
+                                                             write_index_));
   }
   /**
    * Get the number of available frames of audio for consuming.
@@ -228,8 +232,8 @@ public:
    */
   int available_write() const
   {
-    return samples_to_frames(available_write_internal(read_index_,
-                                                      write_index_));
+    return samples_to_frames(available_write_internal_samples(read_index_,
+                                                              write_index_));
   }
   /**
    * Get total capacity, in frames, for this ring buffer.
@@ -250,20 +254,20 @@ public:
    **/
   bool empty() const
   {
-    return empty_internal(read_index_, write_index_);
+    return empty_internal_samples(read_index_, write_index_);
   }
   /** Return true if the ring buffer is full.
    *
    * Can be called safely on any thread.
    *
-   * This happens if the write index is exactly one element behind the read
+   * This happens if the write index is exactly one frame behind the read
    * index.
    *
    * @return true if the ring buffer is full, false otherwise.
    **/
   bool full() const
   {
-    return full_internal(read_index_, write_index_);
+    return full_internal_samples(read_index_, write_index_);
   }
 private:
   /** Return true if the ring buffer is empty.
@@ -272,28 +276,28 @@ private:
    * @param write_index the write index to consider
    * @return true if the ring buffer is empty, false otherwise.
    **/
-  bool empty_internal(int read_index, int write_index) const
+  bool empty_internal_samples(int read_index, int write_index) const
   {
     return write_index == read_index;
   }
   /** Return true if the ring buffer is full.
    *
-   * This happens if the write index is exactly one element behind the read
+   * This happens if the write index is exactly one frame behind the read
    * index.
    *
    * @param read_index the read index to consider
    * @param write_index the write index to consider
    * @return true if the ring buffer is full, false otherwise.
    **/
-  bool full_internal(int read_index, int write_index) const
+  bool full_internal_samples(int read_index, int write_index) const
   {
     return (write_index + channel_count_) % capacity_ == read_index;
   }
   /**
-   * Return the size of the storage. It is one more than the number of elements
+   * Return the size of the storage. It is one more than the number of frames
    * that can be stored in the buffer.
    *
-   * @return the number of elements that can be stored in the buffer.
+   * @return the number of frames that can be stored in the buffer.
    */
   int storage_capacity() const
   {
@@ -324,7 +328,7 @@ private:
    *
    * @return the number of available samples for reading.
    */
-  int available_read_internal(int read_index, int write_index) const
+  int available_read_internal_samples(int read_index, int write_index) const
   {
     if (write_index >= read_index) {
       return write_index - read_index;
@@ -333,14 +337,14 @@ private:
     }
   }
   /**
-   * Returns the number of empty elements, available for writing.
+   * Returns the number of empty samples, available for writing.
    *
-   * @return the number of elements that can be written into the array.
+   * @return the number of samples that can be written into the array.
    */
-  int available_write_internal(int read_index, int write_index) const
+  int available_write_internal_samples(int read_index, int write_index) const
   {
     /* We substract one frame (`channel_count_` samples) here to always keep at
-     * least one element free in the buffer, to distinguish between full and
+     * least one sample free in the buffer, to distinguish between full and
      * empty array. */
     int rv = read_index - write_index - channel_count_;
     if (write_index >= read_index) {
@@ -362,10 +366,10 @@ private:
      * computation step: it should only be assigned once. */
     index = (index + increment) % capacity_;
   }
-  /** Index at which the oldest frame is at. In samples. */
+  /** Index at which the oldest frame is at, in samples. */
   typename ThreadSafePolicy<Safety>::IndexType read_index_;
-  /** Index at which to write new frames. In samples. `write_index` is always at
-   * most one element behind `read_index_`. */
+  /** Index at which to write new frames, in samples. `write_index` is always at
+   * least one frames ahead of `read_index_`. */
   typename ThreadSafePolicy<Safety>::IndexType write_index_;
   /** Channel count for this ring buffer. */
   const int channel_count_;

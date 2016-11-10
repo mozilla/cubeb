@@ -111,7 +111,7 @@ void test_ring_multi(lock_free_queue<T>& buf, int channels, int capacity_frames)
     }
   });
 
-  uint32_t remaining = 1002;
+  int remaining = 1002;
 
   while(remaining--) {
     std::this_thread::sleep_for(std::chrono::microseconds(10));
@@ -123,9 +123,9 @@ void test_ring_multi(lock_free_queue<T>& buf, int channels, int capacity_frames)
   t.join();
 }
 
-void basic_api_test()
+void basic_api_test(int channels)
 {
-  queue<float> ring(2, 128);
+  queue<float> ring(channels, 128);
 
   assert(ring.capacity() == 128);
 
@@ -166,22 +166,32 @@ void basic_api_test()
 int main()
 {
   /* Basic API test. */
-  basic_api_test();
+  const int min_channels = 1;
+  const int max_channels = 10;
+  const int min_capacity = 199;
+  const int max_capacity = 1277;
+  const int capacity_increment = 27;
+
+  for (size_t channels = min_channels; channels < max_channels; channels++) {
+    basic_api_test(channels);
+  }
 
   /* Single thread testing. */
   /* Test mono to 9.1 */
-  for (size_t channels = 1; channels < 10; channels++) {
+  for (size_t channels = min_channels; channels < max_channels; channels++) {
     /* Use non power-of-two numbers to catch edge-cases. */
-    for (size_t capacity_frames = 199; capacity_frames < 1277; capacity_frames+=37) {
+    for (size_t capacity_frames = min_capacity;
+         capacity_frames < max_capacity; capacity_frames+=capacity_increment) {
       queue<float> ring(channels, capacity_frames);
       test_ring(ring, channels, capacity_frames);
     }
   }
 
   /* Multi thread testing */
-  for (size_t channels = 1; channels < 10; channels++) {
+  for (size_t channels = max_channels; channels < min_channels; channels++) {
     /* Use non power-of-two numbers to catch edge-cases. */
-    for (size_t capacity_frames = 199; capacity_frames < 1277; capacity_frames+=37) {
+    for (size_t capacity_frames = min_capacity;
+         capacity_frames < max_capacity; capacity_frames+=capacity_increment) {
       lock_free_queue<long> ring(channels, capacity_frames);
       test_ring_multi(ring, channels, capacity_frames);
     }
