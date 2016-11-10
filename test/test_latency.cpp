@@ -5,7 +5,7 @@
 
 #define LOG(msg) fprintf(stderr, "%s\n", msg);
 
-TEST(latency, main)
+TEST(latency, latency)
 {
   cubeb * ctx = NULL;
   int r;

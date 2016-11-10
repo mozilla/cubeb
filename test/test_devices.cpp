@@ -103,17 +103,16 @@ print_device_collection(cubeb_device_collection * collection, FILE * f)
     print_device_info(collection->device[i], f);
 }
 
-static int
-run_enumerate_devices(void)
+TEST(devices, enumerate)
 {
-  int r = CUBEB_OK;
+  int r;
   cubeb * ctx = NULL;
   cubeb_device_collection * collection = NULL;
 
   r = cubeb_init(&ctx, "Cubeb audio test");
   if (r != CUBEB_OK) {
     fprintf(stderr, "Error initializing cubeb library\n");
-    return r;
+    ASSERT_EQ(r, CUBEB_OK);
   }
 
   fprintf(stdout, "Enumerating input devices for backend %s\n",
@@ -150,14 +149,6 @@ run_enumerate_devices(void)
 
 cleanup:
   cubeb_destroy(ctx);
-  return r;
+  ASSERT_EQ(r, CUBEB_OK);
 }
 
-TEST(devices, main)
-{
-  int ret;
-
-  ret = run_enumerate_devices();
-
-  ASSERT_EQ(ret, 0);
-}

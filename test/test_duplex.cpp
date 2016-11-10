@@ -29,8 +29,6 @@ struct user_state
   bool seen_noise;
 };
 
-
-
 long data_cb(cubeb_stream * stream, void * user, const void * inputbuffer, void * outputbuffer, long nframes)
 {
   user_state * u = reinterpret_cast<user_state*>(user);
@@ -82,7 +80,7 @@ void state_cb(cubeb_stream * stream, void * /*user*/, cubeb_state state)
   return;
 }
 
-TEST(duplex, main)
+TEST(duplex, duplex)
 {
   cubeb *ctx;
   cubeb_stream *stream;

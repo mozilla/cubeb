@@ -70,7 +70,7 @@ void state_cb(cubeb_stream * stream, void * /*user*/, cubeb_state state)
   return;
 }
 
-TEST(record, main)
+TEST(record, record)
 {
   cubeb *ctx;
   cubeb_stream *stream;
