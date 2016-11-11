@@ -7,7 +7,9 @@
 
 /* libcubeb api/function test. Loops input back to output and check audio
  * is flowing. */
+#if !defined(_XOPEN_SOURCE)
 #define _XOPEN_SOURCE 600
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -24,14 +26,14 @@
 #define SILENT_SAMPLE 0
 #endif
 
-struct user_state
+struct user_state_duplex
 {
   bool seen_noise;
 };
 
-long data_cb(cubeb_stream * stream, void * user, const void * inputbuffer, void * outputbuffer, long nframes)
+long data_cb_duplex(cubeb_stream * stream, void * user, const void * inputbuffer, void * outputbuffer, long nframes)
 {
-  user_state * u = reinterpret_cast<user_state*>(user);
+  user_state_duplex * u = reinterpret_cast<user_state_duplex*>(user);
 #if (defined(_WIN32) || defined(__WIN32__))
   float *ib = (float *)inputbuffer;
   float *ob = (float *)outputbuffer;
@@ -61,7 +63,7 @@ long data_cb(cubeb_stream * stream, void * user, const void * inputbuffer, void 
   return nframes;
 }
 
-void state_cb(cubeb_stream * stream, void * /*user*/, cubeb_state state)
+void state_cb_duplex(cubeb_stream * stream, void * /*user*/, cubeb_state state)
 {
   if (stream == NULL)
     return;
@@ -87,7 +89,7 @@ TEST(duplex, duplex)
   cubeb_stream_params input_params;
   cubeb_stream_params output_params;
   int r;
-  user_state stream_state = { false };
+  user_state_duplex stream_state = { false };
   uint32_t latency_frames = 0;
 
   r = cubeb_init(&ctx, "Cubeb duplex example");
@@ -119,7 +121,7 @@ TEST(duplex, duplex)
 
   r = cubeb_stream_init(ctx, &stream, "Cubeb duplex",
                         NULL, &input_params, NULL, &output_params,
-                        latency_frames, data_cb, state_cb, &stream_state);
+                        latency_frames, data_cb_duplex, state_cb_duplex, &stream_state);
   if (r != CUBEB_OK) {
     fprintf(stderr, "Error initializing cubeb stream\n");
     ASSERT_EQ(r, CUBEB_OK);

@@ -4,7 +4,9 @@
  * This program is made available under an ISC-style license.  See the
  * accompanying file LICENSE for details.
  */
+#if !defined(_XOPEN_SOURCE)
 #define _XOPEN_SOURCE 600
+#endif
 #include "cubeb/cubeb.h"
 #include <stdio.h>
 #include <string.h>

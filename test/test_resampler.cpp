@@ -279,7 +279,7 @@ uint32_t fill_with_sine(float * buf, uint32_t rate, uint32_t channels,
   return initial_phase;
 }
 
-long data_cb(cubeb_stream * /*stm*/, void * user_ptr,
+long data_cb_resampler(cubeb_stream * /*stm*/, void * user_ptr,
              const void * input_buffer, void * output_buffer, long frame_count)
 {
   osc_state * state = reinterpret_cast<osc_state*>(user_ptr);
@@ -337,7 +337,7 @@ void test_resampler_duplex(uint32_t input_channels, uint32_t output_channels,
 
   cubeb_resampler * resampler =
     cubeb_resampler_create((cubeb_stream*)nullptr, &input_params, &output_params, target_rate,
-                           data_cb, (void*)&state, CUBEB_RESAMPLER_QUALITY_VOIP);
+                           data_cb_resampler, (void*)&state, CUBEB_RESAMPLER_QUALITY_VOIP);
 
   long latency = cubeb_resampler_latency(resampler);
 

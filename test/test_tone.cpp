@@ -6,7 +6,9 @@
  */
 
 /* libcubeb api/function test. Plays a simple tone. */
+#if !defined(_XOPEN_SOURCE)
 #define _XOPEN_SOURCE 600
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -27,7 +29,7 @@ struct cb_user_data {
   long position;
 };
 
-long data_cb(cubeb_stream *stream, void *user, const void* /*inputbuffer*/, void *outputbuffer, long nframes)
+long data_cb_tone(cubeb_stream *stream, void *user, const void* /*inputbuffer*/, void *outputbuffer, long nframes)
 {
   struct cb_user_data *u = (struct cb_user_data *)user;
 #if (defined(_WIN32) || defined(__WIN32__))
@@ -70,7 +72,7 @@ long data_cb(cubeb_stream *stream, void *user, const void* /*inputbuffer*/, void
   return nframes;
 }
 
-void state_cb(cubeb_stream *stream, void *user, cubeb_state state)
+void state_cb_tone(cubeb_stream *stream, void *user, cubeb_state state)
 {
   struct cb_user_data *u = (struct cb_user_data *)user;
 
@@ -117,7 +119,7 @@ TEST(tone, tone)
   user_data->position = 0;
 
   r = cubeb_stream_init(ctx, &stream, "Cubeb tone (mono)", NULL, NULL, NULL, &params,
-                        4096, data_cb, state_cb, user_data);
+                        4096, data_cb_tone, state_cb_tone, user_data);
   if (r != CUBEB_OK) {
     fprintf(stderr, "Error initializing cubeb stream\n");
     ASSERT_EQ(r, CUBEB_OK);
