@@ -93,7 +93,7 @@ void state_cb_tone(cubeb_stream *stream, void *user, cubeb_state state)
   return;
 }
 
-TEST(tone, tone)
+TEST(cubeb, tone)
 {
   cubeb *ctx;
   cubeb_stream *stream;

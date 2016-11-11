@@ -247,17 +247,17 @@ cleanup:
   return r;
 }
 
-TEST(audio, run_panning_volume_test_short)
+TEST(cubeb, run_panning_volume_test_short)
 {
   ASSERT_EQ(run_panning_volume_test(0), CUBEB_OK);
 }
 
-TEST(audio, run_panning_volume_test_float)
+TEST(cubeb, run_panning_volume_test_float)
 {
   ASSERT_EQ(run_panning_volume_test(1), CUBEB_OK);
 }
 
-TEST(audio, run_channel_rate_test)
+TEST(cubeb, run_channel_rate_test)
 {
   int channel_values[] = {
     1,

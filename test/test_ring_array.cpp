@@ -6,7 +6,7 @@
 #include "cubeb/cubeb.h"
 #include "cubeb_ring_array.h"
 
-TEST(ring_array, ring_array)
+TEST(cubeb, ring_array)
 {
   ring_array ra;
 
@@ -67,7 +67,7 @@ TEST(ring_array, ring_array)
   ring_array_destroy(&ra);
 }
 #else
-TEST(ring_array, DISABLED_ring_array)
+TEST(cubeb, DISABLED_ring_array)
 {
 }
 #endif

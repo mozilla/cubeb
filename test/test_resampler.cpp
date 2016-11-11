@@ -401,7 +401,7 @@ void test_resampler_duplex(uint32_t input_channels, uint32_t output_channels,
 
 #define array_size(x) (sizeof(x) / sizeof(x[0]))
 
-TEST(resampler, one_way)
+TEST(cubeb, resampler_one_way)
 {
   /* Test one way resamplers */
   for (uint32_t channels = 1; channels <= max_channels; channels++) {
@@ -421,7 +421,7 @@ TEST(resampler, one_way)
 // This is disabled because the latency estimation in the resampler code is
 // slightly off so we can generate expected vectors.
 // See https://github.com/kinetiknz/cubeb/issues/93
-TEST(resampler, DISABLED_duplex)
+TEST(cubeb, DISABLED_resampler_duplex)
 {
   for (uint32_t input_channels = 1; input_channels <= max_channels; input_channels++) {
     for (uint32_t output_channels = 1; output_channels <= max_channels; output_channels++) {
@@ -449,7 +449,7 @@ TEST(resampler, DISABLED_duplex)
   }
 }
 
-TEST(resampler, delay_line)
+TEST(cubeb, resampler_delay_line)
 {
   for (uint32_t channel = 1; channel <= 2; channel++) {
     for (uint32_t delay_frames = 4; delay_frames <= 40; delay_frames+=chunk_increment) {
@@ -471,7 +471,7 @@ long test_output_only_noop_data_cb(cubeb_stream * /*stm*/, void * /*user_ptr*/,
   return frame_count;
 }
 
-TEST(resampler, output_only_noop)
+TEST(cubeb, resampler_output_only_noop)
 {
   cubeb_stream_params output_params;
   int target_rate;
@@ -507,7 +507,7 @@ long test_drain_data_cb(cubeb_stream * /*stm*/, void * /*user_ptr*/,
   return frame_count - 10;
 }
 
-TEST(resampler, drain)
+TEST(cubeb, resampler_drain)
 {
   cubeb_stream_params output_params;
   int target_rate;

@@ -103,7 +103,7 @@ print_device_collection(cubeb_device_collection * collection, FILE * f)
     print_device_info(collection->device[i], f);
 }
 
-TEST(devices, enumerate)
+TEST(cubeb, enumerate_devices)
 {
   int r;
   cubeb * ctx = NULL;

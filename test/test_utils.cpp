@@ -1,7 +1,7 @@
 #include "gtest/gtest.h"
 #include "cubeb_utils.h"
 
-TEST(utils, auto_array)
+TEST(cubeb, auto_array)
 {
   auto_array<uint32_t> array;
   auto_array<uint32_t> array2(10);

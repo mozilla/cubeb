@@ -83,7 +83,7 @@ test_state_callback(cubeb_stream * /*stm*/, void * /*user_ptr*/, cubeb_state /*s
 {
 }
 
-TEST(sanity, init_destroy_context)
+TEST(cubeb, init_destroy_context)
 {
   int r;
   cubeb * ctx;
@@ -102,7 +102,7 @@ TEST(sanity, init_destroy_context)
   cubeb_destroy(ctx);
 }
 
-TEST(sanity, init_destroy_multiple_contexts)
+TEST(cubeb, init_destroy_multiple_contexts)
 {
   size_t i;
   int r;
@@ -122,7 +122,7 @@ TEST(sanity, init_destroy_multiple_contexts)
   }
 }
 
-TEST(sanity, context_variables)
+TEST(cubeb, context_variables)
 {
   int r;
   cubeb * ctx;
@@ -154,7 +154,7 @@ TEST(sanity, context_variables)
   cubeb_destroy(ctx);
 }
 
-TEST(sanity, init_destroy_stream)
+TEST(cubeb, init_destroy_stream)
 {
   int r;
   cubeb * ctx;
@@ -181,7 +181,7 @@ TEST(sanity, init_destroy_stream)
   cubeb_destroy(ctx);
 }
 
-TEST(sanity, init_destroy_multiple_streams)
+TEST(cubeb, init_destroy_multiple_streams)
 {
   size_t i;
   int r;
@@ -214,7 +214,7 @@ TEST(sanity, init_destroy_multiple_streams)
   cubeb_destroy(ctx);
 }
 
-TEST(sanity, configure_stream)
+TEST(cubeb, configure_stream)
 {
   int r;
   cubeb * ctx;
@@ -308,7 +308,7 @@ test_init_start_stop_destroy_multiple_streams(int early, int delay_ms)
   cubeb_destroy(ctx);
 }
 
-TEST(sanity, init_start_stop_destroy_multiple_streams)
+TEST(cubeb, init_start_stop_destroy_multiple_streams)
 {
   /* Sometimes, when using WASAPI on windows 7 (vista and 8 are okay), and
    * calling Activate a lot on an AudioClient, 0x800700b7 is returned. This is
@@ -329,7 +329,7 @@ TEST(sanity, init_start_stop_destroy_multiple_streams)
   }
 }
 
-TEST(sanity, init_destroy_multiple_contexts_and_streams)
+TEST(cubeb, init_destroy_multiple_contexts_and_streams)
 {
   size_t i, j;
   int r;
@@ -375,7 +375,7 @@ TEST(sanity, init_destroy_multiple_contexts_and_streams)
   }
 }
 
-TEST(sanity, basic_stream_operations)
+TEST(cubeb, basic_stream_operations)
 {
   int r;
   cubeb * ctx;
@@ -422,7 +422,7 @@ TEST(sanity, basic_stream_operations)
   cubeb_destroy(ctx);
 }
 
-TEST(sanity, stream_position)
+TEST(cubeb, stream_position)
 {
   size_t i;
   int r;
@@ -560,7 +560,7 @@ test_drain_state_callback(cubeb_stream * /*stm*/, void * /*user_ptr*/, cubeb_sta
   }
 }
 
-TEST(sanity, drain)
+TEST(cubeb, drain)
 {
   int r;
   cubeb * ctx;
@@ -617,12 +617,12 @@ TEST(sanity, drain)
   cubeb_destroy(ctx);
 }
 
-TEST(sanity, DISABLED_eos_during_prefill)
+TEST(cubeb, DISABLED_eos_during_prefill)
 {
   // This test needs to be implemented.
 }
 
-TEST(sanity, DISABLED_stream_destroy_pending_drain)
+TEST(cubeb, DISABLED_stream_destroy_pending_drain)
 {
   // This test needs to be implemented.
 }

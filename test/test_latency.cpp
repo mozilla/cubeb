@@ -2,7 +2,7 @@
 #include "gtest/gtest.h"
 #include "cubeb/cubeb.h"
 
-TEST(latency, latency)
+TEST(cubeb, latency)
 {
   cubeb * ctx = NULL;
   int r;

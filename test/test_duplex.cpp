@@ -82,7 +82,7 @@ void state_cb_duplex(cubeb_stream * stream, void * /*user*/, cubeb_state state)
   return;
 }
 
-TEST(duplex, duplex)
+TEST(cubeb, duplex)
 {
   cubeb *ctx;
   cubeb_stream *stream;
