@@ -192,7 +192,7 @@ struct cubeb_stream {
   /* Frames on input buffer */
   std::atomic<uint32_t> input_buffer_frames;
   /* Frame counters */
-  uint64_t frames_played;
+  std::atomic<uint64_t> frames_played;
   uint64_t frames_queued;
   std::atomic<int64_t> frames_read;
   std::atomic<bool> shutdown;
