@@ -7,11 +7,11 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif // NOMINMAX
+#include "gtest/gtest.h"
 #include "cubeb_resampler_internal.h"
 #include <stdio.h>
 #include <algorithm>
 #include <iostream>
-#include "gtest/gtest.h"
 
 /* Windows cmath USE_MATH_DEFINE thing... */
 const float PI = 3.14159265359f;

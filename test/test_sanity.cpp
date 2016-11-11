@@ -4,6 +4,7 @@
  * This program is made available under an ISC-style license.  See the
  * accompanying file LICENSE for details.
  */
+#include "gtest/gtest.h"
 #if !defined(_XOPEN_SOURCE)
 #define _XOPEN_SOURCE 600
 #endif
@@ -12,7 +13,6 @@
 #include <string.h>
 #include <math.h>
 #include "common.h"
-#include "gtest/gtest.h"
 
 #define STREAM_RATE 44100
 #define STREAM_LATENCY 100 * STREAM_RATE / 1000

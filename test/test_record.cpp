@@ -6,13 +6,13 @@
  */
 
 /* libcubeb api/function test. Record the mic and check there is sound. */
+#include "gtest/gtest.h"
 #if !defined(_XOPEN_SOURCE)
 #define _XOPEN_SOURCE 600
 #endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#include "gtest/gtest.h"
 #include "cubeb/cubeb.h"
 #include "common.h"
 

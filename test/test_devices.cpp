@@ -7,10 +7,10 @@
 
 /* libcubeb enumerate device test/example.
  * Prints out a list of devices enumerated. */
+#include "gtest/gtest.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "gtest/gtest.h"
 #include "cubeb/cubeb.h"
 
 static void

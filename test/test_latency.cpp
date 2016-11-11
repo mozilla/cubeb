@@ -1,5 +1,5 @@
-#include <stdlib.h>
 #include "gtest/gtest.h"
+#include <stdlib.h>
 #include "cubeb/cubeb.h"
 
 TEST(cubeb, latency)
