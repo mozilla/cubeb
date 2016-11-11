@@ -9,6 +9,7 @@
 #define _XOPEN_SOURCE 600
 #endif
 #include "cubeb/cubeb.h"
+#include <atomic>
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -58,7 +59,7 @@ int is_windows_7()
 }
 
 static int dummy;
-static uint64_t total_frames_written;
+static std::atomic<uint64_t> total_frames_written;
 static int delay_callback;
 
 static long
@@ -468,7 +469,7 @@ TEST(cubeb, stream_position)
   delay(500);
 
   /* stream should have prefilled */
-  ASSERT_TRUE(total_frames_written > 0);
+  ASSERT_TRUE(total_frames_written.load() > 0);
 
   r = cubeb_stream_get_position(stream, &position);
   ASSERT_EQ(r, CUBEB_OK);
@@ -486,7 +487,7 @@ TEST(cubeb, stream_position)
     r = cubeb_stream_get_position(stream, &position);
     ASSERT_EQ(r, CUBEB_OK);
     ASSERT_GE(position, last_position);
-    ASSERT_LE(position, total_frames_written);
+    ASSERT_LE(position, total_frames_written.load());
     last_position = position;
     delay(500);
   }
@@ -529,8 +530,8 @@ TEST(cubeb, stream_position)
   cubeb_destroy(ctx);
 }
 
-static int do_drain;
-static int got_drain;
+static std::atomic<int> do_drain;
+static std::atomic<int> got_drain;
 
 static long
 test_drain_data_callback(cubeb_stream * stm, void * user_ptr, const void * /*inputbuffer*/, void * outputbuffer, long nframes)
@@ -600,7 +601,7 @@ TEST(cubeb, drain)
     if (got_drain) {
       break;
     } else {
-      ASSERT_LE(position, total_frames_written);
+      ASSERT_LE(position, total_frames_written.load());
     }
     delay(500);
   }
@@ -611,7 +612,7 @@ TEST(cubeb, drain)
 
   // Really, we should be able to rely on position reaching our final written frame, but
   // for now let's make sure it doesn't continue beyond that point.
-  //ASSERT_LE(position, total_frames_written);
+  //ASSERT_LE(position, total_frames_written.load());
 
   cubeb_stream_destroy(stream);
   cubeb_destroy(ctx);
