@@ -73,7 +73,7 @@ if(USE_PULSE)
   target_sources(cubeb PRIVATE
     src/cubeb_pulse.c)
   target_compile_definitions(cubeb PRIVATE USE_PULSE)
-  target_link_libraries(cubeb PRIVATE pulse)
+  target_link_libraries(cubeb PRIVATE pulse dl)
 endif()
 
 check_include_files(alsa/asoundlib.h USE_ALSA)
