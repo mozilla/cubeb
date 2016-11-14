@@ -36,8 +36,8 @@ before_install:
       fi
     fi
   - if [[ $TRAVIS_OS_NAME = "osx" ]]; then
-       brew update;
-       brew uninstall cmake && brew install cmake;
+      brew update;
+      brew uninstall cmake && brew install cmake;
     fi
 before_script:
   - cmake --version
