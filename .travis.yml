@@ -24,7 +24,7 @@ before_install:
       if [[ $TRAVIS_OS_NAME = "osx" ]]; then
         . scan-build-install.sh;
       else
-        export SCAN_BUILD_PATH=scan-build;
+        export SCAN_BUILD_PATH=/usr/share/clang/scan-build-3.8/bin/scan-build;
       fi;
       export SCAN_BUILD_PATH="$SCAN_BUILD_PATH --status-bugs";
     fi
@@ -41,6 +41,9 @@ before_install:
       brew uninstall cmake && brew install cmake;
     fi
 before_script:
+  - if [[ $TRAVIS_OS_NAME = "linux" ]]; then
+      if [ "$CXX" = "clang++" ]; then export CXX="clang++-3.8" CC="clang-3.8" CXXFLAGS="-stdlib=libc++"; fi
+    fi
   - if [[ -n $SCAN_BUILD ]]; then
       export CCC_CC=$CC CCC_CXX=$CXX;
     fi
@@ -62,5 +65,8 @@ script:
     fi
 addons:
   apt:
+    sources:
+      - ubuntu-toolchain-r-test
     packages:
-      - clang
+      - clang-3.8
+      - libc++-dev
