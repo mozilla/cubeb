@@ -29,8 +29,8 @@ set(CMAKE_VISIBILITY_INLINES_HIDDEN 1)
 
 set(CMAKE_CXX_WARNING_LEVEL 4)
 if(NOT MSVC)
-  set(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} "-Wall -Wextra -Wno-unused-parameter")
-  set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} "-Wall -Wextra -Wno-unused-parameter")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wno-unused-parameter")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-unused-parameter")
 endif()
 
 add_library(cubeb
