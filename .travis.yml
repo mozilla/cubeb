@@ -37,7 +37,6 @@ before_install:
     fi
   - if [[ $TRAVIS_OS_NAME = "osx" ]]; then
        brew update;
-       brew uninstall libtool && brew install libtool;
        brew uninstall cmake && brew install cmake;
     fi
 before_script:
