@@ -40,6 +40,9 @@ before_install:
       brew uninstall cmake && brew install cmake;
     fi
 before_script:
+  - if [[ -n $SCAN_BUILD ]]; then
+      export CCC_CC=$CC CCC_CXX=$CXX;
+    fi
   - cmake --version
   - mkdir build
   - cd build
