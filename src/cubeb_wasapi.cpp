@@ -407,21 +407,9 @@ get_rate(cubeb_stream * stm)
 }
 
 uint32_t
-ms_to_hns(uint32_t ms)
-{
-  return ms * 10000;
-}
-
-uint32_t
 hns_to_ms(REFERENCE_TIME hns)
 {
   return static_cast<uint32_t>(hns / 10000);
-}
-
-double
-hns_to_s(REFERENCE_TIME hns)
-{
-  return static_cast<double>(hns) / 10000000;
 }
 
 uint32_t
