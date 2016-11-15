@@ -1489,17 +1489,12 @@ opensl_stop_player(cubeb_stream * stm)
   assert(stm->playerObj);
   assert(stm->shutdown || stm->draining);
 
-  SLresult res = (*stm->play)->SetPlayState(stm->play, SL_PLAYSTATE_STOPPED);
+  SLresult res = (*stm->play)->SetPlayState(stm->play, SL_PLAYSTATE_PAUSED);
   if (res != SL_RESULT_SUCCESS) {
     LOG("Failed to stop player. Error code: %lu", res);
     return CUBEB_ERROR;
   }
 
-  res = (*stm->bufq)->Clear(stm->bufq);
-  if (res != SL_RESULT_SUCCESS) {
-    LOG("Failed to clear player buffer queue. Error code: %lu", res);
-    return CUBEB_ERROR;
-  }
   return CUBEB_OK;
 }
 
@@ -1509,22 +1504,12 @@ opensl_stop_recorder(cubeb_stream * stm)
   assert(stm->recorderObj);
   assert(stm->shutdown || stm->draining);
 
-  SLresult res = (*stm->recorderItf)->SetRecordState(stm->recorderItf, SL_RECORDSTATE_STOPPED);
+  SLresult res = (*stm->recorderItf)->SetRecordState(stm->recorderItf, SL_RECORDSTATE_PAUSED);
   if (res != SL_RESULT_SUCCESS) {
     LOG("Failed to stop recorder. Error code: %lu", res);
     return CUBEB_ERROR;
   }
-  res = (*stm->recorderBufferQueueItf)->Clear(stm->recorderBufferQueueItf);
-  if (res != SL_RESULT_SUCCESS) {
-    LOG("Failed to clear recorder buffer queue. Error code: %lu", res);
-    return CUBEB_ERROR;
-  }
 
-  if (stm->input_queue) {
-    // In full duplex send an silent buffer to unlock the thread
-    // waiting in the input queue (just in case)
-    array_queue_push(stm->input_queue, stm->input_silent_buffer);
-  }
   return CUBEB_OK;
 }
 
@@ -1562,6 +1547,10 @@ opensl_stream_destroy(cubeb_stream * stm)
   assert(stm->draining || stm->shutdown);
 
   if (stm->playerObj) {
+    SLresult res = (*stm->bufq)->Clear(stm->bufq);
+    if (res != SL_RESULT_SUCCESS) {
+      LOG("Failed to clear player buffer queue. Error code: %lu", res);
+    }
     (*stm->playerObj)->Destroy(stm->playerObj);
     stm->playerObj = NULL;
     stm->play = NULL;
@@ -1572,6 +1561,10 @@ opensl_stream_destroy(cubeb_stream * stm)
   }
 
   if (stm->recorderObj) {
+    SLresult res = (*stm->recorderBufferQueueItf)->Clear(stm->recorderBufferQueueItf);
+    if (res != SL_RESULT_SUCCESS) {
+      LOG("Failed to clear recorder buffer queue. Error code: %lu", res);
+    }
     (*stm->recorderObj)->Destroy(stm->recorderObj);
     stm->recorderObj = NULL;
     stm->recorderItf = NULL;

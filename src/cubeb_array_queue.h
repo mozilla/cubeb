@@ -23,7 +23,6 @@ typedef struct
   size_t writePos;
   size_t readPos;
   pthread_mutex_t mutex;
-  pthread_cond_t empty_convar;
 } array_queue;
 
 array_queue * array_queue_create(size_t num)
@@ -36,7 +35,6 @@ array_queue * array_queue_create(size_t num)
   new_queue->num = num;
 
   pthread_mutex_init(&new_queue->mutex, NULL);
-  pthread_cond_init(&new_queue->empty_convar, NULL);
 
   return new_queue;
 }
@@ -64,7 +62,6 @@ int array_queue_push(array_queue * aq, void * item)
     ret = 0;
   }
   // else queue is full
-  pthread_cond_signal(&aq->empty_convar);
   pthread_mutex_unlock(&aq->mutex);
   return ret;
 }
@@ -78,23 +75,6 @@ void* array_queue_pop(array_queue * aq)
     aq->buf[aq->readPos % aq->num] = NULL;
     aq->readPos = (aq->readPos + 1) % aq->num;
   }
-  pthread_mutex_unlock(&aq->mutex);
-  return value;
-}
-
-void* array_queue_wait_pop(array_queue * aq)
-{
-  pthread_mutex_lock(&aq->mutex);
-  while (aq->readPos == aq->writePos) {
-    // Wait here if queue is empty
-    pthread_cond_wait(&aq->empty_convar, &aq->mutex);
-  }
-  void * value = aq->buf[aq->readPos % aq->num];
-  // Since it has been waiting it is expected to
-  // return a non NULL value.
-  assert(value);
-  aq->buf[aq->readPos % aq->num] = NULL;
-  aq->readPos = (aq->readPos + 1) % aq->num;
   pthread_mutex_unlock(&aq->mutex);
   return value;
 }
