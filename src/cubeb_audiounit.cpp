@@ -2029,19 +2029,18 @@ audiounit_get_available_samplerate(AudioObjectID devid, AudioObjectPropertyScope
   AudioValueRange range;
   if (AudioObjectHasProperty(devid, &adr) &&
       AudioObjectGetPropertyDataSize(devid, &adr, 0, NULL, &size) == noErr) {
-    uint32_t i, count = size / sizeof(AudioValueRange);
-    AudioValueRange * ranges = new AudioValueRange[count];
+    uint32_t count = size / sizeof(AudioValueRange);
+    std::vector<AudioValueRange> ranges(count);
     range.mMinimum = 9999999999.0;
     range.mMaximum = 0.0;
-    if (AudioObjectGetPropertyData(devid, &adr, 0, NULL, &size, ranges) == noErr) {
-      for (i = 0; i < count; i++) {
+    if (AudioObjectGetPropertyData(devid, &adr, 0, NULL, &size, ranges.data()) == noErr) {
+      for (uint32_t i = 0; i < count; i++) {
         if (ranges[i].mMaximum > range.mMaximum)
           range.mMaximum = ranges[i].mMaximum;
         if (ranges[i].mMinimum < range.mMinimum)
           range.mMinimum = ranges[i].mMinimum;
       }
     }
-    delete [] ranges;
     *max = static_cast<uint32_t>(range.mMaximum);
     *min = static_cast<uint32_t>(range.mMinimum);
   } else {
