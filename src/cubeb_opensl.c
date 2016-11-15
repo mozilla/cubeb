@@ -68,8 +68,10 @@ struct cubeb {
   SLInterfaceID SL_IID_PLAY;
 #if defined(__ANDROID__)
   SLInterfaceID SL_IID_ANDROIDCONFIGURATION;
+  SLInterfaceID SL_IID_ANDROIDSIMPLEBUFFERQUEUE;
 #endif
   SLInterfaceID SL_IID_VOLUME;
+  SLInterfaceID SL_IID_RECORD;
   SLObjectItf engObj;
   SLEngineItf eng;
   SLObjectItf outmixObj;
@@ -542,7 +544,7 @@ player_fullduplex_callback(SLBufferQueueItf caller, void * user_ptr)
 
   // Keep sending silent data even in draining mode to prevent the audio
   // back-end from being stopped automatically by OpenSL/ES.
-  memset(output_buffer + written * stm->framesize, 0,
+  memset((uint8_t *)output_buffer + written * stm->framesize, 0,
          stm->queuebuf_len - written * stm->framesize);
 
   // Enqueue data in player buffer queue
@@ -687,16 +689,21 @@ opensl_init(cubeb ** context, char const * context_name)
   ctx->SL_IID_BUFFERQUEUE = *(SLInterfaceID *)dlsym(ctx->lib, "SL_IID_BUFFERQUEUE");
 #if defined(__ANDROID__)
   ctx->SL_IID_ANDROIDCONFIGURATION = *(SLInterfaceID *)dlsym(ctx->lib, "SL_IID_ANDROIDCONFIGURATION");
+  ctx->SL_IID_ANDROIDSIMPLEBUFFERQUEUE = *(SLInterfaceID *)dlsym(ctx->lib, "SL_IID_ANDROIDSIMPLEBUFFERQUEUE");
 #endif
   ctx->SL_IID_PLAY = *(SLInterfaceID *)dlsym(ctx->lib, "SL_IID_PLAY");
+  ctx->SL_IID_RECORD = *(SLInterfaceID *)dlsym(ctx->lib, "SL_IID_RECORD");
+
   if (!f_slCreateEngine ||
       !SL_IID_ENGINE ||
       !SL_IID_OUTPUTMIX ||
       !ctx->SL_IID_BUFFERQUEUE ||
 #if defined(__ANDROID__)
       !ctx->SL_IID_ANDROIDCONFIGURATION ||
+      !ctx->SL_IID_ANDROIDSIMPLEBUFFERQUEUE ||
 #endif
-      !ctx->SL_IID_PLAY) {
+      !ctx->SL_IID_PLAY ||
+      !ctx->SL_IID_RECORD) {
     opensl_destroy(ctx);
     return CUBEB_ERROR;
   }
@@ -954,7 +961,8 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
   lDataSource.pFormat = NULL;
 
   const SLuint32 lSoundRecorderIIDCount = 2;
-  const SLInterfaceID lSoundRecorderIIDs[] = { SL_IID_RECORD, SL_IID_ANDROIDSIMPLEBUFFERQUEUE };
+  const SLInterfaceID lSoundRecorderIIDs[] = { stm->context->SL_IID_RECORD,
+                                               stm->context->SL_IID_ANDROIDSIMPLEBUFFERQUEUE };
   const SLboolean lSoundRecorderReqs[] = { SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE };
   // create the audio recorder abstract object
   SLresult res = (*stm->context->eng)->CreateAudioRecorder(stm->context->eng,
@@ -1001,7 +1009,9 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
     return CUBEB_ERROR;
   }
   // get the record interface
-  res = (*stm->recorderObj)->GetInterface(stm->recorderObj, SL_IID_RECORD, &stm->recorderItf);
+  res = (*stm->recorderObj)->GetInterface(stm->recorderObj,
+                                          stm->context->SL_IID_RECORD,
+                                          &stm->recorderItf);
   if (res != SL_RESULT_SUCCESS) {
     LOG("Failed to get recorder interface. Error code: %lu", res);
     return CUBEB_ERROR;
@@ -1022,7 +1032,7 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
   }
   // get the simple android buffer queue interface
   res = (*stm->recorderObj)->GetInterface(stm->recorderObj,
-                                          SL_IID_ANDROIDSIMPLEBUFFERQUEUE,
+                                          stm->context->SL_IID_ANDROIDSIMPLEBUFFERQUEUE,
                                           &stm->recorderBufferQueueItf);
   if (res != SL_RESULT_SUCCESS) {
     LOG("Failed to get recorder (android) buffer queue interface. Error code: %lu", res);
@@ -1058,7 +1068,7 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
   // Buffering has not started yet.
   stm->input_buffer_index = -1;
   // Prepare input buffers
-  for(int i = 0; i < stm->input_array_capacity; ++i) {
+  for(uint32_t i = 0; i < stm->input_array_capacity; ++i) {
     stm->input_buffer_array[i] = calloc(1, stm->input_buffer_length);
   }
 
@@ -1183,7 +1193,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
   }
   // Allocate input array
   stm->queuebuf = (void**)calloc(1, sizeof(void*) * stm->queuebuf_capacity);
-  for (int i = 0; i < stm->queuebuf_capacity; ++i) {
+  for (uint32_t i = 0; i < stm->queuebuf_capacity; ++i) {
     stm->queuebuf[i] = calloc(1, stm->queuebuf_len);
     assert(stm->queuebuf[i]);
   }
@@ -1344,7 +1354,6 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
   pthread_mutexattr_init(&attr);
   pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK);
   r = pthread_mutex_init(&stm->mutex, &attr);
-  a
 #else
   r = pthread_mutex_init(&stm->mutex, NULL);
 #endif
@@ -1550,7 +1559,7 @@ opensl_stream_destroy(cubeb_stream * stm)
     stm->playerObj = NULL;
     stm->play = NULL;
     stm->bufq = NULL;
-    for (int i = 0; i < stm->queuebuf_capacity; ++i) {
+    for (uint32_t i = 0; i < stm->queuebuf_capacity; ++i) {
       free(stm->queuebuf[i]);
     }
   }
@@ -1560,7 +1569,7 @@ opensl_stream_destroy(cubeb_stream * stm)
     stm->recorderObj = NULL;
     stm->recorderItf = NULL;
     stm->recorderBufferQueueItf = NULL;
-    for (int i = 0; i < stm->input_array_capacity; ++i) {
+    for (uint32_t i = 0; i < stm->input_array_capacity; ++i) {
       free(stm->input_buffer_array[i]);
     }
   }
