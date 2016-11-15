@@ -126,7 +126,7 @@ private:
 };
 
 struct cubeb_stream {
-  cubeb_stream(cubeb * context);
+  explicit cubeb_stream(cubeb * context);
 
   cubeb * context;
   cubeb_data_callback data_callback = nullptr;
