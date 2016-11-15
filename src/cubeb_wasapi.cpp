@@ -30,16 +30,6 @@
 #include "cubeb_resampler.h"
 #include "cubeb_utils.h"
 
-/* devicetopology.h missing in MinGW. */
-#ifndef __devicetopology_h__
-#include "cubeb_devicetopology.h"
-#endif
-
-/* Taken from winbase.h, Not in MinGW. */
-#ifndef STACK_SIZE_PARAM_IS_A_RESERVATION
-#define STACK_SIZE_PARAM_IS_A_RESERVATION   0x00010000    // Threads only
-#endif
-
 #ifndef PKEY_Device_FriendlyName
 DEFINE_PROPERTYKEY(PKEY_Device_FriendlyName,    0xa45c254e, 0xdf1c, 0x4efd, 0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0, 14);    // DEVPROP_TYPE_STRING
 #endif
