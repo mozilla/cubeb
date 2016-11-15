@@ -946,7 +946,9 @@ wasapi_stream_render_loop(LPVOID stream)
     stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
   }
 
-  AvRevertMmThreadCharacteristics(mmcss_handle);
+  if (mmcss_handle) {
+    AvRevertMmThreadCharacteristics(mmcss_handle);
+  }
 
   return 0;
 }
