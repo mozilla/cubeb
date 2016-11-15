@@ -20,7 +20,17 @@
 #include <SLES/OpenSLES_Android.h>
 #include <android/log.h>
 #include <android/api-level.h>
+#endif
+#include "cubeb/cubeb.h"
+#include "cubeb-internal.h"
+#include "cubeb_resampler.h"
+#include "cubeb-sles.h"
+#include "cubeb_array_queue.h"
 
+#if defined(__ANDROID__)
+#ifdef LOG
+#undef LOG
+#endif
 //#define LOGGING_ENABLED
 #ifdef LOGGING_ENABLED
 #define LOG(args...)  __android_log_print(ANDROID_LOG_INFO, "Cubeb_OpenSL" , ## args)
@@ -49,11 +59,6 @@
 #define ANDROID_VERSION_LOLLIPOP 21
 #define ANDROID_VERSION_MARSHMALLOW 23
 #endif
-#include "cubeb/cubeb.h"
-#include "cubeb-internal.h"
-#include "cubeb_resampler.h"
-#include "cubeb-sles.h"
-#include "cubeb_array_queue.h"
 
 #define DEFAULT_SAMPLE_RATE 48000
 
