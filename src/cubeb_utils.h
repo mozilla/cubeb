@@ -23,6 +23,7 @@ template<typename T>
 void PodCopy(T * destination, const T * source, size_t count)
 {
   static_assert(std::is_trivial<T>::value, "Requires trivial type");
+  assert(destination && source);
   memcpy(destination, source, count * sizeof(T));
 }
 
@@ -31,6 +32,7 @@ template<typename T>
 void PodMove(T * destination, const T * source, size_t count)
 {
   static_assert(std::is_trivial<T>::value, "Requires trivial type");
+  assert(destination && source);
   memmove(destination, source, count * sizeof(T));
 }
 
@@ -39,6 +41,7 @@ template<typename T>
 void PodZero(T * destination, size_t count)
 {
   static_assert(std::is_trivial<T>::value, "Requires trivial type");
+  assert(destination);
   memset(destination, 0,  count * sizeof(T));
 }
 
