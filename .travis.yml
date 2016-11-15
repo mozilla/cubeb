@@ -25,7 +25,8 @@ before_install:
         . scan-build-install.sh;
       else
         export SCAN_BUILD_PATH=scan-build;
-      fi
+      fi;
+      export SCAN_BUILD_PATH="$SCAN_BUILD_PATH --status-bugs";
     fi
   - if [[ $TRAVIS_OS_NAME = "linux" ]]; then
       sudo apt-get update -qq;
