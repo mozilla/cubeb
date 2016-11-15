@@ -920,8 +920,8 @@ wasapi_stream_render_loop(LPVOID stream)
       break;
     }
     case WAIT_OBJECT_0 + 2:  /* refill */
-      XASSERT(has_input(stm) && has_output(stm) ||
-              !has_input(stm) && has_output(stm));
+      XASSERT((has_input(stm) && has_output(stm)) ||
+              (!has_input(stm) && has_output(stm)));
       is_playing = stm->refill_callback(stm);
       break;
     case WAIT_OBJECT_0 + 3: /* input available */
@@ -1648,8 +1648,8 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
 
   XASSERT(context && stream && (input_stream_params || output_stream_params));
 
-  if (output_stream_params && output_stream_params->format != CUBEB_SAMPLE_FLOAT32NE ||
-      input_stream_params && input_stream_params->format != CUBEB_SAMPLE_FLOAT32NE) {
+  if ((output_stream_params && output_stream_params->format != CUBEB_SAMPLE_FLOAT32NE) ||
+      (input_stream_params && input_stream_params->format != CUBEB_SAMPLE_FLOAT32NE)) {
     LOG("Invalid format, %p %p %d %d",
         output_stream_params, input_stream_params,
         output_stream_params && output_stream_params->format,
