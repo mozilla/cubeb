@@ -47,9 +47,9 @@ before_script:
   - mkdir build
   - cd build
   - if [ ! -z "$HOST" ]; then
-      $SCAN_BUILD_PATH cmake -DCMAKE_TOOLCHAIN_FILE=../cmake/toolchain-cross-mingw.cmake ..;
+      $SCAN_BUILD_PATH cmake -DCMAKE_TOOLCHAIN_FILE=../cmake/toolchain-cross-mingw.cmake -DCMAKE_BUILD_TYPE=Debug ..;
     else
-      $SCAN_BUILD_PATH cmake ..;
+      $SCAN_BUILD_PATH cmake -DCMAKE_BUILD_TYPE=Debug ..;
     fi
 script:
   - echo $SCAN_BUILD_PATH

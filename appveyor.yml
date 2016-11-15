@@ -9,7 +9,7 @@ build_script:
 - cmd: |-
     cd c:\projects\cubeb
     cmake .
-    cmake --build . --config Release
+    cmake --build . --config Debug
 
 build:
   verbosity: minimal
