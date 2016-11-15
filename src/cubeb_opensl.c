@@ -165,7 +165,7 @@ opensl_get_draining(cubeb_stream * stm)
 {
 #ifdef DEBUG
   int r = pthread_mutex_trylock(&stm->mutex);
-  assert(r == EDEADLK && "get_draining deadlock");
+  assert(r == EDEADLK && "get_draining: mutex should be locked but it's not.");
 #endif
   return stm->draining;
 }
@@ -175,7 +175,7 @@ opensl_set_draining(cubeb_stream * stm, int value)
 {
 #ifdef DEBUG
   int r = pthread_mutex_trylock(&stm->mutex);
-  assert(r == EDEADLK && "set_draining deadlock");
+  assert(r == EDEADLK && "set_draining: mutex should be locked but it's not.");
 #endif
   assert(value == 0 || value == 1);
   stm->draining = value;
@@ -186,7 +186,7 @@ opensl_get_shutdown(cubeb_stream * stm)
 {
 #ifdef DEBUG
   int r = pthread_mutex_trylock(&stm->mutex);
-  assert(r == EDEADLK && "get_shutdown deadlock");
+  assert(r == EDEADLK && "get_shutdown: mutex should be locked but it's not.");
 #endif
   return stm->shutdown;
 }
@@ -196,7 +196,7 @@ opensl_set_shutdown(cubeb_stream * stm, uint32_t value)
 {
 #ifdef DEBUG
   int r = pthread_mutex_trylock(&stm->mutex);
-  assert(r == EDEADLK && "set_shutdown deadlock");
+  assert(r == EDEADLK && "set_shutdown: mutex should be locked but it's not.");
 #endif
   assert(value == 0 || value == 1);
   stm->shutdown = value;
