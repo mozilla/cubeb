@@ -746,6 +746,7 @@ opensl_init(cubeb ** context, char const * context_name)
 
   *context = ctx;
 
+  LOG("Cubeb init (%p) success", ctx);
   return CUBEB_OK;
 }
 
@@ -1360,6 +1361,9 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
   assert(r == 0);
 
   if (output_stream_params) {
+    LOG("Playback params: Rate %d, channels %d, format %d, latency in frames %d.",
+        output_stream_params->rate, output_stream_params->channels,
+        output_stream_params->format, stm->latency_frames);
     r = opensl_configure_playback(stm, output_stream_params);
     if (r != CUBEB_OK) {
       opensl_stream_destroy(stm);
@@ -1368,6 +1372,9 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
   }
 
   if (input_stream_params) {
+    LOG("Capture params: Rate %d, channels %d, format %d, latency in frames %d.",
+        input_stream_params->rate, input_stream_params->channels,
+        input_stream_params->format, stm->latency_frames);
     r = opensl_configure_capture(stm, input_stream_params);
     if (r != CUBEB_OK) {
       opensl_stream_destroy(stm);
