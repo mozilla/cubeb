@@ -609,7 +609,7 @@ bool get_input_buffer(cubeb_stream * stm)
       if (should_upmix(stm->input_mix_params, stm->input_stream_params)) {
         bool ok = stm->linear_input_buffer.reserve(stm->linear_input_buffer.length() +
                                                    packet_size * stm->input_stream_params.channels);
-        assert(ok);
+        XASSERT(ok);
         upmix(reinterpret_cast<float*>(input_packet), packet_size,
               stm->linear_input_buffer.data() + stm->linear_input_buffer.length(),
               stm->input_mix_params.channels,
@@ -618,7 +618,7 @@ bool get_input_buffer(cubeb_stream * stm)
       } else if (should_downmix(stm->input_mix_params, stm->input_stream_params)) {
         bool ok = stm->linear_input_buffer.reserve(stm->linear_input_buffer.length() +
                                                    packet_size * stm->input_stream_params.channels);
-        assert(ok);
+        XASSERT(ok);
         downmix(reinterpret_cast<float*>(input_packet), packet_size,
                 stm->linear_input_buffer.data() + stm->linear_input_buffer.length(),
                 stm->input_mix_params.channels,
@@ -637,8 +637,8 @@ bool get_input_buffer(cubeb_stream * stm)
     offset += packet_size;
   }
 
-  assert(stm->linear_input_buffer.length() >= total_available_input &&
-         offset == total_available_input);
+  XASSERT(stm->linear_input_buffer.length() >= total_available_input &&
+          offset == total_available_input);
 
   return true;
 }
@@ -1583,7 +1583,7 @@ int setup_wasapi_stream(cubeb_stream * stm)
    * the highest sample rate available. */
   int32_t target_sample_rate;
   if (has_input(stm) && has_output(stm)) {
-    assert(stm->input_stream_params.rate == stm->output_stream_params.rate);
+    XASSERT(stm->input_stream_params.rate == stm->output_stream_params.rate);
     target_sample_rate = stm->input_stream_params.rate;
   } else if (has_input(stm)) {
     target_sample_rate = stm->input_stream_params.rate;
@@ -1751,7 +1751,7 @@ void wasapi_stream_destroy(cubeb_stream * stm)
     stm->emergency_bailout = nullptr;
   } else {
     // If we're leaking, it must be that this is true.
-    assert(*(stm->emergency_bailout));
+    XASSERT(*(stm->emergency_bailout));
   }
 
   unregister_notification_client(stm);
