@@ -73,16 +73,14 @@ static int setup_audiounit_stream(cubeb_stream * stm);
 extern cubeb_ops const audiounit_ops;
 
 struct cubeb {
-  cubeb();
-
-  cubeb_ops const * ops;
+  cubeb_ops const * ops = &audiounit_ops;
   owned_critical_section mutex;
-  std::atomic<int> active_streams;
-  int limit_streams;
-  cubeb_device_collection_changed_callback collection_changed_callback;
-  void * collection_changed_user_ptr;
+  std::atomic<int> active_streams{ 0 };
+  int limit_streams = kCFCoreFoundationVersionNumber < kCFCoreFoundationVersionNumber10_7;
+  cubeb_device_collection_changed_callback collection_changed_callback = nullptr;
+  void * collection_changed_user_ptr = nullptr;
   /* Differentiate input from output devices. */
-  cubeb_device_type collection_changed_devtype;
+  cubeb_device_type collection_changed_devtype = CUBEB_DEVICE_TYPE_UNKNOWN;
   std::vector<AudioObjectID> devtype_device_array;
 };
 
@@ -158,54 +156,54 @@ struct cubeb_stream {
   cubeb_stream(cubeb * context);
 
   cubeb * context;
-  cubeb_data_callback data_callback;
-  cubeb_state_callback state_callback;
-  cubeb_device_changed_callback device_changed_callback;
+  cubeb_data_callback data_callback = nullptr;
+  cubeb_state_callback state_callback = nullptr;
+  cubeb_device_changed_callback device_changed_callback = nullptr;
   /* Stream creation parameters */
-  cubeb_stream_params input_stream_params;
-  cubeb_stream_params output_stream_params;
+  cubeb_stream_params input_stream_params = { CUBEB_SAMPLE_FLOAT32NE, 0, 0 };
+  cubeb_stream_params output_stream_params = { CUBEB_SAMPLE_FLOAT32NE, 0, 0 };
   bool is_default_input;
-  AudioDeviceID input_device;
-  AudioDeviceID output_device;
+  AudioDeviceID input_device = 0;
+  AudioDeviceID output_device = 0;
   /* User pointer of data_callback */
-  void * user_ptr;
+  void * user_ptr = nullptr;
   /* Format descriptions */
   AudioStreamBasicDescription input_desc;
   AudioStreamBasicDescription output_desc;
   /* I/O AudioUnits */
-  AudioUnit input_unit;
-  AudioUnit output_unit;
+  AudioUnit input_unit = nullptr;
+  AudioUnit output_unit = nullptr;
   /* I/O device sample rate */
-  Float64 input_hw_rate;
-  Float64 output_hw_rate;
+  Float64 input_hw_rate = 0;
+  Float64 output_hw_rate = 0;
   /* Expected I/O thread interleave,
    * calculated from I/O hw rate. */
-  int expected_output_callbacks_in_a_row;
+  int expected_output_callbacks_in_a_row = 0;
   owned_critical_section mutex;
   /* Hold the input samples in every
    * input callback iteration */
   std::unique_ptr<auto_array_wrapper> input_linear_buffer;
   /* Frames on input buffer */
-  std::atomic<uint32_t> input_buffer_frames;
+  std::atomic<uint32_t> input_buffer_frames{ 0 };
   /* Frame counters */
-  std::atomic<uint64_t> frames_played;
-  uint64_t frames_queued;
-  std::atomic<int64_t> frames_read;
-  std::atomic<bool> shutdown;
-  std::atomic<bool> draining;
+  std::atomic<uint64_t> frames_played{ 0 };
+  uint64_t frames_queued = 0;
+  std::atomic<int64_t> frames_read{ 0 };
+  std::atomic<bool> shutdown{ false };
+  std::atomic<bool> draining{ false };
   /* Latency requested by the user. */
-  uint32_t latency_frames;
-  std::atomic<uint64_t> current_latency_frames;
-  uint64_t hw_latency_frames;
-  std::atomic<float> panning;
+  uint32_t latency_frames = 0;
+  std::atomic<uint64_t> current_latency_frames{ 0 };
+  uint64_t hw_latency_frames = UINT64_MAX;
+  std::atomic<float> panning{ 0 };
   std::unique_ptr<cubeb_resampler, decltype(&cubeb_resampler_destroy)> resampler;
   /* This is the number of output callback we got in a row. This is usually one,
    * but can be two when the input and output rate are different, and more when
    * a device has been plugged or unplugged, as there can be some time before
    * the device is ready. */
-  std::atomic<int> output_callback_in_a_row;
+  std::atomic<int> output_callback_in_a_row{ 0 };
   /* This is true if a device change callback is currently running.  */
-  std::atomic<bool> switching_device;
+  std::atomic<bool> switching_device{ false };
 };
 
 bool has_input(cubeb_stream * stm)
@@ -487,16 +485,6 @@ audiounit_output_callback(void * user_ptr,
     }
   }
   return noErr;
-}
-
-cubeb::cubeb()
-  : ops(&audiounit_ops)
-  , active_streams(0)
-  , limit_streams(kCFCoreFoundationVersionNumber < kCFCoreFoundationVersionNumber10_7)
-  , collection_changed_callback(nullptr)
-  , collection_changed_user_ptr(nullptr)
-  , collection_changed_devtype(CUBEB_DEVICE_TYPE_UNKNOWN)
-{
 }
 
 extern "C" {
@@ -1504,31 +1492,8 @@ setup_audiounit_stream(cubeb_stream * stm)
 
 cubeb_stream::cubeb_stream(cubeb * context)
   : context(context)
-  , data_callback(nullptr)
-  , state_callback(nullptr)
-  , device_changed_callback(nullptr)
-  , input_device(0)
-  , output_device(0)
-  , user_ptr(nullptr)
-  , input_unit(nullptr)
-  , output_unit(nullptr)
-  , input_hw_rate(0)
-  , input_buffer_frames(0)
-  , frames_played(0)
-  , frames_queued(0)
-  , frames_read(0)
-  , shutdown(false)
-  , draining(false)
-  , latency_frames(0)
-  , current_latency_frames(0)
-  , hw_latency_frames(UINT64_MAX)
-  , panning(0)
   , resampler(nullptr, cubeb_resampler_destroy)
-  , output_callback_in_a_row(0)
-  , switching_device(false)
 {
-  PodZero(&input_stream_params, 1);
-  PodZero(&output_stream_params, 1);
   PodZero(&input_desc, 1);
   PodZero(&output_desc, 1);
 }
