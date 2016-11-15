@@ -1014,7 +1014,7 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
 
   res = (*stm->recorderItf)->RegisterCallback(stm->recorderItf, recorder_marker_callback, stm);
   if (res != SL_RESULT_SUCCESS) {
-    opensl_stream_destroy(stm);
+    LOG("Failed to register recorder marker callback. Error code: %lu", res);
     return CUBEB_ERROR;
   }
 
@@ -1022,7 +1022,7 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
 
   res = (*stm->recorderItf)->SetCallbackEventsMask(stm->recorderItf, (SLuint32)SL_RECORDEVENT_HEADATMARKER);
   if (res != SL_RESULT_SUCCESS) {
-    opensl_stream_destroy(stm);
+    LOG("Failed to set headatmarker event mask. Error code: %lu", res);
     return CUBEB_ERROR;
   }
   // get the simple android buffer queue interface
@@ -1172,7 +1172,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
   }
 
   if (res != SL_RESULT_SUCCESS) {
-    opensl_stream_destroy(stm);
+    LOG("Failed to create audio player. Error code: %lu", res);
     return CUBEB_ERROR;
   }
 
@@ -1201,7 +1201,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
                                           stm->context->SL_IID_ANDROIDCONFIGURATION,
                                           &playerConfig);
     if (res != SL_RESULT_SUCCESS) {
-      opensl_stream_destroy(stm);
+      LOG("Failed to get android configuration interface. Error code: %lu", res);
       return CUBEB_ERROR;
     }
 
@@ -1210,7 +1210,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
                                             &stream_type,
                                             sizeof(SLint32));
     if (res != SL_RESULT_SUCCESS) {
-      opensl_stream_destroy(stm);
+      LOG("Failed to set android configuration interface. Error code: %lu", res);
       return CUBEB_ERROR;
     }
   }
@@ -1218,7 +1218,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
 
   res = (*stm->playerObj)->Realize(stm->playerObj, SL_BOOLEAN_FALSE);
   if (res != SL_RESULT_SUCCESS) {
-    opensl_stream_destroy(stm);
+    LOG("Failed to realize player object. Error code: %lu", res);
     return CUBEB_ERROR;
   }
 
@@ -1226,7 +1226,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
                                         stm->context->SL_IID_PLAY,
                                         &stm->play);
   if (res != SL_RESULT_SUCCESS) {
-    opensl_stream_destroy(stm);
+    LOG("Failed to get play interface. Error code: %lu", res);
     return CUBEB_ERROR;
   }
 
@@ -1234,7 +1234,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
                                         stm->context->SL_IID_BUFFERQUEUE,
                                         &stm->bufq);
   if (res != SL_RESULT_SUCCESS) {
-    opensl_stream_destroy(stm);
+    LOG("Failed to get bufferqueue interface. Error code: %lu", res);
     return CUBEB_ERROR;
   }
 
@@ -1242,13 +1242,13 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
                                         stm->context->SL_IID_VOLUME,
                                         &stm->volume);
   if (res != SL_RESULT_SUCCESS) {
-    opensl_stream_destroy(stm);
+    LOG("Failed to get volume interface. Error code: %lu", res);
     return CUBEB_ERROR;
   }
 
   res = (*stm->play)->RegisterCallback(stm->play, play_callback, stm);
   if (res != SL_RESULT_SUCCESS) {
-    opensl_stream_destroy(stm);
+    LOG("Failed to register play callback. Error code: %lu", res);
     return CUBEB_ERROR;
   }
 
@@ -1257,7 +1257,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
 
   res = (*stm->play)->SetCallbackEventsMask(stm->play, (SLuint32)SL_PLAYEVENT_HEADATMARKER);
   if (res != SL_RESULT_SUCCESS) {
-    opensl_stream_destroy(stm);
+    LOG("Failed to set headatmarker event mask. Error code: %lu", res);
     return CUBEB_ERROR;
   }
 
@@ -1267,7 +1267,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
   }
   res = (*stm->bufq)->RegisterCallback(stm->bufq, player_callback, stm);
   if (res != SL_RESULT_SUCCESS) {
-    opensl_stream_destroy(stm);
+    LOG("Failed to register bufferqueue callback. Error code: %lu", res);
     return CUBEB_ERROR;
   }
 
