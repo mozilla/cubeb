@@ -119,6 +119,7 @@ if(USE_AUDIOTRACK)
   target_sources(cubeb PRIVATE
     src/cubeb_audiotrack.c)
   target_compile_definitions(cubeb PRIVATE USE_AUDIOTRACK)
+  target_link_libraries(cubeb PRIVATE log)
 endif()
 
 check_include_files(sndio.h USE_SNDIO)
