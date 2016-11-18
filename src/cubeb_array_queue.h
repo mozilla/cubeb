@@ -45,7 +45,6 @@ void array_queue_destroy(array_queue * aq)
 
   free(aq->buf);
   pthread_mutex_destroy(&aq->mutex);
-  pthread_cond_destroy(&aq->empty_convar);
   free(aq);
 }
 
