@@ -18,7 +18,8 @@ matrix:
     - compiler: clang
       env: SCAN_BUILD=true
       os: osx
-
+    - env: ANDROID=android-ndk-r13b
+      os: linux
 before_install:
   - if [[ -n $SCAN_BUILD ]]; then
       if [[ $TRAVIS_OS_NAME = "osx" ]]; then
@@ -27,6 +28,12 @@ before_install:
         export SCAN_BUILD_PATH=/usr/share/clang/scan-build-3.8/bin/scan-build;
       fi;
       export SCAN_BUILD_PATH="$SCAN_BUILD_PATH --status-bugs";
+    fi
+  - if [[ -n $ANDROID ]]; then
+      curl -LO https://dl.google.com/android/repository/$ANDROID-linux-x86_64.zip;
+      unzip -q $ANDROID-linux-x86_64.zip;
+      rm $ANDROID-linux-x86_64.zip;
+      export ANDROID_NDK=$(pwd)/$ANDROID;
     fi
   - if [[ $TRAVIS_OS_NAME = "linux" ]]; then
       sudo apt-get update -qq;
@@ -53,13 +60,17 @@ before_script:
   - if [ ! -z "$HOST" ]; then
       $SCAN_BUILD_PATH cmake -DCMAKE_TOOLCHAIN_FILE=../cmake/toolchain-cross-mingw.cmake -DCMAKE_BUILD_TYPE=Debug ..;
     else
-      $SCAN_BUILD_PATH cmake -DCMAKE_BUILD_TYPE=Debug ..;
+      if [[ -n $ANDROID ]]; then
+        cmake -DCMAKE_TOOLCHAIN_FILE=../cmake/toolchain-cross-android.cmake -DANDROID_NATIVE_API_LEVEL=android-15 -DCMAKE_BUILD_TYPE=Debug ..;
+      else
+        $SCAN_BUILD_PATH cmake -DCMAKE_BUILD_TYPE=Debug ..;
+      fi;
     fi
 script:
   - echo $SCAN_BUILD_PATH
   - $SCAN_BUILD_PATH make
   - if [[ $TRAVIS_OS_NAME = "linux" ]]; then
-      if [ -z "$HOST"  ]; then
+      if [ -z "$HOST" -a -z "$ANDROID" ]; then
         make test ARGS=-V;
       fi
     fi
