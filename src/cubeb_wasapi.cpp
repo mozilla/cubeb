@@ -1789,7 +1789,7 @@ void wasapi_stream_destroy(cubeb_stream * stm)
 {
   XASSERT(stm);
 
-  // Only free stm->emergency_bailout if we could not join the thread.
+  // Only free stm->emergency_bailout if we could join the thread.
   // If we could not join the thread, stm->emergency_bailout is true
   // and is still alive until the thread wakes up and exits cleanly.
   if (stop_and_join_render_thread(stm)) {
