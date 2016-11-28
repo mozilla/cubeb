@@ -251,6 +251,7 @@ alsa_set_stream_state(cubeb_stream * stm, enum stream_state state)
 static enum stream_state
 alsa_refill_stream(cubeb_stream * stm)
 {
+  unsigned short revents;
   snd_pcm_sframes_t avail;
   long got;
   void * p;
@@ -259,6 +260,11 @@ alsa_refill_stream(cubeb_stream * stm)
   draining = 0;
 
   pthread_mutex_lock(&stm->mutex);
+
+  /* Call _poll_descriptors_revents() even if we don't use it
+     to let underlying plugins clear null events.  Otherwise poll()
+     may wake up again and again, producing unnecessary CPU usage. */
+  snd_pcm_poll_descriptors_revents(stm->pcm, stm->fds, stm->nfds, &revents);
 
   avail = snd_pcm_avail_update(stm->pcm);
   if (avail < 0) {
