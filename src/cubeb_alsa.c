@@ -111,6 +111,8 @@ struct cubeb_stream {
   char * buffer;
   snd_pcm_uframes_t bufframes;
   snd_pcm_stream_t stream_type;
+
+  struct cubeb_stream * other_stream;
 };
 
 static int
@@ -312,33 +314,56 @@ alsa_refill_stream(cubeb_stream * stm)
   }
 
   /* Capture: Pass read frames to callback function */
-  if (stm->stream_type == SND_PCM_STREAM_CAPTURE && stm->bufframes > 0) {
-    long wrote;
+  if (stm->stream_type == SND_PCM_STREAM_CAPTURE && stm->bufframes > 0 &&
+      (!stm->other_stream || stm->other_stream->bufframes < stm->other_stream->buffer_size)) {
+    long wrote = stm->bufframes;
+    struct cubeb_stream * mainstm = stm->other_stream ? stm->other_stream : stm;
+    void * other_buffer = stm->other_stream ? stm->other_stream->buffer + stm->other_stream->bufframes : NULL;
+
+    /* Correct write size to the other stream available space */
+    if (stm->other_stream && wrote > stm->other_stream->buffer_size - stm->other_stream->bufframes) {
+      wrote = stm->other_stream->buffer_size - stm->other_stream->bufframes;
+    }
 
     pthread_mutex_unlock(&stm->mutex);
-    wrote = stm->data_callback(stm, stm->user_ptr, stm->buffer, NULL, stm->bufframes);
+    wrote = stm->data_callback(mainstm, stm->user_ptr, stm->buffer, other_buffer, wrote);
     pthread_mutex_lock(&stm->mutex);
 
     if (wrote < 0) {
       avail = wrote; // the error handler below will recover us
     } else {
       stream_buffer_decrement(stm, wrote);
+
+      if (stm->other_stream) {
+        stm->other_stream->bufframes += wrote;
+      }
     }
   }
 
   /* Playback: Don't have enough data? Let's ask for more. */
-  if (stm->stream_type == SND_PCM_STREAM_PLAYBACK && avail > stm->bufframes) {
-    long got;
+  if (stm->stream_type == SND_PCM_STREAM_PLAYBACK && avail > stm->bufframes &&
+      (!stm->other_stream || stm->other_stream->bufframes > 0)) {
+    long got = avail - stm->bufframes;
+    void * other_buffer = stm->other_stream ? stm->other_stream->buffer : NULL;
     char * buftail = stm->buffer + snd_pcm_frames_to_bytes(stm->pcm, stm->bufframes);
 
+    /* Correct read size to the other stream available frames */
+    if (stm->other_stream && got > stm->other_stream->bufframes) {
+      got = stm->other_stream->bufframes;
+    }
+
     pthread_mutex_unlock(&stm->mutex);
-    got = stm->data_callback(stm, stm->user_ptr, NULL, buftail, avail - stm->bufframes);
+    got = stm->data_callback(stm, stm->user_ptr, other_buffer, buftail, got);
     pthread_mutex_lock(&stm->mutex);
 
     if (got < 0) {
       avail = got; // the error handler below will recover us
     } else {
       stm->bufframes += got;
+
+      if (stm->other_stream) {
+        stream_buffer_decrement(stm->other_stream, got);
+      }
     }
   }
 
@@ -351,9 +376,12 @@ alsa_refill_stream(cubeb_stream * stm)
     memset(buftail, 0, snd_pcm_frames_to_bytes(stm->pcm, drain_frames));
     stm->bufframes = avail;
 
-    set_timeout(&stm->drain_timeout, drain_time * 1000);
+    /* Mark as draining, unless we're waiting for capture */
+    if (!stm->other_stream || stm->other_stream->bufframes > 0) {
+      set_timeout(&stm->drain_timeout, drain_time * 1000);
 
-    draining = 1;
+      draining = 1;
+    }
   }
 
   /* Playback: Have enough data and no errors. Let's write it out. */
@@ -899,6 +927,7 @@ alsa_stream_init_single(cubeb * ctx, cubeb_stream ** stream, char const * stream
   stm->buffer = NULL;
   stm->bufframes = 0;
   stm->stream_type = stream_type;
+  stm->other_stream = NULL;
 
   r = pthread_mutex_init(&stm->mutex, NULL);
   assert(r == 0);
@@ -933,6 +962,8 @@ alsa_stream_init_single(cubeb * ctx, cubeb_stream ** stream, char const * stream
   r = snd_pcm_get_params(stm->pcm, &stm->buffer_size, &period_size);
   assert(r == 0);
 
+  /* Double internal buffer size to have enough space when waiting for the other side of duplex connection */
+  stm->buffer_size *= 2;
   stm->buffer = calloc(1, snd_pcm_frames_to_bytes(stm->pcm, stm->buffer_size));
   assert(stm->buffer);
 
@@ -967,26 +998,36 @@ alsa_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
                  cubeb_data_callback data_callback, cubeb_state_callback state_callback,
                  void * user_ptr)
 {
-  int result;
-
-  if (input_stream_params && output_stream_params) {
-    /* Both Playback + Capture support not yet implemented. */
-    return CUBEB_ERROR_NOT_SUPPORTED;
-  }
+  int result = CUBEB_OK;
+  cubeb_stream * instm = NULL, * outstm = NULL;
 
   if (input_device || output_device) {
     /* Device selection not yet implemented. */
     return CUBEB_ERROR_DEVICE_UNAVAILABLE;
   }
 
-  if (input_stream_params)
-    result = alsa_stream_init_single(ctx, stream, stream_name, SND_PCM_STREAM_CAPTURE,
+  if (result == CUBEB_OK && input_stream_params) {
+    result = alsa_stream_init_single(ctx, &instm, stream_name, SND_PCM_STREAM_CAPTURE,
                                      input_device, input_stream_params, latency_frames,
                                      data_callback, state_callback, user_ptr);
-  else if (output_stream_params)
-    result = alsa_stream_init_single(ctx, stream, stream_name, SND_PCM_STREAM_PLAYBACK,
+  }
+
+  if (result == CUBEB_OK && output_stream_params) {
+    result = alsa_stream_init_single(ctx, &outstm, stream_name, SND_PCM_STREAM_PLAYBACK,
                                      output_device, output_stream_params, latency_frames,
                                      data_callback, state_callback, user_ptr);
+  }
+
+  if (result == CUBEB_OK && input_stream_params && output_stream_params) {
+    instm->other_stream = outstm;
+    outstm->other_stream = instm;
+  }
+
+  if (result != CUBEB_OK && instm) {
+    alsa_stream_destroy(instm);
+  }
+
+  *stream = outstm ? outstm : instm;
 
   return result;
 }
@@ -1002,6 +1043,11 @@ alsa_stream_destroy(cubeb_stream * stm)
                  stm->state == DRAINING));
 
   ctx = stm->context;
+
+  if (stm->other_stream) {
+    stm->other_stream->other_stream = NULL; // to stop infinite recursion
+    alsa_stream_destroy(stm->other_stream);
+  }
 
   pthread_mutex_lock(&stm->mutex);
   if (stm->pcm) {
@@ -1127,6 +1173,12 @@ alsa_stream_start(cubeb_stream * stm)
   assert(stm);
   ctx = stm->context;
 
+  if (stm->stream_type == SND_PCM_STREAM_PLAYBACK && stm->other_stream) {
+    int r = alsa_stream_start(stm->other_stream);
+    if (r != CUBEB_OK)
+      return r;
+  }
+
   pthread_mutex_lock(&stm->mutex);
   /* Capture pcm must be started after initial setup/recover */
   if (stm->stream_type == SND_PCM_STREAM_CAPTURE &&
@@ -1156,6 +1208,12 @@ alsa_stream_stop(cubeb_stream * stm)
 
   assert(stm);
   ctx = stm->context;
+
+  if (stm->stream_type == SND_PCM_STREAM_PLAYBACK && stm->other_stream) {
+    int r = alsa_stream_stop(stm->other_stream);
+    if (r != CUBEB_OK)
+      return r;
+  }
 
   pthread_mutex_lock(&ctx->mutex);
   while (stm->state == PROCESSING) {
