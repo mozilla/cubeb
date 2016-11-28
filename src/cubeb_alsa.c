@@ -671,15 +671,15 @@ init_local_config_with_workaround(char const * pcm_name)
 }
 
 static int
-alsa_locked_pcm_open(snd_pcm_t ** pcm, snd_pcm_stream_t stream, snd_config_t * local_config)
+alsa_locked_pcm_open(snd_pcm_t ** pcm, char const *pcm_name, snd_pcm_stream_t stream, snd_config_t * local_config)
 {
   int r;
 
   pthread_mutex_lock(&cubeb_alsa_mutex);
   if (local_config) {
-    r = snd_pcm_open_lconf(pcm, CUBEB_ALSA_PCM_NAME, stream, SND_PCM_NONBLOCK, local_config);
+    r = snd_pcm_open_lconf(pcm, pcm_name, stream, SND_PCM_NONBLOCK, local_config);
   } else {
-    r = snd_pcm_open(pcm, CUBEB_ALSA_PCM_NAME, stream, SND_PCM_NONBLOCK);
+    r = snd_pcm_open(pcm, pcm_name, stream, SND_PCM_NONBLOCK);
   }
   pthread_mutex_unlock(&cubeb_alsa_mutex);
 
@@ -802,7 +802,7 @@ alsa_init(cubeb ** context, char const * context_name)
 
   /* Open a dummy PCM to force the configuration space to be evaluated so that
      init_local_config_with_workaround can find and modify the default node. */
-  r = alsa_locked_pcm_open(&dummy, SND_PCM_STREAM_PLAYBACK, NULL);
+  r = alsa_locked_pcm_open(&dummy, CUBEB_ALSA_PCM_NAME, SND_PCM_STREAM_PLAYBACK, NULL);
   if (r >= 0) {
     alsa_locked_pcm_close(dummy);
   }
@@ -812,7 +812,7 @@ alsa_init(cubeb ** context, char const * context_name)
   pthread_mutex_unlock(&cubeb_alsa_mutex);
   if (ctx->local_config) {
     ctx->is_pa = 1;
-    r = alsa_locked_pcm_open(&dummy, SND_PCM_STREAM_PLAYBACK, ctx->local_config);
+    r = alsa_locked_pcm_open(&dummy, CUBEB_ALSA_PCM_NAME, SND_PCM_STREAM_PLAYBACK, ctx->local_config);
     /* If we got a local_config, we found a PA PCM.  If opening a PCM with that
        config fails with EINVAL, the PA PCM is too old for this workaround. */
     if (r == -EINVAL) {
@@ -884,6 +884,7 @@ alsa_stream_init_single(cubeb * ctx, cubeb_stream ** stream, char const * stream
   snd_pcm_format_t format;
   snd_pcm_uframes_t period_size;
   int latency_us = 0;
+  char const *pcm_name = deviceid ? (char const *) deviceid : CUBEB_ALSA_PCM_NAME;
 
   assert(ctx && stream);
 
@@ -932,7 +933,7 @@ alsa_stream_init_single(cubeb * ctx, cubeb_stream ** stream, char const * stream
   r = pthread_mutex_init(&stm->mutex, NULL);
   assert(r == 0);
 
-  r = alsa_locked_pcm_open(&stm->pcm, stm->stream_type, ctx->local_config);
+  r = alsa_locked_pcm_open(&stm->pcm, pcm_name, stm->stream_type, ctx->local_config);
   if (r < 0) {
     alsa_stream_destroy(stm);
     return CUBEB_ERROR;
@@ -1000,11 +1001,6 @@ alsa_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
 {
   int result = CUBEB_OK;
   cubeb_stream * instm = NULL, * outstm = NULL;
-
-  if (input_device || output_device) {
-    /* Device selection not yet implemented. */
-    return CUBEB_ERROR_DEVICE_UNAVAILABLE;
-  }
 
   if (result == CUBEB_OK && input_stream_params) {
     result = alsa_stream_init_single(ctx, &instm, stream_name, SND_PCM_STREAM_CAPTURE,
