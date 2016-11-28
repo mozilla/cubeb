@@ -263,7 +263,7 @@ alsa_set_stream_state(cubeb_stream * stm, enum stream_state state)
 }
 
 static enum stream_state
-alsa_refill_stream(cubeb_stream * stm)
+alsa_process_stream(cubeb_stream * stm)
 {
   unsigned short revents;
   snd_pcm_sframes_t avail;
@@ -485,7 +485,7 @@ alsa_run(cubeb * ctx)
       if (stm && stm->state == RUNNING && stm->fds && any_revents(stm->fds, stm->nfds)) {
         alsa_set_stream_state(stm, PROCESSING);
         pthread_mutex_unlock(&ctx->mutex);
-        state = alsa_refill_stream(stm);
+        state = alsa_process_stream(stm);
         pthread_mutex_lock(&ctx->mutex);
         alsa_set_stream_state(stm, state);
       }
