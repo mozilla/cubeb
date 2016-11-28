@@ -238,6 +238,14 @@ set_timeout(struct timeval * timeout, unsigned int ms)
 }
 
 static void
+stream_buffer_decrement(cubeb_stream * stm, long count)
+{
+  char * bufremains = stm->buffer + snd_pcm_frames_to_bytes(stm->pcm, count);
+  memmove(stm->buffer, bufremains, snd_pcm_frames_to_bytes(stm->pcm, stm->bufframes - count));
+  stm->bufframes -= count;
+}
+
+static void
 alsa_set_stream_state(cubeb_stream * stm, enum stream_state state)
 {
   cubeb * ctx;
@@ -330,12 +338,9 @@ alsa_refill_stream(cubeb_stream * stm)
     if (wrote < 0) {
       avail = wrote; // the error handler below will recover us
     } else {
-      char * bufremains = stm->buffer + snd_pcm_frames_to_bytes(stm->pcm, wrote);
-      memmove(stm->buffer, bufremains, snd_pcm_frames_to_bytes(stm->pcm, stm->bufframes - wrote));
+      stream_buffer_decrement(stm, wrote);
 
-      stm->bufframes -= wrote;
       stm->write_position += wrote;
-
       gettimeofday(&stm->last_activity, NULL);
     }
   }
