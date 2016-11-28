@@ -1154,6 +1154,55 @@ alsa_stream_set_volume(cubeb_stream * stm, float volume)
   return CUBEB_OK;
 }
 
+static int
+alsa_enumerate_devices(cubeb * context, cubeb_device_type type,
+                       cubeb_device_collection ** collection)
+{
+  if (!context)
+    return CUBEB_ERROR;
+
+  uint32_t rate, max_channels;
+  int r;
+
+  r = alsa_get_preferred_sample_rate(context, &rate);
+  if (r != CUBEB_OK) {
+    return CUBEB_ERROR;
+  }
+
+  r = alsa_get_max_channel_count(context, &max_channels);
+  if (r != CUBEB_OK) {
+    return CUBEB_ERROR;
+  }
+
+  *collection = (cubeb_device_collection *) calloc(1, sizeof(cubeb_device_collection) + 1*sizeof(cubeb_device_info *));
+  assert(*collection);
+
+  char const * a_name = "default";
+  (*collection)->device[0] = (cubeb_device_info *) calloc(1, sizeof(cubeb_device_info));
+  assert((*collection)->device[0]);
+
+  (*collection)->device[0]->device_id = strdup(a_name);
+  (*collection)->device[0]->devid = (*collection)->device[0]->device_id;
+  (*collection)->device[0]->friendly_name = strdup(a_name);
+  (*collection)->device[0]->group_id = strdup(a_name);
+  (*collection)->device[0]->vendor_name = strdup(a_name);
+  (*collection)->device[0]->type = type;
+  (*collection)->device[0]->state = CUBEB_DEVICE_STATE_ENABLED;
+  (*collection)->device[0]->preferred = CUBEB_DEVICE_PREF_ALL;
+  (*collection)->device[0]->format = CUBEB_DEVICE_FMT_S16NE;
+  (*collection)->device[0]->default_format = CUBEB_DEVICE_FMT_S16NE;
+  (*collection)->device[0]->max_channels = max_channels;
+  (*collection)->device[0]->min_rate = rate;
+  (*collection)->device[0]->max_rate = rate;
+  (*collection)->device[0]->default_rate = rate;
+  (*collection)->device[0]->latency_lo = 0;
+  (*collection)->device[0]->latency_hi = 0;
+
+  (*collection)->count = 1;
+
+  return CUBEB_OK;
+}
+
 static struct cubeb_ops const alsa_ops = {
   .init = alsa_init,
   .get_backend_id = alsa_get_backend_id,
@@ -1161,7 +1210,7 @@ static struct cubeb_ops const alsa_ops = {
   .get_min_latency = alsa_get_min_latency,
   .get_preferred_sample_rate = alsa_get_preferred_sample_rate,
   .get_preferred_channel_layout = NULL,
-  .enumerate_devices = NULL,
+  .enumerate_devices = alsa_enumerate_devices,
   .destroy = alsa_destroy,
   .stream_init = alsa_stream_init,
   .stream_destroy = alsa_stream_destroy,
