@@ -66,7 +66,7 @@ class sequence_verifier
 };
 
 template<typename T>
-void test_ring(queue<T>& buf, int channels, int capacity_frames)
+void test_ring(audio_ring_buffer<T>& buf, int channels, int capacity_frames)
 {
   std::unique_ptr<T[]> seq(new T[capacity_frames * channels]);
   sequence_generator<T> gen(channels);
@@ -88,7 +88,7 @@ void test_ring(queue<T>& buf, int channels, int capacity_frames)
 }
 
 template<typename T>
-void test_ring_multi(lock_free_queue<T>& buf, int channels, int capacity_frames)
+void test_ring_multi(lock_free_audio_ring_buffer<T>& buf, int channels, int capacity_frames)
 {
   sequence_verifier<T> checker(channels);
   std::unique_ptr<T[]> out_buffer(new T[capacity_frames * channels]);
@@ -123,16 +123,15 @@ void test_ring_multi(lock_free_queue<T>& buf, int channels, int capacity_frames)
   t.join();
 }
 
-void basic_api_test(int channels)
+template<typename T>
+void basic_api_test(T& ring)
 {
-  queue<float> ring(channels, 128);
-
   assert(ring.capacity() == 128);
 
   assert(ring.empty());
   assert(!ring.full());
 
-  int rv = ring.enqueue_silence(63);
+  int rv = ring.enqueue_default(63);
 
   assert(rv == 63);
   assert(ring.available_read() == 63);
@@ -140,7 +139,7 @@ void basic_api_test(int channels)
   assert(!ring.empty());
   assert(!ring.full());
 
-  rv = ring.enqueue_silence(65);
+  rv = ring.enqueue_default(65);
 
   assert(rv = 65);
   assert(!ring.empty());
@@ -172,8 +171,24 @@ int main()
   const int max_capacity = 1277;
   const int capacity_increment = 27;
 
+  queue<float> q1(128);
+  basic_api_test(q1);
+  queue<short> q2(128);
+  basic_api_test(q2);
+  lock_free_queue<float> q3(128);
+  basic_api_test(q3);
+  lock_free_queue<short> q4(128);
+  basic_api_test(q4);
+
   for (size_t channels = min_channels; channels < max_channels; channels++) {
-    basic_api_test(channels);
+    audio_ring_buffer<float> q5(channels, 128);
+    basic_api_test(q5);
+    audio_ring_buffer<short> q6(channels, 128);
+    basic_api_test(q6);
+    lock_free_audio_ring_buffer<float> q7(channels, 128);
+    basic_api_test(q7);
+    lock_free_audio_ring_buffer<short> q8(channels, 128);
+    basic_api_test(q8);
   }
 
   /* Single thread testing. */
@@ -182,7 +197,7 @@ int main()
     /* Use non power-of-two numbers to catch edge-cases. */
     for (size_t capacity_frames = min_capacity;
          capacity_frames < max_capacity; capacity_frames+=capacity_increment) {
-      queue<float> ring(channels, capacity_frames);
+      audio_ring_buffer<float> ring(channels, capacity_frames);
       test_ring(ring, channels, capacity_frames);
     }
   }
@@ -192,7 +207,7 @@ int main()
     /* Use non power-of-two numbers to catch edge-cases. */
     for (size_t capacity_frames = min_capacity;
          capacity_frames < max_capacity; capacity_frames+=capacity_increment) {
-      lock_free_queue<long> ring(channels, capacity_frames);
+      lock_free_audio_ring_buffer<short> ring(channels, capacity_frames);
       test_ring_multi(ring, channels, capacity_frames);
     }
   }
