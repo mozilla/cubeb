@@ -110,6 +110,7 @@ struct cubeb_stream {
 
   char * buffer;
   snd_pcm_uframes_t bufframes;
+  snd_pcm_stream_t stream_type;
 };
 
 static int
@@ -288,8 +289,45 @@ alsa_refill_stream(cubeb_stream * stm)
     avail = stm->buffer_size;
   }
 
-  /* Don't have enough data? Let's ask for more. */
-  if (avail > stm->bufframes) {
+  /* Capture: Read available frames */
+  if (stm->stream_type == SND_PCM_STREAM_CAPTURE && avail > 0) {
+    snd_pcm_sframes_t got;
+
+    if (avail + stm->bufframes > stm->buffer_size) {
+      /* Buffer overflow. Skip and overwrite with new data. */
+      stm->bufframes = 0;
+      // TODO: should it be marked as DRAINING?
+    }
+
+    got = snd_pcm_readi(stm->pcm, stm->buffer+stm->bufframes, avail);
+
+    if (got < 0) {
+      avail = got; // the error handler below will recover us
+    } else {
+      stm->bufframes += got;
+      stm->write_position += got;
+
+      gettimeofday(&stm->last_activity, NULL);
+    }
+  }
+
+  /* Capture: Pass read frames to callback function */
+  if (stm->stream_type == SND_PCM_STREAM_CAPTURE && stm->bufframes > 0) {
+    long wrote;
+
+    pthread_mutex_unlock(&stm->mutex);
+    wrote = stm->data_callback(stm, stm->user_ptr, stm->buffer, NULL, stm->bufframes);
+    pthread_mutex_lock(&stm->mutex);
+
+    if (wrote < 0) {
+      avail = wrote; // the error handler below will recover us
+    } else {
+      stream_buffer_decrement(stm, wrote);
+    }
+  }
+
+  /* Playback: Don't have enough data? Let's ask for more. */
+  if (stm->stream_type == SND_PCM_STREAM_PLAYBACK && avail > stm->bufframes) {
     long got;
     char * buftail = stm->buffer + snd_pcm_frames_to_bytes(stm->pcm, stm->bufframes);
 
@@ -304,8 +342,8 @@ alsa_refill_stream(cubeb_stream * stm)
     }
   }
 
-  /* Still don't have enough data? Add some silence. */
-  if (avail > stm->bufframes) {
+  /* Playback: Still don't have enough data? Add some silence. */
+  if (stm->stream_type == SND_PCM_STREAM_PLAYBACK && avail > stm->bufframes) {
     long drain_frames = avail - stm->bufframes;
     double drain_time = (double) drain_frames / stm->params.rate;
 
@@ -318,8 +356,8 @@ alsa_refill_stream(cubeb_stream * stm)
     draining = 1;
   }
 
-  /* Have enough data and no errors. Let's write it out. */
-  if (avail > 0) {
+  /* Playback: Have enough data and no errors. Let's write it out. */
+  if (stm->stream_type == SND_PCM_STREAM_PLAYBACK && avail > 0) {
     snd_pcm_sframes_t wrote;
 
     if (stm->params.format == CUBEB_SAMPLE_FLOAT32NE) {
@@ -348,6 +386,13 @@ alsa_refill_stream(cubeb_stream * stm)
   /* Got some error? Let's try to recover the stream. */
   if (avail < 0) {
     avail = snd_pcm_recover(stm->pcm, avail, 0);
+
+    /* Capture pcm must be started after initial setup/recover */
+    if (avail >= 0 &&
+        stm->stream_type == SND_PCM_STREAM_CAPTURE &&
+        snd_pcm_state(stm->pcm) == SND_PCM_STATE_PREPARED) {
+      avail = snd_pcm_start(stm->pcm);
+    }
   }
 
   /* Failed to recover, this stream must be broken. */
@@ -796,14 +841,14 @@ alsa_destroy(cubeb * ctx)
 static void alsa_stream_destroy(cubeb_stream * stm);
 
 static int
-alsa_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
-                 cubeb_devid input_device,
-                 cubeb_stream_params * input_stream_params,
-                 cubeb_devid output_device,
-                 cubeb_stream_params * output_stream_params,
-                 unsigned int latency_frames,
-                 cubeb_data_callback data_callback, cubeb_state_callback state_callback,
-                 void * user_ptr)
+alsa_stream_init_single(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
+                        snd_pcm_stream_t stream_type,
+                        cubeb_devid deviceid,
+                        cubeb_stream_params * stream_params,
+                        unsigned int latency_frames,
+                        cubeb_data_callback data_callback,
+                        cubeb_state_callback state_callback,
+                        void * user_ptr)
 {
   (void)stream_name;
   cubeb_stream * stm;
@@ -814,19 +859,9 @@ alsa_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
 
   assert(ctx && stream);
 
-  if (input_stream_params) {
-    /* Capture support not yet implemented. */
-    return CUBEB_ERROR_NOT_SUPPORTED;
-  }
-
-  if (input_device || output_device) {
-    /* Device selection not yet implemented. */
-    return CUBEB_ERROR_DEVICE_UNAVAILABLE;
-  }
-
   *stream = NULL;
 
-  switch (output_stream_params->format) {
+  switch (stream_params->format) {
   case CUBEB_SAMPLE_S16LE:
     format = SND_PCM_FORMAT_S16_LE;
     break;
@@ -858,16 +893,17 @@ alsa_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
   stm->data_callback = data_callback;
   stm->state_callback = state_callback;
   stm->user_ptr = user_ptr;
-  stm->params = *output_stream_params;
+  stm->params = *stream_params;
   stm->state = INACTIVE;
   stm->volume = 1.0;
   stm->buffer = NULL;
   stm->bufframes = 0;
+  stm->stream_type = stream_type;
 
   r = pthread_mutex_init(&stm->mutex, NULL);
   assert(r == 0);
 
-  r = alsa_locked_pcm_open(&stm->pcm, SND_PCM_STREAM_PLAYBACK, ctx->local_config);
+  r = alsa_locked_pcm_open(&stm->pcm, stm->stream_type, ctx->local_config);
   if (r < 0) {
     alsa_stream_destroy(stm);
     return CUBEB_ERROR;
@@ -919,6 +955,40 @@ alsa_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
   *stream = stm;
 
   return CUBEB_OK;
+}
+
+static int
+alsa_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
+                 cubeb_devid input_device,
+                 cubeb_stream_params * input_stream_params,
+                 cubeb_devid output_device,
+                 cubeb_stream_params * output_stream_params,
+                 unsigned int latency_frames,
+                 cubeb_data_callback data_callback, cubeb_state_callback state_callback,
+                 void * user_ptr)
+{
+  int result;
+
+  if (input_stream_params && output_stream_params) {
+    /* Both Playback + Capture support not yet implemented. */
+    return CUBEB_ERROR_NOT_SUPPORTED;
+  }
+
+  if (input_device || output_device) {
+    /* Device selection not yet implemented. */
+    return CUBEB_ERROR_DEVICE_UNAVAILABLE;
+  }
+
+  if (input_stream_params)
+    result = alsa_stream_init_single(ctx, stream, stream_name, SND_PCM_STREAM_CAPTURE,
+                                     input_device, input_stream_params, latency_frames,
+                                     data_callback, state_callback, user_ptr);
+  else if (output_stream_params)
+    result = alsa_stream_init_single(ctx, stream, stream_name, SND_PCM_STREAM_PLAYBACK,
+                                     output_device, output_stream_params, latency_frames,
+                                     data_callback, state_callback, user_ptr);
+
+  return result;
 }
 
 static void
@@ -1058,6 +1128,11 @@ alsa_stream_start(cubeb_stream * stm)
   ctx = stm->context;
 
   pthread_mutex_lock(&stm->mutex);
+  /* Capture pcm must be started after initial setup/recover */
+  if (stm->stream_type == SND_PCM_STREAM_CAPTURE &&
+      snd_pcm_state(stm->pcm) == SND_PCM_STATE_PREPARED) {
+    snd_pcm_start(stm->pcm);
+  }
   snd_pcm_pause(stm->pcm, 0);
   gettimeofday(&stm->last_activity, NULL);
   pthread_mutex_unlock(&stm->mutex);
