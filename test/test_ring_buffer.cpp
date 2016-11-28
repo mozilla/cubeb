@@ -7,6 +7,7 @@
 
 #define NOMINMAX
 
+#include "gtest/gtest.h"
 #include "cubeb_ringbuffer.h"
 #include <iostream>
 #include <thread>
@@ -54,7 +55,7 @@ class sequence_verifier
             std::cerr << "Element " << i << " is different. Expected " 
               << static_cast<T>(index_) << ", got " << elements[i]
               << ". (channel count: " << channels << ")." << std::endl;
-            assert(false);
+            ASSERT_TRUE(false);
           }
         }
         index_++;
@@ -79,10 +80,10 @@ void test_ring(audio_ring_buffer<T>& buf, int channels, int capacity_frames)
   while(iterations--) {
     gen.get(seq.get(), block_size);
     int rv = buf.enqueue(seq.get(), block_size);
-    assert(rv == block_size);
+    ASSERT_EQ(rv, block_size);
     PodZero(seq.get(), block_size);
     rv = buf.dequeue(seq.get(), block_size);
-    assert(rv == block_size);
+    ASSERT_EQ(rv, block_size);
     checker.check(seq.get(), block_size);
   }
 }
@@ -104,7 +105,7 @@ void test_ring_multi(lock_free_audio_ring_buffer<T>& buf, int channels, int capa
       std::this_thread::sleep_for(std::chrono::microseconds(10));
       gen.get(in_buffer.get(), block_size);
       int rv = buf.enqueue(in_buffer.get(), block_size);
-      assert(rv <= block_size);
+      ASSERT_TRUE(rv <= block_size);
       if (rv != block_size) {
         gen.rewind(block_size - rv);
       }
@@ -116,7 +117,7 @@ void test_ring_multi(lock_free_audio_ring_buffer<T>& buf, int channels, int capa
   while(remaining--) {
     std::this_thread::sleep_for(std::chrono::microseconds(10));
     int rv = buf.dequeue(out_buffer.get(), block_size);
-    assert(rv <= block_size);
+    ASSERT_TRUE(rv <= block_size);
     checker.check(out_buffer.get(), rv);
   }
 
@@ -126,43 +127,43 @@ void test_ring_multi(lock_free_audio_ring_buffer<T>& buf, int channels, int capa
 template<typename T>
 void basic_api_test(T& ring)
 {
-  assert(ring.capacity() == 128);
+  ASSERT_EQ(ring.capacity(), 128);
 
-  assert(ring.empty());
-  assert(!ring.full());
+  ASSERT_TRUE(ring.empty());
+  ASSERT_TRUE(!ring.full());
 
   int rv = ring.enqueue_default(63);
 
-  assert(rv == 63);
-  assert(ring.available_read() == 63);
-  assert(ring.available_write() == 65);
-  assert(!ring.empty());
-  assert(!ring.full());
+  ASSERT_TRUE(rv == 63);
+  ASSERT_EQ(ring.available_read(), 63);
+  ASSERT_EQ(ring.available_write(), 65);
+  ASSERT_TRUE(!ring.empty());
+  ASSERT_TRUE(!ring.full());
 
   rv = ring.enqueue_default(65);
 
-  assert(rv = 65);
-  assert(!ring.empty());
-  assert(ring.full());
-  assert(ring.available_read() == 128);
-  assert(ring.available_write() == 0);
+  ASSERT_EQ(rv, 65);
+  ASSERT_TRUE(!ring.empty());
+  ASSERT_TRUE(ring.full());
+  ASSERT_EQ(ring.available_read(), 128);
+  ASSERT_EQ(ring.available_write(), 0);
 
   rv = ring.dequeue(nullptr, 63);
 
-  assert(!ring.empty());
-  assert(!ring.full());
-  assert(ring.available_read() == 65);
-  assert(ring.available_write() == 63);
+  ASSERT_TRUE(!ring.empty());
+  ASSERT_TRUE(!ring.full());
+  ASSERT_EQ(ring.available_read(), 65);
+  ASSERT_EQ(ring.available_write(), 63);
 
   rv = ring.dequeue(nullptr, 65);
 
-  assert(ring.empty());
-  assert(!ring.full());
-  assert(ring.available_read() == 0);
-  assert(ring.available_write() == 128);
+  ASSERT_TRUE(ring.empty());
+  ASSERT_TRUE(!ring.full());
+  ASSERT_EQ(ring.available_read(), 0);
+  ASSERT_EQ(ring.available_write(), 128);
 }
 
-int main()
+TEST(cubeb, ring_buffer)
 {
   /* Basic API test. */
   const int min_channels = 1;
@@ -211,6 +212,4 @@ int main()
       test_ring_multi(ring, channels, capacity_frames);
     }
   }
-
-  return 0;
 }
