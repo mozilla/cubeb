@@ -82,7 +82,7 @@ struct cubeb_stream {
   cubeb_data_callback data_callback;
   cubeb_state_callback state_callback;
   void * user_ptr;
-  snd_pcm_uframes_t write_position;
+  snd_pcm_uframes_t stream_position;
   snd_pcm_uframes_t last_position;
   snd_pcm_uframes_t buffer_size;
   cubeb_stream_params params;
@@ -307,7 +307,7 @@ alsa_process_stream(cubeb_stream * stm)
       avail = got; // the error handler below will recover us
     } else {
       stm->bufframes += got;
-      stm->write_position += got;
+      stm->stream_position += got;
 
       gettimeofday(&stm->last_activity, NULL);
     }
@@ -406,7 +406,7 @@ alsa_process_stream(cubeb_stream * stm)
     } else {
       stream_buffer_decrement(stm, wrote);
 
-      stm->write_position += wrote;
+      stm->stream_position += wrote;
       gettimeofday(&stm->last_activity, NULL);
     }
   }
@@ -1247,8 +1247,8 @@ alsa_stream_get_position(cubeb_stream * stm, uint64_t * position)
   assert(delay >= 0);
 
   *position = 0;
-  if (stm->write_position >= (snd_pcm_uframes_t) delay) {
-    *position = stm->write_position - delay;
+  if (stm->stream_position >= (snd_pcm_uframes_t) delay) {
+    *position = stm->stream_position - delay;
   }
 
   stm->last_position = *position;
