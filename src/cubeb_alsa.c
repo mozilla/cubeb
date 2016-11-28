@@ -107,6 +107,9 @@ struct cubeb_stream {
      being logically active and playing. */
   struct timeval last_activity;
   float volume;
+
+  char * buffer;
+  snd_pcm_uframes_t bufframes;
 };
 
 static int
@@ -253,8 +256,6 @@ alsa_refill_stream(cubeb_stream * stm)
 {
   unsigned short revents;
   snd_pcm_sframes_t avail;
-  long got;
-  void * p;
   int draining;
 
   draining = 0;
@@ -267,80 +268,90 @@ alsa_refill_stream(cubeb_stream * stm)
   snd_pcm_poll_descriptors_revents(stm->pcm, stm->fds, stm->nfds, &revents);
 
   avail = snd_pcm_avail_update(stm->pcm);
-  if (avail < 0) {
-    snd_pcm_recover(stm->pcm, avail, 1);
-    avail = snd_pcm_avail_update(stm->pcm);
-  }
 
-  /* Failed to recover from an xrun, this stream must be broken. */
-  if (avail < 0) {
-    pthread_mutex_unlock(&stm->mutex);
-    stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
-    return ERROR;
-  }
-
-  /* This should never happen. */
-  if ((unsigned int) avail > stm->buffer_size) {
-    avail = stm->buffer_size;
-  }
-
-  /* poll(2) claims this stream is active, so there should be some space
-     available to write.  If avail is still zero here, the stream must be in
-     a funky state, bail and wait for another wakeup. */
+  /* Got null event? Bail and wait for another wakeup. */
   if (avail == 0) {
     pthread_mutex_unlock(&stm->mutex);
     return RUNNING;
   }
 
-  p = calloc(1, snd_pcm_frames_to_bytes(stm->pcm, avail));
-  assert(p);
+  /* This could happen if we were suspended with SIGSTOP/Ctrl+Z for a long time. */
+  if ((unsigned int) avail > stm->buffer_size) {
+    avail = stm->buffer_size;
+  }
 
-  pthread_mutex_unlock(&stm->mutex);
-  got = stm->data_callback(stm, stm->user_ptr, NULL, p, avail);
-  pthread_mutex_lock(&stm->mutex);
-  if (got < 0) {
+  /* Don't have enough data? Let's ask for more. */
+  if (avail > stm->bufframes) {
+    long got;
+    char * buftail = stm->buffer + snd_pcm_frames_to_bytes(stm->pcm, stm->bufframes);
+
     pthread_mutex_unlock(&stm->mutex);
-    stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
-    free(p);
-    return ERROR;
-  }
-  if (got > 0) {
-    snd_pcm_sframes_t wrote;
+    got = stm->data_callback(stm, stm->user_ptr, NULL, buftail, avail - stm->bufframes);
+    pthread_mutex_lock(&stm->mutex);
 
-    if (stm->params.format == CUBEB_SAMPLE_FLOAT32NE) {
-      float * b = (float *) p;
-      for (uint32_t i = 0; i < got * stm->params.channels; i++) {
-        b[i] *= stm->volume;
-      }
+    if (got < 0) {
+      avail = got; // the error handler below will recover us
     } else {
-      short * b = (short *) p;
-      for (uint32_t i = 0; i < got * stm->params.channels; i++) {
-        b[i] *= stm->volume;
-      }
+      stm->bufframes += got;
     }
-    wrote = snd_pcm_writei(stm->pcm, p, got);
-    if (wrote < 0) {
-      snd_pcm_recover(stm->pcm, wrote, 1);
-      wrote = snd_pcm_writei(stm->pcm, p, got);
-    }
-    assert(wrote >= 0 && wrote == got);
-    stm->write_position += wrote;
-    gettimeofday(&stm->last_activity, NULL);
   }
-  if (got != avail) {
-    long buffer_fill = stm->buffer_size - (avail - got);
-    double buffer_time = (double) buffer_fill / stm->params.rate;
 
-    /* Fill the remaining buffer with silence to guarantee one full period
-       has been written. */
-    snd_pcm_writei(stm->pcm, (char *) p + got, avail - got);
+  /* Still don't have enough data? Add some silence. */
+  if (avail > stm->bufframes) {
+    long drain_frames = avail - stm->bufframes;
+    double drain_time = (double) drain_frames / stm->params.rate;
 
-    set_timeout(&stm->drain_timeout, buffer_time * 1000);
+    char * buftail = stm->buffer + snd_pcm_frames_to_bytes(stm->pcm, stm->bufframes);
+    memset(buftail, 0, snd_pcm_frames_to_bytes(stm->pcm, drain_frames));
+    stm->bufframes = avail;
+
+    set_timeout(&stm->drain_timeout, drain_time * 1000);
 
     draining = 1;
   }
 
-  free(p);
+  /* Have enough data and no errors. Let's write it out. */
+  if (avail > 0) {
+    snd_pcm_sframes_t wrote;
+
+    if (stm->params.format == CUBEB_SAMPLE_FLOAT32NE) {
+      float * b = (float *) stm->buffer;
+      for (uint32_t i = 0; i < avail * stm->params.channels; i++) {
+        b[i] *= stm->volume;
+      }
+    } else {
+      short * b = (short *) stm->buffer;
+      for (uint32_t i = 0; i < avail * stm->params.channels; i++) {
+        b[i] *= stm->volume;
+      }
+    }
+
+    wrote = snd_pcm_writei(stm->pcm, stm->buffer, avail);
+    if (wrote < 0) {
+      avail = wrote; // the error handler below will recover us
+    } else {
+      char * bufremains = stm->buffer + snd_pcm_frames_to_bytes(stm->pcm, wrote);
+      memmove(stm->buffer, bufremains, snd_pcm_frames_to_bytes(stm->pcm, stm->bufframes - wrote));
+
+      stm->bufframes -= wrote;
+      stm->write_position += wrote;
+
+      gettimeofday(&stm->last_activity, NULL);
+    }
+  }
+
+  /* Got some error? Let's try to recover the stream. */
+  if (avail < 0) {
+    avail = snd_pcm_recover(stm->pcm, avail, 0);
+  }
+
+  /* Failed to recover, this stream must be broken. */
+  if (avail < 0) {
+    pthread_mutex_unlock(&stm->mutex);
+    stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
+    return ERROR;
+  }
+
   pthread_mutex_unlock(&stm->mutex);
   return draining ? DRAINING : RUNNING;
 }
@@ -845,6 +856,8 @@ alsa_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
   stm->params = *output_stream_params;
   stm->state = INACTIVE;
   stm->volume = 1.0;
+  stm->buffer = NULL;
+  stm->bufframes = 0;
 
   r = pthread_mutex_init(&stm->mutex, NULL);
   assert(r == 0);
@@ -878,6 +891,9 @@ alsa_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
 
   r = snd_pcm_get_params(stm->pcm, &stm->buffer_size, &period_size);
   assert(r == 0);
+
+  stm->buffer = calloc(1, snd_pcm_frames_to_bytes(stm->pcm, stm->buffer_size));
+  assert(stm->buffer);
 
   stm->nfds = snd_pcm_poll_descriptors_count(stm->pcm);
   assert(stm->nfds > 0);
@@ -933,6 +949,8 @@ alsa_stream_destroy(cubeb_stream * stm)
   assert(ctx->active_streams >= 1);
   ctx->active_streams -= 1;
   pthread_mutex_unlock(&ctx->mutex);
+
+  free(stm->buffer);
 
   free(stm);
 }
