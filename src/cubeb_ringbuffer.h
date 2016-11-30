@@ -149,6 +149,10 @@ public:
    */
   RingBufferIndex enqueue(T * elements, RingBufferIndex count)
   {
+#ifndef NDEBUG
+    assert_correct_thread(producer_id);
+#endif
+
     RingBufferIndex rd_idx = read_index_;
     RingBufferIndex wr_idx = write_index_;
 
@@ -223,8 +227,11 @@ public:
    *
    * @return The number of available elements for reading.
    */
-  RingBufferIndex available_read() const
+  RingBufferIndex available_read() CUBEB_RELEASE_CONST
   {
+#ifndef NDEBUG
+    assert_correct_thread(consumer_id);
+#endif
     return available_read_internal(read_index_, write_index_);
   }
   /**
@@ -234,8 +241,11 @@ public:
    *
    * @return The number of empty slots in the buffer, available for writing.
    */
-  RingBufferIndex available_write() const
+  RingBufferIndex available_write() CUBEB_RELEASE_CONST
   {
+#ifndef NDEBUG
+    assert_correct_thread(producer_id);
+#endif
     return available_write_internal(read_index_, write_index_);
   }
   /**
@@ -330,6 +340,22 @@ private:
     assert(increment >= 0);
     return (index + increment) % storage_capacity();
   }
+  /**
+   * @brief This allows checking that enqueue (resp. dequeue) are always called
+   * by the right thread.
+   *
+   * @param id the id of the thread that has called the calling method first.
+   */
+#ifndef NDEBUG
+  void assert_correct_thread(std::thread::id& id)
+  {
+    if (id == std::thread::id()) {
+      id = std::this_thread::get_id();
+      return;
+    }
+    assert(id == std::this_thread::get_id());
+  }
+#endif
   /** Index at which the oldest element is at, in samples. */
   typename ThreadSafePolicy<Safety>::IndexType read_index_;
   /** Index at which to write new elements. `write_index` is always at
@@ -339,6 +365,12 @@ private:
   const int capacity_;
   /** Data storage */
   std::unique_ptr<T[]> data_;
+#ifndef NDEBUG
+  /** The id of the only thread that is allowed to read from the queue. */
+  std::thread::id consumer_id;
+  /** The id of the only thread that is allowed to write from the queue. */
+  std::thread::id producer_id;
+#endif
 };
 
 /**
@@ -413,7 +445,7 @@ public:
    *
    * @return The number of available frames of audio for reading.
    */
-  int available_read() const
+  int available_read() CUBEB_RELEASE_CONST
   {
     return samples_to_frames(ring_buffer.available_read());
   }
@@ -424,7 +456,7 @@ public:
    *
    * @return The number of empty slots in the buffer, available for writing.
    */
-  int available_write() const
+  int available_write() CUBEB_RELEASE_CONST
   {
     return samples_to_frames(ring_buffer.available_write());
   }

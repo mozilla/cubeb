@@ -19,6 +19,12 @@
 #include "cubeb_utils_unix.h"
 #endif
 
+#ifndef NDEBUG
+#define CUBEB_RELEASE_CONST
+#else
+#define CUBEB_RELEASE_CONST const
+#endif /* NDEBUG */
+
 /** Similar to memcpy, but accounts for the size of an element. */
 template<typename T>
 void PodCopy(T * destination, const T * source, size_t count)
