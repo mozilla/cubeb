@@ -55,7 +55,6 @@ int audiotrack_init(cubeb ** context, char const * context_name);
 int kai_init(cubeb ** context, char const * context_name);
 #endif
 
-
 static int
 validate_stream_params(cubeb_stream_params * input_stream_params,
                        cubeb_stream_params * output_stream_params)
@@ -95,8 +94,6 @@ validate_stream_params(cubeb_stream_params * input_stream_params,
 
   return CUBEB_ERROR_INVALID_FORMAT;
 }
-
-
 
 static int
 validate_latency(int latency)

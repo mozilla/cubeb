@@ -95,7 +95,6 @@ TEST(cubeb, init_destroy_context)
   ASSERT_EQ(r, CUBEB_OK);
   ASSERT_NE(ctx, nullptr);
 
-
   backend_id = cubeb_get_backend_id(ctx);
   ASSERT_TRUE(backend_id);
 
@@ -279,7 +278,6 @@ test_init_start_stop_destroy_multiple_streams(int early, int delay_ms)
       ASSERT_EQ(r, CUBEB_OK);
     }
   }
-
 
   if (!early) {
     for (i = 0; i < ARRAY_LENGTH(stream); ++i) {

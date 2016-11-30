@@ -407,7 +407,6 @@ double stream_to_mix_samplerate_ratio(cubeb_stream_params & stream, cubeb_stream
   return double(stream.rate) / mixer.rate;
 }
 
-
 uint32_t
 get_rate(cubeb_stream * stm)
 {
@@ -859,7 +858,6 @@ wasapi_stream_render_loop(LPVOID stream)
     /* This is not fatal, but we might glitch under heavy load. */
     LOG("Unable to use mmcss to bump the render thread priority: %lx", GetLastError());
   }
-
 
   /* WaitForMultipleObjects timeout can trigger in cases where we don't want to
      treat it as a timeout, such as across a system sleep/wake cycle.  Trigger
@@ -1920,7 +1918,6 @@ int wasapi_stream_stop(cubeb_stream * stm)
         return CUBEB_ERROR;
       }
     }
-
 
     stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STOPPED);
   }

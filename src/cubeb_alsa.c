@@ -790,7 +790,6 @@ alsa_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
   snd_pcm_uframes_t period_size;
   int latency_us = 0;
 
-
   assert(ctx && stream);
 
   if (input_stream_params) {
