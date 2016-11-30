@@ -44,6 +44,8 @@ typedef UInt32  AudioFormatFlags;
     LOG("System call failed: %s (rv: %d)", str, (int) r);       \
   } while(0)
 
+#define DISPATC_QUEUE_LABEL "com.mozilla.cubeb"
+
 /* Testing empirically, some headsets report a minimal latency that is very
  * low, but this does not work in practice. Lie and say the minimum is 256
  * frames. */
@@ -66,6 +68,7 @@ struct cubeb {
   /* Differentiate input from output devices. */
   cubeb_device_type collection_changed_devtype = CUBEB_DEVICE_TYPE_UNKNOWN;
   std::vector<AudioObjectID> devtype_device_array;
+  dispatch_queue_t serial_queue = dispatch_queue_create(DISPATC_QUEUE_LABEL, nullptr);
 };
 
 struct auto_array_wrapper {
@@ -623,12 +626,15 @@ audiounit_property_listener_callback(AudioObjectID /* id */, UInt32 address_coun
     }
   }
 
-  // Switch to the new device
-  if (audiounit_reinit_stream(stm, was_running) != CUBEB_OK) {
-    stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STOPPED);
-    LOG("(%p) Could not reopen the stream after switching.", stm);
-  }
-  stm->switching_device = false;
+  // Use a new thread, through the queue, to avoid deadlock when calling
+  // Get/SetProperties method from inside notify callback
+  dispatch_async(stm->context->serial_queue, ^() {
+    if (audiounit_reinit_stream(stm, was_running) != CUBEB_OK) {
+      stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STOPPED);
+      LOG("(%p) Could not reopen the stream after switching.", stm);
+    }
+    stm->switching_device = false;
+  });
 
   return noErr;
 }
