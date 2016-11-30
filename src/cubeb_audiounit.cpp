@@ -535,19 +535,44 @@ audiounit_get_input_device_id(AudioDeviceID * device_id)
   return CUBEB_OK;
 }
 
+static int
+audiounit_reinit_stream(cubeb_stream * stm, bool is_started)
+{
+  // This means the callback won't be called again.
+  if (is_started) {
+    audiounit_stream_stop_internal(stm);
+  }
+
+  {
+    auto_lock lock(stm->mutex);
+
+    close_audiounit_stream(stm);
+
+    if (setup_audiounit_stream(stm) != CUBEB_OK) {
+      LOG("(%p) Stream reinit failed.", stm);
+      return CUBEB_ERROR;
+    }
+
+    // Reset frames
+    stm->frames_read = 0;
+
+    // If the stream was running, start it again.
+    if (is_started) {
+      audiounit_stream_start_internal(stm);
+    }
+  }
+  return CUBEB_OK;
+}
+
 static OSStatus
 audiounit_property_listener_callback(AudioObjectID /* id */, UInt32 address_count,
                                      const AudioObjectPropertyAddress * addresses,
                                      void * user)
 {
   cubeb_stream * stm = (cubeb_stream*) user;
-  int rv;
-  bool was_running = false;
-
   stm->switching_device = true;
-
   // Note if the stream was running or not
-  was_running = !stm->shutdown;
+  bool was_running = !stm->shutdown;
 
   LOG("(%p) Audio device changed, %u events.", stm, (unsigned int) address_count);
   for (UInt32 i = 0; i < address_count; i++) {
@@ -598,27 +623,11 @@ audiounit_property_listener_callback(AudioObjectID /* id */, UInt32 address_coun
     }
   }
 
-  // This means the callback won't be called again.
-  audiounit_stream_stop_internal(stm);
-
-  {
-    auto_lock lock(stm->mutex);
-    close_audiounit_stream(stm);
-    rv = setup_audiounit_stream(stm);
-    if (rv != CUBEB_OK) {
-      LOG("(%p) Could not reopen a stream after switching.", stm);
-      stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STOPPED);
-      return noErr;
-    }
-
-    stm->frames_read = 0;
-
-    // If the stream was running, start it again.
-    if (was_running) {
-      audiounit_stream_start_internal(stm);
-    }
+  // Switch to the new device
+  if (audiounit_reinit_stream(stm, was_running) != CUBEB_OK) {
+    stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STOPPED);
+    LOG("(%p) Could not reopen the stream after switching.", stm);
   }
-
   stm->switching_device = false;
 
   return noErr;
@@ -1587,6 +1596,7 @@ audiounit_stream_destroy(cubeb_stream * stm)
   assert(stm->context->active_streams >= 1);
   stm->context->active_streams -= 1;
 
+  LOG("Cubeb stream (%p) destroyed successful.", stm);
   delete stm;
 }
 
