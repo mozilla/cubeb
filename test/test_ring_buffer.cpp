@@ -129,36 +129,28 @@ void basic_api_test(T& ring)
 {
   ASSERT_EQ(ring.capacity(), 128);
 
-  ASSERT_TRUE(ring.empty());
-  ASSERT_TRUE(!ring.full());
+  ASSERT_EQ(ring.available_read(), 0);
+  ASSERT_EQ(ring.available_write(), 128);
 
   int rv = ring.enqueue_default(63);
 
   ASSERT_TRUE(rv == 63);
   ASSERT_EQ(ring.available_read(), 63);
   ASSERT_EQ(ring.available_write(), 65);
-  ASSERT_TRUE(!ring.empty());
-  ASSERT_TRUE(!ring.full());
 
   rv = ring.enqueue_default(65);
 
   ASSERT_EQ(rv, 65);
-  ASSERT_TRUE(!ring.empty());
-  ASSERT_TRUE(ring.full());
   ASSERT_EQ(ring.available_read(), 128);
   ASSERT_EQ(ring.available_write(), 0);
 
   rv = ring.dequeue(nullptr, 63);
 
-  ASSERT_TRUE(!ring.empty());
-  ASSERT_TRUE(!ring.full());
   ASSERT_EQ(ring.available_read(), 65);
   ASSERT_EQ(ring.available_write(), 63);
 
   rv = ring.dequeue(nullptr, 65);
 
-  ASSERT_TRUE(ring.empty());
-  ASSERT_TRUE(!ring.full());
   ASSERT_EQ(ring.available_read(), 0);
   ASSERT_EQ(ring.available_write(), 128);
 }
