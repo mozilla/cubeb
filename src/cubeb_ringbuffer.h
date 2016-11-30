@@ -8,13 +8,14 @@
 #ifndef CUBEB_RING_BUFFER_H
 #define CUBEB_RING_BUFFER_H
 
-#include <memory>
-#include <cstdint>
-#include <atomic>
-#include <algorithm>
 #include "cubeb_utils.h"
+#include <algorithm>
+#include <atomic>
+#include <cstdint>
+#include <memory>
+#include <thread>
 
-/* This enum allow choosing the behaviour of the queue. */
+/* This enum allows choosing the behaviour of the queue. */
 enum ThreadSafety
 {
   /* No attempt to synchronize the queue is made. The queue is only safe when
@@ -31,12 +32,7 @@ struct ThreadSafePolicy;
 
 typedef int RingBufferIndex;
 
-/** Policy for thread-safe internal index for the queue.
- *
- * For now, we use 32-bits index. 64-bits index could be used if needed, but it
- * does not seem useful for real-time audio: that would mean we're buffering
- * quite a lot of data if we go over the 32-bits limit.
- */
+/** Policy for thread-safe internal index for the queue. */
 template<>
 struct ThreadSafePolicy<Safe>
 {
@@ -56,7 +52,7 @@ struct ThreadSafePolicy<Unsafe>
 /**
  * Single producer single consumer lock-free and wait-free ring buffer.
  *
- * This data structure allow producing data from one thread, and consuming it on
+ * This data structure allows producing data from one thread, and consuming it on
  * another thread, safely and without explicit synchronization. If used on two
  * threads, this data structure uses atomics for thread safety. It is possible
  * to disable the use of atomics at compile time and only use this data
@@ -68,7 +64,7 @@ struct ThreadSafePolicy<Unsafe>
  *
  * Some words about the inner workings of this class:
  * - Capacity is fixed. Only one allocation is performed, in the constructor.
- *   When reading and writing, the return value of the method allow checking if
+ *   When reading and writing, the return value of the method allows checking if
  *   the ring buffer is empty or full.
  * - We always keep the read index at least one element ahead of the write
  *   index, so we can distinguish between an empty and a full ring buffer: an
@@ -99,19 +95,21 @@ public:
    *
    * @param capacity The maximum number of element this ring buffer will hold.
    */
-  ring_buffer_base(int capacity)
-    : read_index_(0)
-    , write_index_(0)
-    /* One more element to distinguish from emtpy and full buffer. */
-    , capacity_(capacity + 1)
+  ring_buffer_base(RingBufferIndex capacity)
+    /* One more element to distinguish from empty and full buffer. */
+    : capacity_(capacity + 1)
   {
     assert(storage_capacity() <
-           std::numeric_limits<RingBufferIndex>::max() &&
-           "buffer to large for the type of index used.");
+           std::numeric_limits<RingBufferIndex>::max() / 2 &&
+           "buffer too large for the type of index used.");
     assert(capacity_ > 0);
 
     data_.reset(new T[storage_capacity()]);
-    PodZero(data_.get(), storage_capacity());
+    /* If this queue is using atomics, initializing those members as the last
+     * action in the constructor acts as a full barrier, and allow capacity() to
+     * be thread-safe. */
+    write_index_ = 0;
+    read_index_ = 0;
   }
   /**
    * Push `count` zero or default constructed elements in the array.
@@ -121,7 +119,7 @@ public:
    * @param count The number of elements to enqueue.
    * @return The number of element enqueued.
    */
-  int enqueue_default(int count)
+  RingBufferIndex enqueue_default(RingBufferIndex count)
   {
     return enqueue(nullptr, count);
   }
@@ -134,7 +132,7 @@ public:
    *
    * @return 1 if the element was inserted, 0 otherwise.
    */
-  int enqueue(T& element)
+  RingBufferIndex enqueue(T& element)
   {
     return enqueue(&element, 1);
   }
@@ -149,22 +147,23 @@ public:
    * @return The number of elements successfully coped from `elements` and inserted
    * into the ring buffer.
    */
-  int enqueue(T * elements, int count)
+  RingBufferIndex enqueue(T * elements, RingBufferIndex count)
   {
-    int rd_idx = read_index_;
-    int wr_idx = write_index_;
+    RingBufferIndex rd_idx = read_index_;
+    RingBufferIndex wr_idx = write_index_;
 
     if (full_internal(rd_idx, wr_idx)) {
       return 0;
     }
 
-    int to_write = std::min(available_write_internal(rd_idx, wr_idx), count);
+    RingBufferIndex to_write =
+      std::min(available_write_internal(rd_idx, wr_idx), count);
 
     /* First part, from the write index to the end of the array. */
-    int first_part = std::min(storage_capacity() - wr_idx,
-                              to_write);
+    RingBufferIndex first_part = std::min(storage_capacity() - wr_idx,
+                                          to_write);
     /* Second part, from the beginning of the array */
-    int second_part = to_write - first_part;
+    RingBufferIndex second_part = to_write - first_part;
 
     if (elements) {
       Copy(data_.get() + wr_idx, elements, first_part);
@@ -174,9 +173,7 @@ public:
       ConstructDefault(data_.get(), second_part);
     }
 
-    increment_index(wr_idx, to_write);
-
-    write_index_ = wr_idx;
+    write_index_ = increment_index(wr_idx, to_write);
 
     return to_write;
   }
@@ -191,28 +188,31 @@ public:
    * @param count The maximum number of elements to dequeue.
    * @return The number of elements written to `elements`.
    */
-  int dequeue(T * elements, int count)
+  RingBufferIndex dequeue(T * elements, RingBufferIndex count)
   {
-    int wr_idx = write_index_;
-    int rd_idx = read_index_;
+#ifndef NDEBUG
+    assert_correct_thread(consumer_id);
+#endif
+
+    RingBufferIndex  wr_idx = write_index_;
+    RingBufferIndex  rd_idx = read_index_;
 
     if (empty_internal(rd_idx, wr_idx)) {
       return 0;
     }
 
-    int to_read = std::min(available_read_internal(rd_idx, wr_idx), count);
+    RingBufferIndex to_read =
+      std::min(available_read_internal(rd_idx, wr_idx), count);
 
-    int first_part = std::min(storage_capacity() - rd_idx, to_read);
-    int second_part = to_read - first_part;
+    RingBufferIndex first_part = std::min(storage_capacity() - rd_idx, to_read);
+    RingBufferIndex second_part = to_read - first_part;
 
     if (elements) {
       Copy(elements, data_.get() + rd_idx, first_part);
       Copy(elements + first_part, data_.get(), second_part);
     }
 
-    increment_index(rd_idx, to_read);
-
-    read_index_ = rd_idx;
+    read_index_ = increment_index(rd_idx, to_read);
 
     return to_read;
   }
@@ -223,7 +223,7 @@ public:
    *
    * @return The number of available elements for reading.
    */
-  int available_read() const
+  RingBufferIndex available_read() const
   {
     return available_read_internal(read_index_, write_index_);
   }
@@ -234,7 +234,7 @@ public:
    *
    * @return The number of empty slots in the buffer, available for writing.
    */
-  int available_write() const
+  RingBufferIndex available_write() const
   {
     return available_write_internal(read_index_, write_index_);
   }
@@ -245,32 +245,9 @@ public:
    *
    * @return The maximum capacity of this ring buffer.
    */
-  int capacity() const
+  RingBufferIndex capacity() const
   {
     return storage_capacity() - 1;
-  }
-  /** Return true if the ring buffer is empty.
-   *
-   * Can be called safely on any thread.
-   *
-   * @return true if the ring buffer is empty, false otherwise.
-   **/
-  bool empty() const
-  {
-    return empty_internal(read_index_, write_index_);
-  }
-  /** Return true if the ring buffer is full.
-   *
-   * Can be called safely on any thread.
-   *
-   * This happens if the write index is exactly one element behind the read
-   * index.
-   *
-   * @return true if the ring buffer is full, false otherwise.
-   **/
-  bool full() const
-  {
-    return full_internal(read_index_, write_index_);
   }
 private:
   /** Return true if the ring buffer is empty.
@@ -279,7 +256,8 @@ private:
    * @param write_index the write index to consider
    * @return true if the ring buffer is empty, false otherwise.
    **/
-  bool empty_internal(int read_index, int write_index) const
+  bool empty_internal(RingBufferIndex read_index,
+                      RingBufferIndex write_index) const
   {
     return write_index == read_index;
   }
@@ -292,9 +270,10 @@ private:
    * @param write_index the write index to consider
    * @return true if the ring buffer is full, false otherwise.
    **/
-  bool full_internal(int read_index, int write_index) const
+  bool full_internal(RingBufferIndex read_index,
+                     RingBufferIndex write_index) const
   {
-    return (write_index + 1) % capacity_ == read_index;
+    return (write_index + 1) % storage_capacity() == read_index;
   }
   /**
    * Return the size of the storage. It is one more than the number of elements
@@ -311,12 +290,14 @@ private:
    *
    * @return the number of available elements for reading.
    */
-  int available_read_internal(int read_index, int write_index) const
+  RingBufferIndex
+  available_read_internal(RingBufferIndex read_index,
+                          RingBufferIndex write_index) const
   {
     if (write_index >= read_index) {
       return write_index - read_index;
     } else {
-      return write_index + capacity_ - read_index;
+      return write_index + storage_capacity() - read_index;
     }
   }
   /**
@@ -324,13 +305,15 @@ private:
    *
    * @return the number of elements that can be written into the array.
    */
-  int available_write_internal(int read_index, int write_index) const
+  RingBufferIndex
+  available_write_internal(RingBufferIndex read_index,
+                           RingBufferIndex write_index) const
   {
     /* We substract one element here to always keep at least one sample
      * free in the buffer, to distinguish between full and empty array. */
     int rv = read_index - write_index - 1;
     if (write_index >= read_index) {
-      rv += capacity_;
+      rv += storage_capacity();
     }
     return rv;
   }
@@ -339,14 +322,13 @@ private:
    *
    * @param index a reference to the index to increment.
    * @param increment the number by which `index` is incremented.
+   * @return the new index.
    */
-  template <typename IndexType>
-  void increment_index(IndexType& index, uint32_t increment) const
+  RingBufferIndex
+  increment_index(RingBufferIndex index, RingBufferIndex increment) const
   {
-    /** Don't make this two operations, `index` might be atomic, we want other
-     * threads to see either the old or the new value, but not an intermediary
-     * computation step: it should only be assigned once. */
-    index = (index + increment) % capacity_;
+    assert(increment >= 0);
+    return (index + increment) % storage_capacity();
   }
   /** Index at which the oldest element is at, in samples. */
   typename ThreadSafePolicy<Safety>::IndexType read_index_;
@@ -456,29 +438,6 @@ public:
   int capacity() const
   {
     return samples_to_frames(ring_buffer.capacity());
-  }
-  /** Return true if the ring buffer is empty.
-   *
-   * Can be called safely on any thread.
-   *
-   * @return true if the ring buffer is empty, false otherwise.
-   **/
-  bool empty() const
-  {
-    return ring_buffer.empty();
-  }
-  /** Return true if the ring buffer is full.
-   *
-   * Can be called safely on any thread.
-   *
-   * This happens if the write index is exactly one frame behind the read
-   * index.
-   *
-   * @return true if the ring buffer is full, false otherwise.
-   **/
-  bool full() const
-  {
-    return ring_buffer.full();
   }
 private:
   /**
