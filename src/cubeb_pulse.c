@@ -226,7 +226,7 @@ trigger_user_callback(pa_stream * s, void const * input_data, size_t nbytes, cub
     assert(size > 0);
     assert(size % frame_size == 0);
 
-    LOGV("Trigger user callback with output buffer size=%zd, read_offset=%zd", size, read_offset);
+    ALOGV("Trigger user callback with output buffer size=%zd, read_offset=%zd", size, read_offset);
     got = stm->data_callback(stm, stm->user_ptr, (uint8_t const *)input_data + read_offset, buffer, size / frame_size);
     if (got < 0) {
       WRAP(pa_stream_cancel_write)(s);
@@ -296,7 +296,7 @@ read_from_input(pa_stream * s, void const ** buffer, size_t * size)
 static void
 stream_write_callback(pa_stream * s, size_t nbytes, void * u)
 {
-  LOGV("Output callback to be written buffer size %zd", nbytes);
+  ALOGV("Output callback to be written buffer size %zd", nbytes);
   cubeb_stream * stm = u;
   if (stm->shutdown ||
       stm->state != CUBEB_STATE_STARTED) {
@@ -314,7 +314,7 @@ stream_write_callback(pa_stream * s, size_t nbytes, void * u)
 static void
 stream_read_callback(pa_stream * s, size_t nbytes, void * u)
 {
-  LOGV("Input callback buffer size %zd", nbytes);
+  ALOGV("Input callback buffer size %zd", nbytes);
   cubeb_stream * stm = u;
   if (stm->shutdown) {
     return;
