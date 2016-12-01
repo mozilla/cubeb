@@ -196,7 +196,7 @@ TEST(cubeb, ring_buffer)
   }
 
   /* Multi thread testing */
-  for (size_t channels = max_channels; channels < min_channels; channels++) {
+  for (size_t channels = min_channels; channels < max_channels; channels++) {
     /* Use non power-of-two numbers to catch edge-cases. */
     for (size_t capacity_frames = min_capacity;
          capacity_frames < max_capacity; capacity_frames+=capacity_increment) {
