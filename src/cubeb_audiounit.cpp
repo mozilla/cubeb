@@ -133,8 +133,8 @@ struct cubeb_stream {
   cubeb_state_callback state_callback = nullptr;
   cubeb_device_changed_callback device_changed_callback = nullptr;
   /* Stream creation parameters */
-  cubeb_stream_params input_stream_params = { CUBEB_SAMPLE_FLOAT32NE, 0, 0 };
-  cubeb_stream_params output_stream_params = { CUBEB_SAMPLE_FLOAT32NE, 0, 0 };
+  cubeb_stream_params input_stream_params = { CUBEB_SAMPLE_FLOAT32NE, 0, 0, CUBEB_LAYOUT_UNDEFINED };
+  cubeb_stream_params output_stream_params = { CUBEB_SAMPLE_FLOAT32NE, 0, 0, CUBEB_LAYOUT_UNDEFINED };
   bool is_default_input;
   AudioDeviceID input_device = 0;
   AudioDeviceID output_device = 0;
@@ -2294,6 +2294,7 @@ cubeb_ops const audiounit_ops = {
   /*.get_max_channel_count =*/ audiounit_get_max_channel_count,
   /*.get_min_latency =*/ audiounit_get_min_latency,
   /*.get_preferred_sample_rate =*/ audiounit_get_preferred_sample_rate,
+  /*.get_preferred_channel_layout =*/ nullptr,
   /*.enumerate_devices =*/ audiounit_enumerate_devices,
   /*.destroy =*/ audiounit_destroy,
   /*.stream_init =*/ audiounit_stream_init,

@@ -1410,6 +1410,7 @@ static struct cubeb_ops const pulse_ops = {
   .get_max_channel_count = pulse_get_max_channel_count,
   .get_min_latency = pulse_get_min_latency,
   .get_preferred_sample_rate = pulse_get_preferred_sample_rate,
+  .get_preferred_channel_layout = NULL,
   .enumerate_devices = pulse_enumerate_devices,
   .destroy = pulse_destroy,
   .stream_init = pulse_stream_init,

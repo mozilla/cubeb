@@ -32,6 +32,34 @@ float get_frequency(int channel_index)
   return 220.0f * (channel_index+1);
 }
 
+typedef struct {
+  char const * name;
+  unsigned int const channels;
+  cubeb_channel_layout const layout;
+} layout_info;
+
+const layout_info layout_infos[CUBEB_LAYOUT_MAX] = {
+  { "undefined",      0,  CUBEB_LAYOUT_UNDEFINED },
+  { "dual mono",      2,  CUBEB_LAYOUT_DUAL_MONO },
+  { "dual mono lfe",  3,  CUBEB_LAYOUT_DUAL_MONO_LFE },
+  { "mono",           1,  CUBEB_LAYOUT_MONO },
+  { "mono lfe",       2,  CUBEB_LAYOUT_MONO_LFE },
+  { "stereo",         2,  CUBEB_LAYOUT_STEREO },
+  { "stereo lfe",     3,  CUBEB_LAYOUT_STEREO_LFE },
+  { "3f",             3,  CUBEB_LAYOUT_3F },
+  { "3f lfe",         4,  CUBEB_LAYOUT_3F_LFE },
+  { "2f1",            3,  CUBEB_LAYOUT_2F1 },
+  { "2f1 lfe",        4,  CUBEB_LAYOUT_2F1_LFE },
+  { "3f1",            4,  CUBEB_LAYOUT_3F1 },
+  { "3f1 lfe",        5,  CUBEB_LAYOUT_3F1_LFE },
+  { "2f2",            4,  CUBEB_LAYOUT_2F2 },
+  { "2f2 lfe",        5,  CUBEB_LAYOUT_2F2_LFE },
+  { "3f2",            5,  CUBEB_LAYOUT_3F2 },
+  { "3f2 lfe",        6,  CUBEB_LAYOUT_3F2_LFE },
+  { "3f3r lfe",       7,  CUBEB_LAYOUT_3F3R_LFE },
+  { "3f4 lfe",        8,  CUBEB_LAYOUT_3F4_LFE }
+};
+
 /* store the phase of the generated waveform */
 typedef struct {
   int num_channels;
@@ -118,7 +146,7 @@ int supports_channel_count(const char* backend_id, int nchannels)
     (strcmp(backend_id, "opensl") != 0 && strcmp(backend_id, "audiotrack") != 0);
 }
 
-int run_test(int num_channels, int sampling_rate, int is_float)
+int run_test(int num_channels, layout_info layout, int sampling_rate, int is_float)
 {
   int r = CUBEB_OK;
 
@@ -142,12 +170,13 @@ int run_test(int num_channels, int sampling_rate, int is_float)
     goto cleanup;
   }
 
-  fprintf(stderr, "Testing %d channel(s), %d Hz, %s (%s)\n", num_channels, sampling_rate, is_float ? "float" : "short", cubeb_get_backend_id(ctx));
+  fprintf(stderr, "Testing %d channel(s), layout: %s, %d Hz, %s (%s)\n", num_channels, layout.name, sampling_rate, is_float ? "float" : "short", cubeb_get_backend_id(ctx));
 
   cubeb_stream_params params;
   params.format = is_float ? CUBEB_SAMPLE_FLOAT32NE : CUBEB_SAMPLE_S16NE;
   params.rate = sampling_rate;
   params.channels = num_channels;
+  params.layout = layout.layout;
 
   synth = synth_create(params.channels, params.rate);
   if (synth == NULL) {
@@ -200,6 +229,7 @@ int run_panning_volume_test(int is_float)
   params.format = is_float ? CUBEB_SAMPLE_FLOAT32NE : CUBEB_SAMPLE_S16NE;
   params.rate = 44100;
   params.channels = 2;
+  params.layout = CUBEB_LAYOUT_STEREO;
 
   synth = synth_create(params.channels, params.rate);
   if (synth == NULL) {
@@ -259,7 +289,7 @@ TEST(cubeb, run_panning_volume_test_float)
 
 TEST(cubeb, run_channel_rate_test)
 {
-  int channel_values[] = {
+  unsigned int channel_values[] = {
     1,
     2,
     3,
@@ -278,9 +308,12 @@ TEST(cubeb, run_channel_rate_test)
     for(int i = 0; i < NELEMS(freq_values); ++i) {
       ASSERT_TRUE(channel_values[j] < MAX_NUM_CHANNELS);
       fprintf(stderr, "--------------------------\n");
-      ASSERT_EQ(run_test(channel_values[j], freq_values[i], 0), CUBEB_OK);
-      ASSERT_EQ(run_test(channel_values[j], freq_values[i], 1), CUBEB_OK);
+      for (int k = 0 ; k < NELEMS(layout_infos); ++k ) {
+        if (layout_infos[k].channels == channel_values[j]) {
+          ASSERT_EQ(run_test(channel_values[j], layout_infos[k], freq_values[i], 0), CUBEB_OK);
+          ASSERT_EQ(run_test(channel_values[j], layout_infos[k], freq_values[i], 1), CUBEB_OK);
+        }
+      }
     }
   }
 }
-
