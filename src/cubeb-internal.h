@@ -35,6 +35,34 @@ void cubeb_crash() CLANG_ANALYZER_NORETURN;
 }
 #endif
 
+typedef struct {
+  char const * name;
+  unsigned int const channels;
+  cubeb_channel_layout const layout;
+} cubeb_layout_map;
+
+static cubeb_layout_map const CUBEB_CHANNEL_LAYOUT_MAPS[CUBEB_LAYOUT_MAX] = {
+  { "undefined",      0,  CUBEB_LAYOUT_UNDEFINED },
+  { "dual mono",      2,  CUBEB_LAYOUT_DUAL_MONO },
+  { "dual mono lfe",  3,  CUBEB_LAYOUT_DUAL_MONO_LFE },
+  { "mono",           1,  CUBEB_LAYOUT_MONO },
+  { "mono lfe",       2,  CUBEB_LAYOUT_MONO_LFE },
+  { "stereo",         2,  CUBEB_LAYOUT_STEREO },
+  { "stereo lfe",     3,  CUBEB_LAYOUT_STEREO_LFE },
+  { "3f",             3,  CUBEB_LAYOUT_3F },
+  { "3f lfe",         4,  CUBEB_LAYOUT_3F_LFE },
+  { "2f1",            3,  CUBEB_LAYOUT_2F1 },
+  { "2f1 lfe",        4,  CUBEB_LAYOUT_2F1_LFE },
+  { "3f1",            4,  CUBEB_LAYOUT_3F1 },
+  { "3f1 lfe",        5,  CUBEB_LAYOUT_3F1_LFE },
+  { "2f2",            4,  CUBEB_LAYOUT_2F2 },
+  { "2f2 lfe",        5,  CUBEB_LAYOUT_2F2_LFE },
+  { "3f2",            5,  CUBEB_LAYOUT_3F2 },
+  { "3f2 lfe",        6,  CUBEB_LAYOUT_3F2_LFE },
+  { "3f3r lfe",       7,  CUBEB_LAYOUT_3F3R_LFE },
+  { "3f4 lfe",        8,  CUBEB_LAYOUT_3F4_LFE }
+};
+
 struct cubeb_ops {
   int (* init)(cubeb ** context, char const * context_name);
   char const * (* get_backend_id)(cubeb * context);
@@ -43,6 +71,7 @@ struct cubeb_ops {
                           cubeb_stream_params params,
                           uint32_t * latency_ms);
   int (* get_preferred_sample_rate)(cubeb * context, uint32_t * rate);
+  int (* get_preferred_channel_layout)(cubeb * context, cubeb_channel_layout * layout);
   int (* enumerate_devices)(cubeb * context, cubeb_device_type type,
                             cubeb_device_collection ** collection);
   void (* destroy)(cubeb * context);
