@@ -40,9 +40,9 @@ typedef UInt32  AudioFormatFlags;
 #define AU_OUT_BUS    0
 #define AU_IN_BUS     1
 
-#define PRINT_ERROR_CODE(str, r) do {                                \
-  LOG("System call failed: %s (rv: %d)", str, r);                    \
-} while(0)
+#define PRINT_ERROR_CODE(str, r) do {                           \
+    LOG("System call failed: %s (rv: %d)", str, (int) r);       \
+  } while(0)
 
 /* Testing empirically, some headsets report a minimal latency that is very
  * low, but this does not work in practice. Lie and say the minimum is 256
@@ -267,11 +267,12 @@ audiounit_render_input(cubeb_stream * stm,
   stm->input_linear_buffer->push(input_buffer_list.mBuffers[0].mData,
                                  input_frames * stm->input_desc.mChannelsPerFrame);
 
-  LOGV("(%p) input:  buffers %d, size %d, channels %d, frames %d.",
-       stm, input_buffer_list.mNumberBuffers,
-       input_buffer_list.mBuffers[0].mDataByteSize,
-       input_buffer_list.mBuffers[0].mNumberChannels,
-       input_frames);
+  LOGV("(%p) input:  buffers %u, size %u, channels %u, frames %d.",
+       stm,
+       (unsigned int) input_buffer_list.mNumberBuffers,
+       (unsigned int) input_buffer_list.mBuffers[0].mDataByteSize,
+       (unsigned int) input_buffer_list.mBuffers[0].mNumberChannels,
+       (unsigned int) input_frames);
 
   /* Advance input frame counter. */
   assert(input_frames > 0);
@@ -375,10 +376,12 @@ audiounit_output_callback(void * user_ptr,
 
   stm->output_callback_in_a_row++;
 
-  LOGV("(%p) output: buffers %d, size %d, channels %d, frames %d.",
-       stm, outBufferList->mNumberBuffers,
-       outBufferList->mBuffers[0].mDataByteSize,
-       outBufferList->mBuffers[0].mNumberChannels, output_frames);
+  LOGV("(%p) output: buffers %u, size %u, channels %u, frames %u.",
+       stm,
+       (unsigned int) outBufferList->mNumberBuffers,
+       (unsigned int) outBufferList->mBuffers[0].mDataByteSize,
+       (unsigned int) outBufferList->mBuffers[0].mNumberChannels,
+       (unsigned int) output_frames);
 
   long outframes = 0, input_frames = 0;
   void * output_buffer = NULL, * input_buffer = NULL;
@@ -547,23 +550,23 @@ audiounit_property_listener_callback(AudioObjectID /* id */, UInt32 address_coun
   // Note if the stream was running or not
   was_running = !stm->shutdown;
 
-  LOG("(%p) Audio device changed, %d events.", stm, address_count);
+  LOG("(%p) Audio device changed, %u events.", stm, (unsigned int) address_count);
   for (UInt32 i = 0; i < address_count; i++) {
     switch(addresses[i].mSelector) {
       case kAudioHardwarePropertyDefaultOutputDevice: {
-          LOG("Event[%d] - mSelector == kAudioHardwarePropertyDefaultOutputDevice", i);
+          LOG("Event[%u] - mSelector == kAudioHardwarePropertyDefaultOutputDevice", (unsigned int) i);
           // Allow restart to choose the new default
           stm->output_device = 0;
         }
         break;
       case kAudioHardwarePropertyDefaultInputDevice: {
-          LOG("Event[%d] - mSelector == kAudioHardwarePropertyDefaultInputDevice", i);
+          LOG("Event[%u] - mSelector == kAudioHardwarePropertyDefaultInputDevice", (unsigned int) i);
           // Allow restart to choose the new default
           stm->input_device = 0;
         }
       break;
       case kAudioDevicePropertyDeviceIsAlive: {
-          LOG("Event[%d] - mSelector == kAudioDevicePropertyDeviceIsAlive", i);
+          LOG("Event[%u] - mSelector == kAudioDevicePropertyDeviceIsAlive", (unsigned int) i);
           // If this is the default input device ignore the event,
           // kAudioHardwarePropertyDefaultInputDevice will take care of the switch
           if (stm->is_default_input) {
@@ -575,7 +578,7 @@ audiounit_property_listener_callback(AudioObjectID /* id */, UInt32 address_coun
         }
         break;
       case kAudioDevicePropertyDataSource:
-        LOG("Event[%d] - mSelector == kAudioHardwarePropertyDataSource", i);
+        LOG("Event[%u] - mSelector == kAudioHardwarePropertyDataSource", (unsigned int) i);
         break;
     }
   }
