@@ -29,7 +29,7 @@ typedef enum {
   CHANNEL_MAX // Max number of supported channels.
 } cubeb_channel;
 
-static const cubeb_channel CHANNEL_INDEX_TO_ORDER[CUBEB_LAYOUT_MAX][CHANNEL_MAX] = {
+static cubeb_channel const CHANNEL_INDEX_TO_ORDER[CUBEB_LAYOUT_MAX][CHANNEL_MAX] = {
   { CHANNEL_INVALID },                                                                                            // UNSUPPORTED
   { CHANNEL_LEFT, CHANNEL_RIGHT },                                                                                // DUAL_MONO
   { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_LFE },                                                                   // DUAL_MONO_LFE

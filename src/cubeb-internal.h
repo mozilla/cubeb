@@ -41,7 +41,7 @@ typedef struct {
   cubeb_channel_layout const layout;
 } cubeb_layout_map;
 
-static const cubeb_layout_map CUBEB_CHANNEL_LAYOUT_MAPS[CUBEB_LAYOUT_MAX] = {
+static cubeb_layout_map const CUBEB_CHANNEL_LAYOUT_MAPS[CUBEB_LAYOUT_MAX] = {
   { "undefined",      0,  CUBEB_LAYOUT_UNDEFINED },
   { "dual mono",      2,  CUBEB_LAYOUT_DUAL_MONO },
   { "dual mono lfe",  3,  CUBEB_LAYOUT_DUAL_MONO_LFE },

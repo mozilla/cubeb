@@ -435,7 +435,7 @@ CUBEB_EXPORT int cubeb_get_max_channel_count(cubeb * context, uint32_t * max_cha
 
 /** Get the minimal latency value, in frames, that is guaranteed to work
     when creating a stream for the specified sample rate. This is platform,
-    hardware and backend dependant.
+    hardware and backend dependent.
     @param context A pointer to the cubeb context.
     @param params On some backends, the minimum achievable latency depends on
                   the characteristics of the stream.
@@ -449,7 +449,7 @@ CUBEB_EXPORT int cubeb_get_min_latency(cubeb * context,
                                        uint32_t * latency_frames);
 
 /** Get the preferred sample rate for this backend: this is hardware and
-    platform dependant, and can avoid resampling, and/or trigger fastpaths.
+    platform dependent, and can avoid resampling, and/or trigger fastpaths.
     @param context A pointer to the cubeb context.
     @param rate The samplerate (in Hz) the current configuration prefers.
     @retval CUBEB_OK
@@ -458,7 +458,7 @@ CUBEB_EXPORT int cubeb_get_min_latency(cubeb * context,
 CUBEB_EXPORT int cubeb_get_preferred_sample_rate(cubeb * context, uint32_t * rate);
 
 /** Get the preferred layout for this backend: this is hardware and
-    platform dependant.
+    platform dependent.
     @param context A pointer to the cubeb context.
     @param layout The layout of the current speaker configuration.
     @retval CUBEB_OK

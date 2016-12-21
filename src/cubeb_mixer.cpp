@@ -9,7 +9,7 @@
 #include "cubeb-internal.h"
 #include "cubeb_mixer.h"
 
-static const int CHANNEL_ORDER_TO_INDEX[CUBEB_LAYOUT_MAX][CHANNEL_MAX] = {
+static int const CHANNEL_ORDER_TO_INDEX[CUBEB_LAYOUT_MAX][CHANNEL_MAX] = {
  // M | L | R | C | LS | RS | RLS | RC | RRS | LFE
   { -1, -1, -1, -1,  -1,  -1,   -1,  -1,   -1,  -1 }, // UNSUPPORTED
   { -1,  0,  1, -1,  -1,  -1,   -1,  -1,   -1,  -1 }, // DUAL_MONO
@@ -39,15 +39,15 @@ static const int CHANNEL_ORDER_TO_INDEX[CUBEB_LAYOUT_MAX][CHANNEL_MAX] = {
 // [1] https://www.itu.int/dms_pubrec/itu-r/rec/bs/R-REC-BS.775-3-201208-I!!PDF-E.pdf
 
 // Number of converted layouts: 1F, 2F, 3F, 2F1, 3F1, 2F2 and their LFEs.
-const unsigned int SUPPORTED_LAYOUT_NUM = 12;
+unsigned int const SUPPORTED_LAYOUT_NUM = 12;
 // Number of input channel for downmix conversion.
-const unsigned int INPUT_CHANNEL_NUM = 6; // 3F2-LFE
+unsigned int const INPUT_CHANNEL_NUM = 6; // 3F2-LFE
 // Max number of possible output channels.
-const unsigned int MAX_OUTPUT_CHANNEL_NUM = 5; // 2F2-LFE or 3F1-LFE
-const float INV_SQRT_2 = 0.707106f; // 1/sqrt(2)
+unsigned int const MAX_OUTPUT_CHANNEL_NUM = 5; // 2F2-LFE or 3F1-LFE
+float const INV_SQRT_2 = 0.707106f; // 1/sqrt(2)
 // Each array contains coefficients that will be multiplied with
 // { L, R, C, LFE, LS, RS } channels respectively.
-static const float DOWNMIX_MATRIX_3F2_LFE[SUPPORTED_LAYOUT_NUM][MAX_OUTPUT_CHANNEL_NUM][INPUT_CHANNEL_NUM] =
+static float const DOWNMIX_MATRIX_3F2_LFE[SUPPORTED_LAYOUT_NUM][MAX_OUTPUT_CHANNEL_NUM][INPUT_CHANNEL_NUM] =
 {
 // 1F Mono
   {
@@ -130,7 +130,7 @@ static const float DOWNMIX_MATRIX_3F2_LFE[SUPPORTED_LAYOUT_NUM][MAX_OUTPUT_CHANN
 /* Convert audio data from 3F2(-LFE) to 1F, 2F, 3F, 2F1, 3F1, 2F2 and their LFEs. */
 template<typename T>
 bool
-downmix_3f2(const T * in, long inframes, T * out, cubeb_channel_layout in_layout, cubeb_channel_layout out_layout)
+downmix_3f2(T const * const in, long inframes, T * out, cubeb_channel_layout in_layout, cubeb_channel_layout out_layout)
 {
   if ((in_layout != CUBEB_LAYOUT_3F2 && in_layout != CUBEB_LAYOUT_3F2_LFE) ||
       out_layout < CUBEB_LAYOUT_MONO || out_layout > CUBEB_LAYOUT_2F2_LFE) {
@@ -162,10 +162,10 @@ downmix_3f2(const T * in, long inframes, T * out, cubeb_channel_layout in_layout
   return true;
 }
 
-/* Map the audio data by channel name */
+/* Map the audio data by channel name. */
 template<class T>
 bool
-mix_remap(const T* in, long inframes, T* out, cubeb_channel_layout in_layout, cubeb_channel_layout out_layout) {
+mix_remap(T const * const in, long inframes, T * out, cubeb_channel_layout in_layout, cubeb_channel_layout out_layout) {
   assert(in_layout != out_layout);
   unsigned int in_channels = CUBEB_CHANNEL_LAYOUT_MAPS[in_layout].channels;
   unsigned int out_channels = CUBEB_CHANNEL_LAYOUT_MAPS[out_layout].channels;
@@ -208,7 +208,7 @@ mix_remap(const T* in, long inframes, T* out, cubeb_channel_layout in_layout, cu
 /* Drop the extra channels beyond the provided output channels. */
 template<typename T>
 void
-downmix_fallback(const T * in, long inframes, T * out, unsigned int in_channels, unsigned int out_channels)
+downmix_fallback(T const * const in, long inframes, T * out, unsigned int in_channels, unsigned int out_channels)
 {
   assert(in_channels >= out_channels);
   long out_index = 0;
@@ -223,7 +223,7 @@ downmix_fallback(const T * in, long inframes, T * out, unsigned int in_channels,
 
 template<typename T>
 void
-cubeb_downmix(const T * in, long inframes, T * out,
+cubeb_downmix(T const * const in, long inframes, T * out,
               unsigned int in_channels, unsigned int out_channels,
               cubeb_channel_layout in_layout, cubeb_channel_layout out_layout)
 {
@@ -245,10 +245,10 @@ cubeb_downmix(const T * in, long inframes, T * out,
   downmix_fallback(in, inframes, out, in_channels, out_channels);
 }
 
-/* Upmix function, copies a mono channel into L and R */
+/* Upmix function, copies a mono channel into L and R. */
 template<typename T>
 void
-mono_to_stereo(const T * in, long insamples, T * out, unsigned int out_channels)
+mono_to_stereo(T const * in, long insamples, T * out, unsigned int out_channels)
 {
   for (long i = 0, j = 0; i < insamples; ++i, j += out_channels) {
     out[j] = out[j + 1] = in[i];
@@ -257,7 +257,7 @@ mono_to_stereo(const T * in, long insamples, T * out, unsigned int out_channels)
 
 template<typename T>
 void
-cubeb_upmix(const T * in, long inframes, T * out,
+cubeb_upmix(T const * in, long inframes, T * out,
             unsigned int in_channels, unsigned int out_channels)
 {
   assert(out_channels >= in_channels && in_channels > 0);

@@ -15,19 +15,19 @@ using std::vector;
 #define STREAM_FREQUENCY 48000
 #define STREAM_FORMAT CUBEB_SAMPLE_FLOAT32LE
 
-const float M = 1.0f;     // Mono
-const float L = 2.0f;     // Left
-const float R = 3.0f;     // Right
-const float C = 4.0f;     // Center
-const float LS = 5.0f;    // Left Surround
-const float RS = 6.0f;    // Right Surround
-const float RLS = 7.0f;   // Rear Left Surround
-const float RC = 8.0f;    // Rear Center
-const float RRS = 9.0f;   // Rear Right Surround
-const float LFE = 10.0f;  // Low Frequency Effects
+float const M = 1.0f;     // Mono
+float const L = 2.0f;     // Left
+float const R = 3.0f;     // Right
+float const C = 4.0f;     // Center
+float const LS = 5.0f;    // Left Surround
+float const RS = 6.0f;    // Right Surround
+float const RLS = 7.0f;   // Rear Left Surround
+float const RC = 8.0f;    // Rear Center
+float const RRS = 9.0f;   // Rear Right Surround
+float const LFE = 10.0f;  // Low Frequency Effects
 
-const float INV_SQRT_2 = 0.707106f; // 1/sqrt(2)
-static const float DOWNMIX_3F2_RESULTS[2][12][5] = {
+float const INV_SQRT_2 = 0.707106f; // 1/sqrt(2)
+static float const DOWNMIX_3F2_RESULTS[2][12][5] = {
   // 3F2
   {
     { INV_SQRT_2*(L+R) + C + 0.5f*(LS+RS) },                          // Mono
@@ -88,7 +88,7 @@ audio_input audio_inputs[CUBEB_LAYOUT_MAX] = {
 };
 
 void
-downmix_test(const float* data, cubeb_channel_layout in_layout, cubeb_channel_layout out_layout)
+downmix_test(float const * data, cubeb_channel_layout in_layout, cubeb_channel_layout out_layout)
 {
   if (in_layout == CUBEB_LAYOUT_UNDEFINED) {
     return; // Only possible output layout would be UNSUPPORTED.
@@ -117,7 +117,7 @@ downmix_test(const float* data, cubeb_channel_layout in_layout, cubeb_channel_la
 
   fprintf(stderr, "Downmix from %s to %s\n", layout_infos[in_layout].name, layout_infos[out_layout].name);
 
-  const unsigned int inframes = 10;
+  unsigned int const inframes = 10;
   vector<float> in(in_params.channels * inframes);
   vector<float> out(out_params.channels * inframes);
 
