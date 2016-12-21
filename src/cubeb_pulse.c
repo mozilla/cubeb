@@ -226,7 +226,7 @@ trigger_user_callback(pa_stream * s, void const * input_data, size_t nbytes, cub
     assert(size > 0);
     assert(size % frame_size == 0);
 
-    ALOGV("Trigger user callback with output buffer size=%zd, read_offset=%zd", size, read_offset);
+    LOGV("Trigger user callback with output buffer size=%zd, read_offset=%zd", size, read_offset);
     got = stm->data_callback(stm, stm->user_ptr, (uint8_t const *)input_data + read_offset, buffer, size / frame_size);
     if (got < 0) {
       WRAP(pa_stream_cancel_write)(s);
