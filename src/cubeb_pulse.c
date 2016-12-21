@@ -296,7 +296,7 @@ read_from_input(pa_stream * s, void const ** buffer, size_t * size)
 static void
 stream_write_callback(pa_stream * s, size_t nbytes, void * u)
 {
-  ALOGV("Output callback to be written buffer size %zd", nbytes);
+  LOGV("Output callback to be written buffer size %zd", nbytes);
   cubeb_stream * stm = u;
   if (stm->shutdown ||
       stm->state != CUBEB_STATE_STARTED) {
@@ -314,7 +314,7 @@ stream_write_callback(pa_stream * s, size_t nbytes, void * u)
 static void
 stream_read_callback(pa_stream * s, size_t nbytes, void * u)
 {
-  ALOGV("Input callback buffer size %zd", nbytes);
+  LOGV("Input callback buffer size %zd", nbytes);
   cubeb_stream * stm = u;
   if (stm->shutdown) {
     return;
