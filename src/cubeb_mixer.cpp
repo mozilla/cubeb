@@ -152,7 +152,7 @@ static float const DOWNMIX_MATRIX_3F2_LFE[SUPPORTED_LAYOUT_NUM][MAX_OUTPUT_CHANN
 /* Convert audio data from 3F2(-LFE) to 1F, 2F, 3F, 2F1, 3F1, 2F2 and their LFEs. */
 template<typename T>
 bool
-downmix_3f2(T const * const in, long inframes, T * out, cubeb_channel_layout in_layout, cubeb_channel_layout out_layout)
+downmix_3f2(T const * const in, unsigned long inframes, T * out, cubeb_channel_layout in_layout, cubeb_channel_layout out_layout)
 {
   if ((in_layout != CUBEB_LAYOUT_3F2 && in_layout != CUBEB_LAYOUT_3F2_LFE) ||
       out_layout < CUBEB_LAYOUT_MONO || out_layout > CUBEB_LAYOUT_2F2_LFE) {
@@ -167,7 +167,7 @@ downmix_3f2(T const * const in, long inframes, T * out, cubeb_channel_layout in_
 
   long out_index = 0;
   auto & downmix_matrix = DOWNMIX_MATRIX_3F2_LFE[out_layout - CUBEB_LAYOUT_MONO]; // The matrix is started from mono.
-  for (long i = 0; i < inframes * in_channels; i += in_channels) {
+  for (unsigned long i = 0; i < inframes * in_channels; i += in_channels) {
     for (unsigned int j = 0; j < out_channels; ++j) {
       out[out_index + j] = 0; // Clear its value.
       for (unsigned int k = 0 ; k < INPUT_CHANNEL_NUM ; ++k) {
@@ -187,7 +187,7 @@ downmix_3f2(T const * const in, long inframes, T * out, cubeb_channel_layout in_
 /* Map the audio data by channel name. */
 template<class T>
 bool
-mix_remap(T const * const in, long inframes, T * out, cubeb_channel_layout in_layout, cubeb_channel_layout out_layout) {
+mix_remap(T const * const in, unsigned long inframes, T * out, cubeb_channel_layout in_layout, cubeb_channel_layout out_layout) {
   assert(in_layout != out_layout);
   unsigned int in_channels = CUBEB_CHANNEL_LAYOUT_MAPS[in_layout].channels;
   unsigned int out_channels = CUBEB_CHANNEL_LAYOUT_MAPS[out_layout].channels;
@@ -208,7 +208,7 @@ mix_remap(T const * const in, long inframes, T * out, cubeb_channel_layout in_la
   }
 
   long out_index = 0;
-  for (long i = 0; i < inframes * in_channels; i += in_channels) {
+  for (unsigned long i = 0; i < inframes * in_channels; i += in_channels) {
     for (unsigned int j = 0; j < out_channels; ++j) {
       cubeb_channel channel = CHANNEL_INDEX_TO_ORDER[out_layout][j];
       uint32_t channel_mask = 1 << channel;
@@ -230,11 +230,11 @@ mix_remap(T const * const in, long inframes, T * out, cubeb_channel_layout in_la
 /* Drop the extra channels beyond the provided output channels. */
 template<typename T>
 void
-downmix_fallback(T const * const in, long inframes, T * out, unsigned int in_channels, unsigned int out_channels)
+downmix_fallback(T const * const in, unsigned long inframes, T * out, unsigned int in_channels, unsigned int out_channels)
 {
   assert(in_channels >= out_channels);
   long out_index = 0;
-  for (long i = 0; i < inframes * in_channels; i += in_channels) {
+  for (unsigned long i = 0; i < inframes * in_channels; i += in_channels) {
     for (unsigned int j = 0; j < out_channels; ++j) {
       out[out_index + j] = in[i + j];
     }

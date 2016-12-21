@@ -44,7 +44,7 @@ typedef struct {
 } layout_info;
 
 layout_info const layout_infos[CUBEB_LAYOUT_MAX] = {
-  { "unsupported",    0,  CUBEB_LAYOUT_UNDEFINED },
+  { "undefined",      0,  CUBEB_LAYOUT_UNDEFINED },
   { "dual mono",      2,  CUBEB_LAYOUT_DUAL_MONO },
   { "dual mono lfe",  3,  CUBEB_LAYOUT_DUAL_MONO_LFE },
   { "mono",           1,  CUBEB_LAYOUT_MONO },
