@@ -5,8 +5,8 @@
  * accompanying file LICENSE for details.
  */
 
-#ifndef CUBEB_MIXING
-#define CUBEB_MIXING
+#ifndef CUBEB_MIXER
+#define CUBEB_MIXER
 
 #include "cubeb/cubeb.h" // for cubeb_channel_layout ,CUBEB_CHANNEL_LAYOUT_MAPS and cubeb_stream_params.
 
@@ -66,4 +66,4 @@ void cubeb_upmix_float(float * const in, long inframes, float * out,
 }
 #endif
 
-#endif // CUBEB_MIXING
+#endif // CUBEB_MIXER

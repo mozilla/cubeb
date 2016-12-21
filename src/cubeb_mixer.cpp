@@ -9,6 +9,28 @@
 #include "cubeb-internal.h"
 #include "cubeb_mixer.h"
 
+cubeb_layout_map const CUBEB_CHANNEL_LAYOUT_MAPS[CUBEB_LAYOUT_MAX] = {
+  { "undefined",      0,  CUBEB_LAYOUT_UNDEFINED },
+  { "dual mono",      2,  CUBEB_LAYOUT_DUAL_MONO },
+  { "dual mono lfe",  3,  CUBEB_LAYOUT_DUAL_MONO_LFE },
+  { "mono",           1,  CUBEB_LAYOUT_MONO },
+  { "mono lfe",       2,  CUBEB_LAYOUT_MONO_LFE },
+  { "stereo",         2,  CUBEB_LAYOUT_STEREO },
+  { "stereo lfe",     3,  CUBEB_LAYOUT_STEREO_LFE },
+  { "3f",             3,  CUBEB_LAYOUT_3F },
+  { "3f lfe",         4,  CUBEB_LAYOUT_3F_LFE },
+  { "2f1",            3,  CUBEB_LAYOUT_2F1 },
+  { "2f1 lfe",        4,  CUBEB_LAYOUT_2F1_LFE },
+  { "3f1",            4,  CUBEB_LAYOUT_3F1 },
+  { "3f1 lfe",        5,  CUBEB_LAYOUT_3F1_LFE },
+  { "2f2",            4,  CUBEB_LAYOUT_2F2 },
+  { "2f2 lfe",        5,  CUBEB_LAYOUT_2F2_LFE },
+  { "3f2",            5,  CUBEB_LAYOUT_3F2 },
+  { "3f2 lfe",        6,  CUBEB_LAYOUT_3F2_LFE },
+  { "3f3r lfe",       7,  CUBEB_LAYOUT_3F3R_LFE },
+  { "3f4 lfe",        8,  CUBEB_LAYOUT_3F4_LFE }
+};
+
 static int const CHANNEL_ORDER_TO_INDEX[CUBEB_LAYOUT_MAX][CHANNEL_MAX] = {
  // M | L | R | C | LS | RS | RLS | RC | RRS | LFE
   { -1, -1, -1, -1,  -1,  -1,   -1,  -1,   -1,  -1 }, // UNSUPPORTED
