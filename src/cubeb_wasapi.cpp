@@ -27,6 +27,7 @@
 
 #include "cubeb/cubeb.h"
 #include "cubeb-internal.h"
+#include "cubeb_mixer.h"
 #include "cubeb_resampler.h"
 #include "cubeb_utils.h"
 
@@ -392,19 +393,6 @@ bool has_output(cubeb_stream * stm)
   return stm->output_stream_params.rate != 0;
 }
 
-bool should_upmix(cubeb_stream_params & stream, cubeb_stream_params & mixer)
-{
-  return mixer.channels > stream.channels;
-}
-
-bool should_downmix(cubeb_stream_params & stream, cubeb_stream_params & mixer)
-{
-  return mixer.channels < stream.channels ||
-         (stream.layout == CUBEB_LAYOUT_3F2 &&
-          (mixer.layout == CUBEB_LAYOUT_2F2_LFE ||
-           mixer.layout == CUBEB_LAYOUT_3F1_LFE));
-}
-
 double stream_to_mix_samplerate_ratio(cubeb_stream_params & stream, cubeb_stream_params & mixer)
 {
   return double(stream.rate) / mixer.rate;
@@ -520,66 +508,6 @@ frames_to_hns(cubeb_stream * stm, uint32_t frames)
    return frames * 1000 / get_rate(stm);
 }
 
-/* Upmix function, copies a mono channel into L and R */
-template<typename T>
-void
-mono_to_stereo(T * in, long insamples, T * out, int32_t out_channels)
-{
-  for (int i = 0, j = 0; i < insamples; ++i, j += out_channels) {
-    out[j] = out[j + 1] = in[i];
-  }
-}
-
-template<typename T>
-void
-upmix(T * in, long inframes, T * out, int32_t in_channels, int32_t out_channels)
-{
-  XASSERT(out_channels >= in_channels && in_channels > 0);
-
-  /* Either way, if we have 2 or more channels, the first two are L and R. */
-  /* If we are playing a mono stream over stereo speakers, copy the data over. */
-  if (in_channels == 1 && out_channels >= 2) {
-    mono_to_stereo(in, inframes, out, out_channels);
-  } else {
-    /* Copy through. */
-    for (int i = 0, o = 0; i < inframes * in_channels;
-        i += in_channels, o += out_channels) {
-      for (int j = 0; j < in_channels; ++j) {
-        out[o + j] = in[i + j];
-      }
-    }
-  }
-
-  /* Check if more channels. */
-  if (out_channels <= 2) {
-    return;
-  }
-
-  /* Put silence in remaining channels. */
-  for (long i = 0, o = 0; i < inframes; ++i, o += out_channels) {
-    for (int j = 2; j < out_channels; ++j) {
-      out[o + j] = 0.0;
-    }
-  }
-}
-
-/* Drop the extra channels beyond the provided output channels. */
-template<typename T>
-void
-downmix(T * in, long inframes, T * out, int32_t in_channels, int32_t out_channels,
-                 cubeb_channel_layout in_layout, cubeb_channel_layout out_layout)
-{
-  XASSERT(in_channels >= out_channels);
-  /* It would be better to downmix the data by channel layout. */
-  long out_index = 0;
-  for (long i = 0; i < inframes * in_channels; i += in_channels) {
-    for (int j = 0; j < out_channels; ++j) {
-      out[out_index + j] = in[i + j];
-    }
-    out_index += out_channels;
-  }
-}
-
 /* This returns the size of a frame in the stream, before the eventual upmix
    occurs. */
 static size_t
@@ -602,8 +530,8 @@ refill(cubeb_stream * stm, float * input_buffer, long input_frames_count,
      avoid a copy. */
   float * dest = nullptr;
   if (has_output(stm)) {
-    if (should_upmix(stm->output_stream_params, stm->output_mix_params) ||
-        should_downmix(stm->output_stream_params, stm->output_mix_params)) {
+    if (cubeb_should_upmix(&stm->output_stream_params, &stm->output_mix_params) ||
+        cubeb_should_downmix(&stm->output_stream_params, &stm->output_mix_params)) {
       dest = stm->mix_buffer.data();
     } else {
       dest = output_buffer;
@@ -634,14 +562,13 @@ refill(cubeb_stream * stm, float * input_buffer, long input_frames_count,
   XASSERT(out_frames == output_frames_needed || stm->draining || !has_output(stm));
 
   if (has_output(stm)) {
-    if (should_upmix(stm->output_stream_params, stm->output_mix_params)) {
-      upmix(dest, out_frames, output_buffer,
-            stm->output_stream_params.channels, stm->output_mix_params.channels);
-    } else if (should_downmix(stm->output_stream_params, stm->output_mix_params)) {
-      downmix(dest, out_frames, output_buffer,
-              stm->output_stream_params.channels, stm->output_mix_params.channels,
-              stm->output_stream_params.layout,
-              stm->output_mix_params.layout);
+    if (cubeb_should_upmix(&stm->output_stream_params, &stm->output_mix_params)) {
+      cubeb_upmix_float(dest, out_frames, output_buffer,
+                        stm->output_stream_params.channels, stm->output_mix_params.channels);
+    } else if (cubeb_should_downmix(&stm->output_stream_params, &stm->output_mix_params)) {
+      cubeb_downmix_float(dest, out_frames, output_buffer,
+                          stm->output_stream_params.channels, stm->output_mix_params.channels,
+                          stm->output_stream_params.layout, stm->output_mix_params.layout);
     }
   }
 
@@ -700,25 +627,25 @@ bool get_input_buffer(cubeb_stream * stm)
       LOG("insert silence: ps=%u", packet_size);
       stm->linear_input_buffer.push_silence(packet_size * stm->input_stream_params.channels);
     } else {
-      if (should_upmix(stm->input_mix_params, stm->input_stream_params)) {
+      if (cubeb_should_upmix(&stm->input_mix_params, &stm->input_stream_params)) {
         bool ok = stm->linear_input_buffer.reserve(stm->linear_input_buffer.length() +
                                                    packet_size * stm->input_stream_params.channels);
         XASSERT(ok);
-        upmix(reinterpret_cast<float*>(input_packet), packet_size,
-              stm->linear_input_buffer.data() + stm->linear_input_buffer.length(),
-              stm->input_mix_params.channels,
-              stm->input_stream_params.channels);
+        cubeb_upmix_float(reinterpret_cast<float*>(input_packet), packet_size,
+                          stm->linear_input_buffer.data() + stm->linear_input_buffer.length(),
+                          stm->input_mix_params.channels,
+                          stm->input_stream_params.channels);
         stm->linear_input_buffer.set_length(stm->linear_input_buffer.length() + packet_size * stm->input_stream_params.channels);
-      } else if (should_downmix(stm->input_mix_params, stm->input_stream_params)) {
+      } else if (cubeb_should_downmix(&stm->input_mix_params, &stm->input_stream_params)) {
         bool ok = stm->linear_input_buffer.reserve(stm->linear_input_buffer.length() +
                                                    packet_size * stm->input_stream_params.channels);
         XASSERT(ok);
-        downmix(reinterpret_cast<float*>(input_packet), packet_size,
-                stm->linear_input_buffer.data() + stm->linear_input_buffer.length(),
-                stm->input_mix_params.channels,
-                stm->input_stream_params.channels,
-                stm->input_mix_params.layout,
-                stm->input_stream_params.layout);
+        cubeb_downmix_float(reinterpret_cast<float*>(input_packet), packet_size,
+                            stm->linear_input_buffer.data() + stm->linear_input_buffer.length(),
+                            stm->input_mix_params.channels,
+                            stm->input_stream_params.channels,
+                            stm->input_mix_params.layout,
+                            stm->input_stream_params.layout);
         stm->linear_input_buffer.set_length(stm->linear_input_buffer.length() + packet_size * stm->input_stream_params.channels);
       } else {
         stm->linear_input_buffer.push(reinterpret_cast<float*>(input_packet),
@@ -1663,8 +1590,8 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
   }
   // Input is up/down mixed when depacketized in get_input_buffer.
   if (has_output(stm) &&
-      (should_upmix(*stream_params, *mix_params) ||
-       should_downmix(*stream_params, *mix_params))) {
+      (cubeb_should_upmix(stream_params, mix_params) ||
+       cubeb_should_downmix(stream_params, mix_params))) {
     stm->mix_buffer.resize(frames_to_bytes_before_mix(stm, *buffer_frame_count));
   }
 

@@ -25,13 +25,6 @@
 #define STREAM_FORMAT CUBEB_SAMPLE_S16LE
 #endif
 
-template<typename T, size_t N>
-constexpr size_t
-ARRAY_LENGTH(T(&)[N])
-{
-  return N;
-}
-
 int is_windows_7()
 {
 #ifdef __MINGW32__

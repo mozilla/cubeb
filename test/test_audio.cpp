@@ -24,41 +24,12 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-#define NELEMS(x) ((int) (sizeof(x) / sizeof(x[0])))
 #define VOLUME 0.2
 
 float get_frequency(int channel_index)
 {
   return 220.0f * (channel_index+1);
 }
-
-typedef struct {
-  char const * name;
-  unsigned int const channels;
-  cubeb_channel_layout const layout;
-} layout_info;
-
-const layout_info layout_infos[CUBEB_LAYOUT_MAX] = {
-  { "undefined",      0,  CUBEB_LAYOUT_UNDEFINED },
-  { "dual mono",      2,  CUBEB_LAYOUT_DUAL_MONO },
-  { "dual mono lfe",  3,  CUBEB_LAYOUT_DUAL_MONO_LFE },
-  { "mono",           1,  CUBEB_LAYOUT_MONO },
-  { "mono lfe",       2,  CUBEB_LAYOUT_MONO_LFE },
-  { "stereo",         2,  CUBEB_LAYOUT_STEREO },
-  { "stereo lfe",     3,  CUBEB_LAYOUT_STEREO_LFE },
-  { "3f",             3,  CUBEB_LAYOUT_3F },
-  { "3f lfe",         4,  CUBEB_LAYOUT_3F_LFE },
-  { "2f1",            3,  CUBEB_LAYOUT_2F1 },
-  { "2f1 lfe",        4,  CUBEB_LAYOUT_2F1_LFE },
-  { "3f1",            4,  CUBEB_LAYOUT_3F1 },
-  { "3f1 lfe",        5,  CUBEB_LAYOUT_3F1_LFE },
-  { "2f2",            4,  CUBEB_LAYOUT_2F2 },
-  { "2f2 lfe",        5,  CUBEB_LAYOUT_2F2_LFE },
-  { "3f2",            5,  CUBEB_LAYOUT_3F2 },
-  { "3f2 lfe",        6,  CUBEB_LAYOUT_3F2_LFE },
-  { "3f3r lfe",       7,  CUBEB_LAYOUT_3F3R_LFE },
-  { "3f4 lfe",        8,  CUBEB_LAYOUT_3F4_LFE }
-};
 
 /* store the phase of the generated waveform */
 typedef struct {
@@ -304,11 +275,11 @@ TEST(cubeb, run_channel_rate_test)
     48000,
   };
 
-  for(int j = 0; j < NELEMS(channel_values); ++j) {
-    for(int i = 0; i < NELEMS(freq_values); ++i) {
+  for(unsigned int j = 0; j < ARRAY_LENGTH(channel_values); ++j) {
+    for(unsigned int i = 0; i < ARRAY_LENGTH(freq_values); ++i) {
       ASSERT_TRUE(channel_values[j] < MAX_NUM_CHANNELS);
       fprintf(stderr, "--------------------------\n");
-      for (int k = 0 ; k < NELEMS(layout_infos); ++k ) {
+      for (unsigned int k = 0 ; k < ARRAY_LENGTH(layout_infos); ++k ) {
         if (layout_infos[k].channels == channel_values[j]) {
           ASSERT_EQ(run_test(channel_values[j], layout_infos[k], freq_values[i], 0), CUBEB_OK);
           ASSERT_EQ(run_test(channel_values[j], layout_infos[k], freq_values[i], 1), CUBEB_OK);
