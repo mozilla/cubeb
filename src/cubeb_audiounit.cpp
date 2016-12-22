@@ -1189,6 +1189,160 @@ audiounit_clamp_latency(cubeb_stream * stm, uint32_t latency_frames)
                   SAFE_MIN_LATENCY_FRAMES);
 }
 
+static void
+buffer_size_changed_callback(void * inClientData,
+                             AudioUnit inUnit,
+                             AudioUnitPropertyID	inPropertyID,
+                             AudioUnitScope		inScope,
+                             AudioUnitElement	inElement)
+{
+  cubeb_stream * stm = (cubeb_stream *)inClientData;
+
+  AudioUnit au = inUnit;
+  AudioUnitScope au_scope = kAudioUnitScope_Input;
+  AudioUnitElement au_element = inElement;
+  const char * au_type = "output";
+
+  if (au == stm->input_unit) {
+    au_scope = kAudioUnitScope_Output;
+    au_type = "input";
+  }
+
+  switch (inPropertyID) {
+
+    case kAudioDevicePropertyBufferFrameSize: {
+      if (inScope != au_scope) {
+        break;
+      }
+      UInt32 new_buffer_size;
+      UInt32 outSize = sizeof(UInt32);
+      OSStatus r = AudioUnitGetProperty(au,
+                                        kAudioDevicePropertyBufferFrameSize,
+                                        au_scope,
+                                        au_element,
+                                        &new_buffer_size,
+                                        &outSize);
+      if (r != noErr) {
+        LOG("(%p) Event: kAudioDevicePropertyBufferFrameSize: Cannot get current buffer size", stm);
+      } else {
+        LOG("(%p) Event: kAudioDevicePropertyBufferFrameSize: New %s buffer size = %d for scope %d", stm,
+            au_type, new_buffer_size, inScope);
+      }
+      stm->buffer_size_change_state = true;
+      break;
+    }
+  }
+}
+
+static int
+audiounit_set_buffer_size(cubeb_stream * stm, uint32_t new_size_frames, bool is_input = false)
+{
+  AudioUnit au = stm->output_unit;
+  AudioUnitScope au_scope = kAudioUnitScope_Input;
+  AudioUnitElement au_element = AU_OUT_BUS;
+  const char * au_type = "output";
+
+  if (is_input) {
+    au = stm->input_unit;
+    au_scope = kAudioUnitScope_Output;
+    au_element = AU_IN_BUS;
+    au_type = "input";
+  }
+
+  uint32_t buffer_frames = 0;
+  UInt32 size = sizeof(buffer_frames);
+  int r = AudioUnitGetProperty(au,
+                               kAudioDevicePropertyBufferFrameSize,
+                               au_scope,
+                               au_element,
+                               &buffer_frames,
+                               &size);
+  if (r != noErr) {
+    if (is_input) {
+      PRINT_ERROR_CODE("AudioUnitGetProperty/input/kAudioDevicePropertyBufferFrameSize", r);
+    } else {
+      PRINT_ERROR_CODE("AudioUnitGetProperty/output/kAudioDevicePropertyBufferFrameSize", r);
+    }
+    return CUBEB_ERROR;
+  }
+
+  if (new_size_frames == buffer_frames) {
+    LOG("(%p) No need to update %s buffer size already %u frames", stm, au_type, buffer_frames);
+    return CUBEB_OK;
+  }
+
+  r = AudioUnitAddPropertyListener(au,
+                                   kAudioDevicePropertyBufferFrameSize,
+                                   buffer_size_changed_callback,
+                                   stm);
+  if (r != noErr) {
+    if (is_input) {
+      PRINT_ERROR_CODE("AudioUnitAddPropertyListener/input/kAudioDevicePropertyBufferFrameSize", r);
+    } else {
+      PRINT_ERROR_CODE("AudioUnitAddPropertyListener/output/kAudioDevicePropertyBufferFrameSize", r);
+    }
+    return CUBEB_ERROR;
+  }
+
+  stm->buffer_size_change_state = false;
+
+  r = AudioUnitSetProperty(au,
+                           kAudioDevicePropertyBufferFrameSize,
+                           au_scope,
+                           au_element,
+                           &new_size_frames,
+                           sizeof(new_size_frames));
+  if (r != noErr) {
+    if (is_input) {
+      PRINT_ERROR_CODE("AudioUnitSetProperty/input/kAudioDevicePropertyBufferFrameSize", r);
+    } else {
+      PRINT_ERROR_CODE("AudioUnitSetProperty/output/kAudioDevicePropertyBufferFrameSize", r);
+    }
+
+    r = AudioUnitRemovePropertyListenerWithUserData(au,
+                                                    kAudioDevicePropertyBufferFrameSize,
+                                                    buffer_size_changed_callback,
+                                                    stm);
+    if (r != noErr) {
+      if (is_input) {
+        PRINT_ERROR_CODE("AudioUnitAddPropertyListener/input/kAudioDevicePropertyBufferFrameSize", r);
+      } else {
+        PRINT_ERROR_CODE("AudioUnitAddPropertyListener/output/kAudioDevicePropertyBufferFrameSize", r);
+      }
+    }
+
+    return CUBEB_ERROR;
+  }
+
+  int count = 0;
+  while (!stm->buffer_size_change_state && count++ < 30) {
+    // Wait for the change to take effect without pausing the "main" thread
+    dispatch_sync(stm->context->serial_queue, ^(){usleep(100000);});
+    LOG("(%p) audiounit_set_buffer_size : wait count = %d", stm, count);
+  }
+
+  r = AudioUnitRemovePropertyListenerWithUserData(au,
+                                                  kAudioDevicePropertyBufferFrameSize,
+                                                  buffer_size_changed_callback,
+                                                  stm);
+  if (r != noErr) {
+    return CUBEB_ERROR;
+    if (is_input) {
+      PRINT_ERROR_CODE("AudioUnitAddPropertyListener/input/kAudioDevicePropertyBufferFrameSize", r);
+    } else {
+      PRINT_ERROR_CODE("AudioUnitAddPropertyListener/output/kAudioDevicePropertyBufferFrameSize", r);
+    }
+  }
+
+  if (!stm->buffer_size_change_state && count >= 30) {
+    LOG("(%p) Error, did not get buffer size change callback ...", stm);
+    return CUBEB_ERROR;
+  }
+
+  LOG("(%p) %s buffer size changed to %u frames.", stm, au_type, new_size_frames);
+  return CUBEB_OK;
+}
+
 static int
 audiounit_configure_input(cubeb_stream * stm)
 {
@@ -1225,15 +1379,9 @@ audiounit_configure_input(cubeb_stream * stm)
 
   // Use latency to set buffer size
   stm->input_buffer_frames = stm->latency_frames;
-  LOG("(%p) Input buffer frame count %u.", stm, unsigned(stm->input_buffer_frames));
-  r = AudioUnitSetProperty(stm->input_unit,
-                           kAudioDevicePropertyBufferFrameSize,
-                           kAudioUnitScope_Output,
-                           AU_IN_BUS,
-                           &stm->input_buffer_frames,
-                           sizeof(UInt32));
-  if (r != noErr) {
-    PRINT_ERROR_CODE("AudioUnitSetProperty/input/kAudioDevicePropertyBufferFrameSize", r);
+  r = audiounit_set_buffer_size(stm, stm->input_buffer_frames, true);
+  if (r != CUBEB_OK) {
+    LOG("(%p) Error in change input buffer size.", stm);
     return CUBEB_ERROR;
   }
 
@@ -1294,120 +1442,6 @@ audiounit_configure_input(cubeb_stream * stm)
   return CUBEB_OK;
 }
 
-static void
-buffer_size_changed_callback(void * inClientData,
-                             AudioUnit inUnit,
-                             AudioUnitPropertyID	inPropertyID,
-                             AudioUnitScope		inScope,
-                             AudioUnitElement	inElement)
-{
-  cubeb_stream * stm = (cubeb_stream *)inClientData;
-  assert(inUnit == stm->output_unit);
-  assert(AU_OUT_BUS == inElement);
-
-  switch (inPropertyID) {
-
-    case kAudioDevicePropertyBufferFrameSize: {
-      if (inScope != kAudioUnitScope_Input) {
-        break;
-      }
-      UInt32 new_buffer_size;
-      UInt32 outSize = sizeof(UInt32);
-      OSStatus r = AudioUnitGetProperty(stm->output_unit,
-                                        kAudioDevicePropertyBufferFrameSize,
-                                        kAudioUnitScope_Input,
-                                        AU_OUT_BUS,
-                                        &new_buffer_size,
-                                        &outSize);
-      if (r != noErr) {
-        LOG("(%p) Event: kAudioDevicePropertyBufferFrameSize: Cannot get current buffer size", stm);
-      } else {
-        LOG("(%p) Event: kAudioDevicePropertyBufferFrameSize: New buffer size = %d for scope %d", stm,
-            new_buffer_size, inScope);
-      }
-      stm->buffer_size_change_state = true;
-      break;
-    }
-  }
-}
-
-static int
-audiounit_set_buffer_size(cubeb_stream * stm, uint32_t new_size_frames)
-{
-  uint32_t output_buffer_frames = 0;
-  UInt32 size = sizeof(output_buffer_frames);
-  int r = AudioUnitGetProperty(stm->output_unit,
-                               kAudioDevicePropertyBufferFrameSize,
-                               kAudioUnitScope_Input,
-                               AU_OUT_BUS,
-                               &output_buffer_frames,
-                               &size);
-  if (r != noErr) {
-    PRINT_ERROR_CODE("AudioUnitGetProperty/output/kAudioDevicePropertyBufferFrameSize", r);
-    return CUBEB_ERROR;
-  }
-
-  if (new_size_frames == output_buffer_frames) {
-    LOG("(%p) No need to update buffer size already %u frames", stm, output_buffer_frames);
-    return CUBEB_OK;
-  }
-
-  r = AudioUnitAddPropertyListener(stm->output_unit,
-                                   kAudioDevicePropertyBufferFrameSize,
-                                   buffer_size_changed_callback,
-                                   stm);
-  if (r != noErr) {
-    PRINT_ERROR_CODE("AudioUnitAddPropertyListener/output/kAudioDevicePropertyBufferFrameSize", r);
-    return CUBEB_ERROR;
-  }
-
-  stm->buffer_size_change_state = false;
-
-  r = AudioUnitSetProperty(stm->output_unit,
-                           kAudioDevicePropertyBufferFrameSize,
-                           kAudioUnitScope_Input,
-                           AU_OUT_BUS,
-                           &new_size_frames,
-                           sizeof(new_size_frames));
-  if (r != noErr) {
-    PRINT_ERROR_CODE("AudioUnitSetProperty/output/kAudioDevicePropertyBufferFrameSize", r);
-
-    r = AudioUnitRemovePropertyListenerWithUserData(stm->output_unit,
-                                                    kAudioDevicePropertyBufferFrameSize,
-                                                    buffer_size_changed_callback,
-                                                    stm);
-    if (r != noErr) {
-      PRINT_ERROR_CODE("AudioUnitAddPropertyListener/output/kAudioDevicePropertyBufferFrameSize", r);
-    }
-
-    return CUBEB_ERROR;
-  }
-
-  int count = 0;
-  while (!stm->buffer_size_change_state && count++ < 30) {
-    // Wait for the change to take effect without pausing the "main" thread
-    dispatch_sync(stm->context->serial_queue, ^(){usleep(100000);});
-    LOG("(%p) SetupBufferSize : wait count = %d", stm, count);
-  }
-
-  r = AudioUnitRemovePropertyListenerWithUserData(stm->output_unit,
-                                                  kAudioDevicePropertyBufferFrameSize,
-                                                  buffer_size_changed_callback,
-                                                  stm);
-  if (r != noErr) {
-    PRINT_ERROR_CODE("AudioUnitAddPropertyListener/output/kAudioDevicePropertyBufferFrameSize", r);
-    return CUBEB_ERROR;
-  }
-
-  if (!stm->buffer_size_change_state && count >= 30) {
-    LOG("(%p) Did not get buffer size change callback ...", stm);
-    return CUBEB_ERROR;
-  }
-
-  LOG("(%p) Output buffer size changed to %u frames.", stm, new_size_frames);
-  return CUBEB_OK;
-}
-
 static int
 audiounit_configure_output(cubeb_stream * stm)
 {
@@ -1456,7 +1490,7 @@ audiounit_configure_output(cubeb_stream * stm)
 
   r = audiounit_set_buffer_size(stm, stm->latency_frames);
   if (r != CUBEB_OK) {
-    LOG("(%p) Error when try to change output buffer size.", stm);
+    LOG("(%p) Error in change output buffer size.", stm);
     return CUBEB_ERROR;
   }
 
