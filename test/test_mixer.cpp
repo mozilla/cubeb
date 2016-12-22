@@ -91,7 +91,7 @@ void
 downmix_test(float const * data, cubeb_channel_layout in_layout, cubeb_channel_layout out_layout)
 {
   if (in_layout == CUBEB_LAYOUT_UNDEFINED) {
-    return; // Only possible output layout would be UNSUPPORTED.
+    return; // Only possible output layout would be UNDEFINED.
   }
 
   cubeb_stream_params in_params = {

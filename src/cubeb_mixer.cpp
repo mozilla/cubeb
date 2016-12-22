@@ -33,7 +33,7 @@ cubeb_layout_map const CUBEB_CHANNEL_LAYOUT_MAPS[CUBEB_LAYOUT_MAX] = {
 
 static int const CHANNEL_ORDER_TO_INDEX[CUBEB_LAYOUT_MAX][CHANNEL_MAX] = {
  // M | L | R | C | LS | RS | RLS | RC | RRS | LFE
-  { -1, -1, -1, -1,  -1,  -1,   -1,  -1,   -1,  -1 }, // UNSUPPORTED
+  { -1, -1, -1, -1,  -1,  -1,   -1,  -1,   -1,  -1 }, // UNDEFINED
   { -1,  0,  1, -1,  -1,  -1,   -1,  -1,   -1,  -1 }, // DUAL_MONO
   { -1,  0,  1, -1,  -1,  -1,   -1,  -1,   -1,   2 }, // DUAL_MONO_LFE
   {  0, -1, -1, -1,  -1,  -1,   -1,  -1,   -1,  -1 }, // MONO
