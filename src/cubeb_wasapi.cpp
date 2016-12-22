@@ -199,12 +199,12 @@ struct cubeb_stream {
   /* Mixer pameters. We need to convert the input stream to this
      samplerate/channel layout, as WASAPI does not resample nor upmix
      itself. */
-  cubeb_stream_params input_mix_params = { CUBEB_SAMPLE_FLOAT32NE, 0, 0 };
-  cubeb_stream_params output_mix_params = { CUBEB_SAMPLE_FLOAT32NE, 0, 0 };
+  cubeb_stream_params input_mix_params = { CUBEB_SAMPLE_FLOAT32NE, 0, 0, CUBEB_LAYOUT_UNDEFINED };
+  cubeb_stream_params output_mix_params = { CUBEB_SAMPLE_FLOAT32NE, 0, 0, CUBEB_LAYOUT_UNDEFINED };
   /* Stream parameters. This is what the client requested,
    * and what will be presented in the callback. */
-  cubeb_stream_params input_stream_params = { CUBEB_SAMPLE_FLOAT32NE, 0, 0 };
-  cubeb_stream_params output_stream_params = { CUBEB_SAMPLE_FLOAT32NE, 0, 0 };
+  cubeb_stream_params input_stream_params = { CUBEB_SAMPLE_FLOAT32NE, 0, 0, CUBEB_LAYOUT_UNDEFINED };
+  cubeb_stream_params output_stream_params = { CUBEB_SAMPLE_FLOAT32NE, 0, 0, CUBEB_LAYOUT_UNDEFINED };
   /* The input and output device, or NULL for default. */
   std::unique_ptr<const wchar_t[]> input_device;
   std::unique_ptr<const wchar_t[]> output_device;
@@ -795,7 +795,8 @@ refill_callback_input(cubeb_stream * stm)
                      nullptr,
                      0);
 
-  consumed_all_buffer = read == stm->linear_input_buffer.length();
+  XASSERT(read >= 0);
+  consumed_all_buffer = (unsigned long) read == stm->linear_input_buffer.length();
 
   stm->linear_input_buffer.clear();
 
@@ -831,7 +832,7 @@ refill_callback_output(cubeb_stream * stm)
        output_frames, got);
 
   XASSERT(got >= 0);
-  XASSERT(got == output_frames || stm->draining);
+  XASSERT((unsigned long) got == output_frames || stm->draining);
 
   hr = stm->render_client->ReleaseBuffer(got, 0);
   if (FAILED(hr)) {
@@ -839,7 +840,7 @@ refill_callback_output(cubeb_stream * stm)
     return false;
   }
 
-  return got == output_frames || stm->draining;
+  return (unsigned long) got == output_frames || stm->draining;
 }
 
 static unsigned int __stdcall
