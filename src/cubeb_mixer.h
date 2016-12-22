@@ -9,6 +9,7 @@
 #define CUBEB_MIXER
 
 #include "cubeb/cubeb.h" // for cubeb_channel_layout ,CUBEB_CHANNEL_LAYOUT_MAPS and cubeb_stream_params.
+#include <stdbool.h>
 
 #if defined(__cplusplus)
 extern "C" {
