@@ -795,7 +795,8 @@ refill_callback_input(cubeb_stream * stm)
                      nullptr,
                      0);
 
-  consumed_all_buffer = (unsigned long)read == stm->linear_input_buffer.length();
+  XASSERT(read >= 0);
+  consumed_all_buffer = (unsigned long) read == stm->linear_input_buffer.length();
 
   stm->linear_input_buffer.clear();
 
@@ -831,7 +832,7 @@ refill_callback_output(cubeb_stream * stm)
        output_frames, got);
 
   XASSERT(got >= 0);
-  XASSERT((unsigned long)got == output_frames || stm->draining);
+  XASSERT((unsigned long) got == output_frames || stm->draining);
 
   hr = stm->render_client->ReleaseBuffer(got, 0);
   if (FAILED(hr)) {
@@ -839,7 +840,7 @@ refill_callback_output(cubeb_stream * stm)
     return false;
   }
 
-  return (unsigned long)got == output_frames || stm->draining;
+  return (unsigned long) got == output_frames || stm->draining;
 }
 
 static unsigned int __stdcall
