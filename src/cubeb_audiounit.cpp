@@ -1489,7 +1489,7 @@ audiounit_configure_output(cubeb_stream * stm)
                            &output_hw_desc,
                            &size);
   if (r != noErr) {
-    PRINT_ERROR_CODE("AudioUnitGetProperty/output/tkAudioUnitProperty_StreamFormat", r);
+    PRINT_ERROR_CODE("AudioUnitGetProperty/output/kAudioUnitProperty_StreamFormat", r);
     return CUBEB_ERROR;
   }
   stm->output_hw_rate = output_hw_desc.mSampleRate;
