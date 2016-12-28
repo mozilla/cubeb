@@ -1092,6 +1092,8 @@ alsa_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
     return CUBEB_ERROR;
   }
 
+  assert(stm); // Silence the scan-build analyzer warning. It can't be null here anyway.
+
   r = snd_pcm_hw_params_any(stm->pcm, hw_params);
   if (r < 0) {
     return CUBEB_ERROR;
