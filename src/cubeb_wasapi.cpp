@@ -400,6 +400,17 @@ double stream_to_mix_samplerate_ratio(cubeb_stream_params & stream, cubeb_stream
 
 /* Convert the channel layout into the corresponding KSAUDIO_CHANNEL_CONFIG.
    See more: https://msdn.microsoft.com/en-us/library/windows/hardware/ff537083(v=vs.85).aspx */
+#ifndef KSAUDIO_SPEAKER_5POINT1_SURROUND
+#define KSAUDIO_SPEAKER_5POINT1_SURROUND (SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT | \
+                                          SPEAKER_FRONT_CENTER | SPEAKER_LOW_FREQUENCY | \
+                                          SPEAKER_SIDE_LEFT  | SPEAKER_SIDE_RIGHT)
+#endif
+#ifndef KSAUDIO_SPEAKER_7POINT1_SURROUND
+#define KSAUDIO_SPEAKER_7POINT1_SURROUND (SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT | \
+                                          SPEAKER_FRONT_CENTER | SPEAKER_LOW_FREQUENCY | \
+                                          SPEAKER_BACK_LEFT | SPEAKER_BACK_RIGHT | \
+                                          SPEAKER_SIDE_LEFT | SPEAKER_SIDE_RIGHT)
+#endif
 #define MASK_DUAL_MONO      (SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT)
 #define MASK_DUAL_MONO_LFE  (MASK_DUAL_MONO | SPEAKER_LOW_FREQUENCY)
 #define MASK_MONO           (KSAUDIO_SPEAKER_MONO)
