@@ -44,7 +44,7 @@ typedef UInt32  AudioFormatFlags;
     LOG("System call failed: %s (rv: %d)", str, (int) r);       \
   } while(0)
 
-#define DISPATC_QUEUE_LABEL "com.mozilla.cubeb"
+const char * DISPATCH_QUEUE_LABEL = "org.mozilla.cubeb";
 
 /* Testing empirically, some headsets report a minimal latency that is very
  * low, but this does not work in practice. Lie and say the minimum is 256
@@ -54,7 +54,7 @@ const uint32_t SAFE_MAX_LATENCY_FRAMES = 512;
 
 void audiounit_stream_stop_internal(cubeb_stream * stm);
 void audiounit_stream_start_internal(cubeb_stream * stm);
-static void close_audiounit_stream(cubeb_stream * stm);
+static void audiounit_close_stream(cubeb_stream *stm);
 static int audiounit_setup_stream(cubeb_stream *stm);
 
 extern cubeb_ops const audiounit_ops;
@@ -69,7 +69,8 @@ struct cubeb {
   /* Differentiate input from output devices. */
   cubeb_device_type collection_changed_devtype = CUBEB_DEVICE_TYPE_UNKNOWN;
   std::vector<AudioObjectID> devtype_device_array;
-  dispatch_queue_t serial_queue = dispatch_queue_create(DISPATC_QUEUE_LABEL, nullptr);
+  // The queue is asynchronously deallocated once all references to it are released
+  dispatch_queue_t serial_queue = dispatch_queue_create(DISPATCH_QUEUE_LABEL, DISPATCH_QUEUE_SERIAL);
 };
 
 struct auto_array_wrapper {
@@ -551,7 +552,6 @@ audiounit_get_input_device_id(AudioDeviceID * device_id)
 static int
 audiounit_reinit_stream(cubeb_stream * stm, bool is_started)
 {
-  // This means the callback won't be called again.
   if (is_started) {
     audiounit_stream_stop_internal(stm);
   }
@@ -559,14 +559,15 @@ audiounit_reinit_stream(cubeb_stream * stm, bool is_started)
   {
     auto_lock lock(stm->mutex);
 
-    close_audiounit_stream(stm);
+    audiounit_close_stream(stm);
 
     if (audiounit_setup_stream(stm) != CUBEB_OK) {
       LOG("(%p) Stream reinit failed.", stm);
       return CUBEB_ERROR;
     }
 
-    // Reset frames
+    // Reset input frames to force new stream pre-buffer
+    // silence if needed, check `is_extra_input_needed()`
     stm->frames_read = 0;
 
     // If the stream was running, start it again.
@@ -1189,6 +1190,14 @@ audiounit_clamp_latency(cubeb_stream * stm, uint32_t latency_frames)
                   SAFE_MIN_LATENCY_FRAMES);
 }
 
+/*
+ * Change buffer size is prone to deadlock thus we change it
+ * following the steps:
+ * - register a listener for the buffer size property
+ * - change the property
+ * - wait until the listener is executed
+ * - property has changed, remove the listener
+ * */
 static void
 buffer_size_changed_callback(void * inClientData,
                              AudioUnit inUnit,
@@ -1234,15 +1243,20 @@ buffer_size_changed_callback(void * inClientData,
   }
 }
 
+enum set_buffer_size_side {
+  set_input,
+  set_output,
+};
+
 static int
-audiounit_set_buffer_size(cubeb_stream * stm, uint32_t new_size_frames, bool is_input = false)
+audiounit_set_buffer_size(cubeb_stream * stm, uint32_t new_size_frames, set_buffer_size_side set_side)
 {
   AudioUnit au = stm->output_unit;
   AudioUnitScope au_scope = kAudioUnitScope_Input;
   AudioUnitElement au_element = AU_OUT_BUS;
   const char * au_type = "output";
 
-  if (is_input) {
+  if (set_side == set_input) {
     au = stm->input_unit;
     au_scope = kAudioUnitScope_Output;
     au_element = AU_IN_BUS;
@@ -1258,7 +1272,7 @@ audiounit_set_buffer_size(cubeb_stream * stm, uint32_t new_size_frames, bool is_
                                &buffer_frames,
                                &size);
   if (r != noErr) {
-    if (is_input) {
+    if (set_side == set_input) {
       PRINT_ERROR_CODE("AudioUnitGetProperty/input/kAudioDevicePropertyBufferFrameSize", r);
     } else {
       PRINT_ERROR_CODE("AudioUnitGetProperty/output/kAudioDevicePropertyBufferFrameSize", r);
@@ -1276,7 +1290,7 @@ audiounit_set_buffer_size(cubeb_stream * stm, uint32_t new_size_frames, bool is_
                                    buffer_size_changed_callback,
                                    stm);
   if (r != noErr) {
-    if (is_input) {
+    if (set_side == set_input) {
       PRINT_ERROR_CODE("AudioUnitAddPropertyListener/input/kAudioDevicePropertyBufferFrameSize", r);
     } else {
       PRINT_ERROR_CODE("AudioUnitAddPropertyListener/output/kAudioDevicePropertyBufferFrameSize", r);
@@ -1293,7 +1307,7 @@ audiounit_set_buffer_size(cubeb_stream * stm, uint32_t new_size_frames, bool is_
                            &new_size_frames,
                            sizeof(new_size_frames));
   if (r != noErr) {
-    if (is_input) {
+    if (set_side == set_input) {
       PRINT_ERROR_CODE("AudioUnitSetProperty/input/kAudioDevicePropertyBufferFrameSize", r);
     } else {
       PRINT_ERROR_CODE("AudioUnitSetProperty/output/kAudioDevicePropertyBufferFrameSize", r);
@@ -1304,7 +1318,7 @@ audiounit_set_buffer_size(cubeb_stream * stm, uint32_t new_size_frames, bool is_
                                                     buffer_size_changed_callback,
                                                     stm);
     if (r != noErr) {
-      if (is_input) {
+      if (set_side == set_input) {
         PRINT_ERROR_CODE("AudioUnitAddPropertyListener/input/kAudioDevicePropertyBufferFrameSize", r);
       } else {
         PRINT_ERROR_CODE("AudioUnitAddPropertyListener/output/kAudioDevicePropertyBufferFrameSize", r);
@@ -1316,8 +1330,12 @@ audiounit_set_buffer_size(cubeb_stream * stm, uint32_t new_size_frames, bool is_
 
   int count = 0;
   while (!stm->buffer_size_change_state && count++ < 30) {
-    // Wait for the change to take effect without pausing the "main" thread
-    dispatch_sync(stm->context->serial_queue, ^(){usleep(100000);});
+    struct timespec req, rem;
+    req.tv_sec = 0;
+    req.tv_nsec = 100000000L; // 0.1 sec
+    if (nanosleep(&req , &rem) < 0 ) {
+      LOG("(%p) Warning: nanosleep call failed or interrupted. Remaining time %ld nano secs \n", stm, rem.tv_nsec);
+    }
     LOG("(%p) audiounit_set_buffer_size : wait count = %d", stm, count);
   }
 
@@ -1327,7 +1345,7 @@ audiounit_set_buffer_size(cubeb_stream * stm, uint32_t new_size_frames, bool is_
                                                   stm);
   if (r != noErr) {
     return CUBEB_ERROR;
-    if (is_input) {
+    if (set_side == set_input) {
       PRINT_ERROR_CODE("AudioUnitAddPropertyListener/input/kAudioDevicePropertyBufferFrameSize", r);
     } else {
       PRINT_ERROR_CODE("AudioUnitAddPropertyListener/output/kAudioDevicePropertyBufferFrameSize", r);
@@ -1379,7 +1397,7 @@ audiounit_configure_input(cubeb_stream * stm)
 
   // Use latency to set buffer size
   stm->input_buffer_frames = stm->latency_frames;
-  r = audiounit_set_buffer_size(stm, stm->input_buffer_frames, true);
+  r = audiounit_set_buffer_size(stm, stm->input_buffer_frames, set_input);
   if (r != CUBEB_OK) {
     LOG("(%p) Error in change input buffer size.", stm);
     return CUBEB_ERROR;
@@ -1488,7 +1506,7 @@ audiounit_configure_output(cubeb_stream * stm)
     return CUBEB_ERROR;
   }
 
-  r = audiounit_set_buffer_size(stm, stm->latency_frames);
+  r = audiounit_set_buffer_size(stm, stm->latency_frames, set_output);
   if (r != CUBEB_OK) {
     LOG("(%p) Error in change output buffer size.", stm);
     return CUBEB_ERROR;
@@ -1734,7 +1752,7 @@ audiounit_stream_init(cubeb * context,
     stm->output_device = reinterpret_cast<uintptr_t>(output_device);
   }
 
-  auto_lock context_locl(context->mutex);
+  auto_lock context_lock(context->mutex);
   {
     // It's not critical to lock here, because no other thread has been started
     // yet, but it allows to assert that the lock has been taken in
@@ -1761,7 +1779,7 @@ audiounit_stream_init(cubeb * context,
 }
 
 static void
-close_audiounit_stream(cubeb_stream * stm)
+audiounit_close_stream(cubeb_stream *stm)
 {
   stm->mutex.assert_current_thread_owns();
   if (stm->input_unit) {
@@ -1789,7 +1807,7 @@ audiounit_stream_destroy(cubeb_stream * stm)
 
   {
     auto_lock lock(stm->mutex);
-    close_audiounit_stream(stm);
+    audiounit_close_stream(stm);
   }
 
 #if !TARGET_OS_IPHONE
