@@ -4,6 +4,8 @@
  * This program is made available under an ISC-style license.  See the
  * accompanying file LICENSE for details.
  */
+#define NTDDI_VERSION 0x05020100
+#define _WIN32_WINNT 0x0502
 #define NOMINMAX
 
 #include <initguid.h>
