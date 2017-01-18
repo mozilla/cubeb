@@ -22,6 +22,7 @@
 #include <AudioToolbox/AudioToolbox.h>
 #include "cubeb/cubeb.h"
 #include "cubeb-internal.h"
+#include "cubeb_mixer.h"
 #include "cubeb_panner.h"
 #if !TARGET_OS_IPHONE
 #include "cubeb_osx_run_loop.h"
@@ -56,6 +57,10 @@ void audiounit_stream_stop_internal(cubeb_stream * stm);
 void audiounit_stream_start_internal(cubeb_stream * stm);
 static void audiounit_close_stream(cubeb_stream *stm);
 static int audiounit_setup_stream(cubeb_stream *stm);
+static int audiounit_create_unit(AudioUnit * unit, bool is_input,
+                                 const cubeb_stream_params * /* stream_params */,
+                                 AudioDeviceID device);
+static cubeb_channel_layout audiounit_get_channel_layout(bool preferred);
 
 extern cubeb_ops const audiounit_ops;
 
@@ -194,6 +199,70 @@ bool has_output(cubeb_stream * stm)
 {
   return stm->output_stream_params.rate != 0;
 }
+
+// -----------------------------------------------------------------------------
+// The converstion from mask to layout should be moved to mixer.h or somewhere else
+// -----------------------------------------------------------------------------
+// DUAL_MONO(_LFE) is same as STEREO(_LFE).
+#define MASK_MONO         (1 << CHANNEL_MONO)
+#define MASK_MONO_LFE     (MASK_MONO | (1 << CHANNEL_LFE))
+#define MASK_STEREO       ((1 << CHANNEL_LEFT) | (1 << CHANNEL_RIGHT))
+#define MASK_STEREO_LFE   (MASK_STEREO | (1 << CHANNEL_LFE))
+#define MASK_3F           (MASK_STEREO | (1 << CHANNEL_CENTER))
+#define MASK_3F_LFE       (MASK_3F | (1 << CHANNEL_LFE))
+#define MASK_2F1          (MASK_STEREO | (1 << CHANNEL_RCENTER))
+#define MASK_2F1_LFE      (MASK_2F1 | (1 << CHANNEL_LFE))
+#define MASK_3F1          (MASK_3F | (1 << CHANNEL_RCENTER))
+#define MASK_3F1_LFE      (MASK_3F1 | (1 << CHANNEL_LFE))
+#define MASK_2F2          (MASK_STEREO | (1 << CHANNEL_LS) | (1 << CHANNEL_RS))
+#define MASK_2F2_LFE      (MASK_2F2 | (1 << CHANNEL_LFE))
+#define MASK_3F2          (MASK_2F2 | (1 << CHANNEL_CENTER))
+#define MASK_3F2_LFE      (MASK_3F2 | (1 << CHANNEL_LFE))
+#define MASK_3F3R_LFE     (MASK_3F2_LFE | (1 << CHANNEL_RCENTER))
+#define MASK_3F4_LFE      (MASK_3F2_LFE | (1 << CHANNEL_RLS) | (1 << CHANNEL_RRS))
+
+cubeb_channel_layout
+cubeb_get_channel_layout_by_mask(uint32_t mask)
+{
+  switch(mask) {
+    case MASK_MONO: return CUBEB_LAYOUT_MONO;
+    case MASK_MONO_LFE: return CUBEB_LAYOUT_MONO_LFE;
+    case MASK_STEREO: return CUBEB_LAYOUT_STEREO;
+    case MASK_STEREO_LFE: return CUBEB_LAYOUT_STEREO_LFE;
+    case MASK_3F: return CUBEB_LAYOUT_3F;
+    case MASK_3F_LFE: return CUBEB_LAYOUT_3F_LFE;
+    case MASK_2F1: return CUBEB_LAYOUT_2F1;
+    case MASK_2F1_LFE: return CUBEB_LAYOUT_2F1_LFE;
+    case MASK_3F1: return CUBEB_LAYOUT_3F1;
+    case MASK_3F1_LFE: return CUBEB_LAYOUT_3F1_LFE;
+    case MASK_2F2: return CUBEB_LAYOUT_2F2;
+    case MASK_2F2_LFE: return CUBEB_LAYOUT_2F2_LFE;
+    case MASK_3F2: return CUBEB_LAYOUT_3F2;
+    case MASK_3F2_LFE: return CUBEB_LAYOUT_3F2_LFE;
+    case MASK_3F3R_LFE: return CUBEB_LAYOUT_3F3R_LFE;
+    case MASK_3F4_LFE: return CUBEB_LAYOUT_3F4_LFE;
+    default: return CUBEB_LAYOUT_UNDEFINED;
+  }
+}
+
+cubeb_channel
+channel_label_to_cubeb_channel(UInt32 label)
+{
+  switch (label) {
+    case kAudioChannelLabel_Mono: return CHANNEL_MONO;
+    case kAudioChannelLabel_Left: return CHANNEL_LEFT;
+    case kAudioChannelLabel_Right: return CHANNEL_RIGHT;
+    case kAudioChannelLabel_Center: return CHANNEL_CENTER;
+    case kAudioChannelLabel_LFEScreen: return CHANNEL_LFE;
+    case kAudioChannelLabel_LeftSurround: return CHANNEL_LS;
+    case kAudioChannelLabel_RightSurround: return CHANNEL_RS;
+    case kAudioChannelLabel_RearSurroundLeft: return CHANNEL_RLS;
+    case kAudioChannelLabel_RearSurroundRight: return CHANNEL_RRS;
+    case kAudioChannelLabel_CenterSurround: return CHANNEL_RCENTER;
+    default: return CHANNEL_INVALID;
+  }
+}
+// -----------------------------------------------------------------------------
 
 #if TARGET_OS_IPHONE
 typedef UInt32 AudioDeviceID;
@@ -955,6 +1024,22 @@ audiounit_get_preferred_sample_rate(cubeb * /* ctx */, uint32_t * rate)
 
   *rate = static_cast<uint32_t>(fsamplerate);
 #endif
+  return CUBEB_OK;
+}
+
+static int
+audiounit_get_preferred_channel_layout(cubeb * /* ctx */, cubeb_channel_layout * layout)
+{
+  // The preferred layout is only returned when the connected sound device
+  // (e.g. ASUS Xonar U7), has preferred layout setting.
+  // For default output on Mac, there is no preferred channel layout,
+  // so it might return UNDEFINED.
+  // In that case, we should get the channel configuration directly.
+  *layout = audiounit_get_channel_layout(true);
+  if (*layout == CUBEB_LAYOUT_UNDEFINED) {
+    *layout = audiounit_get_channel_layout(false);
+  }
+
   return CUBEB_OK;
 }
 
@@ -2528,13 +2613,74 @@ int audiounit_register_device_collection_changed(cubeb * context,
   return (ret == noErr) ? CUBEB_OK : CUBEB_ERROR;
 }
 
+static cubeb_channel_layout
+audiounit_get_channel_layout(bool preferred)
+{
+  OSStatus rv = noErr;
+
+  // Get the default ouput unit
+  AudioUnit output_unit;
+  audiounit_create_unit(&output_unit, false, nullptr, 0);
+
+  // Get the channel layout
+  UInt32 size = 0;
+  Boolean writable;
+  rv = AudioUnitGetPropertyInfo(output_unit,
+                                (preferred) ? kAudioDevicePropertyPreferredChannelLayout :
+                                              kAudioUnitProperty_AudioChannelLayout,
+                                kAudioUnitScope_Output,
+                                AU_OUT_BUS,
+                                &size,
+                                &writable);
+  if (rv != noErr) {
+    PRINT_ERROR_CODE("AudioUnitGetPropertyInfo/kAudioDevicePropertyPreferredChannelLayout||kAudioUnitProperty_AudioChannelLayout", rv);
+    return CUBEB_LAYOUT_UNDEFINED;
+  }
+  assert(size > 0);
+
+  AudioChannelLayout* layout = reinterpret_cast<AudioChannelLayout*>(malloc(size));
+  rv = AudioUnitGetProperty(output_unit,
+                            (preferred) ? kAudioDevicePropertyPreferredChannelLayout :
+                                          kAudioUnitProperty_AudioChannelLayout,
+                            kAudioUnitScope_Output,
+                            AU_OUT_BUS,
+                            layout,
+                            &size);
+  if (rv != noErr) {
+    PRINT_ERROR_CODE("AudioUnitGetProperty/kAudioDevicePropertyPreferredChannelLayout||kAudioUnitProperty_AudioChannelLayout", rv);
+    return CUBEB_LAYOUT_UNDEFINED;
+  }
+
+  if (layout->mChannelLayoutTag != kAudioChannelLayoutTag_UseChannelDescriptions) {
+    // kAudioChannelLayoutTag_UseChannelBitmap
+    // kAudioChannelLayoutTag_Mono
+    // kAudioChannelLayoutTag_Stereo
+    // ....
+    LOG("Only handle UseChannelDescriptions for now.\n");
+    return CUBEB_LAYOUT_UNDEFINED;
+  }
+
+  UInt32 mask = 0;
+  for (UInt32 i = 0; i < layout->mNumberChannelDescriptions; ++i) {
+    cubeb_channel channel =
+      channel_label_to_cubeb_channel(layout->mChannelDescriptions[i].mChannelLabel);
+    if (channel == CHANNEL_INVALID) {
+      return CUBEB_LAYOUT_UNDEFINED;
+    }
+    mask |= 1 << channel;
+  }
+
+  free(layout);
+  return cubeb_get_channel_layout_by_mask(mask);
+}
+
 cubeb_ops const audiounit_ops = {
   /*.init =*/ audiounit_init,
   /*.get_backend_id =*/ audiounit_get_backend_id,
   /*.get_max_channel_count =*/ audiounit_get_max_channel_count,
   /*.get_min_latency =*/ audiounit_get_min_latency,
   /*.get_preferred_sample_rate =*/ audiounit_get_preferred_sample_rate,
-  /*.get_preferred_channel_layout =*/ nullptr,
+  /*.get_preferred_channel_layout =*/ audiounit_get_preferred_channel_layout,
   /*.enumerate_devices =*/ audiounit_enumerate_devices,
   /*.destroy =*/ audiounit_destroy,
   /*.stream_init =*/ audiounit_stream_init,
