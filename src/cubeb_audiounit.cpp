@@ -88,6 +88,53 @@ struct auto_array_wrapper {
   virtual ~auto_array_wrapper() {}
 };
 
+class auto_channel_layout
+{
+public:
+  auto_channel_layout()
+    : layout(nullptr)
+  {
+  }
+
+  auto_channel_layout(size_t size)
+    : layout(reinterpret_cast<AudioChannelLayout*>(malloc(size)))
+  {
+    memset(layout, 0, size);
+  }
+
+  ~auto_channel_layout()
+  {
+    release();
+  }
+
+  void reset(size_t size)
+  {
+    release();
+    layout = reinterpret_cast<AudioChannelLayout*>(malloc(size));
+    memset(layout, 0, size);
+  }
+
+  AudioChannelLayout* get()
+  {
+    return layout;
+  }
+
+  size_t size()
+  {
+    return sizeof(*layout);
+  }
+
+private:
+  void release()
+  {
+    if (layout) {
+      free(layout);
+    }
+  }
+
+  AudioChannelLayout * layout;
+};
+
 template <typename T>
 struct auto_array_wrapper_impl : public auto_array_wrapper {
   explicit auto_array_wrapper_impl(uint32_t size)
@@ -1087,56 +1134,51 @@ audiounit_layout_init(AudioUnit * unit,
   assert(stream_params->channels == CUBEB_CHANNEL_LAYOUT_MAPS[stream_params->layout].channels);
 
   OSStatus r;
-  AudioChannelLayout* layout;
-
-  layout = new AudioChannelLayout();
-  memset(layout, 0, sizeof(*layout));
+  auto_channel_layout layout(sizeof(AudioChannelLayout));
 
   switch (stream_params->layout) {
     case CUBEB_LAYOUT_DUAL_MONO:
     case CUBEB_LAYOUT_STEREO:
-      layout->mChannelLayoutTag = kAudioChannelLayoutTag_Stereo;
+      layout.get()->mChannelLayoutTag = kAudioChannelLayoutTag_Stereo;
       break;
     case CUBEB_LAYOUT_MONO:
-      layout->mChannelLayoutTag = kAudioChannelLayoutTag_Mono;
+      layout.get()->mChannelLayoutTag = kAudioChannelLayoutTag_Mono;
       break;
     case CUBEB_LAYOUT_3F:
-      layout->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_3_0;
+      layout.get()->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_3_0;
       break;
     case CUBEB_LAYOUT_2F1:
-      layout->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_2_1;
+      layout.get()->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_2_1;
       break;
     case CUBEB_LAYOUT_3F1:
-      layout->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_3_1;
+      layout.get()->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_3_1;
       break;
     case CUBEB_LAYOUT_2F2:
-      layout->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_2_2;
+      layout.get()->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_2_2;
       break;
     case CUBEB_LAYOUT_3F2:
-      layout->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_3_2;
+      layout.get()->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_3_2;
       break;
     case CUBEB_LAYOUT_3F2_LFE:
-      layout->mChannelLayoutTag = kAudioChannelLayoutTag_AudioUnit_5_1;
+      layout.get()->mChannelLayoutTag = kAudioChannelLayoutTag_AudioUnit_5_1;
       break;
     default:
-      layout->mChannelLayoutTag = kAudioChannelLayoutTag_Unknown;
+      layout.get()->mChannelLayoutTag = kAudioChannelLayoutTag_Unknown;
       break;
   }
 
   // For those layouts that can't be matched to coreaudio's predefined layout,
   // we use customized layout.
-  if (layout->mChannelLayoutTag == kAudioChannelLayoutTag_Unknown) {
-    free(layout);
+  if (layout.get()->mChannelLayoutTag == kAudioChannelLayoutTag_Unknown) {
     size_t size = sizeof(AudioChannelLayout) +
                   sizeof(AudioChannelDescription) * (stream_params->channels - 1);
-    layout = reinterpret_cast<AudioChannelLayout*>(malloc(size));
-    memset(layout, 0, size);
-    layout->mChannelLayoutTag = kAudioChannelLayoutTag_UseChannelDescriptions;
-    layout->mNumberChannelDescriptions = stream_params->channels;
+    layout.reset(size);
+    layout.get()->mChannelLayoutTag = kAudioChannelLayoutTag_UseChannelDescriptions;
+    layout.get()->mNumberChannelDescriptions = stream_params->channels;
     for (UInt32 i = 0 ; i < stream_params->channels ; ++i) {
-      layout->mChannelDescriptions[i].mChannelLabel =
+      layout.get()->mChannelDescriptions[i].mChannelLabel =
         cubeb_channel_to_channel_label(CHANNEL_INDEX_TO_ORDER[stream_params->layout][i]);
-      layout->mChannelDescriptions[i].mChannelFlags = kAudioChannelFlags_AllOff;
+      layout.get()->mChannelDescriptions[i].mChannelFlags = kAudioChannelFlags_AllOff;
     }
   }
 
@@ -1144,9 +1186,8 @@ audiounit_layout_init(AudioUnit * unit,
                            kAudioUnitProperty_AudioChannelLayout,
                            is_input ? kAudioUnitScope_Output : kAudioUnitScope_Input,
                            is_input ? AU_IN_BUS : AU_OUT_BUS,
-                           layout,
-                           sizeof(*layout));
-  free(layout);
+                           layout.get(),
+                           layout.size());
   if (r != noErr) {
     PRINT_ERROR_CODE("AudioUnitSetProperty/kAudioUnitProperty_AudioChannelLayout", r);
     return CUBEB_ERROR;
@@ -2689,20 +2730,20 @@ audiounit_get_channel_layout(bool preferred)
   }
   assert(size > 0);
 
-  AudioChannelLayout* layout = reinterpret_cast<AudioChannelLayout*>(malloc(size));
+  auto_channel_layout layout(size);
   rv = AudioUnitGetProperty(output_unit,
                             (preferred) ? kAudioDevicePropertyPreferredChannelLayout :
                                           kAudioUnitProperty_AudioChannelLayout,
                             kAudioUnitScope_Output,
                             AU_OUT_BUS,
-                            layout,
+                            layout.get(),
                             &size);
   if (rv != noErr) {
     PRINT_ERROR_CODE("AudioUnitGetProperty/kAudioDevicePropertyPreferredChannelLayout||kAudioUnitProperty_AudioChannelLayout", rv);
     return CUBEB_LAYOUT_UNDEFINED;
   }
 
-  if (layout->mChannelLayoutTag != kAudioChannelLayoutTag_UseChannelDescriptions) {
+  if (layout.get()->mChannelLayoutTag != kAudioChannelLayoutTag_UseChannelDescriptions) {
     // kAudioChannelLayoutTag_UseChannelBitmap
     // kAudioChannelLayoutTag_Mono
     // kAudioChannelLayoutTag_Stereo
@@ -2712,12 +2753,11 @@ audiounit_get_channel_layout(bool preferred)
   }
 
   cubeb_channel_map cm;
-  cm.channels = layout->mNumberChannelDescriptions;
-  for (UInt32 i = 0; i < layout->mNumberChannelDescriptions; ++i) {
-    cm.map[i] = channel_label_to_cubeb_channel(layout->mChannelDescriptions[i].mChannelLabel);
+  cm.channels = layout.get()->mNumberChannelDescriptions;
+  for (UInt32 i = 0; i < layout.get()->mNumberChannelDescriptions; ++i) {
+    cm.map[i] = channel_label_to_cubeb_channel(layout.get()->mChannelDescriptions[i].mChannelLabel);
   }
 
-  free(layout);
   return cubeb_channel_map_to_layout(&cm);
 }
 
