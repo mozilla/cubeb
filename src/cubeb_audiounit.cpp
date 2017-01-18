@@ -218,6 +218,24 @@ channel_label_to_cubeb_channel(UInt32 label)
   }
 }
 
+AudioChannelLabel
+cubeb_channel_to_channel_label(cubeb_channel channel)
+{
+  switch (channel) {
+    case CHANNEL_MONO: return kAudioChannelLabel_Mono;
+    case CHANNEL_LEFT: return kAudioChannelLabel_Left;
+    case CHANNEL_RIGHT: return kAudioChannelLabel_Right;
+    case CHANNEL_CENTER: return kAudioChannelLabel_Center;
+    case CHANNEL_LFE: return kAudioChannelLabel_LFEScreen;
+    case CHANNEL_LS: return kAudioChannelLabel_LeftSurround;
+    case CHANNEL_RS: return kAudioChannelLabel_RightSurround;
+    case CHANNEL_RLS: return kAudioChannelLabel_RearSurroundLeft;
+    case CHANNEL_RRS: return kAudioChannelLabel_RearSurroundRight;
+    case CHANNEL_RCENTER: return kAudioChannelLabel_CenterSurround;
+    default: return kAudioChannelLabel_Unknown;
+  }
+}
+
 #if TARGET_OS_IPHONE
 typedef UInt32 AudioDeviceID;
 typedef UInt32 AudioObjectID;
@@ -1061,6 +1079,83 @@ audio_stream_desc_init(AudioStreamBasicDescription * ss,
 }
 
 static int
+audiounit_layout_init(AudioUnit * unit,
+                      bool is_input,
+                      const cubeb_stream_params * stream_params)
+{
+  assert(stream_params->layout != CUBEB_LAYOUT_UNDEFINED);
+  assert(stream_params->channels == CUBEB_CHANNEL_LAYOUT_MAPS[stream_params->layout].channels);
+
+  OSStatus r;
+  AudioChannelLayout* layout;
+
+  layout = new AudioChannelLayout();
+  memset(layout, 0, sizeof(*layout));
+
+  switch (stream_params->layout) {
+    case CUBEB_LAYOUT_DUAL_MONO:
+    case CUBEB_LAYOUT_STEREO:
+      layout->mChannelLayoutTag = kAudioChannelLayoutTag_Stereo;
+      break;
+    case CUBEB_LAYOUT_MONO:
+      layout->mChannelLayoutTag = kAudioChannelLayoutTag_Mono;
+      break;
+    case CUBEB_LAYOUT_3F:
+      layout->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_3_0;
+      break;
+    case CUBEB_LAYOUT_2F1:
+      layout->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_2_1;
+      break;
+    case CUBEB_LAYOUT_3F1:
+      layout->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_3_1;
+      break;
+    case CUBEB_LAYOUT_2F2:
+      layout->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_2_2;
+      break;
+    case CUBEB_LAYOUT_3F2:
+      layout->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_3_2;
+      break;
+    case CUBEB_LAYOUT_3F2_LFE:
+      layout->mChannelLayoutTag = kAudioChannelLayoutTag_AudioUnit_5_1;
+      break;
+    default:
+      layout->mChannelLayoutTag = kAudioChannelLayoutTag_Unknown;
+      break;
+  }
+
+  // For those layouts that can't be matched to coreaudio's predefined layout,
+  // we use customized layout.
+  if (layout->mChannelLayoutTag == kAudioChannelLayoutTag_Unknown) {
+    free(layout);
+    size_t size = sizeof(AudioChannelLayout) +
+                  sizeof(AudioChannelDescription) * (stream_params->channels - 1);
+    layout = reinterpret_cast<AudioChannelLayout*>(malloc(size));
+    memset(layout, 0, size);
+    layout->mChannelLayoutTag = kAudioChannelLayoutTag_UseChannelDescriptions;
+    layout->mNumberChannelDescriptions = stream_params->channels;
+    for (UInt32 i = 0 ; i < stream_params->channels ; ++i) {
+      layout->mChannelDescriptions[i].mChannelLabel =
+        cubeb_channel_to_channel_label(CHANNEL_INDEX_TO_ORDER[stream_params->layout][i]);
+      layout->mChannelDescriptions[i].mChannelFlags = kAudioChannelFlags_AllOff;
+    }
+  }
+
+  r = AudioUnitSetProperty(*unit,
+                           kAudioUnitProperty_AudioChannelLayout,
+                           is_input ? kAudioUnitScope_Output : kAudioUnitScope_Input,
+                           is_input ? AU_IN_BUS : AU_OUT_BUS,
+                           layout,
+                           sizeof(*layout));
+  free(layout);
+  if (r != noErr) {
+    PRINT_ERROR_CODE("AudioUnitSetProperty/kAudioUnitProperty_AudioChannelLayout", r);
+    return CUBEB_ERROR;
+  }
+
+  return CUBEB_OK;
+}
+
+static int
 audiounit_create_unit(AudioUnit * unit,
                       bool is_input,
                       const cubeb_stream_params * /* stream_params */,
@@ -1576,6 +1671,8 @@ audiounit_configure_output(cubeb_stream * stm)
     PRINT_ERROR_CODE("AudioUnitSetProperty/output/kAudioUnitProperty_SetRenderCallback", r);
     return CUBEB_ERROR;
   }
+
+  audiounit_layout_init(&stm->output_unit, false, &stm->output_stream_params);
 
   LOG("(%p) Output audiounit init successfully.", stm);
   return CUBEB_OK;
