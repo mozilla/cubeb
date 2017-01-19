@@ -1344,12 +1344,12 @@ audiounit_set_buffer_size(cubeb_stream * stm, uint32_t new_size_frames, set_buff
                                                   buffer_size_changed_callback,
                                                   stm);
   if (r != noErr) {
-    return CUBEB_ERROR;
     if (set_side == INPUT) {
       PRINT_ERROR_CODE("AudioUnitAddPropertyListener/input/kAudioDevicePropertyBufferFrameSize", r);
     } else {
       PRINT_ERROR_CODE("AudioUnitAddPropertyListener/output/kAudioDevicePropertyBufferFrameSize", r);
     }
+    return CUBEB_ERROR;
   }
 
   if (!stm->buffer_size_change_state && count >= 30) {
