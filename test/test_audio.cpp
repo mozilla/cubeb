@@ -17,6 +17,9 @@
 #include <string.h>
 #include "cubeb/cubeb.h"
 #include "common.h"
+#include <string>
+
+using namespace std;
 
 #define MAX_NUM_CHANNELS 32
 
@@ -91,23 +94,23 @@ void state_cb_audio(cubeb_stream * /*stream*/, void * /*user*/, cubeb_state /*st
 }
 
 /* Our android backends don't support float, only int16. */
-int supports_float32(const char* backend_id)
+int supports_float32(string backend_id)
 {
-  return (strcmp(backend_id, "opensl") != 0 &&
-          strcmp(backend_id, "audiotrack") != 0);
+  return backend_id != "opensl"
+    && backend_id != "audiotrack";
 }
 
 /* The WASAPI backend only supports float. */
-int supports_int16(const char* backend_id)
+int supports_int16(string backend_id)
 {
-  return strcmp(backend_id, "wasapi") != 0;
+  return backend_id != "wasapi";
 }
 
 /* Some backends don't have code to deal with more than mono or stereo. */
-int supports_channel_count(const char* backend_id, int nchannels)
+int supports_channel_count(string backend_id, int nchannels)
 {
   return nchannels <= 2 ||
-    (strcmp(backend_id, "opensl") != 0 && strcmp(backend_id, "audiotrack") != 0);
+    (backend_id != "opensl" && backend_id != "audiotrack");
 }
 
 int run_test(int num_channels, layout_info layout, int sampling_rate, int is_float)
