@@ -31,6 +31,10 @@ float get_frequency(int channel_index)
   return 220.0f * (channel_index+1);
 }
 
+template<typename T> T ConvertSample(double input);
+template<> float ConvertSample(double input) { return input; }
+template<> short ConvertSample(double input) { return short(input * 32767.0f); }
+
 /* store the phase of the generated waveform */
 struct synth_state {
   synth_state(int num_channels_, float sample_rate_)
@@ -41,33 +45,30 @@ struct synth_state {
       phase[i] = 0.0f;
   }
 
+  template<typename T>
+    void run(T* audiobuffer, long nframes)
+    {
+      for(int c=0;c < num_channels;++c) {
+        float freq = get_frequency(c);
+        float phase_inc = 2.0 * M_PI * freq / sample_rate;
+        for(long n=0;n < nframes;++n) {
+          audiobuffer[n*num_channels+c] = ConvertSample<T>(sin(phase[c]) * VOLUME);
+          phase[c] += phase_inc;
+        }
+      }
+    }
+
+private:
   int num_channels;
   float phase[MAX_NUM_CHANNELS];
   float sample_rate;
 };
 
-template<typename T> T ConvertSample(double input);
-template<> float ConvertSample(double input) { return input; }
-template<> short ConvertSample(double input) { return short(input * 32767.0f); }
-
-template<typename T>
-void synth_run(synth_state* synth, T* audiobuffer, long nframes)
-{
-  for(int c=0;c < synth->num_channels;++c) {
-    float freq = get_frequency(c);
-    float phase_inc = 2.0 * M_PI * freq / synth->sample_rate;
-    for(long n=0;n < nframes;++n) {
-      audiobuffer[n*synth->num_channels+c] = ConvertSample<T>(sin(synth->phase[c]) * VOLUME);
-      synth->phase[c] += phase_inc;
-    }
-  }
-}
-
 template<typename T>
 long data_cb(cubeb_stream * /*stream*/, void * user, const void * /*inputbuffer*/, void * outputbuffer, long nframes)
 {
   synth_state *synth = (synth_state *)user;
-  synth_run(synth, (T*)outputbuffer, nframes);
+  synth->run((T*)outputbuffer, nframes);
   return nframes;
 }
 
