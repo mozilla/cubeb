@@ -257,14 +257,14 @@ TEST(cubeb, run_channel_rate_test)
     48000,
   };
 
-  for(unsigned int j = 0; j < ARRAY_LENGTH(channel_values); ++j) {
-    for(unsigned int i = 0; i < ARRAY_LENGTH(freq_values); ++i) {
-      ASSERT_TRUE(channel_values[j] < MAX_NUM_CHANNELS);
+  for(auto channels : channel_values) {
+    for(auto freq : freq_values) {
+      ASSERT_TRUE(channels < MAX_NUM_CHANNELS);
       fprintf(stderr, "--------------------------\n");
-      for (unsigned int k = 0 ; k < ARRAY_LENGTH(layout_infos); ++k ) {
-        if (layout_infos[k].channels == channel_values[j]) {
-          ASSERT_EQ(run_test(channel_values[j], layout_infos[k], freq_values[i], 0), CUBEB_OK);
-          ASSERT_EQ(run_test(channel_values[j], layout_infos[k], freq_values[i], 1), CUBEB_OK);
+      for (auto layout : layout_infos) {
+        if (layout.channels == channels) {
+          ASSERT_EQ(run_test(channels, layout, freq, 0), CUBEB_OK);
+          ASSERT_EQ(run_test(channels, layout, freq, 1), CUBEB_OK);
         }
       }
     }
