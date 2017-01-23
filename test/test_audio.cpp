@@ -32,29 +32,19 @@ float get_frequency(int channel_index)
 }
 
 /* store the phase of the generated waveform */
-typedef struct {
+struct synth_state {
+  synth_state(int num_channels_, float sample_rate_)
+    : num_channels(num_channels_),
+    sample_rate(sample_rate_)
+  {
+    for(int i=0;i < MAX_NUM_CHANNELS;++i)
+      phase[i] = 0.0f;
+  }
+
   int num_channels;
   float phase[MAX_NUM_CHANNELS];
   float sample_rate;
-} synth_state;
-
-synth_state* synth_create(int num_channels, float sample_rate)
-{
-  synth_state* synth = (synth_state *) malloc(sizeof(synth_state));
-  if (!synth)
-    return NULL;
-  for(int i=0;i < MAX_NUM_CHANNELS;++i)
-    synth->phase[i] = 0.0f;
-  synth->num_channels = num_channels;
-  synth->sample_rate = sample_rate;
-  return synth;
-}
-
-void synth_destroy(synth_state* synth)
-{
-  free(synth);
-}
-
+};
 
 template<typename T> T ConvertSample(double input);
 template<> float ConvertSample(double input) { return input; }
@@ -110,7 +100,6 @@ int run_test(int num_channels, layout_info layout, int sampling_rate, int is_flo
   int r = CUBEB_OK;
 
   cubeb *ctx = NULL;
-  synth_state* synth = NULL;
   cubeb_stream *stream = NULL;
   const char * backend_id = NULL;
 
@@ -137,27 +126,24 @@ int run_test(int num_channels, layout_info layout, int sampling_rate, int is_flo
   params.channels = num_channels;
   params.layout = layout.layout;
 
-  synth = synth_create(params.channels, params.rate);
-  if (synth == NULL) {
-    fprintf(stderr, "Out of memory\n");
-    goto cleanup;
-  }
+  {
+    synth_state synth(params.channels, params.rate);
 
-  r = cubeb_stream_init(ctx, &stream, "test tone", NULL, NULL, NULL, &params,
-                        4096, is_float ? &data_cb<float> : &data_cb<short>, state_cb_audio, synth);
-  if (r != CUBEB_OK) {
-    fprintf(stderr, "Error initializing cubeb stream: %d\n", r);
-    goto cleanup;
-  }
+    r = cubeb_stream_init(ctx, &stream, "test tone", NULL, NULL, NULL, &params,
+        4096, is_float ? &data_cb<float> : &data_cb<short>, state_cb_audio, &synth);
+    if (r != CUBEB_OK) {
+      fprintf(stderr, "Error initializing cubeb stream: %d\n", r);
+      goto cleanup;
+    }
 
-  cubeb_stream_start(stream);
-  delay(200);
-  cubeb_stream_stop(stream);
+    cubeb_stream_start(stream);
+    delay(200);
+    cubeb_stream_stop(stream);
+  }
 
 cleanup:
   cubeb_stream_destroy(stream);
   cubeb_destroy(ctx);
-  synth_destroy(synth);
 
   return r;
 }
@@ -167,7 +153,6 @@ int run_panning_volume_test(int is_float)
   int r = CUBEB_OK;
 
   cubeb *ctx = NULL;
-  synth_state* synth = NULL;
   cubeb_stream *stream = NULL;
   const char * backend_id = NULL;
 
@@ -190,48 +175,45 @@ int run_panning_volume_test(int is_float)
   params.channels = 2;
   params.layout = CUBEB_LAYOUT_STEREO;
 
-  synth = synth_create(params.channels, params.rate);
-  if (synth == NULL) {
-    fprintf(stderr, "Out of memory\n");
-    goto cleanup;
-  }
-
-  r = cubeb_stream_init(ctx, &stream, "test tone", NULL, NULL, NULL, &params,
-                        4096, is_float ? &data_cb<float> : &data_cb<short>,
-                        state_cb_audio, synth);
-  if (r != CUBEB_OK) {
-    fprintf(stderr, "Error initializing cubeb stream: %d\n", r);
-    goto cleanup;
-  }
-
-  fprintf(stderr, "Testing: volume\n");
-  for(int i=0;i <= 4; ++i)
   {
-    fprintf(stderr, "Volume: %d%%\n", i*25);
+    synth_state synth(params.channels, params.rate);
 
-    cubeb_stream_set_volume(stream, i/4.0f);
-    cubeb_stream_start(stream);
-    delay(400);
-    cubeb_stream_stop(stream);
-    delay(100);
-  }
+    r = cubeb_stream_init(ctx, &stream, "test tone", NULL, NULL, NULL, &params,
+        4096, is_float ? &data_cb<float> : &data_cb<short>,
+        state_cb_audio, &synth);
+    if (r != CUBEB_OK) {
+      fprintf(stderr, "Error initializing cubeb stream: %d\n", r);
+      goto cleanup;
+    }
 
-  fprintf(stderr, "Testing: panning\n");
-  for(int i=-4;i <= 4; ++i)
-  {
-    fprintf(stderr, "Panning: %.2f\n", i/4.0f);
+    fprintf(stderr, "Testing: volume\n");
+    for(int i=0;i <= 4; ++i)
+    {
+      fprintf(stderr, "Volume: %d%%\n", i*25);
 
-    cubeb_stream_set_panning(stream, i/4.0f);
-    cubeb_stream_start(stream);
-    delay(400);
-    cubeb_stream_stop(stream);
-    delay(100);
+      cubeb_stream_set_volume(stream, i/4.0f);
+      cubeb_stream_start(stream);
+      delay(400);
+      cubeb_stream_stop(stream);
+      delay(100);
+    }
+
+    fprintf(stderr, "Testing: panning\n");
+    for(int i=-4;i <= 4; ++i)
+    {
+      fprintf(stderr, "Panning: %.2f\n", i/4.0f);
+
+      cubeb_stream_set_panning(stream, i/4.0f);
+      cubeb_stream_start(stream);
+      delay(400);
+      cubeb_stream_stop(stream);
+      delay(100);
+    }
   }
 
 cleanup:
   cubeb_stream_destroy(stream);
   cubeb_destroy(ctx);
-  synth_destroy(synth);
 
   return r;
 }
