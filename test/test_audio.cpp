@@ -55,41 +55,29 @@ void synth_destroy(synth_state* synth)
   free(synth);
 }
 
-void synth_run_float(synth_state* synth, float* audiobuffer, long nframes)
+
+template<typename T> T ConvertSample(double input);
+template<> float ConvertSample(double input) { return input; }
+template<> short ConvertSample(double input) { return short(input * 32767.0f); }
+
+template<typename T>
+void synth_run(synth_state* synth, T* audiobuffer, long nframes)
 {
   for(int c=0;c < synth->num_channels;++c) {
     float freq = get_frequency(c);
     float phase_inc = 2.0 * M_PI * freq / synth->sample_rate;
     for(long n=0;n < nframes;++n) {
-      audiobuffer[n*synth->num_channels+c] = sin(synth->phase[c]) * VOLUME;
+      audiobuffer[n*synth->num_channels+c] = ConvertSample<T>(sin(synth->phase[c]) * VOLUME);
       synth->phase[c] += phase_inc;
     }
   }
 }
 
-long data_cb_float(cubeb_stream * /*stream*/, void * user, const void * /*inputbuffer*/, void * outputbuffer, long nframes)
+template<typename T>
+long data_cb(cubeb_stream * /*stream*/, void * user, const void * /*inputbuffer*/, void * outputbuffer, long nframes)
 {
   synth_state *synth = (synth_state *)user;
-  synth_run_float(synth, (float*)outputbuffer, nframes);
-  return nframes;
-}
-
-void synth_run_16bit(synth_state* synth, short* audiobuffer, long nframes)
-{
-  for(int c=0;c < synth->num_channels;++c) {
-    float freq = get_frequency(c);
-    float phase_inc = 2.0 * M_PI * freq / synth->sample_rate;
-    for(long n=0;n < nframes;++n) {
-      audiobuffer[n*synth->num_channels+c] = sin(synth->phase[c]) * VOLUME * 32767.0f;
-      synth->phase[c] += phase_inc;
-    }
-  }
-}
-
-long data_cb_short(cubeb_stream * /*stream*/, void * user, const void * /*inputbuffer*/, void * outputbuffer, long nframes)
-{
-  synth_state *synth = (synth_state *)user;
-  synth_run_16bit(synth, (short*)outputbuffer, nframes);
+  synth_run(synth, (T*)outputbuffer, nframes);
   return nframes;
 }
 
@@ -156,7 +144,7 @@ int run_test(int num_channels, layout_info layout, int sampling_rate, int is_flo
   }
 
   r = cubeb_stream_init(ctx, &stream, "test tone", NULL, NULL, NULL, &params,
-                        4096, is_float ? data_cb_float : data_cb_short, state_cb_audio, synth);
+                        4096, is_float ? &data_cb<float> : &data_cb<short>, state_cb_audio, synth);
   if (r != CUBEB_OK) {
     fprintf(stderr, "Error initializing cubeb stream: %d\n", r);
     goto cleanup;
@@ -209,7 +197,7 @@ int run_panning_volume_test(int is_float)
   }
 
   r = cubeb_stream_init(ctx, &stream, "test tone", NULL, NULL, NULL, &params,
-                        4096, is_float ? data_cb_float : data_cb_short,
+                        4096, is_float ? &data_cb<float> : &data_cb<short>,
                         state_cb_audio, synth);
   if (r != CUBEB_OK) {
     fprintf(stderr, "Error initializing cubeb stream: %d\n", r);
