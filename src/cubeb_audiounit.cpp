@@ -49,6 +49,11 @@ typedef UInt32  AudioFormatFlags;
 
 const char * DISPATCH_QUEUE_LABEL = "org.mozilla.cubeb";
 
+#ifdef ALOGV
+#undef ALOGV
+#endif
+#define ALOGV(msg, ...) dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{LOGV(msg, ##__VA_ARGS__);})
+
 /* Testing empirically, some headsets report a minimal latency that is very
  * low, but this does not work in practice. Lie and say the minimum is 256
  * frames. */
