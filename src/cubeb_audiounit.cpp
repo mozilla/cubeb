@@ -54,6 +54,11 @@ const char * DISPATCH_QUEUE_LABEL = "org.mozilla.cubeb";
 #endif
 #define ALOGV(msg, ...) dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{LOGV(msg, ##__VA_ARGS__);})
 
+#ifdef ALOG
+#undef ALOG
+#endif
+#define ALOG(msg, ...) dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{LOG(msg, ##__VA_ARGS__);})
+
 /* Testing empirically, some headsets report a minimal latency that is very
  * low, but this does not work in practice. Lie and say the minimum is 256
  * frames. */
@@ -490,17 +495,17 @@ audiounit_output_callback(void * user_ptr,
   stm->output_callback_in_a_row++;
 
   ALOGV("(%p) output: buffers %u, size %u, channels %u, frames %u.",
-       stm,
-       (unsigned int) outBufferList->mNumberBuffers,
-       (unsigned int) outBufferList->mBuffers[0].mDataByteSize,
-       (unsigned int) outBufferList->mBuffers[0].mNumberChannels,
-       (unsigned int) output_frames);
+        stm,
+        (unsigned int) outBufferList->mNumberBuffers,
+        (unsigned int) outBufferList->mBuffers[0].mDataByteSize,
+        (unsigned int) outBufferList->mBuffers[0].mNumberChannels,
+        (unsigned int) output_frames);
 
   long input_frames = 0;
   void * output_buffer = NULL, * input_buffer = NULL;
 
   if (stm->shutdown) {
-    LOG("(%p) output shutdown.", stm);
+    ALOG("(%p) output shutdown.", stm);
     audiounit_make_silent(&outBufferList->mBuffers[0]);
     return noErr;
   }
@@ -524,8 +529,8 @@ audiounit_output_callback(void * user_ptr,
     if (is_extra_input_needed(stm)) {
       uint32_t min_input_frames = min_input_frames_required(stm);
       stm->input_linear_buffer->push_silence(min_input_frames * stm->input_desc.mChannelsPerFrame);
-      LOG("(%p) %s pushed %u frames of input silence.", stm, stm->frames_read == 0 ? "Input hasn't started," :
-          stm->switching_device ? "Device switching," : "Drop out,", min_input_frames);
+      ALOG("(%p) %s pushed %u frames of input silence.", stm, stm->frames_read == 0 ? "Input hasn't started," :
+           stm->switching_device ? "Device switching," : "Drop out,", min_input_frames);
     }
     // The input buffer
     input_buffer = stm->input_linear_buffer->data();
