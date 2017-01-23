@@ -898,6 +898,16 @@ audiounit_uninstall_device_changed_callback(cubeb_stream * stm)
     if (r != noErr) {
       return CUBEB_ERROR;
     }
+
+    /* Event to notify when the input is going away. */
+    AudioDeviceID dev = stm->input_device ? stm->input_device :
+                        audiounit_get_default_device_id(CUBEB_DEVICE_TYPE_INPUT);
+    r = audiounit_remove_listener(stm, dev, kAudioDevicePropertyDeviceIsAlive,
+                                  kAudioObjectPropertyScopeGlobal, &audiounit_property_listener_callback);
+    if (r != noErr) {
+      PRINT_ERROR_CODE("AudioObjectRemovePropertyListener/input/kAudioDevicePropertyDeviceIsAlive", r);
+      return CUBEB_ERROR;
+    }
   }
   return CUBEB_OK;
 }
