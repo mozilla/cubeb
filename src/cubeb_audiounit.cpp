@@ -237,7 +237,7 @@ struct cubeb_stream {
   std::atomic<uint64_t> frames_played{ 0 };
   uint64_t frames_queued = 0;
   std::atomic<int64_t> frames_read{ 0 };
-  std::atomic<bool> shutdown{ false };
+  std::atomic<bool> shutdown{ true };
   std::atomic<bool> draining{ false };
   /* Latency requested by the user. */
   uint32_t latency_frames = 0;
