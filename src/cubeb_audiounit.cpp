@@ -1194,7 +1194,11 @@ audiounit_layout_init(AudioUnit * unit,
                            layout.get(),
                            layout.size());
   if (r != noErr) {
-    PRINT_ERROR_CODE("AudioUnitSetProperty/kAudioUnitProperty_AudioChannelLayout", r);
+    if (side == INPUT) {
+      PRINT_ERROR_CODE("AudioUnitSetProperty/input/kAudioUnitProperty_AudioChannelLayout", r);
+    } else {
+      PRINT_ERROR_CODE("AudioUnitSetProperty/output/kAudioUnitProperty_AudioChannelLayout", r);
+    }
     return CUBEB_ERROR;
   }
 
@@ -2718,28 +2722,36 @@ audiounit_get_channel_layout(bool preferred)
   UInt32 size = 0;
   Boolean writable;
   rv = AudioUnitGetPropertyInfo(output_unit,
-                                (preferred) ? kAudioDevicePropertyPreferredChannelLayout :
-                                              kAudioUnitProperty_AudioChannelLayout,
+                                preferred ? kAudioDevicePropertyPreferredChannelLayout :
+                                            kAudioUnitProperty_AudioChannelLayout,
                                 kAudioUnitScope_Output,
                                 AU_OUT_BUS,
                                 &size,
                                 &writable);
   if (rv != noErr) {
-    PRINT_ERROR_CODE("AudioUnitGetPropertyInfo/kAudioDevicePropertyPreferredChannelLayout||kAudioUnitProperty_AudioChannelLayout", rv);
+    if (preferred) {
+      PRINT_ERROR_CODE("AudioUnitGetPropertyInfo/kAudioDevicePropertyPreferredChannelLayout", rv);
+    } else {
+      PRINT_ERROR_CODE("AudioUnitGetPropertyInfo/kAudioUnitProperty_AudioChannelLayout", rv);
+    }
     return CUBEB_LAYOUT_UNDEFINED;
   }
   assert(size > 0);
 
   auto_channel_layout layout(size);
   rv = AudioUnitGetProperty(output_unit,
-                            (preferred) ? kAudioDevicePropertyPreferredChannelLayout :
-                                          kAudioUnitProperty_AudioChannelLayout,
+                            preferred ? kAudioDevicePropertyPreferredChannelLayout :
+                                        kAudioUnitProperty_AudioChannelLayout,
                             kAudioUnitScope_Output,
                             AU_OUT_BUS,
                             layout.get(),
                             &size);
   if (rv != noErr) {
-    PRINT_ERROR_CODE("AudioUnitGetProperty/kAudioDevicePropertyPreferredChannelLayout||kAudioUnitProperty_AudioChannelLayout", rv);
+    if (preferred) {
+      PRINT_ERROR_CODE("AudioUnitGetProperty/kAudioDevicePropertyPreferredChannelLayout", rv);
+    } else {
+      PRINT_ERROR_CODE("AudioUnitGetProperty/kAudioUnitProperty_AudioChannelLayout", rv);
+    }
     return CUBEB_LAYOUT_UNDEFINED;
   }
 
