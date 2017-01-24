@@ -2720,14 +2720,13 @@ audiounit_get_channel_layout(bool preferred)
 
   // Get the channel layout
   UInt32 size = 0;
-  Boolean writable;
   rv = AudioUnitGetPropertyInfo(output_unit,
                                 preferred ? kAudioDevicePropertyPreferredChannelLayout :
                                             kAudioUnitProperty_AudioChannelLayout,
                                 kAudioUnitScope_Output,
                                 AU_OUT_BUS,
                                 &size,
-                                &writable);
+                                nullptr);
   if (rv != noErr) {
     if (preferred) {
       PRINT_ERROR_CODE("AudioUnitGetPropertyInfo/kAudioDevicePropertyPreferredChannelLayout", rv);
