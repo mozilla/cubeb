@@ -129,6 +129,7 @@ private:
   {
     if (layout) {
       free(layout);
+      layout = NULL;
     }
   }
 
