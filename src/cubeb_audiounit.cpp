@@ -416,7 +416,7 @@ audiounit_input_callback(void * user_ptr,
   assert(AU_IN_BUS == bus);
 
   if (stm->shutdown) {
-    LOG("(%p) input shutdown", stm);
+    ALOG("(%p) input shutdown", stm);
     return noErr;
   }
 
@@ -722,6 +722,9 @@ audiounit_property_listener_callback(AudioObjectID /* id */, UInt32 address_coun
       case kAudioDevicePropertyDataSource:
         LOG("Event[%u] - mSelector == kAudioHardwarePropertyDataSource", (unsigned int) i);
         break;
+      default:
+        LOG("Event[%u] - mSelector == Unexpected Event id %d, return", (unsigned int) i, addresses[i].mSelector);
+        return noErr;
     }
   }
 
