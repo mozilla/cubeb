@@ -1067,6 +1067,10 @@ audiounit_get_preferred_channel_layout(cubeb * /* ctx */, cubeb_channel_layout *
     *layout = audiounit_get_channel_layout(false);
   }
 
+  if (*layout == CUBEB_LAYOUT_UNDEFINED) {
+    return CUBEB_ERROR;
+  }
+
   return CUBEB_OK;
 }
 
