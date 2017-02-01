@@ -618,7 +618,7 @@ TEST(cubeb, resampler_noop_input_only)
                            target_rate, cb_noop_resampler_input, nullptr,
                            CUBEB_RESAMPLER_QUALITY_VOIP);
 
-  float input_buffer[input_params.channels * 256];
+  float input_buffer[input_channels * 256];
 
   long got;
   for (uint32_t i = 0; i < 30; i++) {
@@ -705,6 +705,7 @@ TEST(cubeb, resampler_noop_duplex_callback_reordering)
 
   long got;
   long seq_idx = 0;
+  long output_seq_idx = 0;
 
   long prebuffer_frames = ARRAY_LENGTH(input_buffer_prebuffer) / input_params.channels;
   seq_idx = seq(input_buffer_prebuffer, seq_idx,
@@ -734,6 +735,8 @@ TEST(cubeb, resampler_noop_duplex_callback_reordering)
       seq_idx = seq(input_buffer_normal, seq_idx, BUF_BASE_SIZE);
       long normal_input_frame_count = 256;
       got = cubeb_resampler_fill(resampler, input_buffer_normal, &normal_input_frame_count, output_buffer, BUF_BASE_SIZE);
+      is_seq(output_buffer, 2, BUF_BASE_SIZE, output_seq_idx);
+      output_seq_idx += BUF_BASE_SIZE;
     }
     ASSERT_EQ(got, BUF_BASE_SIZE);
   }
