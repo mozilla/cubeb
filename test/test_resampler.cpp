@@ -565,7 +565,8 @@ TEST(cubeb, resampler_noop_output_only)
   // Test that the noop resampler works when there is only an output stream.
   cubeb_stream_params output_params;
 
-  output_params.channels = 2;
+  const size_t output_channels = 2;
+  output_params.channels = output_channels;
   output_params.rate = 44100;
   output_params.format = CUBEB_SAMPLE_FLOAT32NE;
   int target_rate = output_params.rate;
@@ -575,7 +576,7 @@ TEST(cubeb, resampler_noop_output_only)
                            target_rate, cb_noop_resampler_output, nullptr,
                            CUBEB_RESAMPLER_QUALITY_VOIP);
 
-  float output_buffer[output_params.channels * 256];
+  float output_buffer[output_channels * 256];
 
   long got;
   for (uint32_t i = 0; i < 30; i++) {
@@ -606,7 +607,8 @@ TEST(cubeb, resampler_noop_input_only)
   // Test that the noop resampler works when there is only an output stream.
   cubeb_stream_params input_params;
 
-  input_params.channels = 2;
+  const size_t input_channels = 2;
+  input_params.channels = input_channels;
   input_params.rate = 44100;
   input_params.format = CUBEB_SAMPLE_FLOAT32NE;
   int target_rate = input_params.rate;
