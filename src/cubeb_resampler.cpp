@@ -56,30 +56,22 @@ long passthrough_resampler<T>::fill(void * input_buffer, long * input_frames_cou
   }
   assert((input_buffer && output_buffer &&
          *input_frames_count + static_cast<int>(samples_to_frames(internal_input_buffer.length())) >= output_frames) ||
-         (!input_buffer && (!input_frames_count || *input_frames_count == 0)) ||
-         (!output_buffer && output_frames == 0));
-
-  long rv;
-
-  if (output_buffer == nullptr) {
-    assert(input_buffer);
-    output_frames = *input_frames_count;
-  }
-
+         (output_buffer && !input_buffer && (!input_frames_count || *input_frames_count == 0)) ||
+         (input_buffer && !output_buffer && output_frames == 0));
 
   if (input_buffer) {
+    if (!output_buffer) {
+      output_frames = *input_frames_count;
+    }
     internal_input_buffer.push(static_cast<T*>(input_buffer),
                                frames_to_samples(*input_frames_count));
-    assert(samples_to_frames(internal_input_buffer.length()) >=
-           static_cast<uint32_t>(output_frames));
   }
 
-  rv = data_callback(stream, user_ptr, internal_input_buffer.data(),
-                     output_buffer, output_frames);
+  long rv = data_callback(stream, user_ptr, internal_input_buffer.data(),
+                          output_buffer, output_frames);
 
   if (input_buffer) {
     internal_input_buffer.pop(nullptr, frames_to_samples(output_frames));
-    printf("remaining frames in noop: %lu\n", samples_to_frames(internal_input_buffer.length()));
   }
 
   return rv;

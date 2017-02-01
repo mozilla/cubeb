@@ -552,17 +552,17 @@ void check_output(const void * input_buffer, void * output_buffer, long frame_co
   ASSERT_TRUE(!!output_buffer);
 }
 
-long cb_noop_resampler_output(cubeb_stream * /*stm*/, void * /*user_ptr*/,
-                              const void * input_buffer,
-                              void * output_buffer, long frame_count)
+long cb_passthrough_resampler_output(cubeb_stream * /*stm*/, void * /*user_ptr*/,
+                                     const void * input_buffer,
+                                     void * output_buffer, long frame_count)
 {
   check_output(input_buffer, output_buffer, frame_count);
   return frame_count;
 }
 
-TEST(cubeb, resampler_noop_output_only)
+TEST(cubeb, resampler_passthrough_output_only)
 {
-  // Test that the noop resampler works when there is only an output stream.
+  // Test that the passthrough resampler works when there is only an output stream.
   cubeb_stream_params output_params;
 
   const size_t output_channels = 2;
@@ -573,7 +573,7 @@ TEST(cubeb, resampler_noop_output_only)
 
   cubeb_resampler * resampler =
     cubeb_resampler_create((cubeb_stream*)nullptr, nullptr, &output_params,
-                           target_rate, cb_noop_resampler_output, nullptr,
+                           target_rate, cb_passthrough_resampler_output, nullptr,
                            CUBEB_RESAMPLER_QUALITY_VOIP);
 
   float output_buffer[output_channels * 256];
@@ -594,17 +594,17 @@ void check_input(const void * input_buffer, void * output_buffer, long frame_cou
   ASSERT_TRUE(!!input_buffer);
 }
 
-long cb_noop_resampler_input(cubeb_stream * /*stm*/, void * /*user_ptr*/,
-                             const void * input_buffer,
-                             void * output_buffer, long frame_count)
+long cb_passthrough_resampler_input(cubeb_stream * /*stm*/, void * /*user_ptr*/,
+                                    const void * input_buffer,
+                                    void * output_buffer, long frame_count)
 {
   check_input(input_buffer, output_buffer, frame_count);
   return frame_count;
 }
 
-TEST(cubeb, resampler_noop_input_only)
+TEST(cubeb, resampler_passthrough_input_only)
 {
-  // Test that the noop resampler works when there is only an output stream.
+  // Test that the passthrough resampler works when there is only an output stream.
   cubeb_stream_params input_params;
 
   const size_t input_channels = 2;
@@ -615,7 +615,7 @@ TEST(cubeb, resampler_noop_input_only)
 
   cubeb_resampler * resampler =
     cubeb_resampler_create((cubeb_stream*)nullptr, &input_params, nullptr,
-                           target_rate, cb_noop_resampler_input, nullptr,
+                           target_rate, cb_passthrough_resampler_input, nullptr,
                            CUBEB_RESAMPLER_QUALITY_VOIP);
 
   float input_buffer[input_channels * 256];
@@ -629,10 +629,12 @@ TEST(cubeb, resampler_noop_input_only)
 }
 
 template<typename T>
-long seq(T* array, long start, long count)
+long seq(T* array, int stride, long start, long count)
 {
   for(int i = 0; i < count; i++) {
-    array[i] = static_cast<T>(start + i);
+    for (int j = 0; j < stride; j++) {
+      array[i + j] = static_cast<T>(start + i);
+    }
   }
   return start + count;
 }
@@ -640,10 +642,12 @@ long seq(T* array, long start, long count)
 template<typename T>
 void is_seq(T * array, int stride, long count, long expected_start)
 {
-  for (long i = 0; i < count * stride; i+=stride) {
-    for (int j = stride; j < stride; j++) {
-      ASSERT_EQ(array[i + j], expected_start + count);
+  uint32_t output_index = 0;
+  for (long i = 0; i < count; i++) {
+    for (int j = 0; j < stride; j++) {
+      ASSERT_EQ(array[output_index + j], expected_start + i);
     }
+    output_index += stride;
   }
 }
 
@@ -657,22 +661,24 @@ void check_duplex(const T * input_buffer,
   ASSERT_TRUE(!!output_buffer);
   ASSERT_TRUE(!!input_buffer);
 
+  int output_index = 0;
   for (int i = 0; i < frame_count; i++) {
     // output is two channels, input is one channel, we upmix.
-    output_buffer[i] = output_buffer[i+1] = input_buffer[i];
+    output_buffer[output_index] = output_buffer[output_index+1] = input_buffer[i];
+    output_index += 2;
   }
 }
 
-long cb_noop_resampler_duplex(cubeb_stream * /*stm*/, void * /*user_ptr*/,
-                              const void * input_buffer,
-                              void * output_buffer, long frame_count)
+long cb_passthrough_resampler_duplex(cubeb_stream * /*stm*/, void * /*user_ptr*/,
+                                     const void * input_buffer,
+                                     void * output_buffer, long frame_count)
 {
   check_duplex<float>(static_cast<const float*>(input_buffer), static_cast<float*>(output_buffer), frame_count);
   return frame_count;
 }
 
 
-TEST(cubeb, resampler_noop_duplex_callback_reordering)
+TEST(cubeb, resampler_passthrough_duplex_callback_reordering)
 {
   // Test that when pre-buffering on resampler creation, we can survive an input
   // callback being delayed.
@@ -681,7 +687,7 @@ TEST(cubeb, resampler_noop_duplex_callback_reordering)
   cubeb_stream_params output_params;
 
   const int input_channels = 1;
-  const int output_channels = 1;
+  const int output_channels = 2;
 
   input_params.channels = input_channels;
   input_params.rate = 44100;
@@ -695,24 +701,26 @@ TEST(cubeb, resampler_noop_duplex_callback_reordering)
 
   cubeb_resampler * resampler =
     cubeb_resampler_create((cubeb_stream*)nullptr, &input_params, &output_params,
-                           target_rate, cb_noop_resampler_duplex, nullptr,
+                           target_rate, cb_passthrough_resampler_duplex, nullptr,
                            CUBEB_RESAMPLER_QUALITY_VOIP);
 
   const long BUF_BASE_SIZE = 256;
   float input_buffer_prebuffer[input_channels * BUF_BASE_SIZE * 2];
+  float input_buffer_glitch[input_channels * BUF_BASE_SIZE * 2];
   float input_buffer_normal[input_channels * BUF_BASE_SIZE];
   float output_buffer[output_channels * BUF_BASE_SIZE];
 
-  long got;
   long seq_idx = 0;
   long output_seq_idx = 0;
 
   long prebuffer_frames = ARRAY_LENGTH(input_buffer_prebuffer) / input_params.channels;
-  seq_idx = seq(input_buffer_prebuffer, seq_idx,
+  seq_idx = seq(input_buffer_prebuffer, input_channels, seq_idx,
                 prebuffer_frames);
 
-  got = cubeb_resampler_fill(resampler, input_buffer_prebuffer, &prebuffer_frames,
-                             output_buffer, BUF_BASE_SIZE);
+  long got = cubeb_resampler_fill(resampler, input_buffer_prebuffer, &prebuffer_frames,
+                                  output_buffer, BUF_BASE_SIZE);
+
+  output_seq_idx += BUF_BASE_SIZE;
 
   ASSERT_EQ(prebuffer_frames, static_cast<long>(ARRAY_LENGTH(input_buffer_prebuffer) / input_params.channels));
   ASSERT_EQ(got, BUF_BASE_SIZE);
@@ -724,15 +732,19 @@ TEST(cubeb, resampler_noop_duplex_callback_reordering)
       long zero = 0;
       got = cubeb_resampler_fill(resampler, input_buffer_normal /* unused here */,
                                  &zero, output_buffer, BUF_BASE_SIZE);
+      is_seq(output_buffer, 2, BUF_BASE_SIZE, output_seq_idx);
+      output_seq_idx += BUF_BASE_SIZE;
     } else if (i != 0 && (i % 100) == 1) {
       // if this is the case, the on the next iteration, we'll have twice the
       // amount of input frames
-      seq_idx = seq(input_buffer_prebuffer, seq_idx, BUF_BASE_SIZE * 2);
+      seq_idx = seq(input_buffer_glitch, input_channels, seq_idx, BUF_BASE_SIZE * 2);
       frames = 2 * BUF_BASE_SIZE;
-      got = cubeb_resampler_fill(resampler, input_buffer_prebuffer, &frames, output_buffer, BUF_BASE_SIZE);
+      got = cubeb_resampler_fill(resampler, input_buffer_glitch, &frames, output_buffer, BUF_BASE_SIZE);
+      is_seq(output_buffer, 2, BUF_BASE_SIZE, output_seq_idx);
+      output_seq_idx += BUF_BASE_SIZE;
     } else {
        // normal case
-      seq_idx = seq(input_buffer_normal, seq_idx, BUF_BASE_SIZE);
+      seq_idx = seq(input_buffer_normal, input_channels, seq_idx, BUF_BASE_SIZE);
       long normal_input_frame_count = 256;
       got = cubeb_resampler_fill(resampler, input_buffer_normal, &normal_input_frame_count, output_buffer, BUF_BASE_SIZE);
       is_seq(output_buffer, 2, BUF_BASE_SIZE, output_seq_idx);
