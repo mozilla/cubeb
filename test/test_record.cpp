@@ -67,6 +67,9 @@ void state_cb_record(cubeb_stream * stream, void * /*user*/, cubeb_state state)
 
 TEST(cubeb, record)
 {
+  if (cubeb_set_log_callback(CUBEB_LOG_DISABLED, nullptr /*print_log*/) != CUBEB_OK) {
+    printf("Set log callback failed\n");
+  }
   cubeb *ctx;
   cubeb_stream *stream;
   cubeb_stream_params params;
