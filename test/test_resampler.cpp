@@ -658,8 +658,9 @@ void check_duplex(const T * input_buffer,
                   T * output_buffer, long frame_count)
 {
   ASSERT_EQ(frame_count, 256);
-  ASSERT_TRUE(!!output_buffer);
-  ASSERT_TRUE(!!input_buffer);
+  // Silence scan-build warning.
+  ASSERT_TRUE(!!output_buffer); assert(output_buffer);
+  ASSERT_TRUE(!!input_buffer); assert(input_buffer);
 
   int output_index = 0;
   for (int i = 0; i < frame_count; i++) {
