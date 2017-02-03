@@ -1240,7 +1240,7 @@ pulse_get_state_from_sink_port(pa_sink_port_info * info)
       return CUBEB_DEVICE_STATE_ENABLED;
   }
 
-  return CUBEB_DEVICE_STATE_DISABLED;
+  return CUBEB_DEVICE_STATE_ENABLED;
 }
 
 static void
@@ -1300,7 +1300,7 @@ pulse_get_state_from_source_port(pa_source_port_info * info)
       return CUBEB_DEVICE_STATE_ENABLED;
   }
 
-  return CUBEB_DEVICE_STATE_DISABLED;
+  return CUBEB_DEVICE_STATE_ENABLED;
 }
 
 static void
