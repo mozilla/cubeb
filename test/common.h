@@ -16,6 +16,8 @@
 #include <unistd.h>
 #endif
 
+#include <cstdarg>
+
 template<typename T, size_t N>
 constexpr size_t
 ARRAY_LENGTH(T(&)[N])
@@ -94,6 +96,14 @@ int has_available_input_device(cubeb * ctx)
   }
 
   return 1;
+}
+
+void print_log(const char * msg, ...)
+{
+  va_list args;
+  va_start(args, msg);
+  vprintf(msg, args);
+  va_end(args);
 }
 
 #endif /* TEST_COMMON */
