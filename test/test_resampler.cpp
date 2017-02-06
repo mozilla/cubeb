@@ -8,17 +8,11 @@
 #define NOMINMAX
 #endif // NOMINMAX
 #include "gtest/gtest.h"
+#include "common.h"
 #include "cubeb_resampler_internal.h"
 #include <stdio.h>
 #include <algorithm>
 #include <iostream>
-
-template<typename T, size_t N>
-constexpr size_t
-ARRAY_LENGTH(T(&)[N])
-{
-  return N;
-}
 
 /* Windows cmath USE_MATH_DEFINE thing... */
 const float PI = 3.14159265359f;

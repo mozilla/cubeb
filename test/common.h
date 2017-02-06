@@ -17,6 +17,7 @@
 #endif
 
 #include <cstdarg>
+#include "cubeb/cubeb.h"
 
 template<typename T, size_t N>
 constexpr size_t
