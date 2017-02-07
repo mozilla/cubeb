@@ -933,6 +933,9 @@ alsa_stream_init_single(cubeb * ctx, cubeb_stream ** stream, char const * stream
   r = pthread_mutex_init(&stm->mutex, NULL);
   assert(r == 0);
 
+  r = pthread_cond_init(&stm->cond, NULL);
+  assert(r == 0);
+
   r = alsa_locked_pcm_open(&stm->pcm, pcm_name, stm->stream_type, ctx->local_config);
   if (r < 0) {
     alsa_stream_destroy(stm);
@@ -975,9 +978,6 @@ alsa_stream_init_single(cubeb * ctx, cubeb_stream ** stream, char const * stream
   assert(stm->saved_fds);
   r = snd_pcm_poll_descriptors(stm->pcm, stm->saved_fds, stm->nfds);
   assert((nfds_t) r == stm->nfds);
-
-  r = pthread_cond_init(&stm->cond, NULL);
-  assert(r == 0);
 
   if (alsa_register_stream(ctx, stm) != 0) {
     alsa_stream_destroy(stm);
