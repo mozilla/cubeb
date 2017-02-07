@@ -238,8 +238,8 @@ public:
 
     /* This shifts back any unresampled samples to the beginning of the input
        buffer. */
+    resampling_in_buffer.pop(nullptr, frames_to_samples(in_len));
     *input_frames_used = in_len;
-    resampling_in_buffer.clear();
 
     return resampling_out_buffer.data();
   }

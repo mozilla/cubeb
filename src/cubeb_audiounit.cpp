@@ -231,6 +231,10 @@ struct cubeb_stream {
   /* Hold the input samples in every
    * input callback iteration */
   std::unique_ptr<auto_array_wrapper> input_linear_buffer;
+  // After the resampling some input data remains stored inside
+  // the resampler. This number is used in order to calculate
+  // the number of extra silence frames in input.
+  uint32_t available_input_frames = 0;
   /* Frames on input buffer */
   std::atomic<uint32_t> input_buffer_frames{ 0 };
   /* Frame counters */
@@ -462,7 +466,7 @@ audiounit_input_callback(void * user_ptr,
 }
 
 static uint32_t
-min_input_frames_required(cubeb_stream * stm)
+minimum_resampling_input_frames(cubeb_stream *stm)
 {
   return ceilf(stm->input_hw_rate / stm->output_hw_rate * stm->input_buffer_frames);
 }
@@ -476,7 +480,7 @@ is_extra_input_needed(cubeb_stream * stm)
     * switching, we add some silence as well to compensate for the fact that
     * we're lacking some input data. */
   return stm->frames_read == 0 ||
-         stm->input_linear_buffer->length() / stm->input_desc.mChannelsPerFrame < min_input_frames_required(stm);
+         stm->available_input_frames < minimum_resampling_input_frames(stm);
 }
 
 static OSStatus
@@ -527,7 +531,7 @@ audiounit_output_callback(void * user_ptr,
   /* If Full duplex get also input buffer */
   if (stm->input_unit != NULL) {
     if (is_extra_input_needed(stm)) {
-      uint32_t min_input_frames = min_input_frames_required(stm);
+      uint32_t min_input_frames = minimum_resampling_input_frames(stm);
       stm->input_linear_buffer->push_silence(min_input_frames * stm->input_desc.mChannelsPerFrame);
       ALOG("(%p) %s pushed %u frames of input silence.", stm, stm->frames_read == 0 ? "Input hasn't started," :
            stm->switching_device ? "Device switching," : "Drop out,", min_input_frames);
@@ -546,7 +550,8 @@ audiounit_output_callback(void * user_ptr,
                                         output_frames);
 
   if (input_buffer) {
-    stm->input_linear_buffer->pop(input_frames * stm->input_desc.mChannelsPerFrame);
+    stm->available_input_frames += stm->input_linear_buffer->length() / stm->input_desc.mChannelsPerFrame - input_frames;
+    stm->input_linear_buffer->clear();
   }
 
   if (outframes < 0) {
