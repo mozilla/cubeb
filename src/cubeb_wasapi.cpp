@@ -4,11 +4,7 @@
  * This program is made available under an ISC-style license.  See the
  * accompanying file LICENSE for details.
  */
-// Explicitly define NTDDI_VERSION rather than letting the value be derived
-// from _WIN32_WINNT because we depend on values defined for XP SP2 and WS03
-// SP1.
-#define _WIN32_WINNT 0x0502
-#define NTDDI_VERSION 0x05020100
+#define _WIN32_WINNT 0x0600
 #define NOMINMAX
 
 #include <initguid.h>
