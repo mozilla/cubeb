@@ -5,6 +5,9 @@ cmake_minimum_required(VERSION 3.1 FATAL_ERROR)
 project(cubeb
   VERSION 0.0.0)
 
+set(CMAKE_MACOSX_RPATH 1)
+option(BUILD_SHARED_LIBS "Build static libraries" OFF)
+
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING
       "Choose the type of build, options are: Debug Release RelWithDebInfo MinSizeRel." FORCE)
@@ -201,7 +204,7 @@ target_include_directories(test_ring_array PRIVATE src)
 target_link_libraries(test_ring_array PRIVATE cubeb gtest_main)
 add_test(ring_array test_ring_array)
 
-add_executable(test_mixer test/test_mixer.cpp)
+add_executable(test_mixer test/test_mixer.cpp src/cubeb_mixer.cpp)
 target_include_directories(test_mixer PRIVATE ${gtest_SOURCE_DIR}/include)
 target_include_directories(test_mixer PRIVATE src)
 target_link_libraries(test_mixer PRIVATE cubeb gtest_main)
