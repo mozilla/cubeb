@@ -6,6 +6,7 @@ project(cubeb
   VERSION 0.0.0)
 
 set(CMAKE_MACOSX_RPATH 1)
+option(BUILD_SHARED_LIBS "Build static libraries" OFF)
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING
