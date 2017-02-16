@@ -434,6 +434,64 @@ is_extra_input_needed(cubeb_stream * stm)
          stm->available_input_frames.load() < minimum_resampling_input_frames(stm);
 }
 
+template <typename T>
+void
+audiounit_copy_through_mixed_buffer_to_output(T* output_buffer,
+                                              long output_frames,
+                                              T* mixed_buffer,
+                                              UInt32 output_channels,
+                                              UInt32 mixed_channels)
+{
+  for (long i = 0, o = 0 ; i < output_frames ; ++i, o += output_channels) {
+    for (UInt32 c = 0 ; c < mixed_channels ; ++c) {
+      output_buffer[o + c] = mixed_buffer[i * mixed_channels + c];
+    }
+  }
+}
+
+void
+audiounit_mix_output_buffer(cubeb_stream * stm,
+                            void * output_buffer,
+                            long output_frames)
+{
+  // The audio rendering mechanism on OS X will drop the extra channels beyond
+  // the channels that audio device can provide, so we need to downmix the
+  // audio data by ourselves to keep all the information.
+
+  cubeb_channel_layout usedLayout = audiounit_get_channel_layout(false);
+  cubeb_stream_params mixed_params = {
+    stm->output_stream_params.format,
+    stm->output_stream_params.rate,
+    CUBEB_CHANNEL_LAYOUT_MAPS[usedLayout].channels,
+    usedLayout
+  };
+
+  // We only handle downmixing for now.
+  if (cubeb_should_downmix(&stm->output_stream_params, &mixed_params)) {
+    if (stm->output_desc.mFormatFlags & kAudioFormatFlagIsFloat) {
+      std::vector<float> mixed_buffer(mixed_params.channels * output_frames);
+      float* out = (float *)output_buffer;
+      cubeb_downmix_float(out, output_frames, mixed_buffer.data(),
+                          stm->output_stream_params.channels, mixed_params.channels,
+                          stm->output_stream_params.layout, mixed_params.layout);
+      audiounit_copy_through_mixed_buffer_to_output(out, output_frames,
+                                                    mixed_buffer.data(),
+                                                    stm->output_stream_params.channels,
+                                                    mixed_params.channels);
+    } else if (stm->output_desc.mFormatFlags & kAudioFormatFlagIsSignedInteger) {
+      std::vector<short> mixed_buffer(mixed_params.channels * output_frames);
+      short* out = (short *)output_buffer;
+      cubeb_downmix_short(out, output_frames, mixed_buffer.data(),
+                          stm->output_stream_params.channels, mixed_params.channels,
+                          stm->output_stream_params.layout, mixed_params.layout);
+      audiounit_copy_through_mixed_buffer_to_output(out, output_frames,
+                                                    mixed_buffer.data(),
+                                                    stm->output_stream_params.channels,
+                                                    mixed_params.channels);
+    }
+  }
+}
+
 static OSStatus
 audiounit_output_callback(void * user_ptr,
                           AudioUnitRenderActionFlags * /* flags */,
@@ -546,6 +604,10 @@ audiounit_output_callback(void * user_ptr,
       cubeb_pan_stereo_buffer_int((short*)output_buffer, outframes, panning);
     }
   }
+
+  /* Mixing */
+  audiounit_mix_output_buffer(stm, output_buffer, output_frames);
+
   return noErr;
 }
 
