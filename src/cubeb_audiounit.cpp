@@ -195,6 +195,45 @@ private:
   auto_array<T> ar;
 };
 
+struct mixing_wrapper {
+  virtual void downmix(void * output_buffer, long output_frames, cubeb_channel_layout output_layout, cubeb_channel_layout mixing_layout) = 0;
+  virtual ~mixing_wrapper() {};
+};
+template <typename T>
+struct mixing_impl : public mixing_wrapper {
+
+  using downmix_func_ptr = void (*)(T * const, long, T *, unsigned int, unsigned int, cubeb_channel_layout, cubeb_channel_layout);
+  using remap_func_ptr = bool (*)(T const * const, unsigned long, T *, cubeb_channel_layout, cubeb_channel_layout);
+  mixing_impl(downmix_func_ptr dfptr, remap_func_ptr rfptr) {
+    downmix_wrapper = dfptr;
+    remap_wrapper = rfptr;
+    // If we allocate the mixed buffer here, what is its size ?
+  }
+
+  ~mixing_impl() {}
+
+  void downmix(void * output_buffer, long output_frames, cubeb_channel_layout output_layout, cubeb_channel_layout mixing_layout) override {
+    uint32_t output_channels = CUBEB_CHANNEL_LAYOUT_MAPS[output_layout].channels;
+    uint32_t using_channels = CUBEB_CHANNEL_LAYOUT_MAPS[mixing_layout].channels;
+    buffer = std::vector<T>(using_channels * output_frames);
+    T* out = static_cast<T *>(output_buffer);
+    (*downmix_wrapper)(out, output_frames, buffer.data(), output_channels, using_channels, output_layout, mixing_layout);
+
+    // The mixed buffer returned from downmixing is shrunk by its channel counts.
+    // Although the extra channels beyonds the channels that the audio device
+    // can provide will be dropped, we still need to feed the unused channel
+    // buffer to the backend for processing. Thus, we need to assign the
+    // mixed buffer's data to the original output buffer.
+    (*remap_wrapper)(buffer.data(), output_frames, out, mixing_layout, output_layout);
+  }
+
+  /* Mixed buffer */
+  std::vector<T> buffer;
+  /* Function pointer for downmixing and remapping */
+  void (*downmix_wrapper)(T * const, long, T *, unsigned int, unsigned int, cubeb_channel_layout, cubeb_channel_layout);
+  bool (*remap_wrapper)(T const * const, unsigned long, T *, cubeb_channel_layout, cubeb_channel_layout);
+};
+
 enum io_side {
   INPUT,
   OUTPUT,
@@ -257,6 +296,8 @@ struct cubeb_stream {
   /* This is true if a device change callback is currently running.  */
   std::atomic<bool> switching_device{ false };
   std::atomic<bool> buffer_size_change_state{ false };
+  /* Mixing interface */
+  std::unique_ptr<mixing_wrapper> mixing;
 };
 
 bool has_input(cubeb_stream * stm)
@@ -483,21 +524,6 @@ is_extra_input_needed(cubeb_stream * stm)
          stm->available_input_frames < minimum_resampling_input_frames(stm);
 }
 
-template <typename T>
-void
-audiounit_copy_through_mixed_buffer_to_output(T* output_buffer,
-                                              long output_frames,
-                                              T* mixed_buffer,
-                                              UInt32 output_channels,
-                                              UInt32 mixed_channels)
-{
-  for (long i = 0, o = 0 ; i < output_frames ; ++i, o += output_channels) {
-    for (UInt32 c = 0 ; c < mixed_channels ; ++c) {
-      output_buffer[o + c] = mixed_buffer[i * mixed_channels + c];
-    }
-  }
-}
-
 void
 audiounit_mix_output_buffer(cubeb_stream * stm,
                             void * output_buffer,
@@ -517,27 +543,7 @@ audiounit_mix_output_buffer(cubeb_stream * stm,
 
   // We only handle downmixing for now.
   if (cubeb_should_downmix(&stm->output_stream_params, &mixed_params)) {
-    if (stm->output_desc.mFormatFlags & kAudioFormatFlagIsFloat) {
-      std::vector<float> mixed_buffer(mixed_params.channels * output_frames);
-      float* out = (float *)output_buffer;
-      cubeb_downmix_float(out, output_frames, mixed_buffer.data(),
-                          stm->output_stream_params.channels, mixed_params.channels,
-                          stm->output_stream_params.layout, mixed_params.layout);
-      audiounit_copy_through_mixed_buffer_to_output(out, output_frames,
-                                                    mixed_buffer.data(),
-                                                    stm->output_stream_params.channels,
-                                                    mixed_params.channels);
-    } else if (stm->output_desc.mFormatFlags & kAudioFormatFlagIsSignedInteger) {
-      std::vector<short> mixed_buffer(mixed_params.channels * output_frames);
-      short* out = (short *)output_buffer;
-      cubeb_downmix_short(out, output_frames, mixed_buffer.data(),
-                          stm->output_stream_params.channels, mixed_params.channels,
-                          stm->output_stream_params.layout, mixed_params.layout);
-      audiounit_copy_through_mixed_buffer_to_output(out, output_frames,
-                                                    mixed_buffer.data(),
-                                                    stm->output_stream_params.channels,
-                                                    mixed_params.channels);
-    }
+    stm->mixing->downmix(output_buffer, output_frames, stm->output_stream_params.layout, mixed_params.layout);
   }
 }
 
@@ -1225,6 +1231,16 @@ audio_stream_desc_init(AudioStreamBasicDescription * ss,
   return CUBEB_OK;
 }
 
+void
+audiounit_init_mixed_buffer(cubeb_stream * stm)
+{
+  if (stm->output_desc.mFormatFlags & kAudioFormatFlagIsFloat) {
+    stm->mixing.reset(new mixing_impl<float>(&cubeb_downmix_float, &mix_remap_float));
+  } else if (stm->output_desc.mFormatFlags & kAudioFormatFlagIsSignedInteger) {
+    stm->mixing.reset(new mixing_impl<short>(&cubeb_downmix_short, &mix_remap_short));
+  }
+}
+
 static int
 audiounit_layout_init(AudioUnit * unit,
                       io_side side,
@@ -1802,6 +1818,7 @@ audiounit_configure_output(cubeb_stream * stm)
   }
 
   audiounit_layout_init(&stm->output_unit, OUTPUT, &stm->output_stream_params);
+  audiounit_init_mixed_buffer(stm);
 
   LOG("(%p) Output audiounit init successfully.", stm);
   return CUBEB_OK;
