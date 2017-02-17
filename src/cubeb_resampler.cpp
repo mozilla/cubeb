@@ -72,6 +72,7 @@ long passthrough_resampler<T>::fill(void * input_buffer, long * input_frames_cou
 
   if (input_buffer) {
     internal_input_buffer.pop(nullptr, frames_to_samples(output_frames));
+    *input_frames_count = output_frames;
   }
 
   return rv;
