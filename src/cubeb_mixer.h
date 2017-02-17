@@ -74,6 +74,12 @@ void cubeb_downmix_short(short * const in, long inframes, short * out,
                          unsigned int in_channels, unsigned int out_channels,
                          cubeb_channel_layout in_layout, cubeb_channel_layout out_layout);
 
+bool mix_remap_float(float const * const in, unsigned long inframes, float * out,
+                     cubeb_channel_layout in_layout, cubeb_channel_layout out_layout);
+
+bool mix_remap_short(short const * const in, unsigned long inframes, short * out,
+                     cubeb_channel_layout in_layout, cubeb_channel_layout out_layout);
+
 #if defined(__cplusplus)
 }
 #endif

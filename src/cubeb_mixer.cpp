@@ -401,3 +401,15 @@ cubeb_downmix_short(short * const in, long inframes, short * out,
 {
   cubeb_downmix(in, inframes, out, in_channels, out_channels, in_layout, out_layout);
 }
+
+bool
+mix_remap_float(float const * const in, unsigned long inframes, float * out, cubeb_channel_layout in_layout, cubeb_channel_layout out_layout)
+{
+  return mix_remap(in, inframes, out, in_layout, out_layout);
+}
+
+bool
+mix_remap_short(short const * const in, unsigned long inframes, short * out, cubeb_channel_layout in_layout, cubeb_channel_layout out_layout)
+{
+  return mix_remap(in, inframes, out, in_layout, out_layout);
+}
