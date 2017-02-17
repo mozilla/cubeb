@@ -81,7 +81,7 @@ cubeb_layout_map const CUBEB_CHANNEL_LAYOUT_MAPS[CUBEB_LAYOUT_MAX] = {
 };
 
 static int const CHANNEL_ORDER_TO_INDEX[CUBEB_LAYOUT_MAX][CHANNEL_MAX] = {
- // M | L | R | C | LS | RS | RLS | RC | RRS | LFE
+//  M | L | R | C | LS | RS | RLS | RC | RRS | LFE
   { -1, -1, -1, -1,  -1,  -1,   -1,  -1,   -1,  -1 }, // UNDEFINED
   { -1,  0,  1, -1,  -1,  -1,   -1,  -1,   -1,  -1 }, // DUAL_MONO
   { -1,  0,  1, -1,  -1,  -1,   -1,  -1,   -1,   2 }, // DUAL_MONO_LFE
@@ -256,8 +256,7 @@ mix_remap(T const * const in, unsigned long inframes, T * out, cubeb_channel_lay
     return false;
   }
 
-  long out_index = 0;
-  for (unsigned long i = 0; i < inframes * in_channels; i += in_channels) {
+  for (unsigned long i = 0, out_index = 0; i < inframes * in_channels; i += in_channels, out_index += out_channels) {
     for (unsigned int j = 0; j < out_channels; ++j) {
       cubeb_channel channel = CHANNEL_INDEX_TO_ORDER[out_layout][j];
       uint32_t channel_mask = 1 << channel;
@@ -270,7 +269,6 @@ mix_remap(T const * const in, unsigned long inframes, T * out, cubeb_channel_lay
         out[out_index + j] = 0;
       }
     }
-    out_index += out_channels;
   }
 
   return true;
