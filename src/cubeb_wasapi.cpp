@@ -1893,10 +1893,10 @@ int stream_start_one_side(cubeb_stream * stm, StreamDirection dir)
 
 int wasapi_stream_start(cubeb_stream * stm)
 {
+  auto_lock lock(stm->stream_reset_lock);
+
   XASSERT(stm && !stm->thread && !stm->shutdown_event);
   XASSERT(stm->output_client || stm->input_client);
-
-  auto_lock lock(stm->stream_reset_lock);
 
   stm->emergency_bailout = new std::atomic<bool>(false);
 
