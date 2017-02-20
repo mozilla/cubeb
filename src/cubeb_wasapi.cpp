@@ -1166,12 +1166,16 @@ bool stop_and_join_render_thread(cubeb_stream * stm)
     /* Something weird happened, leak the thread and continue the shutdown
      * process. */
     *(stm->emergency_bailout) = true;
+    // We give the ownership to the rendering thread.
+    stm->emergency_bailout = nullptr;
     LOG("Destroy WaitForSingleObject on thread timed out,"
         " leaking the thread: %lx", GetLastError());
     rv = false;
   }
   if (r == WAIT_FAILED) {
     *(stm->emergency_bailout) = true;
+    // We give the ownership to the rendering thread.
+    stm->emergency_bailout = nullptr;
     LOG("Destroy WaitForSingleObject on thread failed: %lx", GetLastError());
     rv = false;
   }
@@ -1828,9 +1832,6 @@ void wasapi_stream_destroy(cubeb_stream * stm)
   if (stop_and_join_render_thread(stm)) {
     delete stm->emergency_bailout.load();
     stm->emergency_bailout = nullptr;
-  } else {
-    // If we're leaking, it must be that this is true.
-    XASSERT(*(stm->emergency_bailout));
   }
 
   unregister_notification_client(stm);
@@ -1958,6 +1959,7 @@ int wasapi_stream_stop(cubeb_stream * stm)
   }
 
   if (stop_and_join_render_thread(stm)) {
+    // This is null if we've given the pointer to the other thread
     if (stm->emergency_bailout.load()) {
       delete stm->emergency_bailout.load();
       stm->emergency_bailout = nullptr;
