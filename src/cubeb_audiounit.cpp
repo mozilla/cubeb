@@ -72,7 +72,8 @@ static int audiounit_setup_stream(cubeb_stream *stm);
 static int audiounit_create_unit(AudioUnit * unit, bool is_input,
                                  const cubeb_stream_params * /* stream_params */,
                                  AudioDeviceID device);
-static cubeb_channel_layout audiounit_get_channel_layout(bool preferred);
+static cubeb_channel_layout audiounit_get_channel_layout();
+static cubeb_channel_layout audiounit_get_preferred_channel_layout();
 
 extern cubeb_ops const audiounit_ops;
 
@@ -1072,16 +1073,22 @@ audiounit_get_preferred_sample_rate(cubeb * /* ctx */, uint32_t * rate)
 }
 
 static int
-audiounit_get_preferred_channel_layout(cubeb * /* ctx */, cubeb_channel_layout * layout)
+audiounit_get_preferred_channel_layout(cubeb * ctx, cubeb_channel_layout * layout)
 {
   // The preferred layout is only returned when the connected sound device
   // (e.g. ASUS Xonar U7), has preferred layout setting.
   // For default output on Mac, there is no preferred channel layout,
   // so it might return UNDEFINED.
-  // In that case, we should get the channel configuration directly.
-  *layout = audiounit_get_channel_layout(true);
+  *layout = audiounit_get_preferred_channel_layout();
+
   if (*layout == CUBEB_LAYOUT_UNDEFINED) {
-    *layout = audiounit_get_channel_layout(false);
+    if (ctx->active_streams) {
+      return CUBEB_ERROR;
+    }
+    // We will create a new AU inside audiounit_get_channel_layout,
+    // which shares the same mutex with data callback,
+    // so we need to prevent creating another AU when we already have one.
+    *layout = audiounit_get_channel_layout();
   }
 
   if (*layout == CUBEB_LAYOUT_UNDEFINED) {
@@ -2723,7 +2730,54 @@ int audiounit_register_device_collection_changed(cubeb * context,
 }
 
 static cubeb_channel_layout
-audiounit_get_channel_layout(bool preferred)
+audiounit_convert_channel_layout(AudioChannelLayout * layout)
+{
+  if (layout->mChannelLayoutTag != kAudioChannelLayoutTag_UseChannelDescriptions) {
+    // kAudioChannelLayoutTag_UseChannelBitmap
+    // kAudioChannelLayoutTag_Mono
+    // kAudioChannelLayoutTag_Stereo
+    // ....
+    LOG("Only handle UseChannelDescriptions for now.\n");
+    return CUBEB_LAYOUT_UNDEFINED;
+  }
+
+  cubeb_channel_map cm;
+  cm.channels = layout->mNumberChannelDescriptions;
+  for (UInt32 i = 0; i < layout->mNumberChannelDescriptions; ++i) {
+    cm.map[i] = channel_label_to_cubeb_channel(layout->mChannelDescriptions[i].mChannelLabel);
+  }
+
+  return cubeb_channel_map_to_layout(&cm);
+}
+
+static cubeb_channel_layout
+audiounit_get_preferred_channel_layout()
+{
+  UInt32 size = 0;
+  AudioDeviceID id;
+
+  if (audiounit_get_output_device_id(&id) != CUBEB_OK) {
+    return CUBEB_LAYOUT_UNDEFINED;
+  }
+
+  AudioObjectPropertyAddress adr = { kAudioDevicePropertyPreferredChannelLayout,
+                                     kAudioObjectPropertyScopeOutput,
+                                     kAudioObjectPropertyElementMaster };
+  if (AudioObjectGetPropertyDataSize(id, &adr, 0, NULL, &size) != noErr) {
+    return CUBEB_LAYOUT_UNDEFINED;
+  }
+  assert(size > 0);
+
+  auto_channel_layout layout(size);
+  if (AudioObjectGetPropertyData(id, &adr, 0, NULL, &size, layout.get()) != noErr) {
+    return CUBEB_LAYOUT_UNDEFINED;
+  }
+
+  return audiounit_convert_channel_layout(layout.get());
+}
+
+static cubeb_channel_layout
+audiounit_get_channel_layout()
 {
   OSStatus rv = noErr;
 
@@ -2734,55 +2788,30 @@ audiounit_get_channel_layout(bool preferred)
   // Get the channel layout
   UInt32 size = 0;
   rv = AudioUnitGetPropertyInfo(output_unit,
-                                preferred ? kAudioDevicePropertyPreferredChannelLayout :
-                                            kAudioUnitProperty_AudioChannelLayout,
+                                kAudioUnitProperty_AudioChannelLayout,
                                 kAudioUnitScope_Output,
                                 AU_OUT_BUS,
                                 &size,
                                 nullptr);
   if (rv != noErr) {
-    if (preferred) {
-      PRINT_ERROR_CODE("AudioUnitGetPropertyInfo/kAudioDevicePropertyPreferredChannelLayout", rv);
-    } else {
-      PRINT_ERROR_CODE("AudioUnitGetPropertyInfo/kAudioUnitProperty_AudioChannelLayout", rv);
-    }
+    PRINT_ERROR_CODE("AudioUnitGetPropertyInfo/kAudioUnitProperty_AudioChannelLayout", rv);
     return CUBEB_LAYOUT_UNDEFINED;
   }
   assert(size > 0);
 
   auto_channel_layout layout(size);
   rv = AudioUnitGetProperty(output_unit,
-                            preferred ? kAudioDevicePropertyPreferredChannelLayout :
-                                        kAudioUnitProperty_AudioChannelLayout,
+                            kAudioUnitProperty_AudioChannelLayout,
                             kAudioUnitScope_Output,
                             AU_OUT_BUS,
                             layout.get(),
                             &size);
   if (rv != noErr) {
-    if (preferred) {
-      PRINT_ERROR_CODE("AudioUnitGetProperty/kAudioDevicePropertyPreferredChannelLayout", rv);
-    } else {
-      PRINT_ERROR_CODE("AudioUnitGetProperty/kAudioUnitProperty_AudioChannelLayout", rv);
-    }
+    PRINT_ERROR_CODE("AudioUnitGetProperty/kAudioUnitProperty_AudioChannelLayout", rv);
     return CUBEB_LAYOUT_UNDEFINED;
   }
 
-  if (layout.get()->mChannelLayoutTag != kAudioChannelLayoutTag_UseChannelDescriptions) {
-    // kAudioChannelLayoutTag_UseChannelBitmap
-    // kAudioChannelLayoutTag_Mono
-    // kAudioChannelLayoutTag_Stereo
-    // ....
-    LOG("Only handle UseChannelDescriptions for now.\n");
-    return CUBEB_LAYOUT_UNDEFINED;
-  }
-
-  cubeb_channel_map cm;
-  cm.channels = layout.get()->mNumberChannelDescriptions;
-  for (UInt32 i = 0; i < layout.get()->mNumberChannelDescriptions; ++i) {
-    cm.map[i] = channel_label_to_cubeb_channel(layout.get()->mChannelDescriptions[i].mChannelLabel);
-  }
-
-  return cubeb_channel_map_to_layout(&cm);
+  return audiounit_convert_channel_layout(layout.get());
 }
 
 cubeb_ops const audiounit_ops = {
