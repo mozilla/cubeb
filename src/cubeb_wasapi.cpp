@@ -1599,8 +1599,15 @@ int setup_wasapi_stream(cubeb_stream * stm)
     // This delays the input side slightly, but allow to not glitch when no input
     // is available when calling into the resampler to call the callback: the input
     // refill event will be set shortly after to compensate for this lack of data.
+    // In debug, four buffers are used, to avoid tripping up assertions down the line.
+#if !defined(NDEBUG)
+    const int silent_buffer_count = 2;
+#else
+    const int silent_buffer_count = 4;
+#endif
     stm->linear_input_buffer.push_silence(stm->input_buffer_frame_count *
-                                          stm->input_stream_params.channels * 2);
+                                          stm->input_stream_params.channels *
+                                          silent_buffer_count);
 
     if (rv != CUBEB_OK) {
       LOG("Failure to open the input side.");
