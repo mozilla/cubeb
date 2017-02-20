@@ -100,6 +100,53 @@ struct auto_array_wrapper {
   virtual ~auto_array_wrapper() {}
 };
 
+template <typename T>
+struct auto_array_wrapper_impl : public auto_array_wrapper {
+  explicit auto_array_wrapper_impl(uint32_t size)
+    : ar(size)
+  {}
+
+  void push(void * elements, size_t length) override {
+    auto_lock l(lock);
+    ar.push(static_cast<T *>(elements), length);
+  }
+
+  size_t length() override {
+    auto_lock l(lock);
+    return ar.length();
+  }
+
+  void push_silence(size_t length) override {
+    auto_lock l(lock);
+    ar.push_silence(length);
+  }
+
+  bool pop(size_t length) override {
+    auto_lock l(lock);
+    return ar.pop(nullptr, length);
+  }
+
+  // XXX: Taking the lock here is pointless.
+  void * data() override {
+    auto_lock l(lock);
+    return ar.data();
+  }
+
+  void clear() override {
+    auto_lock l(lock);
+    ar.clear();
+  }
+
+  ~auto_array_wrapper_impl() {
+    auto_lock l(lock);
+    ar.clear();
+  }
+
+private:
+  owned_critical_section lock;
+  auto_array<T> ar;
+};
+
 class auto_channel_layout
 {
 public:
@@ -146,53 +193,6 @@ private:
   }
 
   AudioChannelLayout * layout;
-};
-
-template <typename T>
-struct auto_array_wrapper_impl : public auto_array_wrapper {
-  explicit auto_array_wrapper_impl(uint32_t size)
-    : ar(size)
-  {}
-
-  void push(void * elements, size_t length) override {
-    auto_lock l(lock);
-    ar.push(static_cast<T *>(elements), length);
-  }
-
-  size_t length() override {
-    auto_lock l(lock);
-    return ar.length();
-  }
-
-  void push_silence(size_t length) override {
-    auto_lock l(lock);
-    ar.push_silence(length);
-  }
-
-  bool pop(size_t length) override {
-    auto_lock l(lock);
-    return ar.pop(nullptr, length);
-  }
-
-  // XXX: Taking the lock here is pointless.
-  void * data() override {
-    auto_lock l(lock);
-    return ar.data();
-  }
-
-  void clear() override {
-    auto_lock l(lock);
-    ar.clear();
-  }
-
-  ~auto_array_wrapper_impl() {
-    auto_lock l(lock);
-    ar.clear();
-  }
-
-private:
-  owned_critical_section lock;
-  auto_array<T> ar;
 };
 
 enum io_side {
