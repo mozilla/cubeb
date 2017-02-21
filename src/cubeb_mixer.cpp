@@ -214,20 +214,26 @@ downmix_3f2(T const * const in, unsigned long inframes, T * out, cubeb_channel_l
   // Conversion from 3F2 to 2F2-LFE or 3F1-LFE is allowed, so we use '<=' instead of '<'.
   assert(out_channels <= in_channels);
 
-  long out_index = 0;
+  // If the output buffer is same as input, then we calculate the mixed audio
+  // data from the related buffers, and put the result back to the buffer at the
+  // corresponding channel position. The unused channel buffers will stay same.
+  bool resizing = (in != out);
+
+  unsigned long out_index = 0;
   auto & downmix_matrix = DOWNMIX_MATRIX_3F2_LFE[out_layout - CUBEB_LAYOUT_MONO]; // The matrix is started from mono.
   for (unsigned long i = 0; i < inframes * in_channels; i += in_channels) {
     for (unsigned int j = 0; j < out_channels; ++j) {
-      out[out_index + j] = 0; // Clear its value.
+      T sample = 0;
       for (unsigned int k = 0 ; k < INPUT_CHANNEL_NUM ; ++k) {
         // 3F2-LFE has 6 channels: L, R, C, LFE, LS, RS, while 3F2 has only 5
         // channels: L, R, C, LS, RS. Thus, we need to append 0 to LFE(index 3)
         // to simulate a 3F2-LFE data when input layout is 3F2.
         T data = (in_layout == CUBEB_LAYOUT_3F2_LFE) ? in[i + k] : (k == 3) ? 0 : in[i + ((k < 3) ? k : k - 1)];
-        out[out_index + j] += downmix_matrix[j][k] * data;
+        sample += downmix_matrix[j][k] * data;
       }
+      out[out_index + j] = sample;
     }
-    out_index += out_channels;
+    out_index += resizing ? out_channels : in_channels;
   }
 
   return true;
@@ -237,7 +243,7 @@ downmix_3f2(T const * const in, unsigned long inframes, T * out, cubeb_channel_l
 template<class T>
 bool
 mix_remap(T const * const in, unsigned long inframes, T * out, cubeb_channel_layout in_layout, cubeb_channel_layout out_layout) {
-  assert(in_layout != out_layout);
+  assert(in != out && in_layout != out_layout);
   unsigned int in_channels = CUBEB_CHANNEL_LAYOUT_MAPS[in_layout].channels;
   unsigned int out_channels = CUBEB_CHANNEL_LAYOUT_MAPS[out_layout].channels;
 
@@ -279,7 +285,7 @@ template<typename T>
 void
 downmix_fallback(T const * const in, unsigned long inframes, T * out, unsigned int in_channels, unsigned int out_channels)
 {
-  assert(in_channels >= out_channels);
+  assert(in != out && in_channels >= out_channels);
   long out_index = 0;
   for (unsigned long i = 0; i < inframes * in_channels; i += in_channels) {
     for (unsigned int j = 0; j < out_channels; ++j) {
@@ -298,17 +304,21 @@ cubeb_downmix(T const * const in, long inframes, T * out,
 {
   assert(in_channels >= out_channels && in_layout != CUBEB_LAYOUT_UNDEFINED);
 
-  // If the channel number is different from the layout's setting or it's not a
-  // valid audio 5.1 downmix, then we use fallback downmix mechanism.
+  // If the channel number is different from the layout's setting,
+  // then we use fallback downmix mechanism.
   if (out_channels == CUBEB_CHANNEL_LAYOUT_MAPS[out_layout].channels &&
       in_channels == CUBEB_CHANNEL_LAYOUT_MAPS[in_layout].channels) {
     if (downmix_3f2(in, inframes, out, in_layout, out_layout)) {
       return;
     }
 
-    if (mix_remap(in, inframes, out, in_layout, out_layout)) {
+    if (in == out || mix_remap(in, inframes, out, in_layout, out_layout)) {
       return;
     }
+  }
+
+  if (in == out) {
+    return;
   }
 
   downmix_fallback(in, inframes, out, in_channels, out_channels);
@@ -400,16 +410,4 @@ cubeb_upmix_float(float * const in, long inframes, float * out,
                   unsigned int in_channels, unsigned int out_channels)
 {
   cubeb_upmix(in, inframes, out, in_channels, out_channels);
-}
-
-bool
-mix_remap_float(float const * const in, unsigned long inframes, float * out, cubeb_channel_layout in_layout, cubeb_channel_layout out_layout)
-{
-  return mix_remap(in, inframes, out, in_layout, out_layout);
-}
-
-bool
-mix_remap_short(short const * const in, unsigned long inframes, short * out, cubeb_channel_layout in_layout, cubeb_channel_layout out_layout)
-{
-  return mix_remap(in, inframes, out, in_layout, out_layout);
 }
