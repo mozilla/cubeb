@@ -57,7 +57,7 @@ TEST(cubeb, overload_callback)
   int r;
   uint32_t latency_frames = 0;
 
-  r = cubeb_init(&ctx, "Cubeb callback overload");
+  r = cubeb_init(&ctx, "Cubeb callback overload", NULL);
   ASSERT_EQ(r, CUBEB_OK);
 
   output_params.format = STREAM_FORMAT;
