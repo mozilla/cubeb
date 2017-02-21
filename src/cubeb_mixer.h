@@ -67,12 +67,12 @@ void cubeb_downmix_float(float * const in, long inframes, float * out,
                          unsigned int in_channels, unsigned int out_channels,
                          cubeb_channel_layout in_layout, cubeb_channel_layout out_layout);
 
-void cubeb_upmix_float(float * const in, long inframes, float * out,
-                       unsigned int in_channels, unsigned int out_channels);
-
 void cubeb_downmix_short(short * const in, long inframes, short * out,
                          unsigned int in_channels, unsigned int out_channels,
                          cubeb_channel_layout in_layout, cubeb_channel_layout out_layout);
+
+void cubeb_upmix_float(float * const in, long inframes, float * out,
+                       unsigned int in_channels, unsigned int out_channels);
 
 bool mix_remap_float(float const * const in, unsigned long inframes, float * out,
                      cubeb_channel_layout in_layout, cubeb_channel_layout out_layout);
