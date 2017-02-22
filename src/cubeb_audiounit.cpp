@@ -72,7 +72,7 @@ static int audiounit_setup_stream(cubeb_stream *stm);
 static int audiounit_create_unit(AudioUnit * unit, bool is_input,
                                  const cubeb_stream_params * /* stream_params */,
                                  AudioDeviceID device);
-static cubeb_channel_layout audiounit_get_channel_layout(AudioUnit & output_unit);
+static cubeb_channel_layout audiounit_get_current_channel_layout(AudioUnit * output_unit);
 static cubeb_channel_layout audiounit_get_preferred_channel_layout();
 
 extern cubeb_ops const audiounit_ops;
@@ -1084,7 +1084,7 @@ audiounit_get_preferred_channel_layout(cubeb * ctx, cubeb_channel_layout * layou
   // If the preferred channel layout is UNDEFINED, then we try access the
   // current applied channel layout.
   if (*layout == CUBEB_LAYOUT_UNDEFINED) {
-    // We will create a new AU below to use audiounit_get_channel_layout,
+    // We will create a new AU below to use audiounit_get_current_channel_layout,
     // which shares the same mutex with data callback,
     // so we need to prevent creating another AU when we already have one.
     if (ctx->active_streams) {
@@ -1094,7 +1094,7 @@ audiounit_get_preferred_channel_layout(cubeb * ctx, cubeb_channel_layout * layou
     // Get the default ouput unit
     AudioUnit output_unit;
     audiounit_create_unit(&output_unit, false, nullptr, 0);
-    *layout = audiounit_get_channel_layout(output_unit);
+    *layout = audiounit_get_current_channel_layout(&output_unit);
   }
 
   if (*layout == CUBEB_LAYOUT_UNDEFINED) {
@@ -2783,12 +2783,12 @@ audiounit_get_preferred_channel_layout()
 }
 
 static cubeb_channel_layout
-audiounit_get_channel_layout(AudioUnit & output_unit)
+audiounit_get_current_channel_layout(AudioUnit * output_unit)
 {
   OSStatus rv = noErr;
 
   UInt32 size = 0;
-  rv = AudioUnitGetPropertyInfo(output_unit,
+  rv = AudioUnitGetPropertyInfo(*output_unit,
                                 kAudioUnitProperty_AudioChannelLayout,
                                 kAudioUnitScope_Output,
                                 AU_OUT_BUS,
@@ -2801,7 +2801,7 @@ audiounit_get_channel_layout(AudioUnit & output_unit)
   assert(size > 0);
 
   auto_channel_layout layout(size);
-  rv = AudioUnitGetProperty(output_unit,
+  rv = AudioUnitGetProperty(*output_unit,
                             kAudioUnitProperty_AudioChannelLayout,
                             kAudioUnitScope_Output,
                             AU_OUT_BUS,
