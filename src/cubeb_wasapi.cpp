@@ -857,6 +857,11 @@ wasapi_stream_render_loop(LPVOID stream)
     LOG("Unable to use mmcss to bump the render thread priority: %lx", GetLastError());
   }
 
+  // This has already been nulled out, simply exit.
+  if (!emergency_bailout) {
+    is_playing = false;
+  }
+
   /* WaitForMultipleObjects timeout can trigger in cases where we don't want to
      treat it as a timeout, such as across a system sleep/wake cycle.  Trigger
      the timeout error handling only when the timeout_limit is reached, which is
