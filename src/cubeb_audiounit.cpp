@@ -64,7 +64,6 @@ void audiounit_stream_start_internal(cubeb_stream * stm);
 static void audiounit_close_stream(cubeb_stream *stm);
 static int audiounit_setup_stream(cubeb_stream *stm);
 
-
 extern cubeb_ops const audiounit_ops;
 
 struct cubeb {
@@ -256,7 +255,6 @@ struct cubeb_stream {
   /* This is true if a device change callback is currently running.  */
   std::atomic<bool> switching_device{ false };
   std::atomic<bool> buffer_size_change_state{ false };
-  // Aggregate devices data members
   AudioDeviceID aggregate_device_id = 0;    // the aggregate device id
   AudioObjectID plugin_id = 0;              // used to create aggregate device
 };
@@ -913,9 +911,7 @@ audiounit_uninstall_device_changed_callback(cubeb_stream * stm)
       return CUBEB_ERROR;
     }
 
-    /* Event to notify when the input is going away. */
-    AudioDeviceID dev = stm->input_device ? stm->input_device :
-                        audiounit_get_default_device_id(CUBEB_DEVICE_TYPE_INPUT);
+    AudioDeviceID dev = audiounit_get_input_device_id(stm);
     r = audiounit_remove_listener(stm, dev, kAudioDevicePropertyDeviceIsAlive,
                                   kAudioObjectPropertyScopeGlobal, &audiounit_property_listener_callback);
     if (r != noErr) {
@@ -1361,25 +1357,34 @@ audiounit_layout_init(cubeb_stream * stm, io_side side)
 static void
 audiounit_get_sub_devices(AudioDeviceID device_id, std::vector<AudioDeviceID> * sub_devices)
 {
+  assert(sub_devices->empty());
+  uint32_t count = 32;
+
   AudioObjectPropertyAddress property_address = { kAudioAggregateDevicePropertyActiveSubDeviceList,
                                                   kAudioObjectPropertyScopeGlobal,
                                                   kAudioObjectPropertyElementMaster };
-  AudioObjectID sub_device_array[32];
-  UInt32 size = sizeof(sub_device_array);
-  OSStatus r = AudioObjectGetPropertyData(device_id,
-                                          &property_address,
-                                          0,
-                                          nullptr,
-                                          &size,
-                                          sub_device_array);
-  if (r != noErr) {
+  UInt32 size = 0;
+  OSStatus rv = AudioObjectGetPropertyDataSize(device_id,
+                                               &property_address,
+                                               0,
+                                               nullptr,
+                                               &size);
+  if (rv == noErr) {
+    count = static_cast<uint32_t>(size / sizeof(AudioObjectID));
+  }
+  sub_devices->resize(count);
+
+  rv = AudioObjectGetPropertyData(device_id,
+                                  &property_address,
+                                  0,
+                                  nullptr,
+                                  &size,
+                                  sub_devices->data());
+  if (rv != noErr) {
+    sub_devices->clear();
     sub_devices->push_back(device_id);
   } else {
-    int num_devices = size / sizeof(AudioObjectID);
-    LOG("Found %d subdevices", num_devices);
-    for (int i = 0; i < num_devices; i++) {
-      sub_devices->push_back(sub_device_array[i]);
-    }
+    LOG("Found %u sub-devices", count);
   }
 }
 
@@ -1558,7 +1563,7 @@ audiounit_activate_clock_drift_compensation(cubeb_stream * stm)
 
   UInt32 qualifier_data_size = sizeof(AudioObjectID);
   AudioClassID class_id = kAudioSubDeviceClassID;
-  void* qualifier_data = &class_id;
+  void * qualifier_data = &class_id;
   UInt32 size = 0;
   OSStatus rv = AudioObjectGetPropertyDataSize(stm->aggregate_device_id,
                                                &address_owned,
@@ -1606,10 +1611,10 @@ audiounit_activate_clock_drift_compensation(cubeb_stream * stm)
   return CUBEB_OK;
 }
 
-static int audiounit_destroy_aggregate_device(cubeb_stream*);
+static int audiounit_destroy_aggregate_device(cubeb_stream * stm);
 
 static int
-audiounit_create_aggregate_device(cubeb_stream *stm)
+audiounit_create_aggregate_device(cubeb_stream * stm)
 {
   int r = audiounit_create_blank_aggregate_device(stm);
   if (r != CUBEB_OK) {
@@ -1762,7 +1767,6 @@ audiounit_create_unit(AudioUnit * unit, io_side side, AudioDeviceID device)
 
   if (!use_default_output) {
     switch (side) {
-
       case INPUT:
       {
         r = audiounit_enable_unit_scope(unit, INPUT, ENABLE);
@@ -1777,7 +1781,6 @@ audiounit_create_unit(AudioUnit * unit, io_side side, AudioDeviceID device)
         }
         break;
       }
-
       case OUTPUT:
       {
         r = audiounit_enable_unit_scope(unit, OUTPUT, ENABLE);
@@ -1792,7 +1795,6 @@ audiounit_create_unit(AudioUnit * unit, io_side side, AudioDeviceID device)
         }
         break;
       }
-
       default:
         assert(false);
     }
@@ -1804,8 +1806,10 @@ audiounit_create_unit(AudioUnit * unit, io_side side, AudioDeviceID device)
       devid = device;
     }
 
-    rv = AudioUnitSetProperty(*unit, kAudioOutputUnitProperty_CurrentDevice,
-                              kAudioUnitScope_Global, 0,
+    rv = AudioUnitSetProperty(*unit,
+                              kAudioOutputUnitProperty_CurrentDevice,
+                              kAudioUnitScope_Global,
+                              0,
                               &devid, sizeof(AudioDeviceID));
     if (rv != noErr) {
       LOG("AudioUnitSetProperty/kAudioOutputUnitProperty_CurrentDevice rv=%d", rv);
@@ -2254,7 +2258,7 @@ audiounit_setup_stream(cubeb_stream * stm)
                               INPUT,
                               in_dev);
     if (r != CUBEB_OK) {
-      LOG("(%p) Create AudioUnit for input failed.", stm);
+      LOG("(%p) AudioUnit creation for input failed.", stm);
       return r;
     }
   }
@@ -2264,11 +2268,10 @@ audiounit_setup_stream(cubeb_stream * stm)
                               OUTPUT,
                               out_dev);
     if (r != CUBEB_OK) {
-      LOG("(%p) Create AudioUnit for output failed.", stm);
+      LOG("(%p) AudioUnit creation for output failed.", stm);
       return r;
     }
   }
-
 
   /* Latency cannot change if another stream is operating in parallel. In this case
   * latecy is set to the other stream value. */
