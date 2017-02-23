@@ -1613,6 +1613,24 @@ audiounit_activate_clock_drift_compensation(cubeb_stream * stm)
 
 static int audiounit_destroy_aggregate_device(cubeb_stream * stm);
 
+/*
+ * Aggregate Device is a virtual audio interface which utilizes inputs and outputs
+ * of one or more physical audio interfaces. It is possible to use the clock of
+ * one of the devices as a master clock for all the combined devices and enable
+ * drift compensation for the devices that are not designated clock master.
+ *
+ * Creating a new aggregate device programmatically requires [0][1]:
+ * 1. Locate the base plug-in ("com.apple.audio.CoreAudio")
+ * 2. Create a dictionary that describes the aggregate device
+ *    (don't add sub-devices in that step, prone to fail [0])
+ * 3. Ask the base plug-in to create the aggregate device (blank)
+ * 4. Add the array of sub-devices.
+ * 5. Set the master device (1st output device in our case)
+ * 6. Enable drift compensation for the non-master devices
+ *
+ * [0] https://lists.apple.com/archives/coreaudio-api/2006/Apr/msg00092.html
+ * [1] https://lists.apple.com/archives/coreaudio-api/2005/Jul/msg00150.html
+ * */
 static int
 audiounit_create_aggregate_device(cubeb_stream * stm)
 {
