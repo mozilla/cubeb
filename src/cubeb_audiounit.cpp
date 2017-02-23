@@ -41,8 +41,6 @@ typedef UInt32  AudioFormatFlags;
 #define AU_OUT_BUS    0
 #define AU_IN_BUS     1
 
-#define fieldOffset(type, field) ((size_t) &((type *) 0)->field)
-
 #define PRINT_ERROR_CODE(str, r) do {                           \
     LOG("System call failed: %s (rv: %d)", str, (int) r);       \
   } while(0)
@@ -1298,7 +1296,7 @@ audiounit_set_channel_layout(AudioUnit unit,
   // For those layouts that can't be matched to coreaudio's predefined layout,
   // we use customized layout.
   if (layout.get()->mChannelLayoutTag == kAudioChannelLayoutTag_Unknown) {
-    size_t size = fieldOffset(AudioChannelLayout, mChannelDescriptions[stream_params->channels]);
+    size_t size = offsetof(AudioChannelLayout, mChannelDescriptions[stream_params->channels]);
     layout.reset(size);
     layout.get()->mChannelLayoutTag = kAudioChannelLayoutTag_UseChannelDescriptions;
     layout.get()->mNumberChannelDescriptions = stream_params->channels;
