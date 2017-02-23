@@ -35,7 +35,7 @@
 #include <vector>
 
 #if MAC_OS_X_VERSION_MIN_REQUIRED < 101000
-typedef UInt32  AudioFormatFlags;
+typedef UInt32 AudioFormatFlags;
 #endif
 
 #define AU_OUT_BUS    0
@@ -1516,16 +1516,16 @@ audiounit_clamp_latency(cubeb_stream * stm, uint32_t latency_frames)
 static void
 buffer_size_changed_callback(void * inClientData,
                              AudioUnit inUnit,
-                             AudioUnitPropertyID	inPropertyID,
-                             AudioUnitScope		inScope,
-                             AudioUnitElement	inElement)
+                             AudioUnitPropertyID inPropertyID,
+                             AudioUnitScope inScope,
+                             AudioUnitElement inElement)
 {
   cubeb_stream * stm = (cubeb_stream *)inClientData;
 
   AudioUnit au = inUnit;
   AudioUnitScope au_scope = kAudioUnitScope_Input;
   AudioUnitElement au_element = inElement;
-  const char * au_type = "output";
+  char const * au_type = "output";
 
   if (au == stm->input_unit) {
     au_scope = kAudioUnitScope_Output;
@@ -2625,7 +2625,7 @@ audiounit_create_device_from_hwdev(AudioObjectID devid, cubeb_device_type type)
     ret->latency_lo = latency + range.mMinimum;
     ret->latency_hi = latency + range.mMaximum;
   } else {
-    ret->latency_lo = 10 * ret->default_rate / 1000;  /* Default to  10ms */
+    ret->latency_lo = 10 * ret->default_rate / 1000;  /* Default to 10ms */
     ret->latency_hi = 100 * ret->default_rate / 1000; /* Default to 100ms */
   }
 
