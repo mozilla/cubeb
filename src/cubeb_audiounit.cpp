@@ -1254,7 +1254,10 @@ audiounit_set_channel_layout(AudioUnit unit,
                              io_side side,
                              const cubeb_stream_params * stream_params)
 {
-  assert(side == OUTPUT);
+  if (side != OUTPUT) {
+    return CUBEB_ERROR;
+  }
+
   assert(stream_params->layout != CUBEB_LAYOUT_UNDEFINED);
   assert(stream_params->channels == CUBEB_CHANNEL_LAYOUT_MAPS[stream_params->layout].channels);
 
