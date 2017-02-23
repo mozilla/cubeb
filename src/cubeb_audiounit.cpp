@@ -1137,7 +1137,7 @@ audiounit_get_preferred_channel_layout()
   }
 
   AudioObjectPropertyAddress adr = { kAudioDevicePropertyPreferredChannelLayout,
-                                     kAudioObjectPropertyScopeOutput,
+                                     kAudioDevicePropertyScopeOutput,
                                      kAudioObjectPropertyElementMaster };
   rv = AudioObjectGetPropertyDataSize(id, &adr, 0, NULL, &size);
   if (rv != noErr) {
