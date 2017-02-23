@@ -35,17 +35,11 @@
 #include <vector>
 
 #if MAC_OS_X_VERSION_MIN_REQUIRED < 101000
-typedef UInt32  AudioFormatFlags;
+typedef UInt32 AudioFormatFlags;
 #endif
 
 #define AU_OUT_BUS    0
 #define AU_IN_BUS     1
-
-#define fieldOffset(type, field) ((size_t) &((type *) 0)->field)
-
-#define PRINT_ERROR_CODE(str, r) do {                           \
-    LOG("System call failed: %s (rv: %d)", str, (int) r);       \
-  } while(0)
 
 const char * DISPATCH_QUEUE_LABEL = "org.mozilla.cubeb";
 
@@ -200,6 +194,17 @@ enum io_side {
   INPUT,
   OUTPUT,
 };
+
+static char const *
+to_string(io_side side)
+{
+  switch (side) {
+  case INPUT:
+    return "input";
+  case OUTPUT:
+    return "output";
+  }
+}
 
 struct cubeb_stream {
   explicit cubeb_stream(cubeb * context);
@@ -379,7 +384,7 @@ audiounit_render_input(cubeb_stream * stm,
                                &input_buffer_list);
 
   if (r != noErr) {
-    PRINT_ERROR_CODE("AudioUnitRender", r);
+    LOG("AudioUnitRender rv=%d", r);
     return r;
   }
 
@@ -617,7 +622,7 @@ audiounit_get_output_device_id(AudioDeviceID * device_id)
                                  &size,
                                  device_id);
   if (r != noErr) {
-    PRINT_ERROR_CODE("output_device_id", r);
+    LOG("output_device_id rv=%d", r);
     return CUBEB_ERROR;
   }
 
@@ -802,7 +807,7 @@ audiounit_install_device_changed_callback(cubeb_stream * stm)
     r = audiounit_add_listener(stm, output_dev_id, kAudioDevicePropertyDataSource,
         kAudioDevicePropertyScopeOutput, &audiounit_property_listener_callback);
     if (r != noErr) {
-      PRINT_ERROR_CODE("AudioObjectAddPropertyListener/output/kAudioDevicePropertyDataSource", r);
+      LOG("AudioObjectAddPropertyListener/output/kAudioDevicePropertyDataSource rv=%d", r);
       return CUBEB_ERROR;
     }
 
@@ -813,7 +818,7 @@ audiounit_install_device_changed_callback(cubeb_stream * stm)
     r = audiounit_add_listener(stm, kAudioObjectSystemObject, kAudioHardwarePropertyDefaultOutputDevice,
         kAudioObjectPropertyScopeGlobal, &audiounit_property_listener_callback);
     if (r != noErr) {
-      PRINT_ERROR_CODE("AudioObjectAddPropertyListener/output/kAudioHardwarePropertyDefaultOutputDevice", r);
+      LOG("AudioObjectAddPropertyListener/output/kAudioHardwarePropertyDefaultOutputDevice rv=%d", r);
       return CUBEB_ERROR;
     }
   }
@@ -829,7 +834,7 @@ audiounit_install_device_changed_callback(cubeb_stream * stm)
     r = audiounit_add_listener(stm, input_dev_id, kAudioDevicePropertyDataSource,
         kAudioDevicePropertyScopeInput, &audiounit_property_listener_callback);
     if (r != noErr) {
-      PRINT_ERROR_CODE("AudioObjectAddPropertyListener/input/kAudioDevicePropertyDataSource", r);
+      LOG("AudioObjectAddPropertyListener/input/kAudioDevicePropertyDataSource rv=%d", r);
       return CUBEB_ERROR;
     }
 
@@ -837,7 +842,7 @@ audiounit_install_device_changed_callback(cubeb_stream * stm)
     r = audiounit_add_listener(stm, kAudioObjectSystemObject, kAudioHardwarePropertyDefaultInputDevice,
         kAudioObjectPropertyScopeGlobal, &audiounit_property_listener_callback);
     if (r != noErr) {
-      PRINT_ERROR_CODE("AudioObjectAddPropertyListener/input/kAudioHardwarePropertyDefaultInputDevice", r);
+      LOG("AudioObjectAddPropertyListener/input/kAudioHardwarePropertyDefaultInputDevice rv=%d", r);
       return CUBEB_ERROR;
     }
 
@@ -847,7 +852,7 @@ audiounit_install_device_changed_callback(cubeb_stream * stm)
     r = audiounit_add_listener(stm, dev, kAudioDevicePropertyDeviceIsAlive,
         kAudioObjectPropertyScopeGlobal, &audiounit_property_listener_callback);
     if (r != noErr) {
-      PRINT_ERROR_CODE("AudioObjectAddPropertyListener/input/kAudioDevicePropertyDeviceIsAlive", r);
+      LOG("AudioObjectAddPropertyListener/input/kAudioDevicePropertyDeviceIsAlive rv=%d", r);
       return CUBEB_ERROR;
     }
   }
@@ -905,7 +910,7 @@ audiounit_uninstall_device_changed_callback(cubeb_stream * stm)
     r = audiounit_remove_listener(stm, dev, kAudioDevicePropertyDeviceIsAlive,
                                   kAudioObjectPropertyScopeGlobal, &audiounit_property_listener_callback);
     if (r != noErr) {
-      PRINT_ERROR_CODE("AudioObjectRemovePropertyListener/input/kAudioDevicePropertyDeviceIsAlive", r);
+      LOG("AudioObjectRemovePropertyListener/input/kAudioDevicePropertyDeviceIsAlive rv=%d", r);
       return CUBEB_ERROR;
     }
   }
@@ -940,7 +945,7 @@ audiounit_get_acceptable_latency_range(AudioValueRange * latency_range)
                                  &size,
                                  latency_range);
   if (r != noErr) {
-    PRINT_ERROR_CODE("AudioObjectGetPropertyData/buffer size range", r);
+    LOG("AudioObjectGetPropertyData/buffer size range rv=%d", r);
     return CUBEB_ERROR;
   }
 
@@ -1003,7 +1008,7 @@ audiounit_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
                                  &size,
                                  &stream_format);
   if (r != noErr) {
-    PRINT_ERROR_CODE("AudioObjectPropertyAddress/StreamFormat", r);
+    LOG("AudioObjectPropertyAddress/StreamFormat rv=%d", r);
     return CUBEB_ERROR;
   }
 
@@ -1105,7 +1110,7 @@ audiounit_get_current_channel_layout(AudioUnit output_unit)
                                 &size,
                                 nullptr);
   if (rv != noErr) {
-    PRINT_ERROR_CODE("AudioUnitGetPropertyInfo/kAudioUnitProperty_AudioChannelLayout", rv);
+    LOG("AudioUnitGetPropertyInfo/kAudioUnitProperty_AudioChannelLayout rv=%d", rv);
     return CUBEB_LAYOUT_UNDEFINED;
   }
   assert(size > 0);
@@ -1118,7 +1123,7 @@ audiounit_get_current_channel_layout(AudioUnit output_unit)
                             layout.get(),
                             &size);
   if (rv != noErr) {
-    PRINT_ERROR_CODE("AudioUnitGetProperty/kAudioUnitProperty_AudioChannelLayout", rv);
+    LOG("AudioUnitGetProperty/kAudioUnitProperty_AudioChannelLayout rv=%d", rv);
     return CUBEB_LAYOUT_UNDEFINED;
   }
 
@@ -1298,7 +1303,7 @@ audiounit_set_channel_layout(AudioUnit unit,
   // For those layouts that can't be matched to coreaudio's predefined layout,
   // we use customized layout.
   if (layout.get()->mChannelLayoutTag == kAudioChannelLayoutTag_Unknown) {
-    size_t size = fieldOffset(AudioChannelLayout, mChannelDescriptions[stream_params->channels]);
+    size_t size = offsetof(AudioChannelLayout, mChannelDescriptions[stream_params->channels]);
     layout.reset(size);
     layout.get()->mChannelLayoutTag = kAudioChannelLayoutTag_UseChannelDescriptions;
     layout.get()->mNumberChannelDescriptions = stream_params->channels;
@@ -1316,7 +1321,7 @@ audiounit_set_channel_layout(AudioUnit unit,
                            layout.get(),
                            layout.size());
   if (r != noErr) {
-    PRINT_ERROR_CODE("AudioUnitSetProperty/output/kAudioUnitProperty_AudioChannelLayout", r);
+    LOG("AudioUnitSetProperty/%s/kAudioUnitProperty_AudioChannelLayout rv=%d", to_string(side), r);
     return CUBEB_ERROR;
   }
 
@@ -1380,7 +1385,7 @@ audiounit_create_unit(AudioUnit * unit,
 
   rv = AudioComponentInstanceNew(comp, unit);
   if (rv != noErr) {
-    PRINT_ERROR_CODE("AudioComponentInstanceNew", rv);
+    LOG("AudioComponentInstanceNew rv=%d", rv);
     return CUBEB_ERROR;
   }
 
@@ -1390,7 +1395,7 @@ audiounit_create_unit(AudioUnit * unit,
                               is_input ? kAudioUnitScope_Input : kAudioUnitScope_Output,
                               is_input ? AU_IN_BUS : AU_OUT_BUS, &enable, sizeof(UInt32));
     if (rv != noErr) {
-      PRINT_ERROR_CODE("AudioUnitSetProperty/kAudioOutputUnitProperty_EnableIO", rv);
+      LOG("AudioUnitSetProperty/kAudioOutputUnitProperty_EnableIO rv=%d", rv);
       return CUBEB_ERROR;
     }
 
@@ -1399,7 +1404,7 @@ audiounit_create_unit(AudioUnit * unit,
                               is_input ? kAudioUnitScope_Output : kAudioUnitScope_Input,
                               is_input ? AU_OUT_BUS : AU_IN_BUS, &enable, sizeof(UInt32));
     if (rv != noErr) {
-      PRINT_ERROR_CODE("AudioUnitSetProperty/kAudioOutputUnitProperty_EnableIO", rv);
+      LOG("AudioUnitSetProperty/kAudioOutputUnitProperty_EnableIO rv=%d", rv);
       return CUBEB_ERROR;
     }
 
@@ -1414,7 +1419,7 @@ audiounit_create_unit(AudioUnit * unit,
                               is_input ? AU_IN_BUS : AU_OUT_BUS,
                               &devid, sizeof(AudioDeviceID));
     if (rv != noErr) {
-      PRINT_ERROR_CODE("AudioUnitSetProperty/kAudioOutputUnitProperty_CurrentDevice", rv);
+      LOG("AudioUnitSetProperty/kAudioOutputUnitProperty_CurrentDevice rv=%d", rv);
       return CUBEB_ERROR;
     }
   }
@@ -1459,7 +1464,7 @@ audiounit_clamp_latency(cubeb_stream * stm, uint32_t latency_frames)
                             &output_buffer_size,
                             &size);
     if (r != noErr) {
-      PRINT_ERROR_CODE("AudioUnitGetProperty/output/kAudioDevicePropertyBufferFrameSize", r);
+      LOG("AudioUnitGetProperty/output/kAudioDevicePropertyBufferFrameSize rv=%d", r);
       return 0;
     }
 
@@ -1476,7 +1481,7 @@ audiounit_clamp_latency(cubeb_stream * stm, uint32_t latency_frames)
                             &input_buffer_size,
                             &size);
     if (r != noErr) {
-      PRINT_ERROR_CODE("AudioUnitGetProperty/input/kAudioDevicePropertyBufferFrameSize", r);
+      LOG("AudioUnitGetProperty/input/kAudioDevicePropertyBufferFrameSize rv=%d", r);
       return 0;
     }
 
@@ -1511,16 +1516,16 @@ audiounit_clamp_latency(cubeb_stream * stm, uint32_t latency_frames)
 static void
 buffer_size_changed_callback(void * inClientData,
                              AudioUnit inUnit,
-                             AudioUnitPropertyID	inPropertyID,
-                             AudioUnitScope		inScope,
-                             AudioUnitElement	inElement)
+                             AudioUnitPropertyID inPropertyID,
+                             AudioUnitScope inScope,
+                             AudioUnitElement inElement)
 {
   cubeb_stream * stm = (cubeb_stream *)inClientData;
 
   AudioUnit au = inUnit;
   AudioUnitScope au_scope = kAudioUnitScope_Input;
   AudioUnitElement au_element = inElement;
-  const char * au_type = "output";
+  char const * au_type = "output";
 
   if (au == stm->input_unit) {
     au_scope = kAudioUnitScope_Output;
@@ -1559,13 +1564,11 @@ audiounit_set_buffer_size(cubeb_stream * stm, uint32_t new_size_frames, io_side 
   AudioUnit au = stm->output_unit;
   AudioUnitScope au_scope = kAudioUnitScope_Input;
   AudioUnitElement au_element = AU_OUT_BUS;
-  const char * au_type = "output";
 
   if (side == INPUT) {
     au = stm->input_unit;
     au_scope = kAudioUnitScope_Output;
     au_element = AU_IN_BUS;
-    au_type = "input";
   }
 
   uint32_t buffer_frames = 0;
@@ -1577,16 +1580,12 @@ audiounit_set_buffer_size(cubeb_stream * stm, uint32_t new_size_frames, io_side 
                                &buffer_frames,
                                &size);
   if (r != noErr) {
-    if (side == INPUT) {
-      PRINT_ERROR_CODE("AudioUnitGetProperty/input/kAudioDevicePropertyBufferFrameSize", r);
-    } else {
-      PRINT_ERROR_CODE("AudioUnitGetProperty/output/kAudioDevicePropertyBufferFrameSize", r);
-    }
+    LOG("AudioUnitGetProperty/%s/kAudioDevicePropertyBufferFrameSize rv=%d", to_string(side), r);
     return CUBEB_ERROR;
   }
 
   if (new_size_frames == buffer_frames) {
-    LOG("(%p) No need to update %s buffer size already %u frames", stm, au_type, buffer_frames);
+    LOG("(%p) No need to update %s buffer size already %u frames", stm, to_string(side), buffer_frames);
     return CUBEB_OK;
   }
 
@@ -1595,11 +1594,7 @@ audiounit_set_buffer_size(cubeb_stream * stm, uint32_t new_size_frames, io_side 
                                    buffer_size_changed_callback,
                                    stm);
   if (r != noErr) {
-    if (side == INPUT) {
-      PRINT_ERROR_CODE("AudioUnitAddPropertyListener/input/kAudioDevicePropertyBufferFrameSize", r);
-    } else {
-      PRINT_ERROR_CODE("AudioUnitAddPropertyListener/output/kAudioDevicePropertyBufferFrameSize", r);
-    }
+    LOG("AudioUnitAddPropertyListener/%s/kAudioDevicePropertyBufferFrameSize rv=%d", to_string(side), r);
     return CUBEB_ERROR;
   }
 
@@ -1612,22 +1607,14 @@ audiounit_set_buffer_size(cubeb_stream * stm, uint32_t new_size_frames, io_side 
                            &new_size_frames,
                            sizeof(new_size_frames));
   if (r != noErr) {
-    if (side == INPUT) {
-      PRINT_ERROR_CODE("AudioUnitSetProperty/input/kAudioDevicePropertyBufferFrameSize", r);
-    } else {
-      PRINT_ERROR_CODE("AudioUnitSetProperty/output/kAudioDevicePropertyBufferFrameSize", r);
-    }
+    LOG("AudioUnitSetProperty/%s/kAudioDevicePropertyBufferFrameSize rv=%d", to_string(side), r);
 
     r = AudioUnitRemovePropertyListenerWithUserData(au,
                                                     kAudioDevicePropertyBufferFrameSize,
                                                     buffer_size_changed_callback,
                                                     stm);
     if (r != noErr) {
-      if (side == INPUT) {
-        PRINT_ERROR_CODE("AudioUnitAddPropertyListener/input/kAudioDevicePropertyBufferFrameSize", r);
-      } else {
-        PRINT_ERROR_CODE("AudioUnitAddPropertyListener/output/kAudioDevicePropertyBufferFrameSize", r);
-      }
+      LOG("AudioUnitAddPropertyListener/%s/kAudioDevicePropertyBufferFrameSize rv=%d", to_string(side), r);
     }
 
     return CUBEB_ERROR;
@@ -1649,11 +1636,7 @@ audiounit_set_buffer_size(cubeb_stream * stm, uint32_t new_size_frames, io_side 
                                                   buffer_size_changed_callback,
                                                   stm);
   if (r != noErr) {
-    if (side == INPUT) {
-      PRINT_ERROR_CODE("AudioUnitAddPropertyListener/input/kAudioDevicePropertyBufferFrameSize", r);
-    } else {
-      PRINT_ERROR_CODE("AudioUnitAddPropertyListener/output/kAudioDevicePropertyBufferFrameSize", r);
-    }
+    LOG("AudioUnitAddPropertyListener/%s/kAudioDevicePropertyBufferFrameSize rv=%d", to_string(side), r);
     return CUBEB_ERROR;
   }
 
@@ -1662,7 +1645,7 @@ audiounit_set_buffer_size(cubeb_stream * stm, uint32_t new_size_frames, io_side 
     return CUBEB_ERROR;
   }
 
-  LOG("(%p) %s buffer size changed to %u frames.", stm, au_type, new_size_frames);
+  LOG("(%p) %s buffer size changed to %u frames.", stm, to_string(side), new_size_frames);
   return CUBEB_OK;
 }
 
@@ -1687,7 +1670,7 @@ audiounit_configure_input(cubeb_stream * stm)
                            &input_hw_desc,
                            &size);
   if (r != noErr) {
-    PRINT_ERROR_CODE("AudioUnitGetProperty/input/kAudioUnitProperty_StreamFormat", r);
+    LOG("AudioUnitGetProperty/input/kAudioUnitProperty_StreamFormat rv=%d", r);
     return CUBEB_ERROR;
   }
   stm->input_hw_rate = input_hw_desc.mSampleRate;
@@ -1720,7 +1703,7 @@ audiounit_configure_input(cubeb_stream * stm)
                            &src_desc,
                            sizeof(AudioStreamBasicDescription));
   if (r != noErr) {
-    PRINT_ERROR_CODE("AudioUnitSetProperty/input/kAudioUnitProperty_StreamFormat", r);
+    LOG("AudioUnitSetProperty/input/kAudioUnitProperty_StreamFormat rv=%d", r);
     return CUBEB_ERROR;
   }
 
@@ -1732,7 +1715,7 @@ audiounit_configure_input(cubeb_stream * stm)
                            &stm->input_buffer_frames,
                            sizeof(UInt32));
   if (r != noErr) {
-    PRINT_ERROR_CODE("AudioUnitSetProperty/input/kAudioUnitProperty_MaximumFramesPerSlice", r);
+    LOG("AudioUnitSetProperty/input/kAudioUnitProperty_MaximumFramesPerSlice rv=%d", r);
     return CUBEB_ERROR;
   }
 
@@ -1757,7 +1740,7 @@ audiounit_configure_input(cubeb_stream * stm)
                            &aurcbs_in,
                            sizeof(aurcbs_in));
   if (r != noErr) {
-    PRINT_ERROR_CODE("AudioUnitSetProperty/input/kAudioOutputUnitProperty_SetInputCallback", r);
+    LOG("AudioUnitSetProperty/input/kAudioOutputUnitProperty_SetInputCallback rv=%d", r);
     return CUBEB_ERROR;
   }
   LOG("(%p) Input audiounit init successfully.", stm);
@@ -1794,7 +1777,7 @@ audiounit_configure_output(cubeb_stream * stm)
                            &output_hw_desc,
                            &size);
   if (r != noErr) {
-    PRINT_ERROR_CODE("AudioUnitGetProperty/output/kAudioUnitProperty_StreamFormat", r);
+    LOG("AudioUnitGetProperty/output/kAudioUnitProperty_StreamFormat rv=%d", r);
     return CUBEB_ERROR;
   }
   stm->output_hw_rate = output_hw_desc.mSampleRate;
@@ -1807,7 +1790,7 @@ audiounit_configure_output(cubeb_stream * stm)
                            &stm->output_desc,
                            sizeof(AudioStreamBasicDescription));
   if (r != noErr) {
-    PRINT_ERROR_CODE("AudioUnitSetProperty/output/kAudioUnitProperty_StreamFormat", r);
+    LOG("AudioUnitSetProperty/output/kAudioUnitProperty_StreamFormat rv=%d", r);
     return CUBEB_ERROR;
   }
 
@@ -1825,7 +1808,7 @@ audiounit_configure_output(cubeb_stream * stm)
                            &stm->latency_frames,
                            sizeof(UInt32));
   if (r != noErr) {
-    PRINT_ERROR_CODE("AudioUnitSetProperty/output/kAudioUnitProperty_MaximumFramesPerSlice", r);
+    LOG("AudioUnitSetProperty/output/kAudioUnitProperty_MaximumFramesPerSlice rv=%d", r);
     return CUBEB_ERROR;
   }
 
@@ -1839,7 +1822,7 @@ audiounit_configure_output(cubeb_stream * stm)
                            &aurcbs_out,
                            sizeof(aurcbs_out));
   if (r != noErr) {
-    PRINT_ERROR_CODE("AudioUnitSetProperty/output/kAudioUnitProperty_SetRenderCallback", r);
+    LOG("AudioUnitSetProperty/output/kAudioUnitProperty_SetRenderCallback rv=%d", r);
     return CUBEB_ERROR;
   }
 
@@ -1985,7 +1968,7 @@ audiounit_setup_stream(cubeb_stream * stm)
   if (stm->input_unit != NULL) {
     r = AudioUnitInitialize(stm->input_unit);
     if (r != noErr) {
-      PRINT_ERROR_CODE("AudioUnitInitialize/input", r);
+      LOG("AudioUnitInitialize/input rv=%d", r);
       return CUBEB_ERROR;
     }
   }
@@ -1993,7 +1976,7 @@ audiounit_setup_stream(cubeb_stream * stm)
   if (stm->output_unit != NULL) {
     r = AudioUnitInitialize(stm->output_unit);
     if (r != noErr) {
-      PRINT_ERROR_CODE("AudioUnitInitialize/output", r);
+      LOG("AudioUnitInitialize/output rv=%d", r);
       return CUBEB_ERROR;
     }
   }
@@ -2235,7 +2218,7 @@ audiounit_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
                              &unit_latency_sec,
                              &size);
     if (r != noErr) {
-      PRINT_ERROR_CODE("AudioUnitGetProperty/kAudioUnitProperty_Latency", r);
+      LOG("AudioUnitGetProperty/kAudioUnitProperty_Latency rv=%d", r);
       return CUBEB_ERROR;
     }
 
@@ -2247,7 +2230,7 @@ audiounit_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
                                    &size,
                                    &device_latency_frames);
     if (r != noErr) {
-      PRINT_ERROR_CODE("AudioUnitGetPropertyData/latency_frames", r);
+      LOG("AudioUnitGetPropertyData/latency_frames rv=%d", r);
       return CUBEB_ERROR;
     }
 
@@ -2259,7 +2242,7 @@ audiounit_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
                                    &size,
                                    &device_safety_offset);
     if (r != noErr) {
-      PRINT_ERROR_CODE("AudioUnitGetPropertyData/safety_offset", r);
+      LOG("AudioUnitGetPropertyData/safety_offset rv=%d", r);
       return CUBEB_ERROR;
     }
 
@@ -2286,7 +2269,7 @@ int audiounit_stream_set_volume(cubeb_stream * stm, float volume)
                             0, volume, 0);
 
   if (r != noErr) {
-    PRINT_ERROR_CODE("AudioUnitSetParameter/kHALOutputParam_Volume", r);
+    LOG("AudioUnitSetParameter/kHALOutputParam_Volume rv=%d", r);
     return CUBEB_ERROR;
   }
   return CUBEB_OK;
@@ -2642,7 +2625,7 @@ audiounit_create_device_from_hwdev(AudioObjectID devid, cubeb_device_type type)
     ret->latency_lo = latency + range.mMinimum;
     ret->latency_hi = latency + range.mMaximum;
   } else {
-    ret->latency_lo = 10 * ret->default_rate / 1000;  /* Default to  10ms */
+    ret->latency_lo = 10 * ret->default_rate / 1000;  /* Default to 10ms */
     ret->latency_hi = 100 * ret->default_rate / 1000; /* Default to 100ms */
   }
 
