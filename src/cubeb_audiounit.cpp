@@ -1094,11 +1094,11 @@ audiounit_convert_channel_layout(AudioChannelLayout * layout)
 }
 
 static cubeb_channel_layout
-audiounit_get_current_channel_layout(AudioUnit * output_unit)
+audiounit_get_current_channel_layout(AudioUnit output_unit)
 {
   OSStatus rv = noErr;
   UInt32 size = 0;
-  rv = AudioUnitGetPropertyInfo(*output_unit,
+  rv = AudioUnitGetPropertyInfo(output_unit,
                                 kAudioUnitProperty_AudioChannelLayout,
                                 kAudioUnitScope_Output,
                                 AU_OUT_BUS,
@@ -1111,7 +1111,7 @@ audiounit_get_current_channel_layout(AudioUnit * output_unit)
   assert(size > 0);
 
   auto_channel_layout layout(size);
-  rv = AudioUnitGetProperty(*output_unit,
+  rv = AudioUnitGetProperty(output_unit,
                             kAudioUnitProperty_AudioChannelLayout,
                             kAudioUnitScope_Output,
                             AU_OUT_BUS,
@@ -1176,7 +1176,7 @@ audiounit_get_preferred_channel_layout(cubeb * ctx, cubeb_channel_layout * layou
     // use it to get the current used channel layout.
     AudioUnit output_unit;
     audiounit_create_unit(&output_unit, false, nullptr, 0);
-    *layout = audiounit_get_current_channel_layout(&output_unit);
+    *layout = audiounit_get_current_channel_layout(output_unit);
   }
 
   if (*layout == CUBEB_LAYOUT_UNDEFINED) {
@@ -1250,7 +1250,7 @@ audio_stream_desc_init(AudioStreamBasicDescription * ss,
 }
 
 static int
-audiounit_set_channel_layout(AudioUnit * unit,
+audiounit_set_channel_layout(AudioUnit unit,
                              io_side side,
                              const cubeb_stream_params * stream_params)
 {
@@ -1306,7 +1306,7 @@ audiounit_set_channel_layout(AudioUnit * unit,
     }
   }
 
-  r = AudioUnitSetProperty(*unit,
+  r = AudioUnitSetProperty(unit,
                            kAudioUnitProperty_AudioChannelLayout,
                            kAudioUnitScope_Input,
                            AU_OUT_BUS,
@@ -1328,14 +1328,14 @@ audiounit_layout_init(cubeb_stream * stm, io_side side)
     return;
   }
 
-  audiounit_set_channel_layout(&stm->output_unit, OUTPUT, &stm->output_stream_params);
+  audiounit_set_channel_layout(stm->output_unit, OUTPUT, &stm->output_stream_params);
 
   // Update the current used channel layout for the cubeb context.
   // Notice that this channel layout may be different from the layout we set above,
   // because OSX doesn't return error when the output device can NOT provide
   // our desired layout. Thus, we update the layout evertime when the cubeb_stream
   // is created and use it when we need to mix audio data.
-  stm->context->layout = audiounit_get_current_channel_layout(&stm->output_unit);
+  stm->context->layout = audiounit_get_current_channel_layout(stm->output_unit);
 }
 
 static int
