@@ -195,6 +195,17 @@ enum io_side {
   OUTPUT,
 };
 
+static char const *
+to_string(io_side side)
+{
+  switch (side) {
+  case INPUT:
+    return "input";
+  case OUTPUT:
+    return "output";
+  }
+}
+
 struct cubeb_stream {
   explicit cubeb_stream(cubeb * context);
 
@@ -1099,7 +1110,7 @@ audiounit_get_current_channel_layout(AudioUnit output_unit)
                                 &size,
                                 nullptr);
   if (rv != noErr) {
-    PRINT_ERROR_CODE("AudioUnitGetPropertyInfo/kAudioUnitProperty_AudioChannelLayout", rv);
+    LOG("AudioUnitGetPropertyInfo/kAudioUnitProperty_AudioChannelLayout rv=%d", rv);
     return CUBEB_LAYOUT_UNDEFINED;
   }
   assert(size > 0);
@@ -1112,7 +1123,7 @@ audiounit_get_current_channel_layout(AudioUnit output_unit)
                             layout.get(),
                             &size);
   if (rv != noErr) {
-    PRINT_ERROR_CODE("AudioUnitGetProperty/kAudioUnitProperty_AudioChannelLayout", rv);
+    LOG("AudioUnitGetProperty/kAudioUnitProperty_AudioChannelLayout rv=%d", rv);
     return CUBEB_LAYOUT_UNDEFINED;
   }
 
@@ -1310,7 +1321,7 @@ audiounit_set_channel_layout(AudioUnit unit,
                            layout.get(),
                            layout.size());
   if (r != noErr) {
-    LOG("AudioUnitSetProperty/output/kAudioUnitProperty_AudioChannelLayout rv=%d", r);
+    LOG("AudioUnitSetProperty/%s/kAudioUnitProperty_AudioChannelLayout rv=%d", to_string(side), r);
     return CUBEB_ERROR;
   }
 
@@ -1553,13 +1564,11 @@ audiounit_set_buffer_size(cubeb_stream * stm, uint32_t new_size_frames, io_side 
   AudioUnit au = stm->output_unit;
   AudioUnitScope au_scope = kAudioUnitScope_Input;
   AudioUnitElement au_element = AU_OUT_BUS;
-  const char * au_type = "output";
 
   if (side == INPUT) {
     au = stm->input_unit;
     au_scope = kAudioUnitScope_Output;
     au_element = AU_IN_BUS;
-    au_type = "input";
   }
 
   uint32_t buffer_frames = 0;
@@ -1571,16 +1580,12 @@ audiounit_set_buffer_size(cubeb_stream * stm, uint32_t new_size_frames, io_side 
                                &buffer_frames,
                                &size);
   if (r != noErr) {
-    if (side == INPUT) {
-      LOG("AudioUnitGetProperty/input/kAudioDevicePropertyBufferFrameSize rv=%d", r);
-    } else {
-      LOG("AudioUnitGetProperty/output/kAudioDevicePropertyBufferFrameSize rv=%d", r);
-    }
+    LOG("AudioUnitGetProperty/%s/kAudioDevicePropertyBufferFrameSize rv=%d", to_string(side), r);
     return CUBEB_ERROR;
   }
 
   if (new_size_frames == buffer_frames) {
-    LOG("(%p) No need to update %s buffer size already %u frames", stm, au_type, buffer_frames);
+    LOG("(%p) No need to update %s buffer size already %u frames", stm, to_string(side), buffer_frames);
     return CUBEB_OK;
   }
 
@@ -1589,11 +1594,7 @@ audiounit_set_buffer_size(cubeb_stream * stm, uint32_t new_size_frames, io_side 
                                    buffer_size_changed_callback,
                                    stm);
   if (r != noErr) {
-    if (side == INPUT) {
-      LOG("AudioUnitAddPropertyListener/input/kAudioDevicePropertyBufferFrameSize rv=%d", r);
-    } else {
-      LOG("AudioUnitAddPropertyListener/output/kAudioDevicePropertyBufferFrameSize rv=%d", r);
-    }
+    LOG("AudioUnitAddPropertyListener/%s/kAudioDevicePropertyBufferFrameSize rv=%d", to_string(side), r);
     return CUBEB_ERROR;
   }
 
@@ -1606,22 +1607,14 @@ audiounit_set_buffer_size(cubeb_stream * stm, uint32_t new_size_frames, io_side 
                            &new_size_frames,
                            sizeof(new_size_frames));
   if (r != noErr) {
-    if (side == INPUT) {
-      LOG("AudioUnitSetProperty/input/kAudioDevicePropertyBufferFrameSize rv=%d", r);
-    } else {
-      LOG("AudioUnitSetProperty/output/kAudioDevicePropertyBufferFrameSize rv=%d", r);
-    }
+    LOG("AudioUnitSetProperty/%s/kAudioDevicePropertyBufferFrameSize rv=%d", to_string(side), r);
 
     r = AudioUnitRemovePropertyListenerWithUserData(au,
                                                     kAudioDevicePropertyBufferFrameSize,
                                                     buffer_size_changed_callback,
                                                     stm);
     if (r != noErr) {
-      if (side == INPUT) {
-        LOG("AudioUnitAddPropertyListener/input/kAudioDevicePropertyBufferFrameSize rv=%d", r);
-      } else {
-        LOG("AudioUnitAddPropertyListener/output/kAudioDevicePropertyBufferFrameSize rv=%d", r);
-      }
+      LOG("AudioUnitAddPropertyListener/%s/kAudioDevicePropertyBufferFrameSize rv=%d", to_string(side), r);
     }
 
     return CUBEB_ERROR;
@@ -1643,11 +1636,7 @@ audiounit_set_buffer_size(cubeb_stream * stm, uint32_t new_size_frames, io_side 
                                                   buffer_size_changed_callback,
                                                   stm);
   if (r != noErr) {
-    if (side == INPUT) {
-      LOG("AudioUnitAddPropertyListener/input/kAudioDevicePropertyBufferFrameSize rv=%d", r);
-    } else {
-      LOG("AudioUnitAddPropertyListener/output/kAudioDevicePropertyBufferFrameSize rv=%d", r);
-    }
+    LOG("AudioUnitAddPropertyListener/%s/kAudioDevicePropertyBufferFrameSize rv=%d", to_string(side), r);
     return CUBEB_ERROR;
   }
 
@@ -1656,7 +1645,7 @@ audiounit_set_buffer_size(cubeb_stream * stm, uint32_t new_size_frames, io_side 
     return CUBEB_ERROR;
   }
 
-  LOG("(%p) %s buffer size changed to %u frames.", stm, au_type, new_size_frames);
+  LOG("(%p) %s buffer size changed to %u frames.", stm, to_string(side), new_size_frames);
   return CUBEB_OK;
 }
 
