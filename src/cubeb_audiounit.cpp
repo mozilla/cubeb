@@ -72,7 +72,6 @@ static int audiounit_setup_stream(cubeb_stream *stm);
 static int audiounit_create_unit(AudioUnit * unit, bool is_input,
                                  const cubeb_stream_params * /* stream_params */,
                                  AudioDeviceID device);
-static cubeb_channel_layout audiounit_get_channel_layout(bool preferred);
 
 extern cubeb_ops const audiounit_ops;
 
@@ -88,6 +87,8 @@ struct cubeb {
   std::vector<AudioObjectID> devtype_device_array;
   // The queue is asynchronously deallocated once all references to it are released
   dispatch_queue_t serial_queue = dispatch_queue_create(DISPATCH_QUEUE_LABEL, DISPATCH_QUEUE_SERIAL);
+  // Current used channel layout
+  cubeb_channel_layout layout;
 };
 
 struct auto_array_wrapper {
@@ -98,6 +99,53 @@ struct auto_array_wrapper {
   virtual void * data() = 0;
   virtual void clear() = 0;
   virtual ~auto_array_wrapper() {}
+};
+
+template <typename T>
+struct auto_array_wrapper_impl : public auto_array_wrapper {
+  explicit auto_array_wrapper_impl(uint32_t size)
+    : ar(size)
+  {}
+
+  void push(void * elements, size_t length) override {
+    auto_lock l(lock);
+    ar.push(static_cast<T *>(elements), length);
+  }
+
+  size_t length() override {
+    auto_lock l(lock);
+    return ar.length();
+  }
+
+  void push_silence(size_t length) override {
+    auto_lock l(lock);
+    ar.push_silence(length);
+  }
+
+  bool pop(size_t length) override {
+    auto_lock l(lock);
+    return ar.pop(nullptr, length);
+  }
+
+  // XXX: Taking the lock here is pointless.
+  void * data() override {
+    auto_lock l(lock);
+    return ar.data();
+  }
+
+  void clear() override {
+    auto_lock l(lock);
+    ar.clear();
+  }
+
+  ~auto_array_wrapper_impl() {
+    auto_lock l(lock);
+    ar.clear();
+  }
+
+private:
+  owned_critical_section lock;
+  auto_array<T> ar;
 };
 
 class auto_channel_layout
@@ -146,53 +194,6 @@ private:
   }
 
   AudioChannelLayout * layout;
-};
-
-template <typename T>
-struct auto_array_wrapper_impl : public auto_array_wrapper {
-  explicit auto_array_wrapper_impl(uint32_t size)
-    : ar(size)
-  {}
-
-  void push(void * elements, size_t length) override {
-    auto_lock l(lock);
-    ar.push(static_cast<T *>(elements), length);
-  }
-
-  size_t length() override {
-    auto_lock l(lock);
-    return ar.length();
-  }
-
-  void push_silence(size_t length) override {
-    auto_lock l(lock);
-    ar.push_silence(length);
-  }
-
-  bool pop(size_t length) override {
-    auto_lock l(lock);
-    return ar.pop(nullptr, length);
-  }
-
-  // XXX: Taking the lock here is pointless.
-  void * data() override {
-    auto_lock l(lock);
-    return ar.data();
-  }
-
-  void clear() override {
-    auto_lock l(lock);
-    ar.clear();
-  }
-
-  ~auto_array_wrapper_impl() {
-    auto_lock l(lock);
-    ar.clear();
-  }
-
-private:
-  owned_critical_section lock;
-  auto_array<T> ar;
 };
 
 enum io_side {
@@ -1071,17 +1072,111 @@ audiounit_get_preferred_sample_rate(cubeb * /* ctx */, uint32_t * rate)
   return CUBEB_OK;
 }
 
+static cubeb_channel_layout
+audiounit_convert_channel_layout(AudioChannelLayout * layout)
+{
+  if (layout->mChannelLayoutTag != kAudioChannelLayoutTag_UseChannelDescriptions) {
+    // kAudioChannelLayoutTag_UseChannelBitmap
+    // kAudioChannelLayoutTag_Mono
+    // kAudioChannelLayoutTag_Stereo
+    // ....
+    LOG("Only handle UseChannelDescriptions for now.\n");
+    return CUBEB_LAYOUT_UNDEFINED;
+  }
+
+  cubeb_channel_map cm;
+  cm.channels = layout->mNumberChannelDescriptions;
+  for (UInt32 i = 0; i < layout->mNumberChannelDescriptions; ++i) {
+    cm.map[i] = channel_label_to_cubeb_channel(layout->mChannelDescriptions[i].mChannelLabel);
+  }
+
+  return cubeb_channel_map_to_layout(&cm);
+}
+
+static cubeb_channel_layout
+audiounit_get_current_channel_layout(AudioUnit output_unit)
+{
+  OSStatus rv = noErr;
+  UInt32 size = 0;
+  rv = AudioUnitGetPropertyInfo(output_unit,
+                                kAudioUnitProperty_AudioChannelLayout,
+                                kAudioUnitScope_Output,
+                                AU_OUT_BUS,
+                                &size,
+                                nullptr);
+  if (rv != noErr) {
+    PRINT_ERROR_CODE("AudioUnitGetPropertyInfo/kAudioUnitProperty_AudioChannelLayout", rv);
+    return CUBEB_LAYOUT_UNDEFINED;
+  }
+  assert(size > 0);
+
+  auto_channel_layout layout(size);
+  rv = AudioUnitGetProperty(output_unit,
+                            kAudioUnitProperty_AudioChannelLayout,
+                            kAudioUnitScope_Output,
+                            AU_OUT_BUS,
+                            layout.get(),
+                            &size);
+  if (rv != noErr) {
+    PRINT_ERROR_CODE("AudioUnitGetProperty/kAudioUnitProperty_AudioChannelLayout", rv);
+    return CUBEB_LAYOUT_UNDEFINED;
+  }
+
+  return audiounit_convert_channel_layout(layout.get());
+}
+
+static cubeb_channel_layout
+audiounit_get_preferred_channel_layout()
+{
+  OSStatus rv = noErr;
+  UInt32 size = 0;
+  AudioDeviceID id;
+
+  if (audiounit_get_output_device_id(&id) != CUBEB_OK) {
+    return CUBEB_LAYOUT_UNDEFINED;
+  }
+
+  AudioObjectPropertyAddress adr = { kAudioDevicePropertyPreferredChannelLayout,
+                                     kAudioDevicePropertyScopeOutput,
+                                     kAudioObjectPropertyElementMaster };
+  rv = AudioObjectGetPropertyDataSize(id, &adr, 0, NULL, &size);
+  if (rv != noErr) {
+    return CUBEB_LAYOUT_UNDEFINED;
+  }
+  assert(size > 0);
+
+  auto_channel_layout layout(size);
+  rv = AudioObjectGetPropertyData(id, &adr, 0, NULL, &size, layout.get());
+  if (rv != noErr) {
+    return CUBEB_LAYOUT_UNDEFINED;
+  }
+
+  return audiounit_convert_channel_layout(layout.get());
+}
+
 static int
-audiounit_get_preferred_channel_layout(cubeb * /* ctx */, cubeb_channel_layout * layout)
+audiounit_get_preferred_channel_layout(cubeb * ctx, cubeb_channel_layout * layout)
 {
   // The preferred layout is only returned when the connected sound device
   // (e.g. ASUS Xonar U7), has preferred layout setting.
   // For default output on Mac, there is no preferred channel layout,
   // so it might return UNDEFINED.
-  // In that case, we should get the channel configuration directly.
-  *layout = audiounit_get_channel_layout(true);
+  *layout = audiounit_get_preferred_channel_layout();
+
+  // If the preferred channel layout is UNDEFINED, then we try to access the
+  // current applied channel layout.
   if (*layout == CUBEB_LAYOUT_UNDEFINED) {
-    *layout = audiounit_get_channel_layout(false);
+    // If we already have at least one cubeb stream, then the current channel
+    // layout must be updated. We can return it directly.
+    if (ctx->active_streams) {
+      return ctx->layout;
+    }
+
+    // If there is no existed stream, then we create a default ouput unit and
+    // use it to get the current used channel layout.
+    AudioUnit output_unit;
+    audiounit_create_unit(&output_unit, false, nullptr, 0);
+    *layout = audiounit_get_current_channel_layout(output_unit);
   }
 
   if (*layout == CUBEB_LAYOUT_UNDEFINED) {
@@ -1155,10 +1250,14 @@ audio_stream_desc_init(AudioStreamBasicDescription * ss,
 }
 
 static int
-audiounit_layout_init(AudioUnit * unit,
-                      io_side side,
-                      const cubeb_stream_params * stream_params)
+audiounit_set_channel_layout(AudioUnit unit,
+                             io_side side,
+                             const cubeb_stream_params * stream_params)
 {
+  if (side != OUTPUT) {
+    return CUBEB_ERROR;
+  }
+
   assert(stream_params->layout != CUBEB_LAYOUT_UNDEFINED);
   assert(stream_params->channels == CUBEB_CHANNEL_LAYOUT_MAPS[stream_params->layout].channels);
 
@@ -1210,22 +1309,36 @@ audiounit_layout_init(AudioUnit * unit,
     }
   }
 
-  r = AudioUnitSetProperty(*unit,
+  r = AudioUnitSetProperty(unit,
                            kAudioUnitProperty_AudioChannelLayout,
-                           side == INPUT ? kAudioUnitScope_Output : kAudioUnitScope_Input,
-                           side == INPUT ? AU_IN_BUS : AU_OUT_BUS,
+                           kAudioUnitScope_Input,
+                           AU_OUT_BUS,
                            layout.get(),
                            layout.size());
   if (r != noErr) {
-    if (side == INPUT) {
-      PRINT_ERROR_CODE("AudioUnitSetProperty/input/kAudioUnitProperty_AudioChannelLayout", r);
-    } else {
-      PRINT_ERROR_CODE("AudioUnitSetProperty/output/kAudioUnitProperty_AudioChannelLayout", r);
-    }
+    PRINT_ERROR_CODE("AudioUnitSetProperty/output/kAudioUnitProperty_AudioChannelLayout", r);
     return CUBEB_ERROR;
   }
 
   return CUBEB_OK;
+}
+
+void
+audiounit_layout_init(cubeb_stream * stm, io_side side)
+{
+  // We currently don't support the input layout setting.
+  if (side == INPUT) {
+    return;
+  }
+
+  audiounit_set_channel_layout(stm->output_unit, OUTPUT, &stm->output_stream_params);
+
+  // Update the current used channel layout for the cubeb context.
+  // Notice that this channel layout may be different from the layout we set above,
+  // because OSX doesn't return error when the output device can NOT provide
+  // our desired layout. Thus, we update the layout evertime when the cubeb_stream
+  // is created and use it when we need to mix audio data.
+  stm->context->layout = audiounit_get_current_channel_layout(stm->output_unit);
 }
 
 static int
@@ -1730,7 +1843,7 @@ audiounit_configure_output(cubeb_stream * stm)
     return CUBEB_ERROR;
   }
 
-  audiounit_layout_init(&stm->output_unit, OUTPUT, &stm->output_stream_params);
+  audiounit_layout_init(stm, OUTPUT);
 
   LOG("(%p) Output audiounit init successfully.", stm);
   return CUBEB_OK;
@@ -2720,69 +2833,6 @@ int audiounit_register_device_collection_changed(cubeb * context,
     ret = audiounit_remove_device_listener(context);
   }
   return (ret == noErr) ? CUBEB_OK : CUBEB_ERROR;
-}
-
-static cubeb_channel_layout
-audiounit_get_channel_layout(bool preferred)
-{
-  OSStatus rv = noErr;
-
-  // Get the default ouput unit
-  AudioUnit output_unit;
-  audiounit_create_unit(&output_unit, false, nullptr, 0);
-
-  // Get the channel layout
-  UInt32 size = 0;
-  rv = AudioUnitGetPropertyInfo(output_unit,
-                                preferred ? kAudioDevicePropertyPreferredChannelLayout :
-                                            kAudioUnitProperty_AudioChannelLayout,
-                                kAudioUnitScope_Output,
-                                AU_OUT_BUS,
-                                &size,
-                                nullptr);
-  if (rv != noErr) {
-    if (preferred) {
-      PRINT_ERROR_CODE("AudioUnitGetPropertyInfo/kAudioDevicePropertyPreferredChannelLayout", rv);
-    } else {
-      PRINT_ERROR_CODE("AudioUnitGetPropertyInfo/kAudioUnitProperty_AudioChannelLayout", rv);
-    }
-    return CUBEB_LAYOUT_UNDEFINED;
-  }
-  assert(size > 0);
-
-  auto_channel_layout layout(size);
-  rv = AudioUnitGetProperty(output_unit,
-                            preferred ? kAudioDevicePropertyPreferredChannelLayout :
-                                        kAudioUnitProperty_AudioChannelLayout,
-                            kAudioUnitScope_Output,
-                            AU_OUT_BUS,
-                            layout.get(),
-                            &size);
-  if (rv != noErr) {
-    if (preferred) {
-      PRINT_ERROR_CODE("AudioUnitGetProperty/kAudioDevicePropertyPreferredChannelLayout", rv);
-    } else {
-      PRINT_ERROR_CODE("AudioUnitGetProperty/kAudioUnitProperty_AudioChannelLayout", rv);
-    }
-    return CUBEB_LAYOUT_UNDEFINED;
-  }
-
-  if (layout.get()->mChannelLayoutTag != kAudioChannelLayoutTag_UseChannelDescriptions) {
-    // kAudioChannelLayoutTag_UseChannelBitmap
-    // kAudioChannelLayoutTag_Mono
-    // kAudioChannelLayoutTag_Stereo
-    // ....
-    LOG("Only handle UseChannelDescriptions for now.\n");
-    return CUBEB_LAYOUT_UNDEFINED;
-  }
-
-  cubeb_channel_map cm;
-  cm.channels = layout.get()->mNumberChannelDescriptions;
-  for (UInt32 i = 0; i < layout.get()->mNumberChannelDescriptions; ++i) {
-    cm.map[i] = channel_label_to_cubeb_channel(layout.get()->mChannelDescriptions[i].mChannelLabel);
-  }
-
-  return cubeb_channel_map_to_layout(&cm);
 }
 
 cubeb_ops const audiounit_ops = {
