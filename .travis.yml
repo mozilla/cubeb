@@ -32,7 +32,7 @@ before_install:
       else
         export SCAN_BUILD_PATH=/usr/share/clang/scan-build-3.6/scan-build;
       fi;
-      export SCAN_BUILD_PATH="$SCAN_BUILD_PATH --status-bugs";
+      export SCAN_BUILD_PATH="$SCAN_BUILD_PATH -o scan_results";
     fi
   - if [[ $CROSS = "android" ]]; then
       NDK=android-ndk-r13b;
@@ -57,4 +57,7 @@ script:
   - $SCAN_BUILD_PATH cmake --build .
   - if [[ $TRAVIS_OS_NAME = "linux" && -z $CROSS ]]; then
       ctest -V;
+    fi
+  - if [[ -n $SCAN_BUILD ]]; then
+      rmdir scan_results || ( echo "scan-build detected bugs!" && exit 1 );
     fi
