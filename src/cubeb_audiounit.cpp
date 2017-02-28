@@ -1164,8 +1164,7 @@ audiounit_get_preferred_channel_layout()
   return audiounit_convert_channel_layout(layout.get());
 }
 
-static int
-audiounit_create_unit(AudioUnit * unit, io_side side, AudioDeviceID device);
+static int audiounit_create_unit(AudioUnit * unit, io_side side, AudioDeviceID device);
 
 static int
 audiounit_get_preferred_channel_layout(cubeb * ctx, cubeb_channel_layout * layout)
@@ -1354,12 +1353,10 @@ audiounit_layout_init(cubeb_stream * stm, io_side side)
   stm->context->layout = audiounit_get_current_channel_layout(stm->output_unit);
 }
 
-static void
-audiounit_get_sub_devices(AudioDeviceID device_id, std::vector<AudioDeviceID> * sub_devices)
+static std::vector<AudioObjectID>
+audiounit_get_sub_devices(AudioDeviceID device_id)
 {
-  assert(sub_devices->empty());
-  uint32_t count = 32;
-
+  std::vector<AudioDeviceID> sub_devices;
   AudioObjectPropertyAddress property_address = { kAudioAggregateDevicePropertyActiveSubDeviceList,
                                                   kAudioObjectPropertyScopeGlobal,
                                                   kAudioObjectPropertyElementMaster };
@@ -1369,27 +1366,31 @@ audiounit_get_sub_devices(AudioDeviceID device_id, std::vector<AudioDeviceID> * 
                                                0,
                                                nullptr,
                                                &size);
-  if (rv == noErr) {
-    count = static_cast<uint32_t>(size / sizeof(AudioObjectID));
-  }
-  sub_devices->resize(count);
 
+  if (rv != noErr) {
+    sub_devices.push_back(device_id);
+    return sub_devices;
+  }
+
+  uint32_t count = static_cast<uint32_t>(size / sizeof(AudioObjectID));
+  sub_devices.resize(count);
   rv = AudioObjectGetPropertyData(device_id,
                                   &property_address,
                                   0,
                                   nullptr,
                                   &size,
-                                  sub_devices->data());
+                                  sub_devices.data());
   if (rv != noErr) {
-    sub_devices->clear();
-    sub_devices->push_back(device_id);
+    sub_devices.clear();
+    sub_devices.push_back(device_id);
   } else {
     LOG("Found %u sub-devices", count);
   }
+  return sub_devices;
 }
 
 static int
-audiounit_create_blank_aggregate_device(cubeb_stream * stm)
+audiounit_create_blank_aggregate_device(AudioObjectID * plugin_id, AudioDeviceID * aggregate_device_id)
 {
   AudioObjectPropertyAddress address_plugin_bundle_id = { kAudioHardwarePropertyPlugInForBundleID,
                                                           kAudioObjectPropertyScopeGlobal,
@@ -1408,8 +1409,8 @@ audiounit_create_blank_aggregate_device(cubeb_stream * stm)
   CFStringRef in_bundle_ref = CFSTR("com.apple.audio.CoreAudio");
   translation_value.mInputData = &in_bundle_ref;
   translation_value.mInputDataSize = sizeof(in_bundle_ref);
-  translation_value.mOutputData = &stm->plugin_id;
-  translation_value.mOutputDataSize = sizeof(stm->plugin_id);
+  translation_value.mOutputData = plugin_id;
+  translation_value.mOutputDataSize = sizeof(*plugin_id);
 
   r = AudioObjectGetPropertyData(kAudioObjectSystemObject,
                                  &address_plugin_bundle_id,
@@ -1419,6 +1420,19 @@ audiounit_create_blank_aggregate_device(cubeb_stream * stm)
                                  &translation_value);
   if (r != noErr) {
     LOG("AudioHardwareGetProperty/kAudioHardwarePropertyPlugInForBundleID, rv=%d", r);
+    return CUBEB_ERROR;
+  }
+
+  AudioObjectPropertyAddress create_aggregate_device_address = { kAudioPlugInCreateAggregateDevice,
+                                                                 kAudioObjectPropertyScopeGlobal,
+                                                                 kAudioObjectPropertyElementMaster };
+  r = AudioObjectGetPropertyDataSize(*plugin_id,
+                                     &create_aggregate_device_address,
+                                     0,
+                                     nullptr,
+                                     &size);
+  if (r != noErr) {
+    LOG("AudioObjectGetPropertyDataSize/kAudioPlugInCreateAggregateDevice, rv=%d", r);
     return CUBEB_ERROR;
   }
 
@@ -1437,31 +1451,18 @@ audiounit_create_blank_aggregate_device(cubeb_stream * stm)
   CFDictionaryAddValue(aggregate_device_dict, CFSTR(kAudioAggregateDeviceIsPrivateKey), aggregate_device_private_key);
   CFRelease(aggregate_device_private_key);
 
-  AudioObjectPropertyAddress create_aggregate_device_address = { kAudioPlugInCreateAggregateDevice,
-                                                                 kAudioObjectPropertyScopeGlobal,
-                                                                 kAudioObjectPropertyElementMaster };
-  r = AudioObjectGetPropertyDataSize(stm->plugin_id,
-                                     &create_aggregate_device_address,
-                                     0,
-                                     nullptr,
-                                     &size);
-  if (r != noErr) {
-    LOG("AudioObjectGetPropertyDataSize/kAudioPlugInCreateAggregateDevice, rv=%d", r);
-    return CUBEB_ERROR;
-  }
-
-  r = AudioObjectGetPropertyData(stm->plugin_id,
+  r = AudioObjectGetPropertyData(*plugin_id,
                                  &create_aggregate_device_address,
                                  sizeof(aggregate_device_dict),
                                  &aggregate_device_dict,
                                  &size,
-                                 &stm->aggregate_device_id);
+                                 aggregate_device_id);
   CFRelease(aggregate_device_dict);
   if (r != noErr) {
     LOG("AudioObjectGetPropertyData/kAudioPlugInCreateAggregateDevice, rv=%d", r);
     return CUBEB_ERROR;
   }
-  LOG("(%p) New aggregate device %u", stm, stm->aggregate_device_id);
+  LOG("New aggregate device %u", *aggregate_device_id);
 
   return CUBEB_OK;
 }
@@ -1481,26 +1482,27 @@ get_device_name(AudioDeviceID id)
 static int
 audiounit_set_aggregate_sub_device_list(cubeb_stream * stm)
 {
-  std::vector<AudioDeviceID> input_sub_devices;
   AudioDeviceID input_device_id = audiounit_get_input_device_id(stm);
-  audiounit_get_sub_devices(input_device_id, &input_sub_devices);
+  const std::vector<AudioDeviceID> input_sub_devices = audiounit_get_sub_devices(input_device_id);
 
-  std::vector<AudioDeviceID> output_sub_devices;
+
   AudioDeviceID output_device_id = audiounit_get_default_device_id(CUBEB_DEVICE_TYPE_OUTPUT);
-  audiounit_get_sub_devices(output_device_id, &output_sub_devices);
+  const std::vector<AudioDeviceID> output_sub_devices = audiounit_get_sub_devices(output_device_id);
 
   CFMutableArrayRef aggregate_sub_devices_array = CFArrayCreateMutable(NULL, 0, &kCFTypeArrayCallBacks);
   for (UInt32 i = 0; i < input_sub_devices.size(); i++) {
     CFStringRef ref = get_device_name(input_sub_devices[i]);
     if (ref == NULL) {
-      return -1;
+      CFRelease(aggregate_sub_devices_array);
+      return CUBEB_ERROR;
     }
     CFArrayAppendValue(aggregate_sub_devices_array, ref);
   }
   for (UInt32 i = 0; i < output_sub_devices.size(); i++) {
     CFStringRef ref = get_device_name(output_sub_devices[i]);
     if (ref == NULL) {
-      return -1;
+      CFRelease(aggregate_sub_devices_array);
+      return CUBEB_ERROR;
     }
     CFArrayAppendValue(aggregate_sub_devices_array, ref);
   }
@@ -1521,25 +1523,24 @@ audiounit_set_aggregate_sub_device_list(cubeb_stream * stm)
     return CUBEB_ERROR;
   }
 
-  CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, false);
   return CUBEB_OK;
 }
 
 static int
-audiounit_set_master_aggregate_device(cubeb_stream * stm)
+audiounit_set_master_aggregate_device(const AudioDeviceID aggregate_device_id)
 {
+  assert(aggregate_device_id);
   AudioObjectPropertyAddress master_aggregate_sub_device =  { kAudioAggregateDevicePropertyMasterSubDevice,
                                                               kAudioObjectPropertyScopeGlobal,
                                                               kAudioObjectPropertyElementMaster };
 
   // Master become the 1st output sub device
-  std::vector<AudioDeviceID> output_sub_devices;
   AudioDeviceID output_device_id = audiounit_get_default_device_id(CUBEB_DEVICE_TYPE_OUTPUT);
-  audiounit_get_sub_devices(output_device_id, &output_sub_devices);
+  const std::vector<AudioDeviceID> output_sub_devices = audiounit_get_sub_devices(output_device_id);
   CFStringRef master_sub_device = get_device_name(output_sub_devices[0]);
 
   UInt32 size = sizeof(CFStringRef);
-  OSStatus rv = AudioObjectSetPropertyData(stm->aggregate_device_id,
+  OSStatus rv = AudioObjectSetPropertyData(aggregate_device_id,
                                            &master_aggregate_sub_device,
                                            0,
                                            NULL,
@@ -1550,13 +1551,13 @@ audiounit_set_master_aggregate_device(cubeb_stream * stm)
     return CUBEB_ERROR;
   }
 
-  CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, false);
   return CUBEB_OK;
 }
 
 static int
-audiounit_activate_clock_drift_compensation(cubeb_stream * stm)
+audiounit_activate_clock_drift_compensation(const AudioDeviceID aggregate_device_id)
 {
+  assert(aggregate_device_id);
   AudioObjectPropertyAddress address_owned = { kAudioObjectPropertyOwnedObjects,
                                                kAudioObjectPropertyScopeGlobal,
                                                kAudioObjectPropertyElementMaster };
@@ -1565,7 +1566,7 @@ audiounit_activate_clock_drift_compensation(cubeb_stream * stm)
   AudioClassID class_id = kAudioSubDeviceClassID;
   void * qualifier_data = &class_id;
   UInt32 size = 0;
-  OSStatus rv = AudioObjectGetPropertyDataSize(stm->aggregate_device_id,
+  OSStatus rv = AudioObjectGetPropertyDataSize(aggregate_device_id,
                                                &address_owned,
                                                qualifier_data_size,
                                                qualifier_data,
@@ -1580,7 +1581,7 @@ audiounit_activate_clock_drift_compensation(cubeb_stream * stm)
   AudioObjectID sub_devices[subdevices_num];
   size = sizeof(sub_devices);
 
-  rv = AudioObjectGetPropertyData(stm->aggregate_device_id,
+  rv = AudioObjectGetPropertyData(aggregate_device_id,
                                   &address_owned,
                                   qualifier_data_size,
                                   qualifier_data,
@@ -1630,34 +1631,35 @@ static int audiounit_destroy_aggregate_device(cubeb_stream * stm);
  *
  * [0] https://lists.apple.com/archives/coreaudio-api/2006/Apr/msg00092.html
  * [1] https://lists.apple.com/archives/coreaudio-api/2005/Jul/msg00150.html
+ * [2] CoreAudio.framework/Headers/AudioHardware.h
  * */
 static int
 audiounit_create_aggregate_device(cubeb_stream * stm)
 {
-  int r = audiounit_create_blank_aggregate_device(stm);
+  int r = audiounit_create_blank_aggregate_device(&stm->plugin_id, &stm->aggregate_device_id);
   if (r != CUBEB_OK) {
-    LOG("Failed to create blank aggregate device");
+    LOG("(%p) Failed to create blank aggregate device", stm);
     audiounit_destroy_aggregate_device(stm);
     return CUBEB_ERROR;
   }
 
   r = audiounit_set_aggregate_sub_device_list(stm);
   if (r != CUBEB_OK) {
-    LOG("Failed to set aggregate sub-device list");
+    LOG("(%p) Failed to set aggregate sub-device list", stm);
     audiounit_destroy_aggregate_device(stm);
     return CUBEB_ERROR;
   }
 
-  r = audiounit_set_master_aggregate_device(stm);
+  r = audiounit_set_master_aggregate_device(stm->aggregate_device_id);
   if (r != CUBEB_OK) {
-    LOG("Failed to set master sub-device for aggregate device");
+    LOG("(%p) Failed to set master sub-device for aggregate device", stm);
     audiounit_destroy_aggregate_device(stm);
     return  CUBEB_ERROR;
   }
 
-  r = audiounit_activate_clock_drift_compensation(stm);
+  r = audiounit_activate_clock_drift_compensation(stm->aggregate_device_id);
   if (r != CUBEB_OK) {
-    LOG("Failed to activate clock drift compensation for aggregate device");
+    LOG("(%p) Failed to activate clock drift compensation for aggregate device", stm);
     audiounit_destroy_aggregate_device(stm);
     return  CUBEB_ERROR;
   }
@@ -1697,9 +1699,7 @@ audiounit_destroy_aggregate_device(cubeb_stream * stm)
 }
 
 static int
-audiounit_new_unit_instance(AudioUnit * unit,
-                            io_side side,
-                            AudioDeviceID device)
+audiounit_new_unit_instance(AudioUnit * unit, io_side side, AudioDeviceID device)
 {
   AudioComponentDescription desc;
   AudioComponent comp;
@@ -1744,9 +1744,7 @@ enum enable_state {
 };
 
 static int
-audiounit_enable_unit_scope(AudioUnit * unit,
-                            io_side side,
-                            enable_state state)
+audiounit_enable_unit_scope(AudioUnit * unit, io_side side, enable_state state)
 {
   OSStatus rv;
   UInt32 enable = state;
@@ -1786,7 +1784,6 @@ audiounit_create_unit(AudioUnit * unit, io_side side, AudioDeviceID device)
   if (!use_default_output) {
     switch (side) {
       case INPUT:
-      {
         r = audiounit_enable_unit_scope(unit, INPUT, ENABLE);
         if (r != CUBEB_OK) {
           LOG("Failed to enable audiounit input scope ");
@@ -1798,9 +1795,7 @@ audiounit_create_unit(AudioUnit * unit, io_side side, AudioDeviceID device)
           return r;
         }
         break;
-      }
       case OUTPUT:
-      {
         r = audiounit_enable_unit_scope(unit, OUTPUT, ENABLE);
         if (r != CUBEB_OK) {
           LOG("Failed to enable audiounit output scope ");
@@ -1812,7 +1807,6 @@ audiounit_create_unit(AudioUnit * unit, io_side side, AudioDeviceID device)
           return r;
         }
         break;
-      }
       default:
         assert(false);
     }
@@ -1886,7 +1880,7 @@ audiounit_clamp_latency(cubeb_stream * stm, uint32_t latency_frames)
 
   UInt32 input_buffer_size = 0;
   if (stm->input_unit) {
-    r = AudioUnitGetProperty(stm->output_unit,
+    r = AudioUnitGetProperty(stm->input_unit,
                             kAudioDevicePropertyBufferFrameSize,
                             kAudioUnitScope_Input,
                             AU_IN_BUS,
