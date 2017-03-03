@@ -199,6 +199,30 @@ static float const DOWNMIX_MATRIX_3F2_LFE[SUPPORTED_LAYOUT_NUM][MAX_OUTPUT_CHANN
 };
 
 /* Convert audio data from 3F2(-LFE) to 1F, 2F, 3F, 2F1, 3F1, 2F2 and their LFEs. */
+#if !defined(USE_AUDIOUNIT)
+// ITU-R BS.775-3[1] provides spec for downmixing 3F2 data to 1F, 2F, 3F, 2F1,
+// 3F1, 2F2 data. We simply add LFE to its defined matrix. If both the input
+// and output have LFE channel, then we pass it's data. If only input has LFE,
+// then we drop it. If only output has LFE, then we append 0 to its channel.
+//
+// Example: Downmixing from 3F2-LFE to stereo:
+//
+// |<-------------- 1 -------------->|<-------------- 2 -------------->|
+// +----+----+----+------+-----+-----+----+----+----+------+-----+-----+
+// | L0 | R0 | C0 | LFE0 | LS0 | RS0 | L1 | R1 | C1 | LFE1 | LS1 | RS1 | ...
+// +----+----+----+------+-----+-----+----+----+----+------+-----+-----+
+//
+//   | Downmix
+//   v
+//
+// |<-- 1 -->|<-- 2 -->|
+// +----+----+----+----+
+// | L0 | R0 | L1 | R1 | ...
+// +----+----+----+----+
+//
+// where L0 = L0 + 0.707 * (C0 + LS0), R0 = R0 + 0.707 * (C0 + RS0),
+//       L1 = L1 + 0.707 * (C1 + LS1), R1 = R1 + 0.707 * (C1 + RS1), ...
+//
 template<typename T>
 bool
 downmix_3f2(T const * const in, unsigned long inframes, T * out, cubeb_channel_layout in_layout, cubeb_channel_layout out_layout)
@@ -214,14 +238,8 @@ downmix_3f2(T const * const in, unsigned long inframes, T * out, cubeb_channel_l
   // Conversion from 3F2 to 2F2-LFE or 3F1-LFE is allowed, so we use '<=' instead of '<'.
   assert(out_channels <= in_channels);
 
-  // If the output buffer is same as input, then we calculate the mixed audio
-  // data from the related buffers, and put the result back to the buffer at the
-  // corresponding channel position. The unused channel buffers will stay same.
-  bool resizing = (in != out);
-
-  unsigned long out_index = 0;
   auto & downmix_matrix = DOWNMIX_MATRIX_3F2_LFE[out_layout - CUBEB_LAYOUT_MONO]; // The matrix is started from mono.
-  for (unsigned long i = 0; i < inframes * in_channels; i += in_channels) {
+  for (unsigned long i = 0, out_index = 0; i < inframes * in_channels; i += in_channels, out_index += out_channels) {
     for (unsigned int j = 0; j < out_channels; ++j) {
       T sample = 0;
       for (unsigned int k = 0 ; k < INPUT_CHANNEL_NUM ; ++k) {
@@ -233,11 +251,99 @@ downmix_3f2(T const * const in, unsigned long inframes, T * out, cubeb_channel_l
       }
       out[out_index + j] = sample;
     }
-    out_index += resizing ? out_channels : in_channels;
   }
 
   return true;
 }
+#else
+// This is an in-place version downmixing only for OSX.
+//
+// The audio rendering mechanism on OS X will drop the extra channels beyond
+// the channels that audio device can provide. To keep all information,
+// we need to downmix the audio data by ourselves.
+//
+// The trick here is that OSX allows us to set the layout containing other
+// channels that the output device can NOT provide. Therefore, OSX expects we
+// will fill the buffer for playing sound by the layout we set, so there are
+// some will-be-dropped data in the buffer. For example, if we set layout to
+// 3F2-LFE for a stereo device and we fill the buffer with data for left, right,
+// center, low frequency effects, left surround, right surround channels,
+//
+// +---+---+---+-----+----+----+
+// | L | R | C | LFE | LS | RS | ...
+// +---+---+---+-----+----+----+
+//           ^    ^    ^    ^
+//           The data for these four channels will be dropped!
+//
+// then the data for non-stereo channels will be ignored. To keep all the sounds,
+// we need to downmix the audio into the following format:
+//
+//           |<--   gap   -->|
+// +----+----+---+---+---+---+
+// | L' | R' | x | x | x | x | ...
+// +----+----+---+---+---+---+
+//             ^   ^   ^   ^
+//             Useless channel data ...
+//
+// where L' = L + 0.707 * (C + LS) and R' = R + 0.707 * (C + RS).
+//
+// Generally, we will change the buffer data like the following figure:
+//
+// |<-------------- 1 -------------->|<-------------- 2 -------------->|
+// +----+----+----+------+-----+-----+----+----+----+------+-----+-----+
+// | L0 | R0 | C0 | LFE0 | LS0 | RS0 | L1 | R1 | C1 | LFE1 | LS1 | RS1 | ...
+// +----+----+----+------+-----+-----+----+----+----+------+-----+-----+
+//
+//    | Downmix
+//    v
+//
+// |<---------- 1 ---------->|<---------- 2 ---------->|
+// +----+----+---+---+---+---+----+----+---+---+---+---+
+// | L0 | R0 | x | x | x | x | L1 | R1 | x | x | x | x | ...
+// +----+----+---+---+---+---+----+----+---+---+---+---+
+//           |<--   gap   -->|         |<--   gap   -->|
+//
+// where L0 = L0 + 0.707 * (C0 + LS0), R0 = R0 + 0.707 * (C0 + RS0),
+//       L1 = L1 + 0.707 * (C1 + LS1), R1 = R1 + 0.707 * (C1 + RS1), ...
+//
+template<typename T>
+bool
+downmix_3f2(T const * const in, unsigned long inframes, T * out, cubeb_channel_layout in_layout, cubeb_channel_layout out_layout)
+{
+  // Avoid allocating buffers in audio callback, so we reuse the same buffer.
+  assert(in == out);
+
+  if ((in_layout != CUBEB_LAYOUT_3F2 && in_layout != CUBEB_LAYOUT_3F2_LFE) ||
+      out_layout < CUBEB_LAYOUT_MONO || out_layout > CUBEB_LAYOUT_2F2_LFE) {
+    return false;
+  }
+
+  unsigned int in_channels = CUBEB_CHANNEL_LAYOUT_MAPS[in_layout].channels;
+  unsigned int out_channels = CUBEB_CHANNEL_LAYOUT_MAPS[out_layout].channels;
+
+  // Conversion from 3F2 to 2F2-LFE or 3F1-LFE is allowed, so we use '<=' instead of '<'.
+  assert(out_channels <= in_channels);
+
+  auto & downmix_matrix = DOWNMIX_MATRIX_3F2_LFE[out_layout - CUBEB_LAYOUT_MONO]; // The matrix is started from mono.
+  // The difference between this method and the normal version is that we use
+  // "out_index += in_channels" instead of "out_index += out_channels".
+  for (unsigned long i = 0, out_index = 0; i < inframes * in_channels; i += in_channels, out_index += in_channels) {
+    for (unsigned int j = 0; j < out_channels; ++j) {
+      T sample = 0;
+      for (unsigned int k = 0 ; k < INPUT_CHANNEL_NUM ; ++k) {
+        // 3F2-LFE has 6 channels: L, R, C, LFE, LS, RS, while 3F2 has only 5
+        // channels: L, R, C, LS, RS. Thus, we need to append 0 to LFE(index 3)
+        // to simulate a 3F2-LFE data when input layout is 3F2.
+        T data = (in_layout == CUBEB_LAYOUT_3F2_LFE) ? in[i + k] : (k == 3) ? 0 : in[i + ((k < 3) ? k : k - 1)];
+        sample += downmix_matrix[j][k] * data;
+      }
+      out[out_index + j] = sample;
+    }
+  }
+
+  return true;
+}
+#endif
 
 /* Map the audio data by channel name. */
 template<class T>
