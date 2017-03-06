@@ -1480,13 +1480,10 @@ get_device_name(AudioDeviceID id)
 }
 
 static int
-audiounit_set_aggregate_sub_device_list(cubeb_stream * stm)
+audiounit_set_aggregate_sub_device_list(AudioDeviceID aggregate_device_id, AudioDeviceID input_device_id,
+                                        AudioDeviceID output_device_id)
 {
-  AudioDeviceID input_device_id = audiounit_get_input_device_id(stm);
   const std::vector<AudioDeviceID> input_sub_devices = audiounit_get_sub_devices(input_device_id);
-
-
-  AudioDeviceID output_device_id = audiounit_get_default_device_id(CUBEB_DEVICE_TYPE_OUTPUT);
   const std::vector<AudioDeviceID> output_sub_devices = audiounit_get_sub_devices(output_device_id);
 
   CFMutableArrayRef aggregate_sub_devices_array = CFArrayCreateMutable(NULL, 0, &kCFTypeArrayCallBacks);
@@ -1511,7 +1508,7 @@ audiounit_set_aggregate_sub_device_list(cubeb_stream * stm)
                                                            kAudioObjectPropertyScopeGlobal,
                                                            kAudioObjectPropertyElementMaster };
   UInt32 size = sizeof(CFMutableArrayRef);
-  OSStatus rv = AudioObjectSetPropertyData(stm->aggregate_device_id,
+  OSStatus rv = AudioObjectSetPropertyData(aggregate_device_id,
                                            &aggregate_sub_device_list,
                                            0,
                                            nullptr,
@@ -1643,7 +1640,9 @@ audiounit_create_aggregate_device(cubeb_stream * stm)
     return CUBEB_ERROR;
   }
 
-  r = audiounit_set_aggregate_sub_device_list(stm);
+  AudioDeviceID input_device_id = audiounit_get_input_device_id(stm);
+  AudioDeviceID output_device_id = audiounit_get_default_device_id(CUBEB_DEVICE_TYPE_OUTPUT);
+  r = audiounit_set_aggregate_sub_device_list(stm->aggregate_device_id, input_device_id, output_device_id);
   if (r != CUBEB_OK) {
     LOG("(%p) Failed to set aggregate sub-device list", stm);
     audiounit_destroy_aggregate_device(stm);
