@@ -550,8 +550,16 @@ audiounit_output_callback(void * user_ptr,
     stm->input_linear_buffer->pop(input_frames_before_fill * stm->input_desc.mChannelsPerFrame);
   }
 
-  if (outframes < 0) {
+  if (outframes < 0 || outframes > output_frames) {
     stm->shutdown = true;
+    OSStatus r = AudioOutputUnitStop(stm->output_unit);
+    assert(r == 0);
+    if (stm->input_unit) {
+      r = AudioOutputUnitStop(stm->input_unit);
+      assert(r == 0);
+    }
+    stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
+    audiounit_make_silent(&outBufferList->mBuffers[0]);
     return noErr;
   }
 
