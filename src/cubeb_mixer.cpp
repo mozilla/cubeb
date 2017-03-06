@@ -349,7 +349,14 @@ downmix_3f2(T const * const in, unsigned long inframes, T * out, cubeb_channel_l
 template<class T>
 bool
 mix_remap(T const * const in, unsigned long inframes, T * out, cubeb_channel_layout in_layout, cubeb_channel_layout out_layout) {
-  assert(in != out && in_layout != out_layout);
+  assert(in_layout != out_layout);
+
+  // We might overwrite the data before we copied them to the mapped index
+  // (e.g. upmixing from stereo to 2F1 or mapping [L, R] to [R, L])
+  if (in == out) {
+    return false;
+  }
+
   unsigned int in_channels = CUBEB_CHANNEL_LAYOUT_MAPS[in_layout].channels;
   unsigned int out_channels = CUBEB_CHANNEL_LAYOUT_MAPS[out_layout].channels;
 
@@ -391,13 +398,16 @@ template<typename T>
 void
 downmix_fallback(T const * const in, unsigned long inframes, T * out, unsigned int in_channels, unsigned int out_channels)
 {
-  assert(in != out && in_channels >= out_channels);
-  long out_index = 0;
-  for (unsigned long i = 0; i < inframes * in_channels; i += in_channels) {
+  assert(in_channels >= out_channels);
+
+  if (in_channels == out_channels && in == out) {
+    return;
+  }
+
+  for (unsigned long i = 0, out_index = 0; i < inframes * in_channels; i += in_channels, out_index += out_channels) {
     for (unsigned int j = 0; j < out_channels; ++j) {
       out[out_index + j] = in[i + j];
     }
-    out_index += out_channels;
   }
 }
 
@@ -418,13 +428,14 @@ cubeb_downmix(T const * const in, long inframes, T * out,
       return;
     }
 
-    if (in == out || mix_remap(in, inframes, out, in_layout, out_layout)) {
+  // We only support downmix from audio 5.1 for now.
+#if defined(USE_AUDIOUNIT)
+  return;
+#endif
+
+    if (mix_remap(in, inframes, out, in_layout, out_layout)) {
       return;
     }
-  }
-
-  if (in == out) {
-    return;
   }
 
   downmix_fallback(in, inframes, out, in_channels, out_channels);
@@ -490,7 +501,7 @@ cubeb_should_downmix(cubeb_stream_params const * stream, cubeb_stream_params con
   return mixer->channels < stream->channels ||
          // When mixer.channels == stream.channels
          mixer->layout == CUBEB_LAYOUT_UNDEFINED ||  // fallback downmix
-         (stream->layout == CUBEB_LAYOUT_3F2 &&        // 3f2 downmix
+         (stream->layout == CUBEB_LAYOUT_3F2 &&      // 3f2 downmix
           (mixer->layout == CUBEB_LAYOUT_2F2_LFE ||
            mixer->layout == CUBEB_LAYOUT_3F1_LFE));
 }
