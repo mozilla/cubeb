@@ -1609,7 +1609,7 @@ audiounit_activate_clock_drift_compensation(const AudioDeviceID aggregate_device
   return CUBEB_OK;
 }
 
-static int audiounit_destroy_aggregate_device(cubeb_stream * stm);
+static int audiounit_destroy_aggregate_device(AudioObjectID plugin_id, AudioDeviceID aggregate_device_id);
 
 /*
  * Aggregate Device is a virtual audio interface which utilizes inputs and outputs
@@ -1636,7 +1636,7 @@ audiounit_create_aggregate_device(cubeb_stream * stm)
   int r = audiounit_create_blank_aggregate_device(&stm->plugin_id, &stm->aggregate_device_id);
   if (r != CUBEB_OK) {
     LOG("(%p) Failed to create blank aggregate device", stm);
-    audiounit_destroy_aggregate_device(stm);
+    audiounit_destroy_aggregate_device(stm->plugin_id, stm->aggregate_device_id);
     return CUBEB_ERROR;
   }
 
@@ -1645,21 +1645,21 @@ audiounit_create_aggregate_device(cubeb_stream * stm)
   r = audiounit_set_aggregate_sub_device_list(stm->aggregate_device_id, input_device_id, output_device_id);
   if (r != CUBEB_OK) {
     LOG("(%p) Failed to set aggregate sub-device list", stm);
-    audiounit_destroy_aggregate_device(stm);
+    audiounit_destroy_aggregate_device(stm->plugin_id, stm->aggregate_device_id);
     return CUBEB_ERROR;
   }
 
   r = audiounit_set_master_aggregate_device(stm->aggregate_device_id);
   if (r != CUBEB_OK) {
     LOG("(%p) Failed to set master sub-device for aggregate device", stm);
-    audiounit_destroy_aggregate_device(stm);
+    audiounit_destroy_aggregate_device(stm->plugin_id, stm->aggregate_device_id);
     return  CUBEB_ERROR;
   }
 
   r = audiounit_activate_clock_drift_compensation(stm->aggregate_device_id);
   if (r != CUBEB_OK) {
     LOG("(%p) Failed to activate clock drift compensation for aggregate device", stm);
-    audiounit_destroy_aggregate_device(stm);
+    audiounit_destroy_aggregate_device(stm->plugin_id, stm->aggregate_device_id);
     return  CUBEB_ERROR;
   }
 
@@ -1667,13 +1667,13 @@ audiounit_create_aggregate_device(cubeb_stream * stm)
 }
 
 static int
-audiounit_destroy_aggregate_device(cubeb_stream * stm)
+audiounit_destroy_aggregate_device(AudioObjectID plugin_id, AudioDeviceID aggregate_device_id)
 {
   AudioObjectPropertyAddress destroy_aggregate_device_addr = { kAudioPlugInDestroyAggregateDevice,
                                                                kAudioObjectPropertyScopeGlobal,
                                                                kAudioObjectPropertyElementMaster};
   UInt32 size;
-  OSStatus rv = AudioObjectGetPropertyDataSize(stm->plugin_id,
+  OSStatus rv = AudioObjectGetPropertyDataSize(plugin_id,
                                                &destroy_aggregate_device_addr,
                                                0,
                                                NULL,
@@ -1683,12 +1683,12 @@ audiounit_destroy_aggregate_device(cubeb_stream * stm)
     return CUBEB_ERROR;
   }
 
-  rv = AudioObjectGetPropertyData(stm->plugin_id,
+  rv = AudioObjectGetPropertyData(plugin_id,
                                   &destroy_aggregate_device_addr,
                                   0,
                                   NULL,
                                   &size,
-                                  &stm->aggregate_device_id);
+                                  &aggregate_device_id);
   if (rv != noErr) {
     LOG("AudioObjectGetPropertyData/kAudioPlugInDestroyAggregateDevice, rv=%d", rv);
     return CUBEB_ERROR;
@@ -2521,7 +2521,7 @@ audiounit_close_stream(cubeb_stream *stm)
   stm->resampler.reset();
 
   if (stm->aggregate_device_id) {
-    audiounit_destroy_aggregate_device(stm);
+    audiounit_destroy_aggregate_device(stm->plugin_id, stm->aggregate_device_id);
     stm->aggregate_device_id = 0;
   }
 }
