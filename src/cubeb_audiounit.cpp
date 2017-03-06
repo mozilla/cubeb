@@ -197,12 +197,12 @@ struct mixing_wrapper {
 template <typename T>
 struct mixing_impl : public mixing_wrapper {
 
-  using downmix_func_ptr = void (*)(T * const, long, T *,
-                                    unsigned int, unsigned int,
-                                    cubeb_channel_layout, cubeb_channel_layout);
+  typedef std::function<void(T * const, long, T *,
+                             unsigned int, unsigned int,
+                             cubeb_channel_layout, cubeb_channel_layout)> downmix_func;
 
-  mixing_impl(downmix_func_ptr dfptr) {
-    downmix_wrapper = dfptr;
+  mixing_impl(downmix_func dmfunc) {
+    downmix_wrapper = dmfunc;
   }
 
   ~mixing_impl() {}
@@ -215,14 +215,11 @@ struct mixing_impl : public mixing_wrapper {
     T* out = static_cast<T *>(output_buffer);
     // By using same buffer for downmixing input and output, we allow downmixing
     // from 5.0/1 to 1.0/1, 2.0/1/2, 3.0/1, 4.0/1. Do nothing on other cases.
-    (*downmix_wrapper)(out, output_frames, out,
-                       output_channels, using_channels,
-                       output_layout, mixing_layout);
+    downmix_wrapper(out, output_frames, out, output_channels, using_channels,
+                    output_layout, mixing_layout);
   }
 
-  /* Function pointer for downmixing and remapping */
-  void (*downmix_wrapper)(T * const, long, T *, unsigned int, unsigned int,
-                          cubeb_channel_layout, cubeb_channel_layout);
+  downmix_func downmix_wrapper;
 };
 
 enum io_side {
