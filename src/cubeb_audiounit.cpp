@@ -148,10 +148,10 @@ public:
   }
 
   auto_channel_layout(size_t s)
-    : layout(reinterpret_cast<AudioChannelLayout*>(malloc(s)))
+    : sz(s)
+    , layout((AudioChannelLayout*) calloc(1, sz))
   {
-    sz = s;
-    memset(layout, 0, sz);
+    assert(layout);
   }
 
   ~auto_channel_layout()
@@ -163,8 +163,8 @@ public:
   {
     release();
     sz = s;
-    layout = reinterpret_cast<AudioChannelLayout*>(malloc(sz));
-    memset(layout, 0, sz);
+    layout = (AudioChannelLayout*) calloc(1, sz);
+    assert(layout);
   }
 
   AudioChannelLayout* get()
@@ -183,12 +183,12 @@ private:
     if (layout) {
       free(layout);
       sz = 0;
-      layout = NULL;
+      layout = nullptr;
     }
   }
 
-  AudioChannelLayout * layout;
   size_t sz;
+  AudioChannelLayout * layout;
 };
 
 enum io_side {
