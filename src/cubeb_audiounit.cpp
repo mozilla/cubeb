@@ -655,7 +655,7 @@ audiounit_get_input_device_id(AudioDeviceID * device_id)
 }
 
 static int audiounit_stream_get_volume(cubeb_stream * stm, float * volume);
-int audiounit_stream_set_volume(cubeb_stream * stm, float volume);
+static int audiounit_stream_set_volume(cubeb_stream * stm, float volume);
 
 static int
 audiounit_reinit_stream(cubeb_stream * stm, bool is_started)
