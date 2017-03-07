@@ -2647,7 +2647,8 @@ audiounit_stream_get_volume(cubeb_stream * stm, float * volume)
   return CUBEB_OK;
 }
 
-int audiounit_stream_set_volume(cubeb_stream * stm, float volume)
+static int
+audiounit_stream_set_volume(cubeb_stream * stm, float volume)
 {
   assert(stm->output_unit);
   OSStatus r;
