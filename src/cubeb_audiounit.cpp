@@ -1406,7 +1406,7 @@ audiounit_create_blank_aggregate_device(AudioDeviceID * aggregate_device_id)
   CFDictionaryAddValue(aggregate_device_dict, CFSTR(kAudioAggregateDeviceIsPrivateKey), aggregate_device_private_key);
   CFRelease(aggregate_device_private_key);
 
-  OSStatus r = AudioHardwareCreateAggregateDevice( aggregate_device_dict, aggregate_device_id);
+  OSStatus r = AudioHardwareCreateAggregateDevice(aggregate_device_dict, aggregate_device_id);
   CFRelease(aggregate_device_dict);
   if (r != noErr) {
     LOG("AudioObjectGetPropertyData/kAudioPlugInCreateAggregateDevice, rv=%d", r);
@@ -1430,7 +1430,8 @@ get_device_name(AudioDeviceID id)
 }
 
 static int
-audiounit_set_aggregate_sub_device_list(AudioDeviceID aggregate_device_id, AudioDeviceID input_device_id,
+audiounit_set_aggregate_sub_device_list(AudioDeviceID aggregate_device_id,
+                                        AudioDeviceID input_device_id,
                                         AudioDeviceID output_device_id)
 {
   const std::vector<AudioDeviceID> input_sub_devices = audiounit_get_sub_devices(input_device_id);
