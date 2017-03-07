@@ -659,6 +659,7 @@ static int audiounit_stream_set_volume(cubeb_stream * stm, float volume);
 static int
 audiounit_reinit_stream(cubeb_stream * stm, bool is_started)
 {
+  auto_lock context_lock(stm->context->mutex);
   if (is_started) {
     audiounit_stream_stop_internal(stm);
   }
