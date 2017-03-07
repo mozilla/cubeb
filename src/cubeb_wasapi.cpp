@@ -1166,6 +1166,12 @@ bool stop_and_join_render_thread(cubeb_stream * stm)
     return true;
   }
 
+  // If we've already leaked the thread, just return,
+  // there is not much we can do.
+  if (!stm->emergency_bailout.load()) {
+    return false;
+  }
+
   BOOL ok = SetEvent(stm->shutdown_event);
   if (!ok) {
     LOG("Destroy SetEvent failed: %lx", GetLastError());

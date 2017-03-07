@@ -192,6 +192,11 @@ target_include_directories(test_duplex PRIVATE ${gtest_SOURCE_DIR}/include)
 target_link_libraries(test_duplex PRIVATE cubeb gtest_main)
 add_test(duplex test_duplex)
 
+add_executable(test_overload_callback test/test_overload_callback.cpp)
+target_include_directories(test_overload_callback PRIVATE ${gtest_SOURCE_DIR}/include)
+target_link_libraries(test_overload_callback PRIVATE cubeb gtest_main)
+add_test(overload_callback test_overload_callback)
+
 add_executable(test_latency test/test_latency.cpp)
 target_include_directories(test_latency PRIVATE ${gtest_SOURCE_DIR}/include)
 target_link_libraries(test_latency PRIVATE cubeb gtest_main)
