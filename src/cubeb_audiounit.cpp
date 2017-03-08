@@ -1212,7 +1212,7 @@ audiounit_destroy(cubeb * ctx)
   {
     auto_lock lock(ctx->mutex);
     /* Unregister the callback if necessary. */
-    if(ctx->collection_changed_callback) {
+    if (ctx->collection_changed_callback) {
       audiounit_remove_device_listener(ctx);
     }
   }
