@@ -139,53 +139,14 @@ private:
   auto_array<T> ar;
 };
 
-class auto_channel_layout
+static std::unique_ptr<AudioChannelLayout, decltype(&free)>
+make_sized_audio_channel_layout(size_t sz)
 {
-public:
-  auto_channel_layout()
-    : layout(nullptr)
-  {
-  }
-
-  auto_channel_layout(size_t size)
-    : layout(reinterpret_cast<AudioChannelLayout*>(malloc(size)))
-  {
-    memset(layout, 0, size);
-  }
-
-  ~auto_channel_layout()
-  {
-    release();
-  }
-
-  void reset(size_t size)
-  {
-    release();
-    layout = reinterpret_cast<AudioChannelLayout*>(malloc(size));
-    memset(layout, 0, size);
-  }
-
-  AudioChannelLayout* get()
-  {
-    return layout;
-  }
-
-  size_t size()
-  {
-    return sizeof(*layout);
-  }
-
-private:
-  void release()
-  {
-    if (layout) {
-      free(layout);
-      layout = NULL;
-    }
-  }
-
-  AudioChannelLayout * layout;
-};
+    assert(sz >= sizeof(AudioChannelLayout));
+    AudioChannelLayout * acl = reinterpret_cast<AudioChannelLayout *>(calloc(1, sz));
+    assert(acl); // Assert the allocation works.
+    return std::unique_ptr<AudioChannelLayout, decltype(&free)>(acl, free);
+}
 
 enum io_side {
   INPUT,
@@ -1128,7 +1089,7 @@ audiounit_get_current_channel_layout(AudioUnit output_unit)
   }
   assert(size > 0);
 
-  auto_channel_layout layout(size);
+  auto layout = make_sized_audio_channel_layout(size);
   rv = AudioUnitGetProperty(output_unit,
                             kAudioUnitProperty_AudioChannelLayout,
                             kAudioUnitScope_Output,
@@ -1163,7 +1124,7 @@ audiounit_get_preferred_channel_layout()
   }
   assert(size > 0);
 
-  auto_channel_layout layout(size);
+  auto layout = make_sized_audio_channel_layout(size);
   rv = AudioObjectGetPropertyData(id, &adr, 0, NULL, &size, layout.get());
   if (rv != noErr) {
     return CUBEB_LAYOUT_UNDEFINED;
@@ -1282,7 +1243,8 @@ audiounit_set_channel_layout(AudioUnit unit,
   assert(stream_params->channels == CUBEB_CHANNEL_LAYOUT_MAPS[stream_params->layout].channels);
 
   OSStatus r;
-  auto_channel_layout layout(sizeof(AudioChannelLayout));
+  size_t size = 0; // used when we need to customize the layout.
+  auto layout = make_sized_audio_channel_layout(sizeof(AudioChannelLayout));
 
   switch (stream_params->layout) {
     case CUBEB_LAYOUT_DUAL_MONO:
@@ -1318,8 +1280,8 @@ audiounit_set_channel_layout(AudioUnit unit,
   // For those layouts that can't be matched to coreaudio's predefined layout,
   // we use customized layout.
   if (layout.get()->mChannelLayoutTag == kAudioChannelLayoutTag_Unknown) {
-    size_t size = offsetof(AudioChannelLayout, mChannelDescriptions[stream_params->channels]);
-    layout.reset(size);
+    size = offsetof(AudioChannelLayout, mChannelDescriptions[stream_params->channels]);
+    layout = make_sized_audio_channel_layout(size);
     layout.get()->mChannelLayoutTag = kAudioChannelLayoutTag_UseChannelDescriptions;
     layout.get()->mNumberChannelDescriptions = stream_params->channels;
     for (UInt32 i = 0 ; i < stream_params->channels ; ++i) {
@@ -1334,7 +1296,7 @@ audiounit_set_channel_layout(AudioUnit unit,
                            kAudioUnitScope_Input,
                            AU_OUT_BUS,
                            layout.get(),
-                           layout.size());
+                           size);
   if (r != noErr) {
     LOG("AudioUnitSetProperty/%s/kAudioUnitProperty_AudioChannelLayout rv=%d", to_string(side), r);
     return CUBEB_ERROR;
