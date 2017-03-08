@@ -2473,7 +2473,7 @@ audiounit_stream_destroy(cubeb_stream * stm)
 {
   stm->shutdown = true;
 
-  auto_lock context_locl(stm->context->mutex);
+  auto_lock context_lock(stm->context->mutex);
   audiounit_stream_stop_internal(stm);
 
   {
@@ -2508,7 +2508,7 @@ audiounit_stream_start(cubeb_stream * stm)
   stm->shutdown = false;
   stm->draining = false;
 
-  auto_lock context_locl(stm->context->mutex);
+  auto_lock context_lock(stm->context->mutex);
   audiounit_stream_start_internal(stm);
 
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STARTED);
@@ -2536,7 +2536,7 @@ audiounit_stream_stop(cubeb_stream * stm)
 {
   stm->shutdown = true;
 
-  auto_lock context_locl(stm->context->mutex);
+  auto_lock context_lock(stm->context->mutex);
   audiounit_stream_stop_internal(stm);
 
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STOPPED);
