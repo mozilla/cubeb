@@ -1178,10 +1178,12 @@ audiounit_destroy(cubeb * ctx)
     LOG("(%p) API misuse, %d streams active when context destroyed!", ctx, ctx->active_streams.load());
   }
 
-  /* Unregister the callback if necessary. */
-  if(ctx->collection_changed_callback) {
+  {
     auto_lock lock(ctx->mutex);
-    audiounit_remove_device_listener(ctx);
+    /* Unregister the callback if necessary. */
+    if (ctx->collection_changed_callback) {
+      audiounit_remove_device_listener(ctx);
+    }
   }
 
   delete ctx;
