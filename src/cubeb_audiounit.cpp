@@ -139,12 +139,13 @@ private:
   auto_array<T> ar;
 };
 
-template<typename T>
-using unique_ptr_with_free = std::unique_ptr<T, decltype(free)*>;
-
-template<typename T>
-inline unique_ptr_with_free<T> make_alloc_unique(size_t sz) {
-    return unique_ptr_with_free<T> { (T*)calloc(1, sz), free };
+static std::unique_ptr<AudioChannelLayout, decltype(&free)>
+make_sized_audio_channel_layout(size_t sz)
+{
+    assert(sz >= sizeof(AudioChannelLayout));
+    AudioChannelLayout * acl = reinterpret_cast<AudioChannelLayout *>(calloc(1, sz));
+    assert(acl); // Assert the allocation works.
+    return std::unique_ptr<AudioChannelLayout, decltype(&free)>(acl, free);
 }
 
 enum io_side {
@@ -1080,7 +1081,7 @@ audiounit_get_current_channel_layout(AudioUnit output_unit)
   }
   assert(size > 0);
 
-  auto layout = make_alloc_unique<AudioChannelLayout>(size);
+  auto layout = make_sized_audio_channel_layout(size);
   rv = AudioUnitGetProperty(output_unit,
                             kAudioUnitProperty_AudioChannelLayout,
                             kAudioUnitScope_Output,
@@ -1115,7 +1116,7 @@ audiounit_get_preferred_channel_layout()
   }
   assert(size > 0);
 
-  auto layout = make_alloc_unique<AudioChannelLayout>(size);
+  auto layout = make_sized_audio_channel_layout(size);
   rv = AudioObjectGetPropertyData(id, &adr, 0, NULL, &size, layout.get());
   if (rv != noErr) {
     return CUBEB_LAYOUT_UNDEFINED;
@@ -1234,8 +1235,8 @@ audiounit_set_channel_layout(AudioUnit unit,
   assert(stream_params->channels == CUBEB_CHANNEL_LAYOUT_MAPS[stream_params->layout].channels);
 
   OSStatus r;
-  size_t size = sizeof(AudioChannelLayout);
-  auto layout = make_alloc_unique<AudioChannelLayout>(size);
+  size_t size = 0; // used when we need to customize the layout.
+  auto layout = make_sized_audio_channel_layout(sizeof(AudioChannelLayout));
 
   switch (stream_params->layout) {
     case CUBEB_LAYOUT_DUAL_MONO:
@@ -1272,7 +1273,7 @@ audiounit_set_channel_layout(AudioUnit unit,
   // we use customized layout.
   if (layout.get()->mChannelLayoutTag == kAudioChannelLayoutTag_Unknown) {
     size = offsetof(AudioChannelLayout, mChannelDescriptions[stream_params->channels]);
-    layout.reset((AudioChannelLayout*)calloc(1, size));
+    layout = make_sized_audio_channel_layout(size);
     layout.get()->mChannelLayoutTag = kAudioChannelLayoutTag_UseChannelDescriptions;
     layout.get()->mNumberChannelDescriptions = stream_params->channels;
     for (UInt32 i = 0 ; i < stream_params->channels ; ++i) {
