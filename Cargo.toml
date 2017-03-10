@@ -1,0 +1,14 @@
+[package]
+name = "cubeb-pulse"
+version = "0.0.1"
+authors = ["Dan Glastonbury <dglastonbury@mozilla.com>"]
+description = "Cubeb backed for Pulse Audio written in Rust"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+cubeb-ffi = { path = "cubeb-ffi" }
+libc = "*"
+libpulse-sys = { git = 'https://github.com/djg/libpulse-sys', branch = 'cubeb' }
+
