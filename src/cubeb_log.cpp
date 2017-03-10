@@ -93,6 +93,9 @@ private:
 
 void cubeb_async_log(const char * fmt, ...)
 {
+  if (g_log_callback) {
+    return;
+  }
   // This is going to copy a 256 bytes array around, which is fine.
   // We don't want to allocate memory here, because this is made to
   // be called from a real-time callback.

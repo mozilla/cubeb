@@ -617,6 +617,15 @@ int cubeb_set_log_callback(cubeb_log_level log_level,
   g_log_callback = log_callback;
   g_log_level = log_level;
 
+  // Logging a message here allows to initialize the asynchronous logger from a
+  // thread that is not the audio rendering thread, and especially to not
+  // initialize it the first time we find a verbose log, which is often in the
+  // audio rendering callback, that runs from the audio rendering thread, and
+  // that is high priority, and that we don't want to block.
+  if (log_level >= CUBEB_LOG_VERBOSE) {
+    ALOGV("Starting cubeb log");
+  }
+
   return CUBEB_OK;
 }
 
