@@ -6,8 +6,8 @@
  */
 #define NOMINMAX
 
-#include "cubeb_ringbuffer.h"
 #include "cubeb_log.h"
+#include "cubeb_ringbuffer.h"
 #include <cstdarg>
 
 cubeb_log_level g_log_level;
@@ -32,18 +32,18 @@ class cubeb_log_message
 public:
   cubeb_log_message()
   {
-    PodZero(storage, CUBEB_LOG_MESSAGE_MAX_SIZE);
+    *storage = '\0';
   }
-  cubeb_log_message(char str[CUBEB_LOG_MESSAGE_MAX_SIZE])
+  cubeb_log_message(const char str[CUBEB_LOG_MESSAGE_MAX_SIZE])
   {
     size_t length = strlen(str);
-    /* paranoia against malformed messagd */
+    /* paranoia against malformed message */
     assert(length < CUBEB_LOG_MESSAGE_MAX_SIZE);
     if (length > CUBEB_LOG_MESSAGE_MAX_SIZE - 1) {
       return;
     }
     PodCopy(storage, str, length);
-    PodZero(storage + length, CUBEB_LOG_MESSAGE_MAX_SIZE - length);
+    storage[length + 1] = '\0';
   }
   char * get() {
     return storage;
@@ -58,11 +58,11 @@ class cubeb_async_logger
 {
 public:
   /* This is thread-safe since C++11 */
-  static cubeb_async_logger& get() {
+  static cubeb_async_logger & get() {
     static cubeb_async_logger instance;
     return instance;
   }
-  void push(char str[CUBEB_LOG_MESSAGE_MAX_SIZE])
+  void push(const char str[CUBEB_LOG_MESSAGE_MAX_SIZE])
   {
     cubeb_log_message msg(str);
     msg_queue.enqueue(msg);
@@ -81,7 +81,7 @@ public:
   }
 private:
   cubeb_async_logger()
-    :msg_queue(CUBEB_LOG_MESSAGE_QUEUE_DEPTH)
+    : msg_queue(CUBEB_LOG_MESSAGE_QUEUE_DEPTH)
   {
     run();
   }
@@ -93,7 +93,7 @@ private:
 
 void cubeb_async_log(const char * fmt, ...)
 {
-  if (g_log_callback) {
+  if (!g_log_callback) {
     return;
   }
   // This is going to copy a 256 bytes array around, which is fine.
