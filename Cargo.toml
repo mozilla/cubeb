@@ -10,5 +10,4 @@ crate-type = ["staticlib"]
 [dependencies]
 cubeb-ffi = { path = "cubeb-ffi" }
 libc = "*"
-libpulse-sys = { git = 'https://github.com/djg/libpulse-sys', branch = 'cubeb' }
-
+libpulse-sys = { path = "libpulse-sys" }

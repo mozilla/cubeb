@@ -1,0 +1,11 @@
+[package]
+name = "libpulse-sys"
+version = "0.0.0"
+authors = ["Astro <astro@spaceboyz.net>"]
+description = "Pulseaudio binding for Rust generated with rust-bindgen"
+repository = "https://github.com/astro/libpulse-sys"
+license-file = "LICENSE"
+
+[dependencies]
+libc = "*"
+shared_library = "0.1"
