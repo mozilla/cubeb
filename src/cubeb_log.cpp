@@ -9,6 +9,11 @@
 #include "cubeb_log.h"
 #include "cubeb_ringbuffer.h"
 #include <cstdarg>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <time.h>
+#endif
 
 cubeb_log_level g_log_level;
 cubeb_log_callback g_log_callback;
@@ -19,8 +24,7 @@ const size_t CUBEB_LOG_MESSAGE_MAX_SIZE = 256;
  * messages. */
 const size_t CUBEB_LOG_MESSAGE_QUEUE_DEPTH = 40;
 /** Number of milliseconds to wait before dequeuing log messages. */
-const std::chrono::milliseconds CUBEB_LOG_BATCH_PRINT_INTERVAL_MS =
-                                              std::chrono::milliseconds(10);
+#define CUBEB_LOG_BATCH_PRINT_INTERVAL_MS 10
 
 /**
   * This wraps an inline buffer, that represents a log message, that must be
@@ -75,11 +79,29 @@ public:
         while (msg_queue.dequeue(&msg, 1)) {
           LOGV("%s", msg.get());
         }
-        std::this_thread::sleep_for(CUBEB_LOG_BATCH_PRINT_INTERVAL_MS);
+#ifdef _WIN32
+        Sleep(CUBEB_LOG_BATCH_PRINT_INTERVAL_MS);
+#else
+        timespec sleep_duration = sleep_for;
+        timespec remainder;
+        do {
+          if (nanosleep(&sleep_duration, &remainder) == 0 ||
+              errno != EINTR) {
+            break;
+          }
+          sleep_duration = remainder;
+        } while (remainder.tv_sec || remainder.tv_nsec);
+#endif
       }
     }).detach();
   }
 private:
+#ifndef _WIN32
+  const struct timespec sleep_for = {
+    CUBEB_LOG_BATCH_PRINT_INTERVAL_MS/1000,
+    (CUBEB_LOG_BATCH_PRINT_INTERVAL_MS%1000)*1000*1000
+  };
+#endif
   cubeb_async_logger()
     : msg_queue(CUBEB_LOG_MESSAGE_QUEUE_DEPTH)
   {
