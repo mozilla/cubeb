@@ -17,7 +17,11 @@
 #include "common.h"
 
 #define SAMPLE_FREQUENCY 48000
+#if (defined(_WIN32) || defined(__WIN32__))
 #define STREAM_FORMAT CUBEB_SAMPLE_FLOAT32LE
+#else
+#define STREAM_FORMAT CUBEB_SAMPLE_S16LE
+#endif
 
 std::atomic<bool> load_callback{ false };
 
@@ -57,7 +61,7 @@ TEST(cubeb, overload_callback)
   int r;
   uint32_t latency_frames = 0;
 
-  r = cubeb_init(&ctx, "Cubeb callback overload");
+  r = cubeb_init(&ctx, "Cubeb callback overload", NULL);
   ASSERT_EQ(r, CUBEB_OK);
 
   output_params.format = STREAM_FORMAT;
