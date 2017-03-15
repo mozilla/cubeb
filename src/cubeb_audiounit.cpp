@@ -480,12 +480,11 @@ audiounit_mix_output_buffer(cubeb_stream * stm,
   // the channels that audio device can provide, so we need to downmix the
   // audio data by ourselves to keep all the information.
 
-  cubeb_channel_layout usedLayout = audiounit_get_channel_layout(false);
   cubeb_stream_params mixed_params = {
     stm->output_stream_params.format,
     stm->output_stream_params.rate,
-    CUBEB_CHANNEL_LAYOUT_MAPS[usedLayout].channels,
-    usedLayout
+    CUBEB_CHANNEL_LAYOUT_MAPS[stm->context->layout].channels,
+    stm->context->layout
   };
 
   // We only handle downmixing for now.

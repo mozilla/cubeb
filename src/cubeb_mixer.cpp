@@ -236,16 +236,16 @@ static float const DOWNMIX_MATRIX_3F2_LFE[SUPPORTED_LAYOUT_NUM][MAX_OUTPUT_CHANN
 //           ^    ^    ^    ^
 //           The data for these four channels will be dropped!
 //
-// To keep all the information, we need to downmix the data before it's dropped
+// To keep all the information, we need to downmix the data before it's dropped.
 // The figure below shows an example for downmixing from 3F2-LFE(Fig. 1)
-// to stereo(Fig. 3) on OSX.
+// to stereo(Fig. 3) on OSX, where the LO, R0, L1, R0 are same as above.
 //
 // Fig. 3:
 // |<---------- 1 ---------->|<---------- 2 ---------->|
 // +----+----+---+---+---+---+----+----+---+---+---+---+
 // | L0 | R0 | x | x | x | x | L1 | R1 | x | x | x | x | ...
 // +----+----+---+---+---+---+----+----+---+---+---+---+
-//           |<--   gap   -->|         |<--   gap   -->|
+//           |<--  dummy  -->|         |<--  dummy  -->|
 template<typename T>
 bool
 downmix_3f2(T const * const in, unsigned long inframes, T * out, cubeb_channel_layout in_layout, cubeb_channel_layout out_layout)
