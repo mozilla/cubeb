@@ -11,3 +11,4 @@ crate-type = ["staticlib"]
 cubeb-ffi = { path = "cubeb-ffi" }
 libc = "*"
 libpulse-sys = { path = "libpulse-sys" }
+semver = "^0.6"

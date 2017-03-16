@@ -8,6 +8,7 @@
 extern crate cubeb_ffi as cubeb;
 extern crate libc;
 extern crate libpulse_sys;
+extern crate semver;
 
 mod capi;
 mod backend;

@@ -412,7 +412,7 @@ impl<'ctx> Stream<'ctx>
 
     pub fn current_device(&self) -> Result<Box<cubeb::Device>>
     {
-        if cfg!(feature = "get_current_device") {
+        if self.context.version_0_9_8 {
             let mut dev = Box::new(cubeb::Device::default());
 
             if !self.input_stream.is_null() {

@@ -8,6 +8,7 @@ use libc::{int64_t,uint32_t};
 const LIB_NAME: &'static str = "libpulse.so.0";
 
 shared_library!{ libpulse, LIB_NAME,
+    pub fn pa_get_library_version() -> *const i8,
     pub fn pa_channel_map_can_balance(map: *const pa_channel_map) -> c_int,
     pub fn pa_channel_map_init(m: *mut pa_channel_map) -> *mut pa_channel_map,
     pub fn pa_context_connect(c: *mut pa_context,

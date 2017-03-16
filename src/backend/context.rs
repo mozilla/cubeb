@@ -10,7 +10,9 @@ use cubeb;
 use libc::strcmp;
 use libc::{c_char,c_void};
 use libpulse_sys::*;
+use semver;
 use std::default::Default;
+use std::ffi::CStr;
 use std::ptr;
 
 macro_rules! dup_str {
@@ -64,6 +66,8 @@ pub struct Context
     pub collection_changed_callback: cubeb::DeviceCollectionChangedCallback,
     pub collection_changed_user_ptr: *mut c_void,
     pub error: bool,
+    pub version_2_0_0: bool,
+    pub version_0_9_8: bool
 }
 
 destroy!(Context);
@@ -81,6 +85,8 @@ impl Context
             collection_changed_callback: None,
             collection_changed_user_ptr: 0 as *mut _,
             error: true,
+            version_0_9_8: false,
+            version_2_0_0: false,
         });
 
         pa_threaded_mainloop_start(ctx.mainloop);
@@ -343,6 +349,12 @@ impl Context
 
         pa_threaded_mainloop_unlock(self.mainloop);
 
+        let version_str = unsafe { CStr::from_ptr(pa_get_library_version()) };
+        if let Ok(version) = semver::Version::parse(version_str.to_string_lossy().as_ref()) {
+            self.version_0_9_8 = version >= semver::Version::parse("0.9.8").expect("Failed to parse version");
+            self.version_2_0_0 = version >= semver::Version::parse("2.0.0").expect("Failed to parse version");
+        }
+
         self.error = false;
 
         cubeb::OK
@@ -398,6 +410,34 @@ impl Context
         }
 
         true
+    }
+
+    fn state_from_sink_port(&self, i: *const pa_port_info) -> cubeb::DeviceState
+    {
+        if !i.is_null() {
+            let info = unsafe { *i };
+            if self.version_2_0_0 && info.available == PA_PORT_AVAILABLE_NO {
+                cubeb::DeviceState::Unplugged
+            } else {
+                cubeb::DeviceState::Enabled
+            }
+        } else {
+            cubeb::DeviceState::Disabled
+        }
+    }
+
+    fn state_from_source_port(&self, i: *mut pa_port_info) -> cubeb::DeviceState
+    {
+        if !i.is_null() {
+            let info = unsafe { *i };
+            if self.version_2_0_0 && info.available == PA_PORT_AVAILABLE_NO {
+                cubeb::DeviceState::Unplugged
+            } else {
+                cubeb::DeviceState::Enabled
+            }
+        } else {
+            cubeb::DeviceState::Disabled
+        }
     }
 }
 
@@ -470,20 +510,6 @@ fn pulse_format_to_cubeb_format(format: pa_sample_format_t) -> cubeb::DeviceFmt
   }
 }
 
-fn pulse_get_state_from_sink_port(i: *const pa_port_info) -> cubeb::DeviceState
-{
-    if !i.is_null() {
-        let info = unsafe { *i };
-        return if cfg!(feature="pa_version_2") && info.available == PA_PORT_AVAILABLE_NO as i32 {
-            cubeb::DeviceState::Unplugged
-        } else {
-            cubeb::DeviceState::Enabled
-        }
-    }
-
-    cubeb::DeviceState::Disabled
-}
-
 unsafe extern fn pulse_sink_info_cb(_context: *mut pa_context,
                                     i: *const pa_sink_info,
                                     eol: i32,
@@ -525,6 +551,8 @@ unsafe extern fn pulse_sink_info_cb(_context: *mut pa_context,
             cubeb::DevicePref::none()
         };
 
+    let ctx = &(*list_data.context);
+
     let devinfo = cubeb::DeviceInfo {
         device_id: device_id,
         devid: device_id as cubeb::DeviceId,
@@ -532,7 +560,7 @@ unsafe extern fn pulse_sink_info_cb(_context: *mut pa_context,
         group_id: group_id,
         vendor_name: vendor_name,
         devtype: cubeb::DeviceType::output(),
-        state: pulse_get_state_from_sink_port(info.active_port),
+        state: ctx.state_from_sink_port(info.active_port),
         preferred: preferred,
         format: cubeb::DeviceFmt::all(),
         default_format: pulse_format_to_cubeb_format(info.sample_spec.format),
@@ -545,21 +573,7 @@ unsafe extern fn pulse_sink_info_cb(_context: *mut pa_context,
     };
     list_data.devinfo.push(Box::into_raw(Box::new(devinfo)));
 
-    pa_threaded_mainloop_signal((*list_data.context).mainloop, 0);
-}
-
-fn pulse_get_state_from_source_port(i: *mut pa_port_info) -> cubeb::DeviceState
-{
-    if !i.is_null() {
-        let info = unsafe { *i };
-        return if cfg!(feature="pa_version_2") && info.available == PA_PORT_AVAILABLE_NO as i32 {
-            cubeb::DeviceState::Unplugged
-        } else {
-            cubeb::DeviceState::Enabled
-        }
-    }
-
-    cubeb::DeviceState::Disabled
+    pa_threaded_mainloop_signal(ctx.mainloop, 0);
 }
 
 unsafe extern fn pulse_source_info_cb(_context: *mut pa_context,
@@ -603,6 +617,8 @@ unsafe extern fn pulse_source_info_cb(_context: *mut pa_context,
             cubeb::DevicePref::none()
         };
 
+    let ctx = &(*list_data.context);
+
     let devinfo = cubeb::DeviceInfo {
         device_id: device_id,
         devid: device_id as cubeb::DeviceId,
@@ -610,7 +626,7 @@ unsafe extern fn pulse_source_info_cb(_context: *mut pa_context,
         group_id: group_id,
         vendor_name: vendor_name,
         devtype: cubeb::DeviceType::input(),
-        state: pulse_get_state_from_source_port(info.active_port),
+        state: ctx.state_from_source_port(info.active_port),
         preferred: preferred,
         format: cubeb::DeviceFmt::all(),
         default_format: pulse_format_to_cubeb_format(info.sample_spec.format),
@@ -624,7 +640,7 @@ unsafe extern fn pulse_source_info_cb(_context: *mut pa_context,
 
     list_data.devinfo.push(Box::into_raw(Box::new(devinfo)));
 
-    pa_threaded_mainloop_signal((*list_data.context).mainloop, 0);
+    pa_threaded_mainloop_signal(ctx.mainloop, 0);
 }
 
 unsafe extern fn pulse_server_info_cb(_context: *mut pa_context,
