@@ -422,7 +422,7 @@ impl Context
                 cubeb::DeviceState::Enabled
             }
         } else {
-            cubeb::DeviceState::Disabled
+            cubeb::DeviceState::Enabled
         }
     }
 
@@ -436,7 +436,7 @@ impl Context
                 cubeb::DeviceState::Enabled
             }
         } else {
-            cubeb::DeviceState::Disabled
+            cubeb::DeviceState::Enabled
         }
     }
 }
