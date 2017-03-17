@@ -52,7 +52,7 @@ class sequence_verifier
       for (size_t i = 0; i < frames; i++) {
         for (size_t c = 0; c < channels; c++) {
           if (elements[i * channels + c] != static_cast<T>(index_)) {
-            std::cerr << "Element " << i << " is different. Expected " 
+            std::cerr << "Element " << i << " is different. Expected "
               << static_cast<T>(index_) << ", got " << elements[i]
               << ". (channel count: " << channels << ")." << std::endl;
             ASSERT_TRUE(false);
@@ -67,7 +67,7 @@ class sequence_verifier
 };
 
 template<typename T>
-void test_ring(audio_ring_buffer<T>& buf, int channels, int capacity_frames)
+void test_ring(lock_free_audio_ring_buffer<T>& buf, int channels, int capacity_frames)
 {
   std::unique_ptr<T[]> seq(new T[capacity_frames * channels]);
   sequence_generator<T> gen(channels);
@@ -164,24 +164,16 @@ TEST(cubeb, ring_buffer)
   const int max_capacity = 1277;
   const int capacity_increment = 27;
 
-  queue<float> q1(128);
+  lock_free_queue<float> q1(128);
   basic_api_test(q1);
-  queue<short> q2(128);
+  lock_free_queue<short> q2(128);
   basic_api_test(q2);
-  lock_free_queue<float> q3(128);
-  basic_api_test(q3);
-  lock_free_queue<short> q4(128);
-  basic_api_test(q4);
 
   for (size_t channels = min_channels; channels < max_channels; channels++) {
-    audio_ring_buffer<float> q5(channels, 128);
-    basic_api_test(q5);
-    audio_ring_buffer<short> q6(channels, 128);
-    basic_api_test(q6);
-    lock_free_audio_ring_buffer<float> q7(channels, 128);
-    basic_api_test(q7);
-    lock_free_audio_ring_buffer<short> q8(channels, 128);
-    basic_api_test(q8);
+    lock_free_audio_ring_buffer<float> q3(channels, 128);
+    basic_api_test(q3);
+    lock_free_audio_ring_buffer<short> q4(channels, 128);
+    basic_api_test(q4);
   }
 
   /* Single thread testing. */
@@ -190,7 +182,7 @@ TEST(cubeb, ring_buffer)
     /* Use non power-of-two numbers to catch edge-cases. */
     for (size_t capacity_frames = min_capacity;
          capacity_frames < max_capacity; capacity_frames+=capacity_increment) {
-      audio_ring_buffer<float> ring(channels, capacity_frames);
+      lock_free_audio_ring_buffer<float> ring(channels, capacity_frames);
       test_ring(ring, channels, capacity_frames);
     }
   }
