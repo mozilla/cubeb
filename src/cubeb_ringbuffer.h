@@ -118,8 +118,8 @@ public:
     assert_correct_thread(producer_id);
 #endif
 
-    int rd_idx = read_index_;
-    int wr_idx = write_index_;
+    int rd_idx = read_index_.load(std::memory_order::memory_order_relaxed);
+    int wr_idx = write_index_.load(std::memory_order::memory_order_relaxed);
 
     if (full_internal(rd_idx, wr_idx)) {
       return 0;
@@ -142,7 +142,7 @@ public:
       ConstructDefault(data_.get(), second_part);
     }
 
-    write_index_ = increment_index(wr_idx, to_write);
+    write_index_.store(increment_index(wr_idx, to_write), std::memory_order::memory_order_release);
 
     return to_write;
   }
@@ -163,8 +163,8 @@ public:
     assert_correct_thread(consumer_id);
 #endif
 
-    int wr_idx = write_index_;
-    int rd_idx = read_index_;
+    int wr_idx = write_index_.load(std::memory_order::memory_order_acquire);
+    int rd_idx = read_index_.load(std::memory_order::memory_order_relaxed);
 
     if (empty_internal(rd_idx, wr_idx)) {
       return 0;
@@ -181,7 +181,7 @@ public:
       Copy(elements + first_part, data_.get(), second_part);
     }
 
-    read_index_ = increment_index(rd_idx, to_read);
+    read_index_.store(increment_index(rd_idx, to_read), std::memory_order::memory_order_relaxed);
 
     return to_read;
   }
@@ -197,7 +197,8 @@ public:
 #ifndef NDEBUG
     assert_correct_thread(consumer_id);
 #endif
-    return available_read_internal(read_index_, write_index_);
+    return available_read_internal(read_index_.load(std::memory_order::memory_order_relaxed),
+                                   write_index_.load(std::memory_order::memory_order_relaxed));
   }
   /**
    * Get the number of available elements for consuming.
@@ -211,7 +212,8 @@ public:
 #ifndef NDEBUG
     assert_correct_thread(producer_id);
 #endif
-    return available_write_internal(read_index_, write_index_);
+    return available_write_internal(read_index_.load(std::memory_order::memory_order_relaxed),
+                                    write_index_.load(std::memory_order::memory_order_relaxed));
   }
   /**
    * Get the total capacity, for this ring buffer.
