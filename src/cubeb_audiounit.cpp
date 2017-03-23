@@ -1229,7 +1229,7 @@ audiounit_get_preferred_channel_layout(cubeb * ctx, cubeb_channel_layout * layou
 
     // If there is no existed stream, then we create a default ouput unit and
     // use it to get the current used channel layout.
-    AudioUnit output_unit;
+    AudioUnit output_unit = nullptr;
     audiounit_create_unit(&output_unit, OUTPUT, 0);
     *layout = audiounit_get_current_channel_layout(output_unit);
   }
@@ -1823,11 +1823,10 @@ audiounit_create_unit(AudioUnit * unit, io_side side, AudioDeviceID device)
   OSStatus rv;
   int r;
 
-  if (*unit == nullptr) {
-    int r = audiounit_new_unit_instance(unit, side, device);
-    if (r != CUBEB_OK) {
-      return r;
-    }
+  assert(*unit == nullptr);
+  r = audiounit_new_unit_instance(unit, side, device);
+  if (r != CUBEB_OK) {
+    return r;
   }
   assert(*unit);
 
