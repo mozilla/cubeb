@@ -1823,11 +1823,10 @@ audiounit_create_unit(AudioUnit * unit, io_side side, AudioDeviceID device)
   OSStatus rv;
   int r;
 
-  if (*unit == nullptr) {
-    int r = audiounit_new_unit_instance(unit, side, device);
-    if (r != CUBEB_OK) {
-      return r;
-    }
+  assert(*unit == nullptr);
+  r = audiounit_new_unit_instance(unit, side, device);
+  if (r != CUBEB_OK) {
+    return r;
   }
   assert(*unit);
 
