@@ -171,11 +171,11 @@ downmix_test(float const * data, cubeb_channel_layout in_layout, cubeb_channel_l
   }
 }
 
-TEST(cubeb, run_mixing_test)
+TEST(cubeb, mixer)
 {
-  for (unsigned int i = 0 ; i < ARRAY_LENGTH(audio_inputs) ; ++i) {
-    for (unsigned int j = 0 ; j < ARRAY_LENGTH(layout_infos) ; ++j) {
-      downmix_test(audio_inputs[i].data, audio_inputs[i].layout, layout_infos[j].layout);
+  for (auto audio_input : audio_inputs) {
+    for (auto audio_output : layout_infos) {
+      downmix_test(audio_input.data, audio_input.layout, audio_output.layout);
     }
   }
 }
