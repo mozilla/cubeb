@@ -37,7 +37,7 @@ long data_cb(cubeb_stream * stream, void * user, const void * inputbuffer, void 
 
 void state_cb(cubeb_stream * stream, void * /*user*/, cubeb_state state)
 {
-  assert(stream);
+  ASSERT_TRUE(!!stream);
 
   switch (state) {
   case CUBEB_STATE_STARTED:
@@ -45,11 +45,11 @@ void state_cb(cubeb_stream * stream, void * /*user*/, cubeb_state state)
   case CUBEB_STATE_STOPPED:
     printf("stream stopped\n"); break;
   case CUBEB_STATE_DRAINED:
-    assert(false && "this test is not supposed to drain"); break;
+    FAIL() << "this test is not supposed to drain"; break;
   case CUBEB_STATE_ERROR:
     printf("stream error\n"); break;
   default:
-    assert(false && "this test is not supposed to have a weird state"); break;
+    FAIL() << "this test is not supposed to have a weird state"; break;
   }
 }
 
