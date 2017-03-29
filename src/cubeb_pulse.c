@@ -139,12 +139,17 @@ sink_info_callback(pa_context * context, const pa_sink_info * info, int eol, voi
   WRAP(pa_threaded_mainloop_signal)(ctx->mainloop, 0);
 }
 
+struct server_info_result {
+  char* default_sink_name;
+  pa_threaded_mainloop * mainloop;
+};
+
 static void
 server_info_callback(pa_context * context, const pa_server_info * info, void * u)
 {
-  char** default_sink_name = (char**) u;
-  *default_sink_name = strdup(info->default_sink_name);
-  WRAP(pa_threaded_mainloop_signal)(ctx->mainloop, 0);
+  struct server_info_result * r = u;
+  r->default_sink_name = strdup(info->default_sink_name);
+  WRAP(pa_threaded_mainloop_signal)(r->mainloop, 0);
 }
 
 static void
@@ -578,12 +583,10 @@ pulse_init(cubeb ** context, char const * context_name)
 {
   void * libpulse = NULL;
   cubeb * ctx;
-  pa_operation * o;
-  char* default_sink_name;
+  pa_operation * o = NULL;
+  struct server_info_result r = { NULL, NULL };
 
   *context = NULL;
-  o = NULL;
-  default_sink_name = NULL;
 
 #ifndef DISABLE_LIBPULSE_DLOPEN
   libpulse = dlopen("libpulse.so.0", RTLD_LAZY);
@@ -621,22 +624,26 @@ pulse_init(cubeb ** context, char const * context_name)
   }
 
   WRAP(pa_threaded_mainloop_lock)(ctx->mainloop);
-  o = WRAP(pa_context_get_server_info)(ctx->context, server_info_callback, &default_sink_name);
+
+  r.mainloop = ctx->mainloop;
+  o = WRAP(pa_context_get_server_info)(ctx->context, server_info_callback, &r);
   if (o) {
     operation_wait(ctx, NULL, o);
     WRAP(pa_operation_unref)(o);
   }
 
-  if (default_sink_name == NULL) {
+  if (r.default_sink_name == NULL) {
     pulse_destroy(ctx);
     return CUBEB_ERROR;
   }
 
-  o = WRAP(pa_context_get_sink_info_by_name)(context, default_sink_name, sink_info_callback, ctx);
+  o = WRAP(pa_context_get_sink_info_by_name)(ctx->context, r.default_sink_name, sink_info_callback, ctx);
   if (o) {
     operation_wait(ctx, NULL, o);
     WRAP(pa_operation_unref)(o);
   }
+
+  free(r.default_sink_name);
 
   WRAP(pa_threaded_mainloop_unlock)(ctx->mainloop);
 
