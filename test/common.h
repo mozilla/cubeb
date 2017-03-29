@@ -107,4 +107,18 @@ void print_log(const char * msg, ...)
   va_end(args);
 }
 
+struct cubeb_cleaner
+{
+  cubeb_cleaner(cubeb * context) : ctx(context) {}
+  ~cubeb_cleaner() { cubeb_destroy(ctx); }
+  cubeb * ctx;
+};
+
+struct cubeb_stream_cleaner
+{
+  cubeb_stream_cleaner(cubeb_stream * stream) : stm(stream) {}
+  ~cubeb_stream_cleaner() { cubeb_stream_destroy(stm); }
+  cubeb_stream * stm;
+};
+
 #endif /* TEST_COMMON */

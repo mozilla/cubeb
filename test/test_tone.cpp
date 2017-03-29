@@ -107,6 +107,8 @@ TEST(cubeb, tone)
     ASSERT_EQ(r, CUBEB_OK);
   }
 
+  cubeb_cleaner cleanup_cubeb_at_exit(ctx);
+
   params.format = STREAM_FORMAT;
   params.rate = SAMPLE_FREQUENCY;
   params.channels = 1;
@@ -126,12 +128,11 @@ TEST(cubeb, tone)
     ASSERT_EQ(r, CUBEB_OK);
   }
 
+  cubeb_stream_cleaner cleanup_stream_at_exit(stream);
+
   cubeb_stream_start(stream);
   delay(500);
   cubeb_stream_stop(stream);
-
-  cubeb_stream_destroy(stream);
-  cubeb_destroy(ctx);
 
   ASSERT_TRUE(user_data->position);
 

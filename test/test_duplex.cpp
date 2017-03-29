@@ -88,6 +88,8 @@ TEST(cubeb, duplex)
     ASSERT_EQ(r, CUBEB_OK);
   }
 
+  cubeb_cleaner cleanup_cubeb_at_exit(ctx);
+
   /* This test needs an available input device, skip it if this host does not
    * have one. */
   if (!has_available_input_device(ctx)) {
@@ -119,12 +121,11 @@ TEST(cubeb, duplex)
     ASSERT_EQ(r, CUBEB_OK);
   }
 
+  cubeb_stream_cleaner cleanup_stream_at_exit(stream);
+
   cubeb_stream_start(stream);
   delay(500);
   cubeb_stream_stop(stream);
-
-  cubeb_stream_destroy(stream);
-  cubeb_destroy(ctx);
 
   ASSERT_TRUE(stream_state.seen_audio);
 }
