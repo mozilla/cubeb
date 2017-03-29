@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "common.h"
 #include "cubeb/cubeb.h"
 
 static void
@@ -103,7 +104,7 @@ print_device_collection(cubeb_device_collection * collection, FILE * f)
     print_device_info(collection->device[i], f);
 }
 
-TEST(cubeb, enumerate_devices)
+int run_enumerating_devices_test()
 {
   int r;
   cubeb * ctx = NULL;
@@ -112,8 +113,10 @@ TEST(cubeb, enumerate_devices)
   r = cubeb_init(&ctx, "Cubeb audio test", NULL);
   if (r != CUBEB_OK) {
     fprintf(stderr, "Error initializing cubeb library\n");
-    ASSERT_EQ(r, CUBEB_OK);
+    return r;
   }
+
+  cubeb_cleaner cleanup_cubeb_at_exit(ctx);
 
   fprintf(stdout, "Enumerating input devices for backend %s\n",
       cubeb_get_backend_id(ctx));
@@ -122,12 +125,11 @@ TEST(cubeb, enumerate_devices)
   if (r == CUBEB_ERROR_NOT_SUPPORTED) {
     fprintf(stderr, "Device enumeration not supported"
                     " for this backend, skipping this test.\n");
-    r = CUBEB_OK;
-    goto cleanup;
+    return CUBEB_OK;
   }
   if (r != CUBEB_OK) {
     fprintf(stderr, "Error enumerating devices %d\n", r);
-    goto cleanup;
+    return r;
   }
 
   fprintf(stdout, "Found %u input devices\n", collection->count);
@@ -140,15 +142,17 @@ TEST(cubeb, enumerate_devices)
   r = cubeb_enumerate_devices(ctx, CUBEB_DEVICE_TYPE_OUTPUT, &collection);
   if (r != CUBEB_OK) {
     fprintf(stderr, "Error enumerating devices %d\n", r);
-    goto cleanup;
+    return r;
   }
 
   fprintf(stdout, "Found %u output devices\n", collection->count);
   print_device_collection(collection, stdout);
   cubeb_device_collection_destroy(collection);
 
-cleanup:
-  cubeb_destroy(ctx);
-  ASSERT_EQ(r, CUBEB_OK);
+  return r;
 }
 
+TEST(cubeb, enumerate_devices)
+{
+  ASSERT_EQ(run_enumerating_devices_test(), CUBEB_OK);
+}

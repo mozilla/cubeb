@@ -64,6 +64,8 @@ TEST(cubeb, overload_callback)
   r = cubeb_init(&ctx, "Cubeb callback overload", NULL);
   ASSERT_EQ(r, CUBEB_OK);
 
+  cubeb_cleaner cleanup_cubeb_at_exit(ctx);
+
   output_params.format = STREAM_FORMAT;
   output_params.rate = 48000;
   output_params.channels = 2;
@@ -77,13 +79,12 @@ TEST(cubeb, overload_callback)
                         latency_frames, data_cb, state_cb, NULL);
   ASSERT_EQ(r, CUBEB_OK);
 
+  cubeb_stream_cleaner cleanup_stream_at_exit(stream);
+
   cubeb_stream_start(stream);
   delay(500);
   // This causes the callback to sleep for a large number of seconds.
   load_callback = true;
   delay(500);
   cubeb_stream_stop(stream);
-
-  cubeb_stream_destroy(stream);
-  cubeb_destroy(ctx);
 }

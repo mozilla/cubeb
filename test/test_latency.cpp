@@ -1,5 +1,6 @@
 #include "gtest/gtest.h"
 #include <stdlib.h>
+#include "common.h"
 #include "cubeb/cubeb.h"
 
 TEST(cubeb, latency)
@@ -13,6 +14,8 @@ TEST(cubeb, latency)
 
   r = cubeb_init(&ctx, "Cubeb audio test", NULL);
   ASSERT_EQ(r, CUBEB_OK);
+
+  cubeb_cleaner cleanup_cubeb_at_exit(ctx);
 
   r = cubeb_get_max_channel_count(ctx, &max_channels);
   ASSERT_TRUE(r == CUBEB_OK || r == CUBEB_ERROR_NOT_SUPPORTED);
@@ -44,6 +47,4 @@ TEST(cubeb, latency)
   if (r == CUBEB_OK) {
     ASSERT_GT(latency_frames, 0u);
   }
-
-  cubeb_destroy(ctx);
 }
