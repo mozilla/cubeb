@@ -41,8 +41,8 @@
 #include "gtest/gtest.h"
 #include "common.h"       // for layout_infos
 #include "cubeb/cubeb.h"  // for cubeb utils
+#include "cubeb_utils.h"  // for owned_critical_section, auto_lock
 #include <iostream>       // for fprintf
-#include <mutex>          // for std::mutex
 #include <pthread.h>      // for pthread
 #include <signal.h>       // for signal
 #include <stdexcept>      // for std::logic_error
@@ -67,7 +67,7 @@ bool called = false;
 // The task to get channel layout should be executed when this is true.
 bool callbacking_before_getting_context = false;
 
-std::mutex context_mutex;
+owned_critical_section context_mutex;
 cubeb * context = nullptr;
 
 cubeb * get_cubeb_context_unlocked()
@@ -87,7 +87,7 @@ cubeb * get_cubeb_context_unlocked()
 
 cubeb * get_cubeb_context()
 {
-  std::lock_guard<std::mutex> lock(context_mutex);
+  auto_lock lock(context_mutex);
   return get_cubeb_context_unlocked();
 }
 
@@ -136,7 +136,7 @@ long data_cb(cubeb_stream * /*stream*/, void * /*user*/,
 // Called by wait_to_get_layout, which is run out of main thread.
 void get_preferred_channel_layout()
 {
-  std::lock_guard<std::mutex> lock(context_mutex);
+  auto_lock lock(context_mutex);
   cubeb * context = get_cubeb_context_unlocked();
   ASSERT_TRUE(!!context);
 
