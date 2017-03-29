@@ -142,7 +142,9 @@ sink_info_callback(pa_context * context, const pa_sink_info * info, int eol, voi
 static void
 server_info_callback(pa_context * context, const pa_server_info * info, void * u)
 {
-  WRAP(pa_context_get_sink_info_by_name)(context, info->default_sink_name, sink_info_callback, u);
+  char** default_sink_name = (char**) u;
+  *default_sink_name = strdup(info->default_sink_name);
+  WRAP(pa_threaded_mainloop_signal)(ctx->mainloop, 0);
 }
 
 static void
@@ -576,8 +578,12 @@ pulse_init(cubeb ** context, char const * context_name)
 {
   void * libpulse = NULL;
   cubeb * ctx;
+  pa_operation * o;
+  char* default_sink_name;
 
   *context = NULL;
+  o = NULL;
+  default_sink_name = NULL;
 
 #ifndef DISABLE_LIBPULSE_DLOPEN
   libpulse = dlopen("libpulse.so.0", RTLD_LAZY);
@@ -615,7 +621,23 @@ pulse_init(cubeb ** context, char const * context_name)
   }
 
   WRAP(pa_threaded_mainloop_lock)(ctx->mainloop);
-  WRAP(pa_context_get_server_info)(ctx->context, server_info_callback, ctx);
+  o = WRAP(pa_context_get_server_info)(ctx->context, server_info_callback, &default_sink_name);
+  if (o) {
+    operation_wait(ctx, NULL, o);
+    WRAP(pa_operation_unref)(o);
+  }
+
+  if (default_sink_name == NULL) {
+    pulse_destroy(ctx);
+    return CUBEB_ERROR;
+  }
+
+  o = WRAP(pa_context_get_sink_info_by_name)(context, default_sink_name, sink_info_callback, ctx);
+  if (o) {
+    operation_wait(ctx, NULL, o);
+    WRAP(pa_operation_unref)(o);
+  }
+
   WRAP(pa_threaded_mainloop_unlock)(ctx->mainloop);
 
   *context = ctx;
@@ -1231,7 +1253,7 @@ pulse_sink_info_cb(pa_context * context, const pa_sink_info * info,
   devinfo->type = CUBEB_DEVICE_TYPE_OUTPUT;
   devinfo->state = pulse_get_state_from_sink_port(info->active_port);
   devinfo->preferred = (strcmp(info->name, list_data->default_sink_name) == 0) ?
-				 CUBEB_DEVICE_PREF_ALL : CUBEB_DEVICE_PREF_NONE;
+                                 CUBEB_DEVICE_PREF_ALL : CUBEB_DEVICE_PREF_NONE;
 
   devinfo->format = CUBEB_DEVICE_FMT_ALL;
   devinfo->default_format = pulse_format_to_cubeb_format(info->sample_spec.format);
@@ -1292,7 +1314,7 @@ pulse_source_info_cb(pa_context * context, const pa_source_info * info,
   devinfo->type = CUBEB_DEVICE_TYPE_INPUT;
   devinfo->state = pulse_get_state_from_source_port(info->active_port);
   devinfo->preferred = (strcmp(info->name, list_data->default_source_name) == 0) ?
-				   CUBEB_DEVICE_PREF_ALL : CUBEB_DEVICE_PREF_NONE;
+                                   CUBEB_DEVICE_PREF_ALL : CUBEB_DEVICE_PREF_NONE;
 
   devinfo->format = CUBEB_DEVICE_FMT_ALL;
   devinfo->default_format = pulse_format_to_cubeb_format(info->sample_spec.format);
