@@ -1212,34 +1212,28 @@ static int audiounit_create_unit(AudioUnit * unit, io_side side, AudioDeviceID d
 static int
 audiounit_get_preferred_channel_layout(cubeb * ctx, cubeb_channel_layout * layout)
 {
-  // If there is no existed stream, then we create a default ouput unit and
-  // use it to get the current used channel layout.
-  AudioUnit output_unit = nullptr;
-  audiounit_create_unit(&output_unit, OUTPUT, 0);
-  *layout = audiounit_get_current_channel_layout(output_unit);
+  // The preferred layout is only returned when the connected sound device
+  // (e.g. ASUS Xonar U7), has preferred layout setting.
+  // For default output on Mac, there is no preferred channel layout,
+  // so it might return UNDEFINED.
+  *layout = audiounit_get_preferred_channel_layout();
 
-  // // The preferred layout is only returned when the connected sound device
-  // // (e.g. ASUS Xonar U7), has preferred layout setting.
-  // // For default output on Mac, there is no preferred channel layout,
-  // // so it might return UNDEFINED.
-  // *layout = audiounit_get_preferred_channel_layout();
-  //
-  // // If the preferred channel layout is UNDEFINED, then we try to access the
-  // // current applied channel layout.
-  // if (*layout == CUBEB_LAYOUT_UNDEFINED) {
-  //   // If we already have at least one cubeb stream, then the current channel
-  //   // layout must be updated. We can return it directly.
-  //   if (ctx->active_streams) {
-  //     *layout = ctx->layout;
-  //     return CUBEB_OK;
-  //   }
-  //
-  //   // If there is no existed stream, then we create a default ouput unit and
-  //   // use it to get the current used channel layout.
-  //   AudioUnit output_unit = nullptr;
-  //   audiounit_create_unit(&output_unit, OUTPUT, 0);
-  //   *layout = audiounit_get_current_channel_layout(output_unit);
-  // }
+  // If the preferred channel layout is UNDEFINED, then we try to access the
+  // current applied channel layout.
+  if (*layout == CUBEB_LAYOUT_UNDEFINED) {
+    // If we already have at least one cubeb stream, then the current channel
+    // layout must be updated. We can return it directly.
+    if (ctx->active_streams) {
+      *layout = ctx->layout;
+      return CUBEB_OK;
+    }
+
+    // If there is no existed stream, then we create a default ouput unit and
+    // use it to get the current used channel layout.
+    AudioUnit output_unit = nullptr;
+    audiounit_create_unit(&output_unit, OUTPUT, 0);
+    *layout = audiounit_get_current_channel_layout(output_unit);
+  }
 
   if (*layout == CUBEB_LAYOUT_UNDEFINED) {
     return CUBEB_ERROR;
