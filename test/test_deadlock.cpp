@@ -5,15 +5,17 @@
  * accompanying file LICENSE for details.
  *
  *
- * Purpose for the test
+ * Purpose
  * =============================================================================
  * In CoreAudio, the data callback will holds a mutex shared with AudioUnit.
  * Thus, if the callback request another mutex M(resource) held by the another
  * function, without releasing its holding one, then it will cause a deadlock
  * when the another function, which holds the mutex M, request to use AudioUnit.
  *
- * We illustrate a simple version of the deadlock in bug 1337805 as follows:
+ * The following figure illustrates the deadlock in bug 1337805:
  * https://bugzilla.mozilla.org/show_bug.cgi?id=1337805
+ * (The detail analysis can be found on bug 1350511:
+ *  https://bugzilla.mozilla.org/show_bug.cgi?id=1350511)
  *
  *                   holds
  *  data_callback <---------- mutext_AudioUnit
@@ -34,8 +36,9 @@
  * We store the latest channel layout and return it when there is an active
  * AudioUnit, otherwise, we will create an AudioUnit to get it.
  *
- * However, to prevent it happens again, we add the test here in case who
- * without such knowledge misuses the AudioUnit in get_channel_layout.
+ * However, to prevent it happens again, we add the test here in case someone
+ * without such knowledge misuses the AudioUnit in get_channel_layout. Moreover,
+ * it's a good way to record the known issues to warn other developers.
  */
 
 #include "gtest/gtest.h"
