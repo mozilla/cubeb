@@ -158,9 +158,9 @@ struct mixing_wrapper {
 template <typename T>
 struct mixing_impl : public mixing_wrapper {
 
-  typedef std::function<void(T * const, long, T *,
-                             unsigned int, unsigned int,
-                             cubeb_channel_layout, cubeb_channel_layout)> downmix_func;
+  typedef void (*downmix_func)(T * const, long, T *,
+                               unsigned int, unsigned int,
+                               cubeb_channel_layout, cubeb_channel_layout);
 
   mixing_impl(downmix_func dmfunc) {
     downmix_wrapper = dmfunc;
