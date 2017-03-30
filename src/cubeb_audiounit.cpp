@@ -1224,7 +1224,8 @@ audiounit_get_preferred_channel_layout(cubeb * ctx, cubeb_channel_layout * layou
     // If we already have at least one cubeb stream, then the current channel
     // layout must be updated. We can return it directly.
     if (ctx->active_streams) {
-      return ctx->layout;
+      *layout = ctx->layout;
+      return CUBEB_OK;
     }
 
     // If there is no existed stream, then we create a default ouput unit and
