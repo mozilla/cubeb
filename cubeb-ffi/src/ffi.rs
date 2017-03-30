@@ -40,8 +40,6 @@ macro_rules! log {
     ($fmt: expr, $($arg: tt)+) => (log_internal!($crate::LogLevel::Normal, $fmt, $($arg)*));
 }
 
-//     g_log_callback("%s:%d: " fmt "\n", __FILE__, __LINE__, ##__VA_ARGS__); \
-
 pub enum Context {}
 pub enum Stream {}
 
