@@ -4,7 +4,7 @@ use std::default::Default;
 
 #[macro_export]
 macro_rules! log_internal {
-    ($level: expr, $msg: expr) => {
+    ($level:expr, $msg:expr) => {
         #[allow(unused_unsafe)]
         unsafe {
             if $level <= $crate::g_log_level {
@@ -15,7 +15,7 @@ macro_rules! log_internal {
             }
         }
     };
-    ($level: expr, $fmt: expr, $($arg:tt)+) => {
+    ($level:expr, $fmt:expr, $($arg:tt)+) => {
         #[allow(unused_unsafe)]
         unsafe {
             if $level <= $crate::g_log_level {
@@ -30,14 +30,14 @@ macro_rules! log_internal {
 
 #[macro_export]
 macro_rules! logv {
-    ($msg: expr) => (log_internal!($crate::LogLevel::Verbose, $msg));
-    ($fmt: expr, $($arg: tt)+) => (log_internal!($create::LogLevel::Verbose, $fmt, $($arg)*));
+    ($msg:expr) => (log_internal!($crate::LogLevel::Verbose, $msg));
+    ($fmt:expr, $($arg:tt)+) => (log_internal!($create::LogLevel::Verbose, $fmt, $($arg)*));
 }
 
 #[macro_export]
 macro_rules! log {
-    ($msg: expr) => (log_internal!($crate::LogLevel::Normal, $msg));
-    ($fmt: expr, $($arg: tt)+) => (log_internal!($crate::LogLevel::Normal, $fmt, $($arg)*));
+    ($msg:expr) => (log_internal!($crate::LogLevel::Normal, $msg));
+    ($fmt:expr, $($arg:tt)+) => (log_internal!($crate::LogLevel::Normal, $fmt, $($arg)*));
 }
 
 pub enum Context {}
