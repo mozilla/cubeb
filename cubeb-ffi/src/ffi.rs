@@ -1,4 +1,4 @@
-use libc::{c_long,c_void};
+use std::os::raw::{c_long,c_void};
 use std::ops;
 use std::default::Default;
 

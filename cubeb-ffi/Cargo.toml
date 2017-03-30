@@ -2,6 +2,4 @@
 name = "cubeb-ffi"
 version = "0.0.1"
 authors = ["Dan Glastonbury <dglastonbury@mozilla.com>"]
-
-[dependencies]
-libc = "*"
+description = "FFI bindings for implementing cubeb backends"

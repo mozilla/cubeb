@@ -1,4 +1,4 @@
-use libc::c_void;
+use std::os::raw::c_void;
 use backend;
 use cubeb;
 
@@ -97,7 +97,7 @@ extern "C" fn capi_stream_init(c: *mut cubeb::Context,
                          latency_frames,
                          data_callback,
                          state_callback,
-                         user_ptr) {
+                         user_ptr as _) {
         Ok(stm) => { unsafe { *s = Box::into_raw(stm) as *mut _ }; cubeb::OK }
         Err(e) => e
     }
@@ -180,7 +180,7 @@ extern "C" fn capi_register_device_collection_changed(c: *mut cubeb::Context,
                                                       user_ptr: *mut c_void) -> i32
 {
     let mut ctx = unsafe { &mut *(c as *mut backend::Context) };
-    ctx.register_device_collection_changed(devtype, collection_changed_callback, user_ptr)
+    ctx.register_device_collection_changed(devtype, collection_changed_callback, user_ptr as _)
 }
 
 pub const PULSE_OPS: cubeb::Ops = cubeb::Ops {
