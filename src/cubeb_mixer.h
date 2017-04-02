@@ -76,6 +76,11 @@ void cubeb_downmix_short(short * const in, long inframes, short * out,
 void cubeb_upmix_float(float * const in, long inframes, float * out,
                        unsigned int in_channels, unsigned int out_channels);
 
+void cubeb_upmix_short(short * const in, long inframes, short * out,
+                       unsigned int in_channels, unsigned int out_channels);
+
+
+
 #if defined(__cplusplus)
 }
 #endif
