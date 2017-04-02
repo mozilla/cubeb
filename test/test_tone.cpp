@@ -19,11 +19,7 @@
 #include "common.h"
 
 #define SAMPLE_FREQUENCY 48000
-#if (defined(_WIN32) || defined(__WIN32__))
-#define STREAM_FORMAT CUBEB_SAMPLE_FLOAT32LE
-#else
 #define STREAM_FORMAT CUBEB_SAMPLE_S16LE
-#endif
 
 /* store the phase of the generated waveform */
 struct cb_user_data {
@@ -33,11 +29,7 @@ struct cb_user_data {
 long data_cb_tone(cubeb_stream *stream, void *user, const void* /*inputbuffer*/, void *outputbuffer, long nframes)
 {
   struct cb_user_data *u = (struct cb_user_data *)user;
-#if (defined(_WIN32) || defined(__WIN32__))
-  float *b = (float *)outputbuffer;
-#else
   short *b = (short *)outputbuffer;
-#endif
   float t1, t2;
   int i;
 
@@ -49,21 +41,12 @@ long data_cb_tone(cubeb_stream *stream, void *user, const void* /*inputbuffer*/,
     /* North American dial tone */
     t1 = sin(2*M_PI*(i + u->position)*350/SAMPLE_FREQUENCY);
     t2 = sin(2*M_PI*(i + u->position)*440/SAMPLE_FREQUENCY);
-#if (defined(_WIN32) || defined(__WIN32__))
-    b[i]  = 0.5 * t1;
-    b[i] += 0.5 * t2;
-#else
     b[i]  = (SHRT_MAX / 2) * t1;
     b[i] += (SHRT_MAX / 2) * t2;
-#endif
     /* European dial tone */
     /*
     t1 = sin(2*M_PI*(i + u->position)*425/SAMPLE_FREQUENCY);
-#if (defined(_WIN32) || defined(__WIN32__))
-    b[i] = t1;
-#else
     b[i]  = SHRT_MAX * t1;
-#endif
     */
   }
   /* remember our phase to avoid clicking on buffer transitions */

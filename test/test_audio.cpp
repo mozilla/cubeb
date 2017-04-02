@@ -87,12 +87,6 @@ int supports_float32(string backend_id)
     && backend_id != "audiotrack";
 }
 
-/* The WASAPI backend only supports float. */
-int supports_int16(string backend_id)
-{
-  return backend_id != "wasapi";
-}
-
 /* Some backends don't have code to deal with more than mono or stereo. */
 int supports_channel_count(string backend_id, int nchannels)
 {
@@ -117,7 +111,6 @@ int run_test(int num_channels, layout_info layout, int sampling_rate, int is_flo
   const char * backend_id = cubeb_get_backend_id(ctx);
 
   if ((is_float && !supports_float32(backend_id)) ||
-      (!is_float && !supports_int16(backend_id)) ||
       !supports_channel_count(backend_id, num_channels)) {
     /* don't treat this as a test failure. */
     return CUBEB_OK;
@@ -168,8 +161,7 @@ int run_panning_volume_test(int is_float)
 
   const char * backend_id = cubeb_get_backend_id(ctx);
 
-  if ((is_float && !supports_float32(backend_id)) ||
-      (!is_float && !supports_int16(backend_id))) {
+  if ((is_float && !supports_float32(backend_id))) {
     /* don't treat this as a test failure. */
     return CUBEB_OK;
   }
