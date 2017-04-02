@@ -124,6 +124,11 @@ public:
     return data_;
   }
 
+  T * end() const
+  {
+    return data_ + length_;
+  }
+
   const T& at(size_t index) const
   {
     assert(index < length_ && "out of range");
@@ -265,12 +270,17 @@ struct auto_array_wrapper {
   virtual void push_silence(size_t length) = 0;
   virtual bool pop(size_t length) = 0;
   virtual void * data() = 0;
+  virtual void * end() = 0;
   virtual void clear() = 0;
+  virtual bool reserve(size_t capacity) = 0;
+  virtual void set_length(size_t length) = 0;
   virtual ~auto_array_wrapper() {}
 };
 
 template <typename T>
 struct auto_array_wrapper_impl : public auto_array_wrapper {
+  auto_array_wrapper_impl() {}
+
   explicit auto_array_wrapper_impl(uint32_t size)
     : ar(size)
   {}
@@ -295,8 +305,20 @@ struct auto_array_wrapper_impl : public auto_array_wrapper {
     return ar.data();
   }
 
+  void * end() override {
+    return ar.end();
+  }
+
   void clear() override {
     ar.clear();
+  }
+
+  bool reserve(size_t capacity) override {
+    return ar.reserve(capacity);
+  }
+
+  void set_length(size_t length) override {
+    ar.set_length(length);
   }
 
   ~auto_array_wrapper_impl() {

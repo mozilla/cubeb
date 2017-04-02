@@ -268,7 +268,7 @@ struct cubeb_stream {
   std::vector<float> mix_buffer;
   /* WASAPI input works in "packets". We re-linearize the audio packets
    * into this buffer before handing it to the resampler. */
-  auto_array<float> linear_input_buffer;
+  std::unique_ptr<auto_array_wrapper> linear_input_buffer;
   /* Stream volume.  Set via stream_set_volume and used to reset volume on
      device changes. */
   float volume = 1.0;
@@ -515,12 +515,12 @@ frames_to_bytes_before_mix(cubeb_stream * stm, size_t frames)
  * converting it to rate and channel layout specified at initialization.
  * It then calls the data callback, via the resampler. */
 long
-refill(cubeb_stream * stm, float * input_buffer, long input_frames_count,
-       float * output_buffer, long output_frames_needed)
+refill(cubeb_stream * stm, void * input_buffer, long input_frames_count,
+       void * output_buffer, long output_frames_needed)
 {
   /* If we need to upmix after resampling, resample into the mix buffer to
      avoid a copy. */
-  float * dest = nullptr;
+  void * dest = nullptr;
   if (has_output(stm)) {
     if (cubeb_should_upmix(&stm->output_stream_params, &stm->output_mix_params) ||
         cubeb_should_downmix(&stm->output_stream_params, &stm->output_mix_params)) {
@@ -555,10 +555,10 @@ refill(cubeb_stream * stm, float * input_buffer, long input_frames_count,
 
   if (has_output(stm)) {
     if (cubeb_should_upmix(&stm->output_stream_params, &stm->output_mix_params)) {
-      cubeb_upmix_float(dest, out_frames, output_buffer,
+      cubeb_upmix_float(static_cast<float*>(dest), out_frames, static_cast<float*>(output_buffer),
                         stm->output_stream_params.channels, stm->output_mix_params.channels);
     } else if (cubeb_should_downmix(&stm->output_stream_params, &stm->output_mix_params)) {
-      cubeb_downmix_float(dest, out_frames, output_buffer,
+      cubeb_downmix_float(static_cast<float*>(dest), out_frames, static_cast<float*>(output_buffer),
                           stm->output_stream_params.channels, stm->output_mix_params.channels,
                           stm->output_stream_params.layout, stm->output_mix_params.layout);
     }
@@ -617,30 +617,30 @@ bool get_input_buffer(cubeb_stream * stm)
     XASSERT(packet_size == next);
     if (flags & AUDCLNT_BUFFERFLAGS_SILENT) {
       LOG("insert silence: ps=%u", packet_size);
-      stm->linear_input_buffer.push_silence(packet_size * stm->input_stream_params.channels);
+      stm->linear_input_buffer->push_silence(packet_size * stm->input_stream_params.channels);
     } else {
       if (cubeb_should_upmix(&stm->input_mix_params, &stm->input_stream_params)) {
-        bool ok = stm->linear_input_buffer.reserve(stm->linear_input_buffer.length() +
+        bool ok = stm->linear_input_buffer->reserve(stm->linear_input_buffer->length() +
                                                    packet_size * stm->input_stream_params.channels);
         XASSERT(ok);
         cubeb_upmix_float(reinterpret_cast<float*>(input_packet), packet_size,
-                          stm->linear_input_buffer.data() + stm->linear_input_buffer.length(),
+                          static_cast<float*>(stm->linear_input_buffer->end()),
                           stm->input_mix_params.channels,
                           stm->input_stream_params.channels);
-        stm->linear_input_buffer.set_length(stm->linear_input_buffer.length() + packet_size * stm->input_stream_params.channels);
+        stm->linear_input_buffer->set_length(stm->linear_input_buffer->length() + packet_size * stm->input_stream_params.channels);
       } else if (cubeb_should_downmix(&stm->input_mix_params, &stm->input_stream_params)) {
-        bool ok = stm->linear_input_buffer.reserve(stm->linear_input_buffer.length() +
+        bool ok = stm->linear_input_buffer->reserve(stm->linear_input_buffer->length() +
                                                    packet_size * stm->input_stream_params.channels);
         XASSERT(ok);
         cubeb_downmix_float(reinterpret_cast<float*>(input_packet), packet_size,
-                            stm->linear_input_buffer.data() + stm->linear_input_buffer.length(),
+                            static_cast<float*>(stm->linear_input_buffer->end()),
                             stm->input_mix_params.channels,
                             stm->input_stream_params.channels,
                             stm->input_mix_params.layout,
                             stm->input_stream_params.layout);
-        stm->linear_input_buffer.set_length(stm->linear_input_buffer.length() + packet_size * stm->input_stream_params.channels);
+        stm->linear_input_buffer->set_length(stm->linear_input_buffer->length() + packet_size * stm->input_stream_params.channels);
       } else {
-        stm->linear_input_buffer.push(reinterpret_cast<float*>(input_packet),
+        stm->linear_input_buffer->push(input_packet,
                                       packet_size * stm->input_stream_params.channels);
       }
     }
@@ -652,7 +652,7 @@ bool get_input_buffer(cubeb_stream * stm)
     offset += packet_size;
   }
 
-  XASSERT(stm->linear_input_buffer.length() >= total_available_input &&
+  XASSERT(stm->linear_input_buffer->length() >= total_available_input &&
           offset == total_available_input);
 
   return true;
@@ -660,7 +660,7 @@ bool get_input_buffer(cubeb_stream * stm)
 
 /* Get an output buffer from the render_client. It has to be released before
  * exiting the callback. */
-bool get_output_buffer(cubeb_stream * stm, float *& buffer, size_t & frame_count)
+bool get_output_buffer(cubeb_stream * stm, void *& buffer, size_t & frame_count)
 {
   UINT32 padding_out;
   HRESULT hr;
@@ -693,7 +693,7 @@ bool get_output_buffer(cubeb_stream * stm, float *& buffer, size_t & frame_count
     return false;
   }
 
-  buffer = reinterpret_cast<float*>(output_buffer);
+  buffer = output_buffer;
 
   return true;
 }
@@ -705,7 +705,7 @@ bool
 refill_callback_duplex(cubeb_stream * stm)
 {
   HRESULT hr;
-  float * output_buffer = nullptr;
+  void * output_buffer = nullptr;
   size_t output_frames = 0;
   size_t input_frames;
   bool rv;
@@ -717,7 +717,7 @@ refill_callback_duplex(cubeb_stream * stm)
     return rv;
   }
 
-  input_frames = stm->linear_input_buffer.length() / stm->input_stream_params.channels;
+  input_frames = stm->linear_input_buffer->length() / stm->input_stream_params.channels;
   if (!input_frames) {
     return true;
   }
@@ -736,15 +736,15 @@ refill_callback_duplex(cubeb_stream * stm)
 
 
   ALOGV("Duplex callback: input frames: %Iu, output frames: %Iu",
-        stm->linear_input_buffer.length(), output_frames);
+        stm->linear_input_buffer->length(), output_frames);
 
   refill(stm,
-         stm->linear_input_buffer.data(),
-         stm->linear_input_buffer.length(),
+         stm->linear_input_buffer->data(),
+         stm->linear_input_buffer->length(),
          output_buffer,
          output_frames);
 
-  stm->linear_input_buffer.clear();
+  stm->linear_input_buffer->clear();
 
   hr = stm->render_client->ReleaseBuffer(output_frames, 0);
   if (FAILED(hr)) {
@@ -767,21 +767,21 @@ refill_callback_input(cubeb_stream * stm)
   }
 
   // This can happen at the very beginning of the stream.
-  if (!stm->linear_input_buffer.length()) {
+  if (!stm->linear_input_buffer->length()) {
     return true;
   }
 
-  ALOGV("Input callback: input frames: %Iu", stm->linear_input_buffer.length());
+  ALOGV("Input callback: input frames: %Iu", stm->linear_input_buffer->length());
 
   long read = refill(stm,
-                     stm->linear_input_buffer.data(),
-                     stm->linear_input_buffer.length(),
+                     stm->linear_input_buffer->data(),
+                     stm->linear_input_buffer->length(),
                      nullptr,
                      0);
 
   XASSERT(read >= 0);
 
-  stm->linear_input_buffer.clear();
+  stm->linear_input_buffer->clear();
 
   return !stm->draining;
 }
@@ -791,7 +791,7 @@ refill_callback_output(cubeb_stream * stm)
 {
   bool rv;
   HRESULT hr;
-  float * output_buffer = nullptr;
+  void * output_buffer = nullptr;
   size_t output_frames = 0;
 
   XASSERT(!has_input(stm) && has_output(stm));
@@ -1605,6 +1605,8 @@ int setup_wasapi_stream(cubeb_stream * stm)
 
   XASSERT((!stm->output_client || !stm->input_client) && "WASAPI stream already setup, close it first.");
 
+  stm->linear_input_buffer.reset(new auto_array_wrapper_impl<float>);
+
   if (has_input(stm)) {
     LOG("(%p) Setup capture: device=%p", stm, stm->input_device.get());
     rv = setup_wasapi_stream_one_side(stm,
@@ -1628,7 +1630,7 @@ int setup_wasapi_stream(cubeb_stream * stm)
 #else
     const int silent_buffer_count = 4;
 #endif
-    stm->linear_input_buffer.push_silence(stm->input_buffer_frame_count *
+    stm->linear_input_buffer->push_silence(stm->input_buffer_frame_count *
                                           stm->input_stream_params.channels *
                                           silent_buffer_count);
 
@@ -1839,6 +1841,7 @@ void close_wasapi_stream(cubeb_stream * stm)
   stm->resampler.reset();
 
   stm->mix_buffer.clear();
+  stm->linear_input_buffer.reset();
 }
 
 void wasapi_stream_destroy(cubeb_stream * stm)
