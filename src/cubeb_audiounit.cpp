@@ -82,63 +82,6 @@ struct cubeb {
   cubeb_channel_layout layout;
 };
 
-struct auto_array_wrapper {
-  virtual void push(void * elements, size_t length) = 0;
-  virtual size_t length() = 0;
-  virtual void push_silence(size_t length) = 0;
-  virtual bool pop(size_t length) = 0;
-  virtual void * data() = 0;
-  virtual void clear() = 0;
-  virtual ~auto_array_wrapper() {}
-};
-
-template <typename T>
-struct auto_array_wrapper_impl : public auto_array_wrapper {
-  explicit auto_array_wrapper_impl(uint32_t size)
-    : ar(size)
-  {}
-
-  void push(void * elements, size_t length) override {
-    auto_lock l(lock);
-    ar.push(static_cast<T *>(elements), length);
-  }
-
-  size_t length() override {
-    auto_lock l(lock);
-    return ar.length();
-  }
-
-  void push_silence(size_t length) override {
-    auto_lock l(lock);
-    ar.push_silence(length);
-  }
-
-  bool pop(size_t length) override {
-    auto_lock l(lock);
-    return ar.pop(nullptr, length);
-  }
-
-  // XXX: Taking the lock here is pointless.
-  void * data() override {
-    auto_lock l(lock);
-    return ar.data();
-  }
-
-  void clear() override {
-    auto_lock l(lock);
-    ar.clear();
-  }
-
-  ~auto_array_wrapper_impl() {
-    auto_lock l(lock);
-    ar.clear();
-  }
-
-private:
-  owned_critical_section lock;
-  auto_array<T> ar;
-};
-
 static std::unique_ptr<AudioChannelLayout, decltype(&free)>
 make_sized_audio_channel_layout(size_t sz)
 {
@@ -230,6 +173,7 @@ struct cubeb_stream {
   /* Hold the input samples in every
    * input callback iteration */
   std::unique_ptr<auto_array_wrapper> input_linear_buffer;
+  owned_critical_section input_linear_buffer_lock;
   // After the resampling some input data remains stored inside
   // the resampler. This number is used in order to calculate
   // the number of extra silence frames in input.
@@ -386,8 +330,11 @@ audiounit_render_input(cubeb_stream * stm,
   }
 
   /* Copy input data in linear buffer. */
-  stm->input_linear_buffer->push(input_buffer_list.mBuffers[0].mData,
-                                 input_frames * stm->input_desc.mChannelsPerFrame);
+  {
+    auto_lock l(stm->input_linear_buffer_lock);
+    stm->input_linear_buffer->push(input_buffer_list.mBuffers[0].mData,
+                                   input_frames * stm->input_desc.mChannelsPerFrame);
+  }
 
   /* Advance input frame counter. */
   assert(input_frames > 0);
@@ -435,17 +382,20 @@ audiounit_input_callback(void * user_ptr,
 
   /* Input only. Call the user callback through resampler.
      Resampler will deliver input buffer in the correct rate. */
-  assert(input_frames <= stm->input_linear_buffer->length() / stm->input_desc.mChannelsPerFrame);
-  long total_input_frames = stm->input_linear_buffer->length() / stm->input_desc.mChannelsPerFrame;
-  long outframes = cubeb_resampler_fill(stm->resampler.get(),
-                                        stm->input_linear_buffer->data(),
-                                        &total_input_frames,
-                                        NULL,
-                                        0);
-  assert(outframes >= 0);
+  {
+    auto_lock l(stm->input_linear_buffer_lock);
+    assert(input_frames <= stm->input_linear_buffer->length() / stm->input_desc.mChannelsPerFrame);
+    long total_input_frames = stm->input_linear_buffer->length() / stm->input_desc.mChannelsPerFrame;
+    long outframes = cubeb_resampler_fill(stm->resampler.get(),
+                                          stm->input_linear_buffer->data(),
+                                          &total_input_frames,
+                                          NULL,
+                                          0);
+    assert(outframes >= 0);
 
-  // Reset input buffer
-  stm->input_linear_buffer->clear();
+    // Reset input buffer
+    stm->input_linear_buffer->clear();
+  }
 
   return noErr;
 }
@@ -539,7 +489,10 @@ audiounit_output_callback(void * user_ptr,
   if (stm->input_unit != NULL) {
     if (is_extra_input_needed(stm)) {
       uint32_t min_input_frames = minimum_resampling_input_frames(stm);
-      stm->input_linear_buffer->push_silence(min_input_frames * stm->input_desc.mChannelsPerFrame);
+      {
+        auto_lock l(stm->input_linear_buffer_lock);
+        stm->input_linear_buffer->push_silence(min_input_frames * stm->input_desc.mChannelsPerFrame);
+      }
       stm->available_input_frames += min_input_frames;
 
       ALOG("(%p) %s pushed %u frames of input silence.", stm, stm->frames_read == 0 ? "Input hasn't started," :
@@ -565,6 +518,7 @@ audiounit_output_callback(void * user_ptr,
     stm->available_input_frames -= input_frames;
     assert(stm->available_input_frames.load() >= 0);
     // Pop from the buffer the frames pushed to the resampler.
+    auto_lock l(stm->input_linear_buffer_lock);
     stm->input_linear_buffer->pop(input_frames_before_fill * stm->input_desc.mChannelsPerFrame);
   }
 
