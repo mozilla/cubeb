@@ -442,13 +442,10 @@ audiounit_input_callback(void * user_ptr,
                                         &total_input_frames,
                                         NULL,
                                         0);
+  assert(outframes >= 0);
+
   // Reset input buffer
   stm->input_linear_buffer->clear();
-
-  if (outframes < 0 || (UInt32) outframes != input_frames) {
-    stm->shutdown = true;
-    return noErr;
-  }
 
   return noErr;
 }
