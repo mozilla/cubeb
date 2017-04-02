@@ -310,6 +310,11 @@ struct cubeb_stream {
   /* WASAPI input works in "packets". We re-linearize the audio packets
    * into this buffer before handing it to the resampler. */
   std::unique_ptr<auto_array_wrapper> linear_input_buffer;
+  /* Bytes per sample. This multiplied by the number of channels is the number
+   * of bytes per frame. */
+  size_t bytes_per_sample = 0;
+  /* WAVEFORMATEXTENSIBLE sub-format: either PCM or float. */
+  GUID waveformatextensible_sub_format = GUID_NULL;
   /* Stream volume.  Set via stream_set_volume and used to reset volume on
      device changes. */
   float volume = 1.0;
@@ -548,8 +553,7 @@ frames_to_bytes_before_mix(cubeb_stream * stm, size_t frames)
 {
   // This is called only when we has a output client.
   XASSERT(has_output(stm));
-  size_t stream_frame_size = stm->output_stream_params.channels * sizeof(float);
-  return stream_frame_size * frames;
+  return stm->output_stream_params.channels * stm->bytes_per_sample * frames;
 }
 
 /* This function handles the processing of the input and output audio,
@@ -1293,7 +1297,7 @@ wasapi_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * laten
     return CUBEB_ERROR;
   }
 
-  if (params.format != CUBEB_SAMPLE_FLOAT32NE) {
+  if (params.format != CUBEB_SAMPLE_FLOAT32NE && params.format != CUBEB_SAMPLE_S16NE) {
     return CUBEB_ERROR_INVALID_FORMAT;
   }
 
@@ -1410,6 +1414,17 @@ wasapi_get_preferred_channel_layout(cubeb * context, cubeb_channel_layout * layo
 
 void wasapi_stream_destroy(cubeb_stream * stm);
 
+static void
+waveformatex_update_derived_properties(WAVEFORMATEX * format)
+{
+  format->nBlockAlign = format->wBitsPerSample * format->nChannels / 8;
+  format->nAvgBytesPerSec = format->nSamplesPerSec * format->nBlockAlign;
+  if (format->wFormatTag == WAVE_FORMAT_EXTENSIBLE) {
+    WAVEFORMATEXTENSIBLE * format_pcm = reinterpret_cast<WAVEFORMATEXTENSIBLE *>(format);
+    format_pcm->Samples.wValidBitsPerSample = format->wBitsPerSample;
+  }
+}
+
 /* Based on the mix format and the stream format, try to find a way to play
    what the user requested. */
 static void
@@ -1433,13 +1448,8 @@ handle_channel_layout(cubeb_stream * stm,  com_heap_ptr<WAVEFORMATEX> & mix_form
   /* Get the channel mask by the channel layout.
      If the layout is not supported, we will get a closest settings below. */
   format_pcm->dwChannelMask = channel_layout_to_mask(stream_params->layout);
-
   mix_format->nChannels = stream_params->channels;
-  mix_format->nBlockAlign = mix_format->wBitsPerSample * mix_format->nChannels / 8;
-  mix_format->nAvgBytesPerSec = mix_format->nSamplesPerSec * mix_format->nBlockAlign;
-  format_pcm->SubFormat = KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
-  mix_format->wBitsPerSample = 32;
-  format_pcm->Samples.wValidBitsPerSample = mix_format->wBitsPerSample;
+  waveformatex_update_derived_properties(mix_format.get());
 
   /* Check if wasapi will accept our channel layout request. */
   WAVEFORMATEX * closest;
@@ -1447,12 +1457,14 @@ handle_channel_layout(cubeb_stream * stm,  com_heap_ptr<WAVEFORMATEX> & mix_form
                                                      mix_format.get(),
                                                      &closest);
   if (hr == S_FALSE) {
-    /* Not supported, but WASAPI gives us a suggestion. Use it, and handle the
-       eventual upmix/downmix ourselves */
+    /* Channel layout not supported, but WASAPI gives us a suggestion. Use it,
+       and handle the eventual upmix/downmix ourselves. Ignore the subformat of
+       the suggestion, since it seems to always be IEEE_FLOAT. */
     LOG("Using WASAPI suggested format: channels: %d", closest->nChannels);
     WAVEFORMATEXTENSIBLE * closest_pcm = reinterpret_cast<WAVEFORMATEXTENSIBLE *>(closest);
-    XASSERT(closest_pcm->SubFormat == format_pcm->SubFormat);
-    mix_format.reset(closest);
+    format_pcm->dwChannelMask = closest_pcm->dwChannelMask;
+    mix_format->nChannels = closest->nChannels;
+    waveformatex_update_derived_properties(mix_format.get());
   } else if (hr == AUDCLNT_E_UNSUPPORTED_FORMAT) {
     /* Not supported, no suggestion. This should not happen, but it does in the
        field with some sound cards. We restore the mix format, and let the rest
@@ -1535,6 +1547,11 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
   }
   com_heap_ptr<WAVEFORMATEX> mix_format(tmp);
 
+  WAVEFORMATEXTENSIBLE * format_pcm = reinterpret_cast<WAVEFORMATEXTENSIBLE *>(mix_format.get());
+  mix_format->wBitsPerSample = stm->bytes_per_sample * 8;
+  format_pcm->SubFormat = stm->waveformatextensible_sub_format;
+  waveformatex_update_derived_properties(mix_format.get());
+
   /* Set channel layout only when there're more than two channels. Otherwise,
    * use the default setting retrieved from the stream format of the audio
    * engine's internal processing by GetMixFormat. */
@@ -1547,12 +1564,9 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
     handle_channel_layout(stm, mix_format, stream_params);
   }
 
-  /* Shared mode WASAPI always supports float32 sample format, so this
-   * is safe. */
-  mix_params->format = CUBEB_SAMPLE_FLOAT32NE;
+  mix_params->format = stream_params->format;
   mix_params->rate = mix_format->nSamplesPerSec;
   mix_params->channels = mix_format->nChannels;
-  WAVEFORMATEXTENSIBLE * format_pcm = reinterpret_cast<WAVEFORMATEXTENSIBLE *>(mix_format.get());
   mix_params->layout = mask_to_channel_layout(format_pcm->dwChannelMask);
   if (mix_params->layout == CUBEB_LAYOUT_UNDEFINED) {
     LOG("Output using undefined layout!\n");
@@ -1624,9 +1638,6 @@ int setup_wasapi_stream(cubeb_stream * stm)
   }
 
   XASSERT((!stm->output_client || !stm->input_client) && "WASAPI stream already setup, close it first.");
-
-  stm->mixing.reset(new mixing_impl<float>(cubeb_downmix_float, cubeb_upmix_float));
-  stm->linear_input_buffer.reset(new auto_array_wrapper_impl<float>);
 
   if (has_input(stm)) {
     LOG("(%p) Setup capture: device=%p", stm, stm->input_device.get());
@@ -1769,8 +1780,8 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
 
   XASSERT(context && stream && (input_stream_params || output_stream_params));
 
-  if ((output_stream_params && output_stream_params->format != CUBEB_SAMPLE_FLOAT32NE) ||
-      (input_stream_params && input_stream_params->format != CUBEB_SAMPLE_FLOAT32NE)) {
+  if (output_stream_params && input_stream_params &&
+      output_stream_params->format != input_stream_params->format) {
     return CUBEB_ERROR_INVALID_FORMAT;
   }
 
@@ -1791,6 +1802,23 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
     stm->output_device = utf8_to_wstr(reinterpret_cast<char const *>(output_device));
     // Make sure the layout matches the channel count.
     XASSERT(stm->output_stream_params.channels == CUBEB_CHANNEL_LAYOUT_MAPS[stm->output_stream_params.layout].channels);
+  }
+
+  switch (output_stream_params ? output_stream_params->format : input_stream_params->format) {
+    case CUBEB_SAMPLE_S16NE:
+      stm->bytes_per_sample = sizeof(short);
+      stm->waveformatextensible_sub_format = KSDATAFORMAT_SUBTYPE_PCM;
+      stm->mixing.reset(new mixing_impl<short>(cubeb_downmix_short, cubeb_upmix_short));
+      stm->linear_input_buffer.reset(new auto_array_wrapper_impl<short>);
+      break;
+    case CUBEB_SAMPLE_FLOAT32NE:
+      stm->bytes_per_sample = sizeof(float);
+      stm->waveformatextensible_sub_format = KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
+      stm->mixing.reset(new mixing_impl<float>(cubeb_downmix_float, cubeb_upmix_float));
+      stm->linear_input_buffer.reset(new auto_array_wrapper_impl<float>);
+      break;
+    default:
+      return CUBEB_ERROR_INVALID_FORMAT;
   }
 
   stm->latency = latency_frames;
@@ -2228,7 +2256,7 @@ wasapi_create_device(IMMDeviceEnumerator * enumerator, IMMDevice * dev)
       break;
   };
 
-  ret->format = CUBEB_DEVICE_FMT_F32NE; /* cubeb only supports 32bit float at the moment */
+  ret->format = static_cast<cubeb_device_fmt>(CUBEB_DEVICE_FMT_F32NE | CUBEB_DEVICE_FMT_S16NE);
   ret->default_format = CUBEB_DEVICE_FMT_F32NE;
   prop_variant fmtvar;
   hr = propstore->GetValue(PKEY_AudioEngine_DeviceFormat, &fmtvar);
