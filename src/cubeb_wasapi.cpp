@@ -160,6 +160,45 @@ private:
   HRESULT result;
 };
 
+struct mixing_wrapper {
+  virtual void mix(void * const input_buffer, long input_frames, void * output_buffer,
+                   cubeb_stream_params const * stream_params,
+                   cubeb_stream_params const * mixer_params) = 0;
+  virtual ~mixing_wrapper() {};
+};
+
+template <typename T>
+struct mixing_impl : public mixing_wrapper {
+
+  typedef void (*downmix_func)(T * const, long, T *,
+                             unsigned int, unsigned int,
+                             cubeb_channel_layout, cubeb_channel_layout);
+  typedef void (*upmix_func)(T * const, long, T *,
+                             unsigned int, unsigned int);
+
+  mixing_impl(downmix_func dmfunc, upmix_func umfunc) {
+    downmix_wrapper = dmfunc;
+    upmix_wrapper = umfunc;
+  }
+
+  ~mixing_impl() {}
+
+  void mix(void * const input_buffer, long input_frames, void * output_buffer,
+               cubeb_stream_params const * stream_params,
+               cubeb_stream_params const * mixer_params) override {
+    T * const in = static_cast<T *>(input_buffer);
+    T * out = static_cast<T *>(output_buffer);
+    if (cubeb_should_upmix(stream_params, mixer_params)) {
+      upmix_wrapper(in, input_frames, out, stream_params->channels, mixer_params->channels);
+    } else if (cubeb_should_downmix(stream_params, mixer_params)) {
+      downmix_wrapper(in, input_frames, out, stream_params->channels, mixer_params->channels, stream_params->layout, mixer_params->layout);
+    }
+  }
+
+  downmix_func downmix_wrapper;
+  upmix_func upmix_wrapper;
+};
+
 extern cubeb_ops const wasapi_ops;
 
 int wasapi_stream_stop(cubeb_stream * stm);
@@ -264,8 +303,10 @@ struct cubeb_stream {
   uint32_t output_buffer_frame_count = 0;
   /* Resampler instance. Resampling will only happen if necessary. */
   std::unique_ptr<cubeb_resampler, decltype(&cubeb_resampler_destroy)> resampler = { nullptr, cubeb_resampler_destroy };
+  /* Mixing interface */
+  std::unique_ptr<mixing_wrapper> mixing;
   /* A buffer for up/down mixing multi-channel audio. */
-  std::vector<float> mix_buffer;
+  std::vector<BYTE> mix_buffer;
   /* WASAPI input works in "packets". We re-linearize the audio packets
    * into this buffer before handing it to the resampler. */
   std::unique_ptr<auto_array_wrapper> linear_input_buffer;
@@ -522,8 +563,7 @@ refill(cubeb_stream * stm, void * input_buffer, long input_frames_count,
      avoid a copy. */
   void * dest = nullptr;
   if (has_output(stm)) {
-    if (cubeb_should_upmix(&stm->output_stream_params, &stm->output_mix_params) ||
-        cubeb_should_downmix(&stm->output_stream_params, &stm->output_mix_params)) {
+    if (cubeb_should_mix(&stm->output_stream_params, &stm->output_mix_params)) {
       dest = stm->mix_buffer.data();
     } else {
       dest = output_buffer;
@@ -553,15 +593,8 @@ refill(cubeb_stream * stm, void * input_buffer, long input_frames_count,
      It is alright to have produced less frames if we are draining, though. */
   XASSERT(out_frames == output_frames_needed || stm->draining || !has_output(stm));
 
-  if (has_output(stm)) {
-    if (cubeb_should_upmix(&stm->output_stream_params, &stm->output_mix_params)) {
-      cubeb_upmix_float(static_cast<float*>(dest), out_frames, static_cast<float*>(output_buffer),
-                        stm->output_stream_params.channels, stm->output_mix_params.channels);
-    } else if (cubeb_should_downmix(&stm->output_stream_params, &stm->output_mix_params)) {
-      cubeb_downmix_float(static_cast<float*>(dest), out_frames, static_cast<float*>(output_buffer),
-                          stm->output_stream_params.channels, stm->output_mix_params.channels,
-                          stm->output_stream_params.layout, stm->output_mix_params.layout);
-    }
+  if (has_output(stm) && cubeb_should_mix(&stm->output_stream_params, &stm->output_mix_params)) {
+    stm->mixing->mix(dest, out_frames, output_buffer, &stm->output_stream_params, &stm->output_mix_params);
   }
 
   return out_frames;
@@ -619,25 +652,14 @@ bool get_input_buffer(cubeb_stream * stm)
       LOG("insert silence: ps=%u", packet_size);
       stm->linear_input_buffer->push_silence(packet_size * stm->input_stream_params.channels);
     } else {
-      if (cubeb_should_upmix(&stm->input_mix_params, &stm->input_stream_params)) {
+      if (cubeb_should_mix(&stm->input_mix_params, &stm->input_stream_params)) {
         bool ok = stm->linear_input_buffer->reserve(stm->linear_input_buffer->length() +
                                                    packet_size * stm->input_stream_params.channels);
         XASSERT(ok);
-        cubeb_upmix_float(reinterpret_cast<float*>(input_packet), packet_size,
-                          static_cast<float*>(stm->linear_input_buffer->end()),
-                          stm->input_mix_params.channels,
-                          stm->input_stream_params.channels);
-        stm->linear_input_buffer->set_length(stm->linear_input_buffer->length() + packet_size * stm->input_stream_params.channels);
-      } else if (cubeb_should_downmix(&stm->input_mix_params, &stm->input_stream_params)) {
-        bool ok = stm->linear_input_buffer->reserve(stm->linear_input_buffer->length() +
-                                                   packet_size * stm->input_stream_params.channels);
-        XASSERT(ok);
-        cubeb_downmix_float(reinterpret_cast<float*>(input_packet), packet_size,
-                            static_cast<float*>(stm->linear_input_buffer->end()),
-                            stm->input_mix_params.channels,
-                            stm->input_stream_params.channels,
-                            stm->input_mix_params.layout,
-                            stm->input_stream_params.layout);
+        stm->mixing->mix(input_packet, packet_size,
+                         stm->linear_input_buffer->end(),
+                         &stm->input_mix_params,
+                         &stm->input_stream_params);
         stm->linear_input_buffer->set_length(stm->linear_input_buffer->length() + packet_size * stm->input_stream_params.channels);
       } else {
         stm->linear_input_buffer->push(input_packet,
@@ -1566,9 +1588,7 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
     return CUBEB_ERROR;
   }
   // Input is up/down mixed when depacketized in get_input_buffer.
-  if (has_output(stm) &&
-      (cubeb_should_upmix(stream_params, mix_params) ||
-       cubeb_should_downmix(stream_params, mix_params))) {
+  if (has_output(stm) && cubeb_should_mix(stream_params, mix_params)) {
     stm->mix_buffer.resize(frames_to_bytes_before_mix(stm, *buffer_frame_count));
   }
 
@@ -1605,6 +1625,7 @@ int setup_wasapi_stream(cubeb_stream * stm)
 
   XASSERT((!stm->output_client || !stm->input_client) && "WASAPI stream already setup, close it first.");
 
+  stm->mixing.reset(new mixing_impl<float>(cubeb_downmix_float, cubeb_upmix_float));
   stm->linear_input_buffer.reset(new auto_array_wrapper_impl<float>);
 
   if (has_input(stm)) {
@@ -1841,6 +1862,7 @@ void close_wasapi_stream(cubeb_stream * stm)
   stm->resampler.reset();
 
   stm->mix_buffer.clear();
+  stm->mixing.reset();
   stm->linear_input_buffer.reset();
 }
 
