@@ -1771,10 +1771,6 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
 
   if ((output_stream_params && output_stream_params->format != CUBEB_SAMPLE_FLOAT32NE) ||
       (input_stream_params && input_stream_params->format != CUBEB_SAMPLE_FLOAT32NE)) {
-    LOG("Invalid format, %p %p %d %d",
-        output_stream_params, input_stream_params,
-        output_stream_params && output_stream_params->format,
-        input_stream_params && input_stream_params->format);
     return CUBEB_ERROR_INVALID_FORMAT;
   }
 

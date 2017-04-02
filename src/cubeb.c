@@ -318,15 +318,24 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
     return r;
   }
 
-  return context->ops->stream_init(context, stream, stream_name,
-                                   input_device,
-                                   input_stream_params,
-                                   output_device,
-                                   output_stream_params,
-                                   latency,
-                                   data_callback,
-                                   state_callback,
-                                   user_ptr);
+  r = context->ops->stream_init(context, stream, stream_name,
+                                input_device,
+                                input_stream_params,
+                                output_device,
+                                output_stream_params,
+                                latency,
+                                data_callback,
+                                state_callback,
+                                user_ptr);
+
+  if (r == CUBEB_ERROR_INVALID_FORMAT) {
+    LOG("Invalid format, %p %p %d %d",
+        output_stream_params, input_stream_params,
+        output_stream_params && output_stream_params->format,
+        input_stream_params && input_stream_params->format);
+  }
+
+  return r;
 }
 
 void
