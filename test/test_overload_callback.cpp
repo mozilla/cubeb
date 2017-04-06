@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <memory>
 #include <atomic>
 #include "cubeb/cubeb.h"
 #include "common.h"
@@ -64,7 +65,8 @@ TEST(cubeb, overload_callback)
   r = cubeb_init(&ctx, "Cubeb callback overload", NULL);
   ASSERT_EQ(r, CUBEB_OK);
 
-  cubeb_cleaner cleanup_cubeb_at_exit(ctx);
+  std::unique_ptr<cubeb, decltype(&cubeb_destroy)>
+    cleanup_cubeb_at_exit(ctx, cubeb_destroy);
 
   output_params.format = STREAM_FORMAT;
   output_params.rate = 48000;
@@ -79,7 +81,8 @@ TEST(cubeb, overload_callback)
                         latency_frames, data_cb, state_cb, NULL);
   ASSERT_EQ(r, CUBEB_OK);
 
-  cubeb_stream_cleaner cleanup_stream_at_exit(stream);
+  std::unique_ptr<cubeb_stream, decltype(&cubeb_stream_destroy)>
+    cleanup_stream_at_exit(stream, cubeb_stream_destroy);
 
   cubeb_stream_start(stream);
   delay(500);

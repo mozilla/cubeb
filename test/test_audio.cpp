@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <memory>
 #include <string.h>
 #include "cubeb/cubeb.h"
 #include "common.h"
@@ -110,7 +111,8 @@ int run_test(int num_channels, layout_info layout, int sampling_rate, int is_flo
     fprintf(stderr, "Error initializing cubeb library\n");
     return r;
   }
-  cubeb_cleaner cleanup_cubeb_at_exit(ctx);
+  std::unique_ptr<cubeb, decltype(&cubeb_destroy)>
+    cleanup_cubeb_at_exit(ctx, cubeb_destroy);
 
   const char * backend_id = cubeb_get_backend_id(ctx);
 
@@ -139,7 +141,8 @@ int run_test(int num_channels, layout_info layout, int sampling_rate, int is_flo
     return r;
   }
 
-  cubeb_stream_cleaner cleanup_stream_at_exit(stream);
+  std::unique_ptr<cubeb_stream, decltype(&cubeb_stream_destroy)>
+    cleanup_stream_at_exit(stream, cubeb_stream_destroy);
 
   cubeb_stream_start(stream);
   delay(200);
@@ -160,7 +163,8 @@ int run_panning_volume_test(int is_float)
     return r;
   }
 
-  cubeb_cleaner cleanup_cubeb_at_exit(ctx);
+  std::unique_ptr<cubeb, decltype(&cubeb_destroy)>
+    cleanup_cubeb_at_exit(ctx, cubeb_destroy);
 
   const char * backend_id = cubeb_get_backend_id(ctx);
 
@@ -187,7 +191,8 @@ int run_panning_volume_test(int is_float)
     return r;
   }
 
-  cubeb_stream_cleaner cleanup_stream_at_exit(stream);
+  std::unique_ptr<cubeb_stream, decltype(&cubeb_stream_destroy)>
+    cleanup_stream_at_exit(stream, cubeb_stream_destroy);
 
   fprintf(stderr, "Testing: volume\n");
   for(int i=0;i <= 4; ++i)
