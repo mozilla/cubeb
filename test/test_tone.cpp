@@ -82,13 +82,13 @@ void state_cb_tone(cubeb_stream *stream, void *user, cubeb_state state)
 
   switch (state) {
   case CUBEB_STATE_STARTED:
-    printf("stream started\n"); break;
+    fprintf(stderr, "stream started\n"); break;
   case CUBEB_STATE_STOPPED:
-    printf("stream stopped\n"); break;
+    fprintf(stderr, "stream stopped\n"); break;
   case CUBEB_STATE_DRAINED:
-    printf("stream drained\n"); break;
+    fprintf(stderr, "stream drained\n"); break;
   default:
-    printf("unknown stream state %d\n", state);
+    fprintf(stderr, "unknown stream state %d\n", state);
   }
 
   return;

@@ -28,7 +28,7 @@
 int is_windows_7()
 {
 #ifdef __MINGW32__
-  printf("Warning: this test was built with MinGW.\n"
+  fprintf(stderr, "Warning: this test was built with MinGW.\n"
          "MinGW does not contain necessary version checking infrastructure. Claiming to be Windows 7, even if we're not.\n");
   return 1;
 #endif

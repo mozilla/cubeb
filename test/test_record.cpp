@@ -54,13 +54,13 @@ void state_cb_record(cubeb_stream * stream, void * /*user*/, cubeb_state state)
 
   switch (state) {
   case CUBEB_STATE_STARTED:
-    printf("stream started\n"); break;
+    fprintf(stderr, "stream started\n"); break;
   case CUBEB_STATE_STOPPED:
-    printf("stream stopped\n"); break;
+    fprintf(stderr, "stream stopped\n"); break;
   case CUBEB_STATE_DRAINED:
-    printf("stream drained\n"); break;
+    fprintf(stderr, "stream drained\n"); break;
   default:
-    printf("unknown stream state %d\n", state);
+    fprintf(stderr, "unknown stream state %d\n", state);
   }
 
   return;
@@ -69,7 +69,7 @@ void state_cb_record(cubeb_stream * stream, void * /*user*/, cubeb_state state)
 TEST(cubeb, record)
 {
   if (cubeb_set_log_callback(CUBEB_LOG_DISABLED, nullptr /*print_log*/) != CUBEB_OK) {
-    printf("Set log callback failed\n");
+    fprintf(stderr, "Set log callback failed\n");
   }
   cubeb *ctx;
   cubeb_stream *stream;
@@ -113,7 +113,7 @@ TEST(cubeb, record)
 
 #ifdef __linux__
   // user callback does not arrive in Linux, silence the error
-  printf("Check is disabled in Linux\n");
+  fprintf(stderr, "Check is disabled in Linux\n");
 #else
   ASSERT_TRUE(stream_state.seen_audio);
 #endif
