@@ -84,10 +84,7 @@ TEST(cubeb, duplex)
   uint32_t latency_frames = 0;
 
   r = cubeb_init(&ctx, "Cubeb duplex example", NULL);
-  if (r != CUBEB_OK) {
-    fprintf(stderr, "Error initializing cubeb library\n");
-    ASSERT_EQ(r, CUBEB_OK);
-  }
+  ASSERT_EQ(r, CUBEB_OK) << "Error initializing cubeb library";
 
   std::unique_ptr<cubeb, decltype(&cubeb_destroy)>
     cleanup_cubeb_at_exit(ctx, cubeb_destroy);
@@ -109,19 +106,12 @@ TEST(cubeb, duplex)
   output_params.layout = CUBEB_LAYOUT_STEREO;
 
   r = cubeb_get_min_latency(ctx, output_params, &latency_frames);
-
-  if (r != CUBEB_OK) {
-    fprintf(stderr, "Could not get minimal latency\n");
-    ASSERT_EQ(r, CUBEB_OK);
-  }
+  ASSERT_EQ(r, CUBEB_OK) << "Could not get minimal latency";
 
   r = cubeb_stream_init(ctx, &stream, "Cubeb duplex",
                         NULL, &input_params, NULL, &output_params,
                         latency_frames, data_cb_duplex, state_cb_duplex, &stream_state);
-  if (r != CUBEB_OK) {
-    fprintf(stderr, "Error initializing cubeb stream\n");
-    ASSERT_EQ(r, CUBEB_OK);
-  }
+  ASSERT_EQ(r, CUBEB_OK) << "Error initializing cubeb stream";
 
   std::unique_ptr<cubeb_stream, decltype(&cubeb_stream_destroy)>
     cleanup_stream_at_exit(stream, cubeb_stream_destroy);

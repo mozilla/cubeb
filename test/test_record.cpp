@@ -78,10 +78,7 @@ TEST(cubeb, record)
   user_state_record stream_state = { false };
 
   r = cubeb_init(&ctx, "Cubeb record example", NULL);
-  if (r != CUBEB_OK) {
-    fprintf(stderr, "Error initializing cubeb library\n");
-    ASSERT_EQ(r, CUBEB_OK);
-  }
+  ASSERT_EQ(r, CUBEB_OK) << "Error initializing cubeb library";
 
   std::unique_ptr<cubeb, decltype(&cubeb_destroy)>
     cleanup_cubeb_at_exit(ctx, cubeb_destroy);
@@ -99,10 +96,7 @@ TEST(cubeb, record)
 
   r = cubeb_stream_init(ctx, &stream, "Cubeb record (mono)", NULL, &params, NULL, nullptr,
                         4096, data_cb_record, state_cb_record, &stream_state);
-  if (r != CUBEB_OK) {
-    fprintf(stderr, "Error initializing cubeb stream\n");
-    ASSERT_EQ(r, CUBEB_OK);
-  }
+  ASSERT_EQ(r, CUBEB_OK) << "Error initializing cubeb stream";
 
   std::unique_ptr<cubeb_stream, decltype(&cubeb_stream_destroy)>
     cleanup_stream_at_exit(stream, cubeb_stream_destroy);
