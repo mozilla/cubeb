@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <memory>
 #include "cubeb/cubeb.h"
 #include "common.h"
 
@@ -82,7 +83,8 @@ TEST(cubeb, record)
     ASSERT_EQ(r, CUBEB_OK);
   }
 
-  cubeb_cleaner cleanup_cubeb_at_exit(ctx);
+  std::unique_ptr<cubeb, decltype(&cubeb_destroy)>
+    cleanup_cubeb_at_exit(ctx, cubeb_destroy);
 
   /* This test needs an available input device, skip it if this host does not
    * have one. */
@@ -102,7 +104,8 @@ TEST(cubeb, record)
     ASSERT_EQ(r, CUBEB_OK);
   }
 
-  cubeb_stream_cleaner cleanup_stream_at_exit(stream);
+  std::unique_ptr<cubeb_stream, decltype(&cubeb_stream_destroy)>
+    cleanup_stream_at_exit(stream, cubeb_stream_destroy);
 
   cubeb_stream_start(stream);
   delay(500);
