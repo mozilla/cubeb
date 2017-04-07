@@ -112,8 +112,7 @@ TEST(cubeb, tone)
   params.channels = 1;
   params.layout = CUBEB_LAYOUT_MONO;
 
-  std::unique_ptr<struct cb_user_data, decltype(&free)>
-    user_data((struct cb_user_data *)calloc(1, sizeof(struct cb_user_data)), free);
+  std::unique_ptr<cb_user_data> user_data(new cb_user_data());
   ASSERT_TRUE(!!user_data) << "Error allocating user data";
 
   user_data->position = 0;
