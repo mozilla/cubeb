@@ -99,7 +99,6 @@ TEST(cubeb, tone)
   cubeb *ctx;
   cubeb_stream *stream;
   cubeb_stream_params params;
-  struct cb_user_data *user_data;
   int r;
 
   r = cubeb_init(&ctx, "Cubeb tone example", NULL);
@@ -113,13 +112,14 @@ TEST(cubeb, tone)
   params.channels = 1;
   params.layout = CUBEB_LAYOUT_MONO;
 
-  user_data = (struct cb_user_data *) malloc(sizeof(*user_data));
-  ASSERT_NE(user_data, nullptr) << "Error allocating user data";
+  std::unique_ptr<struct cb_user_data, decltype(&free)>
+    user_data((struct cb_user_data *)calloc(1, sizeof(struct cb_user_data)), free);
+  ASSERT_TRUE(!!user_data) << "Error allocating user data";
 
   user_data->position = 0;
 
   r = cubeb_stream_init(ctx, &stream, "Cubeb tone (mono)", NULL, NULL, NULL, &params,
-                        4096, data_cb_tone, state_cb_tone, user_data);
+                        4096, data_cb_tone, state_cb_tone, user_data.get());
   ASSERT_EQ(r, CUBEB_OK) << "Error initializing cubeb stream";
 
   std::unique_ptr<cubeb_stream, decltype(&cubeb_stream_destroy)>
@@ -130,6 +130,4 @@ TEST(cubeb, tone)
   cubeb_stream_stop(stream);
 
   ASSERT_TRUE(user_data->position);
-
-  free(user_data);
 }
