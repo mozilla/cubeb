@@ -148,36 +148,36 @@ make_sized_audio_channel_layout(size_t sz)
     return std::unique_ptr<AudioChannelLayout, decltype(&free)>(acl, free);
 }
 
-struct mixing_wrapper {
-  virtual void downmix(void * output_buffer, long output_frames,
-                       cubeb_channel_layout output_layout,
-                       cubeb_channel_layout mixing_layout) = 0;
-  virtual ~mixing_wrapper() {};
+struct mixer_proxy {
+  virtual void downmix(void * buffer, long frames,
+                       cubeb_channel_layout input_layout,
+                       cubeb_channel_layout output_layout) = 0;
+  virtual ~mixer_proxy() {};
 };
 
 template <typename T>
-struct mixing_impl : public mixing_wrapper {
+struct mixer_impl : public mixer_proxy {
 
   typedef void (*downmix_func)(T * const, long, T *,
                                unsigned int, unsigned int,
                                cubeb_channel_layout, cubeb_channel_layout);
 
-  mixing_impl(downmix_func dmfunc) {
+  mixer_impl(downmix_func dmfunc) {
     downmix_wrapper = dmfunc;
   }
 
-  ~mixing_impl() {}
+  ~mixer_impl() {}
 
-  void downmix(void * output_buffer, long output_frames,
-               cubeb_channel_layout output_layout,
-               cubeb_channel_layout mixing_layout) override {
+  void downmix(void * buffer, long frames,
+               cubeb_channel_layout input_layout,
+               cubeb_channel_layout output_layout) override {
+    uint32_t input_channels = CUBEB_CHANNEL_LAYOUT_MAPS[input_layout].channels;
     uint32_t output_channels = CUBEB_CHANNEL_LAYOUT_MAPS[output_layout].channels;
-    uint32_t using_channels = CUBEB_CHANNEL_LAYOUT_MAPS[mixing_layout].channels;
-    T* out = static_cast<T *>(output_buffer);
+    T * out = static_cast<T*>(buffer);
     // By using same buffer for downmixing input and output, we allow downmixing
     // from 5.0/1 to 1.0/1, 2.0/1/2, 3.0/1, 4.0/1. Do nothing on other cases.
-    downmix_wrapper(out, output_frames, out, output_channels, using_channels,
-                    output_layout, mixing_layout);
+    downmix_wrapper(out, frames, out, input_channels, output_channels,
+                    input_layout, output_layout);
   }
 
   downmix_func downmix_wrapper;
@@ -253,8 +253,8 @@ struct cubeb_stream {
   std::atomic<bool> buffer_size_change_state{ false };
   AudioDeviceID aggregate_device_id = 0;    // the aggregate device id
   AudioObjectID plugin_id = 0;              // used to create aggregate device
-  /* Mixing interface */
-  std::unique_ptr<mixing_wrapper> mixing;
+  /* Mixer interface */
+  std::unique_ptr<mixer_proxy> mixer;
 };
 
 bool has_input(cubeb_stream * stm)
@@ -480,7 +480,7 @@ audiounit_mix_output_buffer(cubeb_stream * stm,
   // the channels that audio device can provide, so we need to downmix the
   // audio data by ourselves to keep all the information.
 
-  cubeb_stream_params mixed_params = {
+  cubeb_stream_params dest_params = {
     stm->output_stream_params.format,
     stm->output_stream_params.rate,
     CUBEB_CHANNEL_LAYOUT_MAPS[stm->context->layout].channels,
@@ -488,9 +488,9 @@ audiounit_mix_output_buffer(cubeb_stream * stm,
   };
 
   // We only handle downmixing for now.
-  if (cubeb_should_downmix(&stm->output_stream_params, &mixed_params)) {
-    stm->mixing->downmix(output_buffer, output_frames,
-                         stm->output_stream_params.layout, mixed_params.layout);
+  if (cubeb_should_downmix(&stm->output_stream_params, &dest_params)) {
+    stm->mixer->downmix(output_buffer, output_frames,
+                        stm->output_stream_params.layout, dest_params.layout);
   }
 }
 
@@ -1308,12 +1308,12 @@ audio_stream_desc_init(AudioStreamBasicDescription * ss,
 }
 
 void
-audiounit_init_mixed_buffer(cubeb_stream * stm)
+audiounit_init_mixer(cubeb_stream * stm)
 {
   if (stm->output_desc.mFormatFlags & kAudioFormatFlagIsFloat) {
-    stm->mixing.reset(new mixing_impl<float>(&cubeb_downmix_float));
+    stm->mixer.reset(new mixer_impl<float>(&cubeb_downmix_float));
   } else { // stm->output_desc.mFormatFlags & kAudioFormatFlagIsSignedInteger
-    stm->mixing.reset(new mixing_impl<short>(&cubeb_downmix_short));
+    stm->mixer.reset(new mixer_impl<short>(&cubeb_downmix_short));
   }
 }
 
@@ -2292,7 +2292,7 @@ audiounit_configure_output(cubeb_stream * stm)
   }
 
   audiounit_layout_init(stm, OUTPUT);
-  audiounit_init_mixed_buffer(stm);
+  audiounit_init_mixer(stm);
 
   LOG("(%p) Output audiounit init successfully.", stm);
   return CUBEB_OK;
