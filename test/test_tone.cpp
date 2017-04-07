@@ -82,13 +82,13 @@ void state_cb_tone(cubeb_stream *stream, void *user, cubeb_state state)
 
   switch (state) {
   case CUBEB_STATE_STARTED:
-    printf("stream started\n"); break;
+    fprintf(stderr, "stream started\n"); break;
   case CUBEB_STATE_STOPPED:
-    printf("stream stopped\n"); break;
+    fprintf(stderr, "stream stopped\n"); break;
   case CUBEB_STATE_DRAINED:
-    printf("stream drained\n"); break;
+    fprintf(stderr, "stream drained\n"); break;
   default:
-    printf("unknown stream state %d\n", state);
+    fprintf(stderr, "unknown stream state %d\n", state);
   }
 
   return;
@@ -99,14 +99,10 @@ TEST(cubeb, tone)
   cubeb *ctx;
   cubeb_stream *stream;
   cubeb_stream_params params;
-  struct cb_user_data *user_data;
   int r;
 
   r = cubeb_init(&ctx, "Cubeb tone example", NULL);
-  if (r != CUBEB_OK) {
-    fprintf(stderr, "Error initializing cubeb library\n");
-    ASSERT_EQ(r, CUBEB_OK);
-  }
+  ASSERT_EQ(r, CUBEB_OK) << "Error initializing cubeb library";
 
   std::unique_ptr<cubeb, decltype(&cubeb_destroy)>
     cleanup_cubeb_at_exit(ctx, cubeb_destroy);
@@ -116,19 +112,15 @@ TEST(cubeb, tone)
   params.channels = 1;
   params.layout = CUBEB_LAYOUT_MONO;
 
-  user_data = (struct cb_user_data *) malloc(sizeof(*user_data));
-  if (user_data == NULL) {
-    fprintf(stderr, "Error allocating user data\n");
-    FAIL();
-  }
+  std::unique_ptr<struct cb_user_data, decltype(&free)>
+    user_data((struct cb_user_data *)calloc(1, sizeof(struct cb_user_data)), free);
+  ASSERT_TRUE(!!user_data) << "Error allocating user data";
+
   user_data->position = 0;
 
   r = cubeb_stream_init(ctx, &stream, "Cubeb tone (mono)", NULL, NULL, NULL, &params,
-                        4096, data_cb_tone, state_cb_tone, user_data);
-  if (r != CUBEB_OK) {
-    fprintf(stderr, "Error initializing cubeb stream\n");
-    ASSERT_EQ(r, CUBEB_OK);
-  }
+                        4096, data_cb_tone, state_cb_tone, user_data.get());
+  ASSERT_EQ(r, CUBEB_OK) << "Error initializing cubeb stream";
 
   std::unique_ptr<cubeb_stream, decltype(&cubeb_stream_destroy)>
     cleanup_stream_at_exit(stream, cubeb_stream_destroy);
@@ -138,6 +130,4 @@ TEST(cubeb, tone)
   cubeb_stream_stop(stream);
 
   ASSERT_TRUE(user_data->position);
-
-  free(user_data);
 }
