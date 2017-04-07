@@ -67,7 +67,7 @@ if(USE_AUDIOUNIT)
     src/cubeb_audiounit.cpp
     src/cubeb_osx_run_loop.cpp)
   target_compile_definitions(cubeb PRIVATE USE_AUDIOUNIT)
-  target_link_libraries(cubeb PRIVATE "-framework AudioUnit" "-framework CoreAudio" "-framework CoreServices")
+  target_link_libraries(cubeb PRIVATE "-framework AudioToolbox" "-framework AudioUnit" "-framework CoreAudio" "-framework CoreServices")
 endif()
 
 check_include_files(pulse/pulseaudio.h USE_PULSE)

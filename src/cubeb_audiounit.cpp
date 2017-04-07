@@ -12,6 +12,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <AudioUnit/AudioUnit.h>
+#include <AudioToolbox/AudioFormat.h>
 #if !TARGET_OS_IPHONE
 #include <AvailabilityMacros.h>
 #include <CoreAudio/AudioHardware.h>
@@ -1128,14 +1129,61 @@ audiounit_get_preferred_sample_rate(cubeb * /* ctx */, uint32_t * rate)
 static cubeb_channel_layout
 audiounit_convert_channel_layout(AudioChannelLayout * layout)
 {
+  // The layout structure contains the the channel layout mapping only when the
+  // tag is kAudioChannelLayoutTag_UseChannelDescriptions. If the tag is
+  // kAudioChannelLayoutTag_UseChannelBitmap, then the layout is defined by bitmap
+  // and it's mapping can be retrieved by kAudioFormatProperty_ChannelLayoutForBitmap.
+  // Otherwise, the tag self describes its layout, such as kAudioChannelLayoutTag_Stereo,
+  // or kAudioChannelLayoutTag_Mono. It's mapping can be retrieved by
+  // kAudioFormatProperty_ChannelLayoutForTag
   if (layout->mChannelLayoutTag != kAudioChannelLayoutTag_UseChannelDescriptions) {
-    // kAudioChannelLayoutTag_UseChannelBitmap
-    // kAudioChannelLayoutTag_Mono
-    // kAudioChannelLayoutTag_Stereo
-    // ....
-    LOG("Only handle UseChannelDescriptions for now.\n");
-    return CUBEB_LAYOUT_UNDEFINED;
+    AudioFormatPropertyID id;
+    UInt32 size;
+    const void * data;
+
+    if (layout->mChannelLayoutTag == kAudioChannelLayoutTag_UseChannelBitmap) {
+      id = kAudioFormatProperty_ChannelLayoutForBitmap;
+      size = sizeof(UInt32);
+      data = &layout->mChannelBitmap;
+    } else { // kAudioChannelLayoutTag_Stereo, kAudioChannelLayoutTag_Mono, ...
+      id = kAudioFormatProperty_ChannelLayoutForTag;
+      size = sizeof(AudioChannelLayoutTag);
+      data = &layout->mChannelLayoutTag;
+    }
+
+    UInt32 data_size = 0;
+    OSStatus rv = AudioFormatGetPropertyInfo(id, size, data, &data_size);
+    if (rv != noErr) {
+      LOG("AudioFormatGetPropertyInfo/%s rv=%d",
+          (layout->mChannelLayoutTag == kAudioChannelLayoutTag_UseChannelBitmap) ?
+            "kAudioFormatProperty_ChannelLayoutForBitmap" :
+            "kAudioFormatProperty_ChannelLayoutForTag",
+          rv);
+      return CUBEB_LAYOUT_UNDEFINED;
+    }
+    assert(data_size);
+
+    auto ret_layout = make_sized_audio_channel_layout(data_size);
+    UInt32 io_size = data_size;
+
+    rv = AudioFormatGetProperty(id, size, data, &io_size, ret_layout.get());
+    if (rv != noErr) {
+      LOG("AudioFormatGetProperty/%s rv=%d",
+          (layout->mChannelLayoutTag == kAudioChannelLayoutTag_UseChannelBitmap) ?
+            "kAudioFormatProperty_ChannelLayoutForBitmap" :
+            "kAudioFormatProperty_ChannelLayoutForTag",
+          rv);
+      return CUBEB_LAYOUT_UNDEFINED;
+    }
+    assert(io_size == data_size);
+
+    // We have retrieved the channel layout from the tag or bitmap.
+    // We can now directly use the channel descriptions.
+    ret_layout->mChannelLayoutTag = kAudioChannelLayoutTag_UseChannelDescriptions;
+    layout = ret_layout.get(); // The memory pointed by the original layout will be released outside.
   }
+
+  assert(layout->mChannelLayoutTag == kAudioChannelLayoutTag_UseChannelDescriptions);
 
   cubeb_channel_map cm;
   cm.channels = layout->mNumberChannelDescriptions;
