@@ -95,20 +95,6 @@ cubeb * get_cubeb_context()
   return get_cubeb_context_unlocked();
 }
 
-struct cubeb_cleaner
-{
-  cubeb_cleaner(cubeb * context) : ctx(context) {}
-  ~cubeb_cleaner() { cubeb_destroy(ctx); }
-  cubeb * ctx;
-};
-
-struct cubeb_stream_cleaner
-{
-  cubeb_stream_cleaner(cubeb_stream * stream) : stm(stream) {}
-  ~cubeb_stream_cleaner() { cubeb_stream_destroy(stm); }
-  cubeb_stream * stm;
-};
-
 void state_cb_audio(cubeb_stream * /*stream*/, void * /*user*/, cubeb_state /*state*/)
 {
 }
@@ -220,7 +206,8 @@ TEST(cubeb, run_deadlock_test)
   cubeb * ctx = get_cubeb_context();
   ASSERT_TRUE(!!ctx);
 
-  cubeb_cleaner cleanup_cubeb_at_exit(ctx);
+  std::unique_ptr<cubeb, decltype(&cubeb_destroy)>
+    cleanup_cubeb_at_exit(ctx, cubeb_destroy);
 
   cubeb_stream_params params;
   params.format = CUBEB_SAMPLE_FLOAT32NE;
@@ -233,7 +220,8 @@ TEST(cubeb, run_deadlock_test)
                             &params, 512, &data_cb<float>, state_cb_audio, NULL);
   ASSERT_EQ(r, CUBEB_OK);
 
-  cubeb_stream_cleaner cleanup_stream_at_exit(stream);
+  std::unique_ptr<cubeb_stream, decltype(&cubeb_stream_destroy)>
+    cleanup_stream_at_exit(stream, cubeb_stream_destroy);
 
   // Install signal handler.
   signal(CALL_THREAD_KILLER, thread_killer);
