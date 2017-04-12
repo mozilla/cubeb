@@ -31,17 +31,17 @@ fn pa_channel_to_cubeb_channel(channel: pa_channel_position_t) -> cubeb::Channel
 {
     assert!(channel != PA_CHANNEL_POSITION_INVALID);
     match channel {
-        PA_CHANNEL_POSITION_MONO => cubeb::Channel::Mono,
-        PA_CHANNEL_POSITION_FRONT_LEFT => cubeb::Channel::Left,
-        PA_CHANNEL_POSITION_FRONT_RIGHT => cubeb::Channel::Right,
-        PA_CHANNEL_POSITION_FRONT_CENTER => cubeb::Channel::Center,
-        PA_CHANNEL_POSITION_SIDE_LEFT => cubeb::Channel::LeftSurround,
-        PA_CHANNEL_POSITION_SIDE_RIGHT => cubeb::Channel::RightSurround,
-        PA_CHANNEL_POSITION_REAR_LEFT => cubeb::Channel::RearLeftSurround,
-        PA_CHANNEL_POSITION_REAR_CENTER => cubeb::Channel::RearCenter,
-        PA_CHANNEL_POSITION_REAR_RIGHT => cubeb::Channel::RearRightSurround,
-        PA_CHANNEL_POSITION_LFE => cubeb::Channel::LowFrequency,
-        _ => cubeb::Channel::Invalid
+        PA_CHANNEL_POSITION_MONO => cubeb::CHANNEL_MONO,
+        PA_CHANNEL_POSITION_FRONT_LEFT => cubeb::CHANNEL_LEFT,
+        PA_CHANNEL_POSITION_FRONT_RIGHT => cubeb::CHANNEL_RIGHT,
+        PA_CHANNEL_POSITION_FRONT_CENTER => cubeb::CHANNEL_CENTER,
+        PA_CHANNEL_POSITION_SIDE_LEFT => cubeb::CHANNEL_LS,
+        PA_CHANNEL_POSITION_SIDE_RIGHT => cubeb::CHANNEL_RS,
+        PA_CHANNEL_POSITION_REAR_LEFT => cubeb::CHANNEL_RLS,
+        PA_CHANNEL_POSITION_REAR_CENTER => cubeb::CHANNEL_RCENTER,
+        PA_CHANNEL_POSITION_REAR_RIGHT => cubeb::CHANNEL_RRS,
+        PA_CHANNEL_POSITION_LFE => cubeb::CHANNEL_LFE,
+        _ => cubeb::CHANNEL_INVALID
     }
 }
 

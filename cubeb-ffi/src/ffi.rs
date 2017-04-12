@@ -44,17 +44,24 @@ pub enum Context {}
 pub enum Stream {}
 
 // TODO endian check
-pub const SAMPLE_S16NE: SampleFormat = SampleFormat::S16LE;
-pub const SAMPLE_FLOAT32NE: SampleFormat = SampleFormat::Float32LE;
-
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum SampleFormat {
-    S16LE = 0,
-    S16BE = 1,
-    Float32LE = 2,
-    Float32BE = 3,
-}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct SampleFormat(i32);
+
+// These need to match cubeb_sample_format
+pub const SAMPLE_S16LE: SampleFormat = SampleFormat(0);
+pub const SAMPLE_S16BE: SampleFormat = SampleFormat(1);
+pub const SAMPLE_FLOAT32LE: SampleFormat = SampleFormat(2);
+pub const SAMPLE_FLOAT32BE: SampleFormat = SampleFormat(3);
+
+#[cfg(target_endian = "little")]
+pub const SAMPLE_S16NE: SampleFormat = SAMPLE_S16LE;
+#[cfg(target_endian = "little")]
+pub const SAMPLE_FLOAT32NE: SampleFormat = SAMPLE_FLOAT32LE;
+#[cfg(target_endian = "big")]
+pub const SAMPLE_S16NE: SampleFormat = SAMPLE_S16BE;
+#[cfg(target_endian = "big")]
+pub const SAMPLE_FLOAT32NE: SampleFormat = SAMPLE_FLOAT32BE;
 
 pub type DeviceId = *const c_void;
 
@@ -68,28 +75,29 @@ pub enum LogLevel {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum ChannelLayout {
-    Undefined = 0,
-    DualMono = 1,
-    DualMonoLfe = 2,
-    Mono = 3,
-    MonoLfe = 4,
-    Stereo = 5,
-    StereoLfe = 6,
-    Layout3F = 7,
-    Layout3FLfe = 8,
-    Layout2F1 = 9,
-    Layout2F1Lfe = 10,
-    Layout3F1 = 11,
-    Layout3F1Lfe = 12,
-    Layout2F2 = 13,
-    Layout2F2Lfe = 14,
-    Layout3F2 = 15,
-    Layout3F2Lfe = 16,
-    Layout3F3RLfe = 17,
-    Layout3F4Lfe = 18,
-    Max = 19,
-}
+pub struct ChannelLayout(i32);
+
+// These need to match cubeb_channel_layout
+pub const LAYOUT_UNDEFINED: ChannelLayout = ChannelLayout(0);
+pub const LAYOUT_DUAL_MONO: ChannelLayout = ChannelLayout(1);
+pub const LAYOUT_DUAL_MONO_LFE: ChannelLayout = ChannelLayout(2);
+pub const LAYOUT_MONO: ChannelLayout = ChannelLayout(3);
+pub const LAYOUT_MONO_LFE: ChannelLayout = ChannelLayout(4);
+pub const LAYOUT_STEREO: ChannelLayout = ChannelLayout(5);
+pub const LAYOUT_STEREO_LFE: ChannelLayout = ChannelLayout(6);
+pub const LAYOUT_3F: ChannelLayout = ChannelLayout(7);
+pub const LAYOUT_3F_LFE: ChannelLayout = ChannelLayout(8);
+pub const LAYOUT_2F1: ChannelLayout = ChannelLayout(9);
+pub const LAYOUT_2F1_LFE: ChannelLayout = ChannelLayout(10);
+pub const LAYOUT_3F1: ChannelLayout = ChannelLayout(11);
+pub const LAYOUT_3F1_LFE: ChannelLayout = ChannelLayout(12);
+pub const LAYOUT_2F2: ChannelLayout = ChannelLayout(13);
+pub const LAYOUT_2F2_LFE: ChannelLayout = ChannelLayout(14);
+pub const LAYOUT_3F2: ChannelLayout = ChannelLayout(15);
+pub const LAYOUT_3F2_LFE: ChannelLayout = ChannelLayout(16);
+pub const LAYOUT_3F3R_LFE: ChannelLayout = ChannelLayout(17);
+pub const LAYOUT_3F4_LFE: ChannelLayout = ChannelLayout(18);
+pub const LAYOUT_MAX: ChannelLayout = ChannelLayout(19);
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
@@ -118,12 +126,13 @@ impl Default for Device {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum State {
-    Started = 0,
-    Stopped = 1,
-    Drained = 2,
-    Error = 3,
-}
+pub struct State(i32);
+
+// These need to match cubeb_state
+pub const STATE_STARTED: State = State(0);
+pub const STATE_STOPPED: State = State(1);
+pub const STATE_DRAINED: State = State(2);
+pub const STATE_ERROR: State = State(3);
 
 pub const OK: i32 = 0;
 pub const ERROR: i32 = -1;
@@ -440,26 +449,32 @@ pub struct LayoutMap {
 // cubeb_mixer.h
 #[repr(C)]
 #[derive(Clone,Copy,Debug,PartialEq,Eq,PartialOrd,Ord,Hash)]
-pub enum Channel {
-  Invalid           = -1,
-  Mono              = 0,
-  Left              = 1,
-  Right             = 2,
-  Center            = 3,
-  LeftSurround      = 4,
-  RightSurround     = 5,
-  RearLeftSurround  = 6,
-  RearCenter        = 7,
-  RearRightSurround = 8,
-  LowFrequency      = 9,
-  Max               = 10
+pub struct Channel(i32);
+impl Into<i32> for Channel {
+    fn into(self) -> i32 {
+        self.0
+    }
 }
+
+// These need to match cubeb_channel
+pub const CHANNEL_INVALID: Channel = Channel(-1);
+pub const CHANNEL_MONO: Channel = Channel(0);
+pub const CHANNEL_LEFT: Channel = Channel(1);
+pub const CHANNEL_RIGHT: Channel = Channel(2);
+pub const CHANNEL_CENTER: Channel = Channel(3);
+pub const CHANNEL_LS: Channel = Channel(4);
+pub const CHANNEL_RS: Channel = Channel(5);
+pub const CHANNEL_RLS: Channel = Channel(6);
+pub const CHANNEL_RCENTER: Channel = Channel(7);
+pub const CHANNEL_RRS: Channel = Channel(8);
+pub const CHANNEL_LFE: Channel = Channel(9);
+pub const CHANNEL_MAX: Channel = Channel(10);
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct ChannelMap {
     pub channels: u32,
-    pub map: [Channel;Channel::Max as usize],
+    pub map: [Channel;10],
 }
 impl ::std::default::Default for ChannelMap {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }

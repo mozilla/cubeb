@@ -15,7 +15,7 @@ const PA_USEC_PER_SEC: pa_usec_t = 1000000;
 
 fn cubeb_channel_to_pa_channel(channel: cubeb::Channel) -> pa_channel_position_t
 {
-    assert!(channel != cubeb::Channel::Invalid);
+    assert!(channel != cubeb::CHANNEL_INVALID);
 
     // This variable may be used for multiple times, so we should avoid to
     // allocate it in stack, or it will be created and removed repeatedly.
@@ -34,17 +34,18 @@ fn cubeb_channel_to_pa_channel(channel: cubeb::Channel) -> pa_channel_position_t
         PA_CHANNEL_POSITION_LFE           // CHANNEL_LFE
     ];
 
-    MAP[channel as usize]
+    let idx: i32 = channel.into();
+    MAP[idx as usize]
 }
 
 fn layout_to_channel_map(layout: cubeb::ChannelLayout) -> pa_channel_map
 {
-    assert!(layout != cubeb::ChannelLayout::Undefined);
+    assert!(layout != cubeb::LAYOUT_UNDEFINED);
 
     let order = cubeb::mixer::channel_index_to_order(layout);
 
     let mut cm: pa_channel_map = Default::default();
-    pa_channel_map_init(&mut cm);
+    unsafe { pa_channel_map_init(&mut cm); }
     cm.channels = order.len() as u8;
     for (s, d) in order.iter().zip(cm.map.iter_mut()) {
         *d = cubeb_channel_to_pa_channel(*s);
@@ -111,7 +112,7 @@ impl<'ctx> Stream<'ctx>
             input_sample_spec: pa_sample_spec::default(),
             shutdown: false,
             volume: PULSE_NO_GAIN,
-            state: cubeb::State::Error,
+            state: cubeb::STATE_ERROR,
         });
 
         unsafe {
@@ -439,10 +440,11 @@ impl<'ctx> Stream<'ctx>
         fn to_pulse_format(format: cubeb::SampleFormat) -> pa_sample_format_t
         {
             match format {
-                cubeb::SampleFormat::S16LE => PA_SAMPLE_S16LE,
-                cubeb::SampleFormat::S16BE => PA_SAMPLE_S16BE,
-                cubeb::SampleFormat::Float32LE => PA_SAMPLE_FLOAT32LE,
-                cubeb::SampleFormat::Float32BE => PA_SAMPLE_FLOAT32BE,
+                cubeb::SAMPLE_S16LE => PA_SAMPLE_S16LE,
+                cubeb::SAMPLE_S16BE => PA_SAMPLE_S16BE,
+                cubeb::SAMPLE_FLOAT32LE => PA_SAMPLE_FLOAT32LE,
+                cubeb::SAMPLE_FLOAT32BE => PA_SAMPLE_FLOAT32BE,
+                _ => panic!("Invalid format: {:?}", format)
             }
         }
 
@@ -479,9 +481,9 @@ impl<'ctx> Stream<'ctx>
 
         if state.is_notify() {
             self.state_change_callback(if state.is_cork() {
-                cubeb::State::Stopped
+                cubeb::STATE_STOPPED
             } else {
-                cubeb::State::Started
+                cubeb::STATE_STARTED
             });
         }
     }
@@ -644,7 +646,7 @@ unsafe extern fn stream_drain_callback(a: *mut pa_mainloop_api, e: *mut pa_time_
 {
   let mut stm = &mut *(u as *mut Stream);
   debug_assert!(stm.drain_timer == e);
-  stm.state_change_callback(cubeb::State::Drained);
+  stm.state_change_callback(cubeb::STATE_DRAINED);
   /* there's no pa_rttime_free, so use this instead. */
   (*a).time_free.unwrap()(stm.drain_timer);
   stm.drain_timer = ptr::null_mut();
@@ -656,7 +658,7 @@ unsafe extern fn stream_state_callback(s: *mut pa_stream,
 {
     let stm = &mut *(u as *mut Stream);
     if !PA_STREAM_IS_GOOD(pa_stream_get_state(s)) {
-        stm.state_change_callback(cubeb::State::Error);
+        stm.state_change_callback(cubeb::STATE_ERROR);
     }
     pa_threaded_mainloop_signal(stm.context.mainloop, 0);
 }
@@ -678,7 +680,7 @@ unsafe extern fn stream_write_callback(s: *mut pa_stream, nbytes: usize, u: *mut
 {
 //  LOGV("Output callback to be written buffer size %zd", nbytes);
     let mut stm = &mut *(u as *mut Stream);
-    if stm.shutdown || stm.state != cubeb::State::Started {
+    if stm.shutdown || stm.state != cubeb::STATE_STARTED {
         return;
     }
 
