@@ -5,9 +5,9 @@
 use backend::*;
 use backend::cork_state::CorkState;
 use cubeb;
-use libpulse_sys::*;
+use pulse_ffi::*;
 use std::ptr;
-use libc::{c_char,c_void};
+use std::os::raw::{c_char,c_void};
 
 const PULSE_NO_GAIN: f32 = -1.0;
 const PA_USEC_PER_MSEC: pa_usec_t = 1000;
@@ -642,7 +642,7 @@ unsafe extern fn stream_success_callback(_s: *mut pa_stream, _success: i32, u: *
   pa_threaded_mainloop_signal(stm.context.mainloop, 0);
 }
 
-unsafe extern fn stream_drain_callback(a: *mut pa_mainloop_api, e: *mut pa_time_event, _tv: *const Struct_timeval, u: *mut c_void)
+unsafe extern fn stream_drain_callback(a: *mut pa_mainloop_api, e: *mut pa_time_event, _tv: *const timeval, u: *mut c_void)
 {
   let mut stm = &mut *(u as *mut Stream);
   debug_assert!(stm.drain_timer == e);

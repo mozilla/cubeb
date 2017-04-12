@@ -1,6 +1,6 @@
 /// A C-style variable length array implemented as one allocation with
 /// a prepended header.
-use libpulse_sys::{pa_xrealloc};
+use pulse_ffi::{pa_xrealloc};
 
 #[repr(C)]
 #[derive(Debug)]
