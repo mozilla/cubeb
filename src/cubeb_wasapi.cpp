@@ -2315,7 +2315,7 @@ wasapi_enumerate_devices(cubeb * context, cubeb_device_type type,
 
   if (type == CUBEB_DEVICE_TYPE_OUTPUT) flow = eRender;
   else if (type == CUBEB_DEVICE_TYPE_INPUT) flow = eCapture;
-  else if (type & (CUBEB_DEVICE_TYPE_INPUT | CUBEB_DEVICE_TYPE_INPUT)) flow = eAll;
+  else if (type & (CUBEB_DEVICE_TYPE_INPUT | CUBEB_DEVICE_TYPE_OUTPUT)) flow = eAll;
   else return CUBEB_ERROR;
 
   hr = enumerator->EnumAudioEndpoints(flow, DEVICE_STATEMASK_ALL, collection.receive());
