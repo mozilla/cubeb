@@ -1287,45 +1287,45 @@ audiounit_set_channel_layout(AudioUnit unit,
   switch (stream_params->layout) {
     case CUBEB_LAYOUT_DUAL_MONO:
     case CUBEB_LAYOUT_STEREO:
-      layout.get()->mChannelLayoutTag = kAudioChannelLayoutTag_Stereo;
+      layout->mChannelLayoutTag = kAudioChannelLayoutTag_Stereo;
       break;
     case CUBEB_LAYOUT_MONO:
-      layout.get()->mChannelLayoutTag = kAudioChannelLayoutTag_Mono;
+      layout->mChannelLayoutTag = kAudioChannelLayoutTag_Mono;
       break;
     case CUBEB_LAYOUT_3F:
-      layout.get()->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_3_0;
+      layout->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_3_0;
       break;
     case CUBEB_LAYOUT_2F1:
-      layout.get()->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_2_1;
+      layout->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_2_1;
       break;
     case CUBEB_LAYOUT_3F1:
-      layout.get()->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_3_1;
+      layout->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_3_1;
       break;
     case CUBEB_LAYOUT_2F2:
-      layout.get()->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_2_2;
+      layout->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_2_2;
       break;
     case CUBEB_LAYOUT_3F2:
-      layout.get()->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_3_2;
+      layout->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_3_2;
       break;
     case CUBEB_LAYOUT_3F2_LFE:
-      layout.get()->mChannelLayoutTag = kAudioChannelLayoutTag_AudioUnit_5_1;
+      layout->mChannelLayoutTag = kAudioChannelLayoutTag_AudioUnit_5_1;
       break;
     default:
-      layout.get()->mChannelLayoutTag = kAudioChannelLayoutTag_Unknown;
+      layout->mChannelLayoutTag = kAudioChannelLayoutTag_Unknown;
       break;
   }
 
   // For those layouts that can't be matched to coreaudio's predefined layout,
   // we use customized layout.
-  if (layout.get()->mChannelLayoutTag == kAudioChannelLayoutTag_Unknown) {
+  if (layout->mChannelLayoutTag == kAudioChannelLayoutTag_Unknown) {
     size = offsetof(AudioChannelLayout, mChannelDescriptions[stream_params->channels]);
     layout = make_sized_audio_channel_layout(size);
-    layout.get()->mChannelLayoutTag = kAudioChannelLayoutTag_UseChannelDescriptions;
-    layout.get()->mNumberChannelDescriptions = stream_params->channels;
+    layout->mChannelLayoutTag = kAudioChannelLayoutTag_UseChannelDescriptions;
+    layout->mNumberChannelDescriptions = stream_params->channels;
     for (UInt32 i = 0 ; i < stream_params->channels ; ++i) {
-      layout.get()->mChannelDescriptions[i].mChannelLabel =
+      layout->mChannelDescriptions[i].mChannelLabel =
         cubeb_channel_to_channel_label(CHANNEL_INDEX_TO_ORDER[stream_params->layout][i]);
-      layout.get()->mChannelDescriptions[i].mChannelFlags = kAudioChannelFlags_AllOff;
+      layout->mChannelDescriptions[i].mChannelFlags = kAudioChannelFlags_AllOff;
     }
   }
 
