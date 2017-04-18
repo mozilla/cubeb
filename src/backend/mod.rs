@@ -1,13 +1,3 @@
-macro_rules! destroy {
-    ($Name: ident) => {
-        impl Drop for $Name {
-            fn drop(&mut self) {
-                self.destroy()
-            }
-        }
-    }
-}
-
 mod context;
 mod cork_state;
 mod stream;

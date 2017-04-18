@@ -69,8 +69,6 @@ pub struct Context
     pub version_0_9_8: bool
 }
 
-destroy!(Context);
-
 impl Context
 {
     pub fn new(name: *const i8) -> Result<Box<Self>>

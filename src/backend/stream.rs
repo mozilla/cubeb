@@ -55,15 +55,15 @@ fn layout_to_channel_map(layout: cubeb::ChannelLayout) -> pa_channel_map
 
 pub struct Device(cubeb::Device);
 
-destroy! { Device }
-impl Device {
-    pub fn destroy(&mut self) {
+impl Drop for Device {
+    fn drop(&mut self) {
         unsafe {
             pa_xfree(self.0.input_name as *mut _);
             pa_xfree(self.0.output_name as *mut _);
         }
     }
 }
+
 
 #[derive(Debug)]
 pub struct Stream<'ctx>
