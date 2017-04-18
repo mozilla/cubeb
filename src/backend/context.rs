@@ -26,7 +26,7 @@ macro_rules! dup_str {
 }
 
 fn pa_channel_to_cubeb_channel(channel: pa_channel_position_t) -> cubeb::Channel {
-    assert!(channel != PA_CHANNEL_POSITION_INVALID);
+    assert_ne!(channel, PA_CHANNEL_POSITION_INVALID);
     match channel {
         PA_CHANNEL_POSITION_MONO => cubeb::CHANNEL_MONO,
         PA_CHANNEL_POSITION_FRONT_LEFT => cubeb::CHANNEL_LEFT,
@@ -243,7 +243,7 @@ impl Context {
                                               -> i32 {
         unsafe extern "C" fn subscribe_success(_: *mut pa_context, success: i32, user_data: *mut c_void) {
             let ctx = &*(user_data as *mut Context);
-            debug_assert!(success != 0);
+            debug_assert_ne!(success, 0);
             pa_threaded_mainloop_signal(ctx.mainloop, 0);
         }
 
@@ -470,7 +470,7 @@ struct PulseDevListData {
 
 impl Drop for PulseDevListData {
     fn drop(&mut self) {
-        for elem in self.devinfo.iter_mut() {
+        for elem in &mut self.devinfo {
             let _ = unsafe { Box::from_raw(elem) };
         }
         if !self.default_sink_name.is_null() {
@@ -529,7 +529,7 @@ unsafe extern "C" fn pulse_sink_info_cb(_context: *mut pa_context,
         if !prop.is_null() {
             pa_xstrdup(prop)
         } else {
-            0 as *mut c_char
+            ptr::null_mut()
         }
     };
 
@@ -539,7 +539,7 @@ unsafe extern "C" fn pulse_sink_info_cb(_context: *mut pa_context,
         if !prop.is_null() {
             pa_xstrdup(prop)
         } else {
-            0 as *mut c_char
+            ptr::null_mut()
         }
     };
 
@@ -594,7 +594,7 @@ unsafe extern "C" fn pulse_source_info_cb(_context: *mut pa_context,
         if !prop.is_null() {
             pa_xstrdup(prop)
         } else {
-            0 as *mut c_char
+            ptr::null_mut()
         }
     };
 
@@ -604,7 +604,7 @@ unsafe extern "C" fn pulse_source_info_cb(_context: *mut pa_context,
         if !prop.is_null() {
             pa_xstrdup(prop)
         } else {
-            0 as *mut c_char
+            ptr::null_mut()
         }
     };
 

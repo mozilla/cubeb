@@ -242,6 +242,26 @@ pub type DeviceChangedCallback = Option<unsafe extern "C" fn(user_ptr: *mut c_vo
 pub type DeviceCollectionChangedCallback = Option<unsafe extern "C" fn(context: *mut Context, user_ptr: *mut c_void)>;
 pub type LogCallback = Option<unsafe extern "C" fn(fmt: *const c_char, ...)>;
 
+
+pub type StreamInitFn = Option<unsafe extern "C" fn(context: *mut Context,
+                                                    stream: *mut *mut Stream,
+                                                    stream_name: *const c_char,
+                                                    input_device: DeviceId,
+                                                    input_stream_params: *mut StreamParams,
+                                                    output_device: DeviceId,
+                                                    output_stream_params: *mut StreamParams,
+                                                    latency: u32,
+                                                    data_callback: DataCallback,
+                                                    state_callback: StateCallback,
+                                                    user_ptr: *mut c_void)
+                                                    -> i32>;
+
+pub type RegisterDeviceCollectionChangedFn = Option<unsafe extern "C" fn(context: *mut Context,
+                                                                         devtype: DeviceType,
+                                                                         callback: DeviceCollectionChangedCallback,
+                                                                         user_ptr: *mut c_void)
+                                                                         -> i32>;
+
 #[repr(C)]
 pub struct Ops {
     pub init: Option<unsafe extern "C" fn(context: *mut *mut Context, context_name: *const c_char) -> i32>,
@@ -259,18 +279,7 @@ pub struct Ops {
                                                        collection: *mut *mut DeviceCollection)
                                                        -> i32>,
     pub destroy: Option<unsafe extern "C" fn(context: *mut Context)>,
-    pub stream_init: Option<unsafe extern "C" fn(context: *mut Context,
-                                                 stream: *mut *mut Stream,
-                                                 stream_name: *const c_char,
-                                                 input_device: DeviceId,
-                                                 input_stream_params: *mut StreamParams,
-                                                 output_device: DeviceId,
-                                                 output_stream_params: *mut StreamParams,
-                                                 latency: u32,
-                                                 data_callback: DataCallback,
-                                                 state_callback: StateCallback,
-                                                 user_ptr: *mut c_void)
-                                                 -> i32>,
+    pub stream_init: StreamInitFn,
     pub stream_destroy: Option<unsafe extern "C" fn(stream: *mut Stream)>,
     pub stream_start: Option<unsafe extern "C" fn(stream: *mut Stream) -> i32>,
     pub stream_stop: Option<unsafe extern "C" fn(stream: *mut Stream) -> i32>,
@@ -284,11 +293,7 @@ pub struct Ops {
         Option<unsafe extern "C" fn(stream: *mut Stream,
                                     device_changed_callback: DeviceChangedCallback)
                                     -> i32>,
-    pub register_device_collection_changed: Option<unsafe extern "C" fn(context: *mut Context,
-                                                                        devtype: DeviceType,
-                                                                        callback: DeviceCollectionChangedCallback,
-                                                                        user_ptr: *mut c_void)
-                                                                        -> i32>,
+    pub register_device_collection_changed: RegisterDeviceCollectionChangedFn,
 }
 
 extern "C" {

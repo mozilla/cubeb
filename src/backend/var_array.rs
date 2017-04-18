@@ -7,6 +7,7 @@
 // accompanying file LICENSE for details.
 
 use pulse_ffi::pa_xrealloc;
+use std::ptr;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -26,7 +27,7 @@ impl<T> VarArray<T> {
         let size = size_of::<Self>() + count * size_of::<T>();
         let raw_ptr = match ptr {
             Some(box_ptr) => Box::into_raw(box_ptr) as *mut u8,
-            None => 0 as *mut u8,
+            None => ptr::null_mut(),
         };
         let mem = pa_xrealloc(raw_ptr as *mut _, size);
         let mut result: Box<Self> = transmute(mem);
@@ -38,7 +39,7 @@ impl<T> VarArray<T> {
         unsafe { Self::_realloc(None, len) }
     }
 
-    pub fn as_mut_slice<'r>(&'r mut self) -> &'r mut [T] {
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
         use std::slice::from_raw_parts_mut;
 
         unsafe { from_raw_parts_mut(&self.data as *const _ as *mut _, self.len()) }

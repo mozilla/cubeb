@@ -13,7 +13,7 @@ use std::ptr;
 const PULSE_NO_GAIN: f32 = -1.0;
 
 fn cubeb_channel_to_pa_channel(channel: cubeb::Channel) -> pa_channel_position_t {
-    assert!(channel != cubeb::CHANNEL_INVALID);
+    assert_ne!(channel, cubeb::CHANNEL_INVALID);
 
     // This variable may be used for multiple times, so we should avoid to
     // allocate it in stack, or it will be created and removed repeatedly.
@@ -37,7 +37,7 @@ fn cubeb_channel_to_pa_channel(channel: cubeb::Channel) -> pa_channel_position_t
 }
 
 fn layout_to_channel_map(layout: cubeb::ChannelLayout) -> pa_channel_map {
-    assert!(layout != cubeb::LAYOUT_UNDEFINED);
+    assert_ne!(layout, cubeb::LAYOUT_UNDEFINED);
 
     let order = cubeb::mixer::channel_index_to_order(layout);
 
@@ -87,26 +87,26 @@ impl<'ctx> Drop for Stream<'ctx> {
 }
 
 impl<'ctx> Stream<'ctx> {
-    pub fn new<'a>(context: &'ctx Context,
-                   stream_name: *const c_char,
-                   input_device: cubeb::DeviceId,
-                   input_stream_params: Option<cubeb::StreamParams>,
-                   output_device: cubeb::DeviceId,
-                   output_stream_params: Option<cubeb::StreamParams>,
-                   latency_frames: u32,
-                   data_callback: cubeb::DataCallback,
-                   state_callback: cubeb::StateCallback,
-                   user_ptr: *mut c_void)
-                   -> Result<Box<Stream<'ctx>>> {
+    pub fn new(context: &'ctx Context,
+               stream_name: *const c_char,
+               input_device: cubeb::DeviceId,
+               input_stream_params: Option<cubeb::StreamParams>,
+               output_device: cubeb::DeviceId,
+               output_stream_params: Option<cubeb::StreamParams>,
+               latency_frames: u32,
+               data_callback: cubeb::DataCallback,
+               state_callback: cubeb::StateCallback,
+               user_ptr: *mut c_void)
+               -> Result<Box<Stream<'ctx>>> {
 
         let mut stm = Box::new(Stream {
                                    context: context,
-                                   output_stream: 0 as *mut _,
-                                   input_stream: 0 as *mut _,
+                                   output_stream: ptr::null_mut(),
+                                   input_stream: ptr::null_mut(),
                                    data_callback: data_callback,
                                    state_callback: state_callback,
                                    user_ptr: user_ptr,
-                                   drain_timer: 0 as *mut _,
+                                   drain_timer: ptr::null_mut(),
                                    output_sample_spec: pa_sample_spec::default(),
                                    input_sample_spec: pa_sample_spec::default(),
                                    shutdown: false,
@@ -135,7 +135,7 @@ impl<'ctx> Stream<'ctx> {
                                              Some(stream_write_callback),
                                              stm.as_mut() as *mut _ as *mut _);
 
-                let battr = set_buffering_attribute(latency_frames, &mut stm.output_sample_spec);
+                let battr = set_buffering_attribute(latency_frames, &stm.output_sample_spec);
                 pa_stream_connect_playback(stm.output_stream,
                                            output_device as *mut c_char,
                                            &battr,
@@ -166,7 +166,7 @@ impl<'ctx> Stream<'ctx> {
                                             Some(stream_read_callback),
                                             stm.as_mut() as *mut _ as *mut _);
 
-                let battr = set_buffering_attribute(latency_frames, &mut stm.input_sample_spec);
+                let battr = set_buffering_attribute(latency_frames, &stm.input_sample_spec);
                 pa_stream_connect_record(stm.input_stream,
                                          input_device as *mut c_char,
                                          &battr,
@@ -324,7 +324,7 @@ impl<'ctx> Stream<'ctx> {
             return Err(cubeb::ERROR);
         }
 
-        debug_assert!(negative == 0);
+        debug_assert_eq!(negative, 0);
         let latency = (r_usec * self.output_sample_spec.rate as pa_usec_t / PA_USEC_PER_SEC) as u32;
 
         Ok(latency)
@@ -551,7 +551,7 @@ impl<'ctx> Stream<'ctx> {
 
     fn trigger_user_callback(&mut self, s: *mut pa_stream, input_data: *const c_void, nbytes: usize) {
         let frame_size = unsafe { pa_frame_size(&self.output_sample_spec) };
-        debug_assert!(nbytes % frame_size == 0);
+        debug_assert_eq!(nbytes % frame_size, 0);
 
         let mut buffer: *mut c_void = ptr::null_mut();
         let mut r: i32;
@@ -562,9 +562,9 @@ impl<'ctx> Stream<'ctx> {
             let mut size = towrite;
             r = unsafe { pa_stream_begin_write(s, &mut buffer, &mut size) };
             // Note: this has failed running under rr on occassion - needs investigation.
-            debug_assert!(r == 0);
+            debug_assert_eq!(r, 0);
             debug_assert!(size > 0);
-            debug_assert!(size % frame_size == 0);
+            debug_assert_eq!(size % frame_size, 0);
 
             logv!("Trigger user callback with output buffer size={}, read_offset={}",
                   size,
@@ -615,7 +615,7 @@ impl<'ctx> Stream<'ctx> {
                                 0,
                                 PA_SEEK_RELATIVE)
             };
-            debug_assert!(r == 0);
+            debug_assert_eq!(r, 0);
 
             if (got as usize) < size / frame_size {
                 let mut latency: pa_usec_t = 0;
@@ -641,7 +641,7 @@ impl<'ctx> Stream<'ctx> {
             towrite -= size;
         }
 
-        debug_assert!(towrite == 0);
+        debug_assert_eq!(towrite, 0);
     }
 }
 
@@ -655,7 +655,7 @@ unsafe extern "C" fn stream_drain_callback(a: *mut pa_mainloop_api,
                                            _tv: *const timeval,
                                            u: *mut c_void) {
     let mut stm = &mut *(u as *mut Stream);
-    debug_assert!(stm.drain_timer == e);
+    debug_assert_eq!(stm.drain_timer, e);
     stm.state_change_callback(cubeb::STATE_DRAINED);
     /* there's no pa_rttime_free, so use this instead. */
     (*a).time_free.unwrap()(stm.drain_timer);
@@ -673,10 +673,8 @@ unsafe extern "C" fn stream_state_callback(s: *mut pa_stream, u: *mut c_void) {
 
 fn read_from_input(s: *mut pa_stream, buffer: *mut *const c_void, size: *mut usize) -> i32 {
     let readable_size = unsafe { pa_stream_readable_size(s) };
-    if readable_size > 0 {
-        if unsafe { pa_stream_peek(s, buffer, size) } < 0 {
-            return -1;
-        }
+    if readable_size > 0 && unsafe { pa_stream_peek(s, buffer, size) } < 0 {
+        return -1;
     }
 
     readable_size as i32
@@ -811,6 +809,6 @@ unsafe extern "C" fn sink_input_info_cb(_c: *mut pa_context, i: *const pa_sink_i
 
 unsafe extern "C" fn volume_success(_c: *mut pa_context, success: i32, u: *mut c_void) {
     let stm = &*(u as *mut Stream);
-    debug_assert!(success != 0);
+    debug_assert_ne!(success, 0);
     pa_threaded_mainloop_signal(stm.context.mainloop, 0);
 }

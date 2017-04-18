@@ -322,32 +322,35 @@ pub type pa_defer_event_cb_t = Option<unsafe extern "C" fn(a: *mut pa_mainloop_a
 pub type pa_defer_event_destroy_cb_t = Option<unsafe extern "C" fn(a: *mut pa_mainloop_api,
                                                                    e: *mut pa_defer_event,
                                                                    userdata: *mut c_void)>;
+pub type IoNewFn = Option<unsafe extern "C" fn(a: *mut pa_mainloop_api,
+                                               fd: c_int,
+                                               events: pa_io_event_flags_t,
+                                               cb: pa_io_event_cb_t,
+                                               userdata: *mut c_void)
+                                               -> *mut pa_io_event>;
+pub type TimeNewFn = Option<unsafe extern "C" fn(a: *mut pa_mainloop_api,
+                                                 tv: *const timeval,
+                                                 cb: pa_time_event_cb_t,
+                                                 userdata: *mut c_void)
+                                                 -> *mut pa_time_event>;
+pub type DeferNewFn = Option<unsafe extern "C" fn(a: *mut pa_mainloop_api,
+                                                  cb: pa_defer_event_cb_t,
+                                                  userdata: *mut c_void)
+                                                  -> *mut pa_defer_event>;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct pa_mainloop_api {
     pub userdata: *mut c_void,
-    pub io_new: Option<unsafe extern "C" fn(a: *mut pa_mainloop_api,
-                                            fd: c_int,
-                                            events: pa_io_event_flags_t,
-                                            cb: pa_io_event_cb_t,
-                                            userdata: *mut c_void)
-                                            -> *mut pa_io_event>,
+    pub io_new: IoNewFn,
     pub io_enable: Option<unsafe extern "C" fn(e: *mut pa_io_event, events: pa_io_event_flags_t)>,
     pub io_free: Option<unsafe extern "C" fn(e: *mut pa_io_event)>,
     pub io_set_destroy: Option<unsafe extern "C" fn(e: *mut pa_io_event, cb: pa_io_event_destroy_cb_t)>,
-    pub time_new: Option<unsafe extern "C" fn(a: *mut pa_mainloop_api,
-                                              tv: *const timeval,
-                                              cb: pa_time_event_cb_t,
-                                              userdata: *mut c_void)
-                                              -> *mut pa_time_event>,
+    pub time_new: TimeNewFn,
     pub time_restart: Option<unsafe extern "C" fn(e: *mut pa_time_event, tv: *const timeval)>,
     pub time_free: Option<unsafe extern "C" fn(e: *mut pa_time_event)>,
     pub time_set_destroy: Option<unsafe extern "C" fn(e: *mut pa_time_event, cb: pa_time_event_destroy_cb_t)>,
-    pub defer_new: Option<unsafe extern "C" fn(a: *mut pa_mainloop_api,
-                                               cb: pa_defer_event_cb_t,
-                                               userdata: *mut c_void)
-                                               -> *mut pa_defer_event>,
+    pub defer_new: DeferNewFn,
     pub defer_enable: Option<unsafe extern "C" fn(e: *mut pa_defer_event, b: c_int)>,
     pub defer_free: Option<unsafe extern "C" fn(e: *mut pa_defer_event)>,
     pub defer_set_destroy: Option<unsafe extern "C" fn(e: *mut pa_defer_event, cb: pa_defer_event_destroy_cb_t)>,
