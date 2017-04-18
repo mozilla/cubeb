@@ -23,7 +23,7 @@ pub const PA_SAMPLE_INVALID: c_int = -1;
 pub type pa_sample_format_t = c_int;
 
 #[repr(C)]
-#[derive(Copy,Clone,Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct Struct_pa_sample_spec {
     pub format: pa_sample_format_t,
     pub rate: u32,
@@ -117,7 +117,7 @@ pub const PA_STREAM_PASSTHROUGH: c_int = 0x8_0000;
 pub type pa_stream_flags_t = c_int;
 
 #[repr(C)]
-#[derive(Clone,Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct pa_buffer_attr {
     pub maxlength: u32,
     pub tlength: u32,
@@ -194,14 +194,14 @@ pub const PA_SUBSCRIPTION_EVENT_TYPE_MASK: c_int = 48;
 pub type pa_subscription_event_type_t = c_int;
 
 #[repr(C)]
-#[derive(Clone,Copy,Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct timeval {
     pub tv_sec: c_long,
     pub tv_usec: c_long,
 }
 
 #[repr(C)]
-#[derive(Clone,Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct pa_timing_info {
     pub timestamp: timeval,
     pub synchronized_clocks: c_int,
@@ -225,7 +225,7 @@ impl ::std::default::Default for pa_timing_info {
 }
 
 #[repr(C)]
-#[derive(Clone,Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct pa_spawn_api {
     pub prefork: Option<extern "C" fn() -> ()>,
     pub postfork: Option<extern "C" fn() -> ()>,
@@ -339,7 +339,7 @@ pub type DeferNewFn = Option<unsafe extern "C" fn(a: *mut pa_mainloop_api,
                                                   -> *mut pa_defer_event>;
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct pa_mainloop_api {
     pub userdata: *mut c_void,
     pub io_new: IoNewFn,
@@ -442,7 +442,7 @@ pub const PA_CHANNEL_MAP_DEFAULT: c_int = 0;
 pub type pa_channel_map_def_t = c_int;
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct pa_channel_map {
     pub channels: u8,
     pub map: [pa_channel_position_t; 32usize],
@@ -466,7 +466,7 @@ pub const PA_ENCODING_INVALID: c_int = -1;
 pub type pa_encoding_t = c_int;
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct pa_format_info {
     pub encoding: pa_encoding_t,
     pub plist: *mut pa_proplist,
@@ -502,7 +502,7 @@ pub type pa_context_event_cb_t = Option<unsafe extern "C" fn(c: *mut pa_context,
 pub type pa_volume_t = u32;
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct pa_cvolume {
     pub channels: u8,
     pub values: [pa_volume_t; 32usize],
@@ -526,7 +526,7 @@ pub type pa_stream_event_cb_t = Option<unsafe extern "C" fn(p: *mut pa_stream,
                                                             userdata: *mut c_void)>;
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct pa_port_info {
     pub name: *const c_char,
     pub description: *const c_char,
@@ -541,7 +541,7 @@ impl ::std::default::Default for pa_port_info {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct pa_sink_info {
     pub name: *const c_char,
     pub index: u32,
@@ -581,7 +581,7 @@ pub type pa_sink_info_cb_t = Option<unsafe extern "C" fn(c: *mut pa_context,
                                                          userdata: *mut c_void)>;
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct pa_source_info {
     pub name: *const c_char,
     pub index: u32,
@@ -621,7 +621,7 @@ pub type pa_source_info_cb_t = Option<unsafe extern "C" fn(c: *mut pa_context,
                                                            userdata: *mut c_void)>;
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct pa_server_info {
     pub user_name: *const c_char,
     pub host_name: *const c_char,
@@ -645,7 +645,7 @@ pub type pa_server_info_cb_t = Option<unsafe extern "C" fn(c: *mut pa_context,
                                                            userdata: *mut c_void)>;
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct pa_module_info {
     pub index: u32,
     pub name: *const c_char,
@@ -668,7 +668,7 @@ pub type pa_module_info_cb_t = Option<unsafe extern "C" fn(c: *mut pa_context,
 pub type pa_context_index_cb_t = Option<unsafe extern "C" fn(c: *mut pa_context, idx: u32, userdata: *mut c_void)>;
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct pa_client_info {
     pub index: u32,
     pub name: *const c_char,
@@ -689,7 +689,7 @@ pub type pa_client_info_cb_t = Option<unsafe extern "C" fn(c: *mut pa_context,
                                                            userdata: *mut c_void)>;
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct pa_card_profile_info {
     pub name: *const c_char,
     pub description: *const c_char,
@@ -705,7 +705,7 @@ impl ::std::default::Default for pa_card_profile_info {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct pa_card_profile_info2 {
     pub name: *const c_char,
     pub description: *const c_char,
@@ -722,7 +722,7 @@ impl ::std::default::Default for pa_card_profile_info2 {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct pa_card_port_info {
     pub name: *const c_char,
     pub description: *const c_char,
@@ -743,7 +743,7 @@ impl ::std::default::Default for pa_card_port_info {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct pa_card_info {
     pub index: u32,
     pub name: *const c_char,
@@ -771,7 +771,7 @@ pub type pa_card_info_cb_t = Option<unsafe extern "C" fn(c: *mut pa_context,
                                                          userdata: *mut c_void)>;
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct pa_sink_input_info {
     pub index: u32,
     pub name: *const c_char,
@@ -805,7 +805,7 @@ pub type pa_sink_input_info_cb_t = Option<unsafe extern "C" fn(c: *mut pa_contex
                                                                userdata: *mut c_void)>;
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct pa_source_output_info {
     pub index: u32,
     pub name: *const c_char,
@@ -839,7 +839,7 @@ pub type pa_source_output_info_cb_t = Option<unsafe extern "C" fn(c: *mut pa_con
                                                                   userdata: *mut c_void)>;
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct pa_stat_info {
     pub memblock_total: u32,
     pub memblock_total_size: u32,
@@ -859,7 +859,7 @@ pub type pa_stat_info_cb_t = Option<unsafe extern "C" fn(c: *mut pa_context,
                                                          userdata: *mut c_void)>;
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct pa_sample_info {
     pub index: u32,
     pub name: *const c_char,
@@ -889,7 +889,7 @@ pub const PA_AUTOLOAD_SOURCE: c_int = 1;
 pub type pa_autoload_type_t = c_int;
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct pa_autoload_info {
     pub index: u32,
     pub name: *const c_char,

@@ -71,7 +71,7 @@ pub const SAMPLE_FLOAT32NE: SampleFormat = SAMPLE_FLOAT32BE;
 pub type DeviceId = *const c_void;
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum LogLevel {
     Disabled = 0,
     Normal = 1,
@@ -79,7 +79,7 @@ pub enum LogLevel {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ChannelLayout(i32);
 
 // These need to match cubeb_channel_layout
@@ -105,7 +105,7 @@ pub const LAYOUT_3F4_LFE: ChannelLayout = ChannelLayout(18);
 pub const LAYOUT_MAX: ChannelLayout = ChannelLayout(19);
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct StreamParams {
     pub format: SampleFormat,
     pub rate: u32,
@@ -114,7 +114,7 @@ pub struct StreamParams {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct Device {
     pub output_name: *mut c_char,
     pub input_name: *mut c_char,
@@ -130,7 +130,7 @@ impl Default for Device {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct State(i32);
 
 // These need to match cubeb_state
@@ -158,7 +158,7 @@ bitflags! {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum DeviceState {
     Disabled = 0,
     Unplugged = 1,
@@ -202,7 +202,7 @@ bitflags! {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct DeviceInfo {
     pub devid: DeviceId,
     pub device_id: *const c_char,
@@ -223,7 +223,7 @@ pub struct DeviceInfo {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct DeviceCollection {
     /// Device count in collection.
     pub count: u32,
@@ -302,7 +302,7 @@ extern "C" {
 }
 
 #[repr(C)]
-#[derive(Clone,Copy,Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct LayoutMap {
     pub name: *const c_char,
     pub channels: u32,
@@ -311,7 +311,7 @@ pub struct LayoutMap {
 
 // cubeb_mixer.h
 #[repr(C)]
-#[derive(Clone,Copy,Debug,PartialEq,Eq,PartialOrd,Ord,Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Channel(i32);
 impl Into<i32> for Channel {
     fn into(self) -> i32 {
