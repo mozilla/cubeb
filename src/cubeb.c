@@ -553,7 +553,7 @@ int cubeb_enumerate_devices(cubeb * context,
 
   rv = context->ops->enumerate_devices(context, devtype, collection);
 
-  if (g_log_callback) {
+  if (g_cubeb_log_callback) {
     for (uint32_t i = 0; i < (*collection)->count; i++) {
       log_device((*collection)->device[i]);
     }
@@ -617,12 +617,12 @@ int cubeb_set_log_callback(cubeb_log_level log_level,
     return CUBEB_ERROR_INVALID_PARAMETER;
   }
 
-  if (g_log_callback && log_callback) {
+  if (g_cubeb_log_callback && log_callback) {
     return CUBEB_ERROR_NOT_SUPPORTED;
   }
 
-  g_log_callback = log_callback;
-  g_log_level = log_level;
+  g_cubeb_log_callback = log_callback;
+  g_cubeb_log_level = log_level;
 
   // Logging a message here allows to initialize the asynchronous logger from a
   // thread that is not the audio rendering thread, and especially to not
