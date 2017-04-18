@@ -33,6 +33,7 @@
 #include <algorithm>
 #include <atomic>
 #include <vector>
+#include <sys/time.h>
 
 #if MAC_OS_X_VERSION_MIN_REQUIRED < 101000
 typedef UInt32 AudioFormatFlags;
@@ -1447,12 +1448,16 @@ audiounit_create_blank_aggregate_device(AudioObjectID * plugin_id, AudioDeviceID
   CFMutableDictionaryRef aggregate_device_dict = CFDictionaryCreateMutable(kCFAllocatorDefault, 0,
                                                                            &kCFTypeDictionaryKeyCallBacks,
                                                                            &kCFTypeDictionaryValueCallBacks);
-
-  CFStringRef aggregate_device_name = CFSTR("CubebAggregateDevice");
+  struct timeval timestamp;
+  gettimeofday(&timestamp, NULL);
+  long long int time_id = timestamp.tv_sec * 1000000LL + timestamp.tv_usec;
+  CFStringRef aggregate_device_name = CFStringCreateWithFormat(NULL, NULL, CFSTR("CubebAggregateDevice_%llx"), time_id);
   CFDictionaryAddValue(aggregate_device_dict, CFSTR(kAudioAggregateDeviceNameKey), aggregate_device_name);
+  CFRelease(aggregate_device_name);
 
-  CFStringRef aggregate_device_UID = CFSTR("org.mozilla.CubebAggregateDevice");
+  CFStringRef aggregate_device_UID = CFStringCreateWithFormat(NULL, NULL, CFSTR("org.mozilla.CubebAggregateDevice_%llx"), time_id);
   CFDictionaryAddValue(aggregate_device_dict, CFSTR(kAudioAggregateDeviceUIDKey), aggregate_device_UID);
+  CFRelease(aggregate_device_UID);
 
   int private_key = 1;
   CFNumberRef aggregate_device_private_key = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &private_key);
@@ -1492,6 +1497,8 @@ audiounit_set_aggregate_sub_device_list(AudioDeviceID aggregate_device_id,
                                         AudioDeviceID input_device_id,
                                         AudioDeviceID output_device_id)
 {
+  LOG("Add devices input %u and output %u into aggregate device %u",
+      input_device_id, output_device_id, aggregate_device_id);
   const std::vector<AudioDeviceID> input_sub_devices = audiounit_get_sub_devices(input_device_id);
   const std::vector<AudioDeviceID> output_sub_devices = audiounit_get_sub_devices(output_device_id);
 
