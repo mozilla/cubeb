@@ -300,7 +300,17 @@ pub struct ChannelMap {
     pub map: [Channel;10],
 }
 impl ::std::default::Default for ChannelMap {
-    fn default() -> Self { unsafe { ::std::mem::zeroed() } }
+    fn default() -> Self {
+        ChannelMap {
+            channels: 0,
+            map: [
+                CHANNEL_INVALID, CHANNEL_INVALID, CHANNEL_INVALID,
+                CHANNEL_INVALID, CHANNEL_INVALID, CHANNEL_INVALID,
+                CHANNEL_INVALID, CHANNEL_INVALID, CHANNEL_INVALID,
+                CHANNEL_INVALID
+            ],
+        }
+    }
 }
 
 extern "C" {
