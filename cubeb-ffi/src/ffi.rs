@@ -1,6 +1,7 @@
 use std::os::raw::{c_long,c_void};
 use std::ops;
 use std::default::Default;
+use std::ptr;
 
 #[macro_export]
 macro_rules! log_internal {
@@ -118,8 +119,8 @@ pub struct Device {
 impl Default for Device {
     fn default() -> Self {
         Device {
-            output_name: 0 as *mut _,
-            input_name: 0 as *mut _,
+            output_name: ptr::null_mut(),
+            input_name: ptr::null_mut(),
         }
     }
 }
