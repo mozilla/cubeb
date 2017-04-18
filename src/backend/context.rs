@@ -518,10 +518,10 @@ impl Default for PulseDevListData
 fn pulse_format_to_cubeb_format(format: pa_sample_format_t) -> cubeb::DeviceFmt
 {
   match format {
-    PA_SAMPLE_S16LE => cubeb::DeviceFmt::s16_le(),
-    PA_SAMPLE_S16BE => cubeb::DeviceFmt::s16_be(),
-    PA_SAMPLE_FLOAT32LE => cubeb::DeviceFmt::f32_le(),
-    PA_SAMPLE_FLOAT32BE => cubeb::DeviceFmt::f32_be(),
+    PA_SAMPLE_S16LE => cubeb::DEVICE_FMT_S16LE,
+    PA_SAMPLE_S16BE => cubeb::DEVICE_FMT_S16BE,
+    PA_SAMPLE_FLOAT32LE => cubeb::DEVICE_FMT_F32LE,
+    PA_SAMPLE_FLOAT32BE => cubeb::DEVICE_FMT_F32BE,
     _ => { panic!("Invalid format"); }
   }
 }
