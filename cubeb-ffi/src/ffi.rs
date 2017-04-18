@@ -3,7 +3,7 @@
 // This program is made available under an ISC-style license.  See the
 // accompanying file LICENSE for details.
 
-use std::os::raw::{c_long,c_void};
+use std::os::raw::{c_char,c_long,c_void};
 use std::default::Default;
 use std::ptr;
 
@@ -116,8 +116,8 @@ pub struct StreamParams {
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
 pub struct Device {
-    pub output_name: *mut i8,
-    pub input_name: *mut i8,
+    pub output_name: *mut c_char,
+    pub input_name: *mut c_char,
 }
 
 impl Default for Device {
@@ -205,10 +205,10 @@ bitflags! {
 #[derive(Copy, Clone, Debug)]
 pub struct DeviceInfo {
     pub devid: DeviceId,
-    pub device_id: *const i8,
-    pub friendly_name: *const i8,
-    pub group_id: *const i8,
-    pub vendor_name: *const i8,
+    pub device_id: *const c_char,
+    pub friendly_name: *const c_char,
+    pub group_id: *const c_char,
+    pub vendor_name: *const c_char,
     pub devtype: DeviceType,
     pub state: DeviceState,
     pub preferred: DevicePref,
@@ -235,19 +235,19 @@ pub type DataCallback = Option<unsafe extern "C" fn(stream: *mut Stream, user_pt
 pub type StateCallback = Option<unsafe extern "C" fn(stream: *mut Stream, user_ptr: *mut c_void, state: State)>;
 pub type DeviceChangedCallback = Option<unsafe extern "C" fn(user_ptr: *mut c_void)>;
 pub type DeviceCollectionChangedCallback = Option<unsafe extern "C" fn(context: *mut Context, user_ptr: *mut c_void)>;
-pub type LogCallback = Option<unsafe extern "C" fn(fmt: *const i8, ...)>;
+pub type LogCallback = Option<unsafe extern "C" fn(fmt: *const c_char, ...)>;
 
 #[repr(C)]
 pub struct Ops {
-    pub init: Option<unsafe extern "C" fn(context: *mut *mut Context, context_name: *const i8) -> i32>,
-    pub get_backend_id: Option<unsafe extern "C" fn(context: *mut Context) -> *const i8>,
+    pub init: Option<unsafe extern "C" fn(context: *mut *mut Context, context_name: *const c_char) -> i32>,
+    pub get_backend_id: Option<unsafe extern "C" fn(context: *mut Context) -> *const c_char>,
     pub get_max_channel_count: Option<unsafe extern "C" fn(context: *mut Context, max_channels: *mut u32) -> i32>,
     pub get_min_latency:  Option<unsafe extern "C" fn(context: *mut Context, params: StreamParams, latency_ms: *mut u32) -> i32>,
     pub get_preferred_sample_rate:  Option<unsafe extern "C" fn(context: *mut Context, rate: *mut u32) -> i32>,
     pub get_preferred_channel_layout:  Option<unsafe extern "C" fn(context: *mut Context, layout: *mut ChannelLayout) -> i32>,
     pub enumerate_devices:  Option<unsafe extern "C" fn(context: *mut Context, devtype: DeviceType, collection: *mut *mut DeviceCollection) -> i32>,
     pub destroy:  Option<unsafe extern "C" fn(context: *mut Context)>,
-    pub stream_init: Option<unsafe extern "C" fn(context: *mut Context, stream: *mut *mut Stream, stream_name: *const i8, input_device: DeviceId, input_stream_params: *mut StreamParams, output_device: DeviceId, output_stream_params: *mut StreamParams, latency: u32, data_callback: DataCallback, state_callback: StateCallback, user_ptr: *mut c_void) -> i32>,
+    pub stream_init: Option<unsafe extern "C" fn(context: *mut Context, stream: *mut *mut Stream, stream_name: *const c_char, input_device: DeviceId, input_stream_params: *mut StreamParams, output_device: DeviceId, output_stream_params: *mut StreamParams, latency: u32, data_callback: DataCallback, state_callback: StateCallback, user_ptr: *mut c_void) -> i32>,
     pub stream_destroy: Option<unsafe extern "C" fn(stream: *mut Stream)>,
     pub stream_start: Option<unsafe extern "C" fn(stream: *mut Stream) -> i32>,
     pub stream_stop: Option<unsafe extern "C" fn(stream: *mut Stream) -> i32>,
@@ -269,7 +269,7 @@ extern "C" {
 #[repr(C)]
 #[derive(Clone,Copy,Debug)]
 pub struct LayoutMap {
-    pub name: *const i8,
+    pub name: *const c_char,
     pub channels: u32,
     pub layout: ChannelLayout
 }

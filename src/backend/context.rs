@@ -62,7 +62,7 @@ pub struct Context
     pub mainloop: *mut pa_threaded_mainloop,
     pub context: *mut pa_context,
     pub default_sink_info: *mut pa_sink_info,
-    pub context_name: *const i8,
+    pub context_name: *const c_char,
     pub collection_changed_callback: cubeb::DeviceCollectionChangedCallback,
     pub collection_changed_user_ptr: *mut c_void,
     pub error: bool,
@@ -72,7 +72,7 @@ pub struct Context
 
 impl Context
 {
-    pub fn new(name: *const i8) -> Result<Box<Self>>
+    pub fn new(name: *const c_char) -> Result<Box<Self>>
     {
         let mut ctx = Box::new(Context{
             ops: &PULSE_OPS,
@@ -125,7 +125,7 @@ impl Context
     }
 
     pub fn new_stream(&mut self,
-                      stream_name: *const i8,
+                      stream_name: *const c_char,
                       input_device: cubeb::DeviceId,
                       input_stream_params: Option<cubeb::StreamParams>,
                       output_device: cubeb::DeviceId,

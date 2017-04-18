@@ -453,8 +453,8 @@ mod dynamic_fns {
 
     static mut PA_GET_LIBRARY_VERSION: *mut ::libc::c_void = 0 as *mut _;
     #[inline]
-    pub unsafe fn pa_get_library_version() -> *const i8 {
-        (::std::mem::transmute::<_, extern fn() -> *const i8>(PA_GET_LIBRARY_VERSION))()
+    pub unsafe fn pa_get_library_version() -> *const c_char {
+        (::std::mem::transmute::<_, extern fn() -> *const c_char>(PA_GET_LIBRARY_VERSION))()
     }
 
     static mut PA_CHANNEL_MAP_CAN_BALANCE: *mut ::libc::c_void = 0 as *mut _;

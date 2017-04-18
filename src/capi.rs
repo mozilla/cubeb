@@ -3,11 +3,11 @@
 // This program is made available under an ISC-style license.  See the
 // accompanying file LICENSE for details.
 
-use std::os::raw::c_void;
+use std::os::raw::{c_char, c_void};
 use backend;
 use cubeb;
 
-extern "C" fn capi_init(c: *mut *mut cubeb::Context, context_name: *const i8) -> i32
+extern "C" fn capi_init(c: *mut *mut cubeb::Context, context_name: *const c_char) -> i32
 {
     unsafe {
         match backend::Context::new(context_name) {
@@ -17,9 +17,9 @@ extern "C" fn capi_init(c: *mut *mut cubeb::Context, context_name: *const i8) ->
     }
 }
 
-extern "C" fn capi_get_backend_id(_: *mut cubeb::Context) -> *const i8
+extern "C" fn capi_get_backend_id(_: *mut cubeb::Context) -> *const c_char
 {
-    "pulse-rust\0".as_ptr() as *const i8
+    "pulse-rust\0".as_ptr() as *const c_char
 }
 
 extern "C" fn capi_get_max_channel_count(c: *mut cubeb::Context, max_channels: *mut u32) -> i32
@@ -82,7 +82,7 @@ extern "C" fn capi_destroy(c: *mut cubeb::Context) {
 
 extern "C" fn capi_stream_init(c: *mut cubeb::Context,
                                s: *mut *mut cubeb::Stream,
-                               stream_name: *const i8,
+                               stream_name: *const c_char,
                                input_device: cubeb::DeviceId,
                                input_stream_params: *mut cubeb::StreamParams,
                                output_device: cubeb::DeviceId,
@@ -212,6 +212,6 @@ pub const PULSE_OPS: cubeb::Ops = cubeb::Ops {
 };
 
 #[no_mangle]
-pub extern "C" fn pulse_rust_init(c: *mut *mut cubeb::Context, context_name: *const i8) -> i32 {
+pub extern "C" fn pulse_rust_init(c: *mut *mut cubeb::Context, context_name: *const c_char) -> i32 {
     capi_init(c, context_name)
 }

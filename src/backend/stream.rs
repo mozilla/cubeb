@@ -92,7 +92,7 @@ impl<'ctx> Drop for Stream<'ctx> {
 impl<'ctx> Stream<'ctx>
 {
     pub fn new<'a>(context: &'ctx Context,
-                   stream_name: *const i8,
+                   stream_name: *const c_char,
                    input_device: cubeb::DeviceId,
                    input_stream_params: Option<cubeb::StreamParams>,
                    output_device: cubeb::DeviceId,
@@ -452,7 +452,7 @@ impl<'ctx> Stream<'ctx>
 
     fn pulse_stream_init(&mut self,
                         stream_params: &cubeb::StreamParams,
-                        stream_name: *const i8) -> Result<*mut pa_stream> {
+                        stream_name: *const c_char) -> Result<*mut pa_stream> {
 
         fn to_pulse_format(format: cubeb::SampleFormat) -> pa_sample_format_t
         {
