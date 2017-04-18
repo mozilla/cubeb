@@ -7,8 +7,7 @@ use backend::cork_state::CorkState;
 use backend::var_array::VarArray;
 use capi::PULSE_OPS;
 use cubeb;
-use libc::strcmp;
-use std::os::raw::{c_char,c_void};
+use std::os::raw::{c_char,c_int,c_void};
 use pulse_ffi::*;
 use semver;
 use std::default::Default;
@@ -720,4 +719,8 @@ unsafe extern fn subscribe_success(_: *mut pa_context,
     let ctx = &*(user_data as *mut Context);
     debug_assert!(success != 0);
     pa_threaded_mainloop_signal(ctx.mainloop, 0);
+}
+
+extern "C" {
+    pub fn strcmp(cs: *const c_char, ct: *const c_char) -> c_int;
 }

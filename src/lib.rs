@@ -6,7 +6,6 @@
 
 #[macro_use]
 extern crate cubeb_ffi as cubeb;
-extern crate libc;
 extern crate pulse_ffi;
 extern crate semver;
 
