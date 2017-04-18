@@ -226,7 +226,7 @@ pub struct DeviceCollection {
     pub device: [*const DeviceInfo; 0],
 }
 
-pub type DataCallback = Option<unsafe extern "C" fn(stream: *mut Stream, user_ptr: *mut c_void, input_buffer: *const c_void, output_buffer: *mut c_void, nframes: i64) -> i64>;
+pub type DataCallback = Option<unsafe extern "C" fn(stream: *mut Stream, user_ptr: *mut c_void, input_buffer: *const c_void, output_buffer: *mut c_void, nframes: c_long) -> c_long>;
 pub type StateCallback = Option<unsafe extern "C" fn(stream: *mut Stream, user_ptr: *mut c_void, state: State)>;
 pub type DeviceChangedCallback = Option<unsafe extern "C" fn(user_ptr: *mut c_void)>;
 pub type DeviceCollectionChangedCallback = Option<unsafe extern "C" fn(context: *mut Context, user_ptr: *mut c_void)>;
