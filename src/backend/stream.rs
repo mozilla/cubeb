@@ -320,11 +320,11 @@ impl<'ctx> Stream<'ctx>
             pa_stream_get_latency(self.output_stream, &mut r_usec, &mut negative)
         };
 
-        debug_assert!(negative == 0);
         if r != 0 {
             return Err(cubeb::ERROR);
         }
 
+        debug_assert!(negative == 0);
         let latency = (r_usec * self.output_sample_spec.rate as pa_usec_t / PA_USEC_PER_SEC) as u32;
 
         Ok(latency)
