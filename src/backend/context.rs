@@ -562,9 +562,9 @@ unsafe extern fn pulse_sink_info_cb(_context: *mut pa_context,
 
     let preferred =
         if strcmp(info.name, list_data.default_sink_name) == 0 {
-            cubeb::DevicePref::all()
+            cubeb::DEVICE_PREF_ALL
         } else {
-            cubeb::DevicePref::none()
+            cubeb::DevicePref::empty()
         };
 
     let ctx = &(*list_data.context);
@@ -628,9 +628,9 @@ unsafe extern fn pulse_source_info_cb(_context: *mut pa_context,
 
     let preferred =
         if strcmp(info.name, list_data.default_source_name) == 0 {
-            cubeb::DevicePref::all()
+            cubeb::DEVICE_PREF_ALL
         } else {
-            cubeb::DevicePref::none()
+            cubeb::DevicePref::empty()
         };
 
     let ctx = &(*list_data.context);
