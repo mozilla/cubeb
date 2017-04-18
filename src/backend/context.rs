@@ -213,7 +213,7 @@ impl Context
                 pa_operation_unref(o);
             }
 
-            if devtype.is_output() {
+            if devtype == cubeb::DEVICE_TYPE_OUTPUT {
                 let o = pa_context_get_sink_info_list(self.context,
                                                       Some(pulse_sink_info_cb),
                                                       &mut user_data as *mut _ as *mut _);
@@ -223,7 +223,7 @@ impl Context
                 }
             }
 
-            if devtype.is_input() {
+            if devtype == cubeb::DEVICE_TYPE_INPUT {
                 let o = pa_context_get_source_info_list(self.context,
                                                         Some(pulse_source_info_cb),
                                                         &mut user_data as *mut _ as *mut _);
@@ -268,8 +268,8 @@ impl Context
                 pa_context_set_subscribe_callback(self.context,
                                                   Some(pulse_subscribe_callback),
                                                   self as *mut _ as *mut _);
-                if devtype.is_input() { mask |= PA_SUBSCRIPTION_MASK_SOURCE };
-                if devtype.is_output() { mask |= PA_SUBSCRIPTION_MASK_SOURCE };
+                if devtype == cubeb::DEVICE_TYPE_INPUT { mask |= PA_SUBSCRIPTION_MASK_SOURCE };
+                if devtype == cubeb::DEVICE_TYPE_OUTPUT { mask |= PA_SUBSCRIPTION_MASK_SOURCE };
             }
 
             let o = pa_context_subscribe(self.context,
@@ -575,7 +575,7 @@ unsafe extern fn pulse_sink_info_cb(_context: *mut pa_context,
         friendly_name: pa_xstrdup(info.description),
         group_id: group_id,
         vendor_name: vendor_name,
-        devtype: cubeb::DeviceType::output(),
+        devtype: cubeb::DEVICE_TYPE_OUTPUT,
         state: ctx.state_from_sink_port(info.active_port),
         preferred: preferred,
         format: cubeb::DeviceFmt::all(),
@@ -641,7 +641,7 @@ unsafe extern fn pulse_source_info_cb(_context: *mut pa_context,
         friendly_name: pa_xstrdup(info.description),
         group_id: group_id,
         vendor_name: vendor_name,
-        devtype: cubeb::DeviceType::input(),
+        devtype: cubeb::DEVICE_TYPE_INPUT,
         state: ctx.state_from_source_port(info.active_port),
         preferred: preferred,
         format: cubeb::DeviceFmt::all(),
