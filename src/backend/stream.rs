@@ -740,7 +740,7 @@ unsafe extern fn stream_read_callback(s: *mut pa_stream, nbytes: usize, u: *mut 
                 stm.trigger_user_callback(stream, read_data, write_size);
             } else {
                 // input/capture only operation. Call callback directly
-                let got = stm.data_callback.unwrap()(stm as *const _ as *mut _,
+                let got = stm.data_callback.unwrap()(stm as *mut _ as *mut _,
                                                      stm.user_ptr,
                                                      read_data,
                                                      ptr::null_mut(),
