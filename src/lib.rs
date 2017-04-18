@@ -1,8 +1,9 @@
 //! Cubeb backend interface to Pulse Audio
 
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+// Copyright © 2017 Mozilla Foundation
+//
+// This program is made available under an ISC-style license.  See the
+// accompanying file LICENSE for details.
 
 #[macro_use]
 extern crate cubeb_ffi as cubeb;

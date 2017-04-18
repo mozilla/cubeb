@@ -1,5 +1,11 @@
 /// A C-style variable length array implemented as one allocation with
 /// a prepended header.
+
+// Copyright © 2017 Mozilla Foundation
+//
+// This program is made available under an ISC-style license.  See the
+// accompanying file LICENSE for details.
+
 use pulse_ffi::{pa_xrealloc};
 
 #[repr(C)]
