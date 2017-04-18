@@ -36,7 +36,7 @@ macro_rules! log_internal {
 #[macro_export]
 macro_rules! logv {
     ($msg:expr) => (log_internal!($crate::LogLevel::Verbose, $msg));
-    ($fmt:expr, $($arg:tt)+) => (log_internal!($create::LogLevel::Verbose, $fmt, $($arg)*));
+    ($fmt:expr, $($arg:tt)+) => (log_internal!($crate::LogLevel::Verbose, $fmt, $($arg)*));
 }
 
 #[macro_export]
@@ -517,9 +517,11 @@ fn bindgen_test_layout_cubeb_device_collection() {
 #[test]
 fn test_normal_logging() {
     log!("This is log at normal level");
+    log!("This is {} at normal level", "log with param");
 }
 
 #[test]
 fn test_verbose_logging() {
     logv!("This is a log at verbose level");
+    logv!("This is {} at verbose level", "log with param");
 }

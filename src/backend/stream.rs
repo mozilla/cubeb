@@ -591,7 +591,7 @@ impl<'ctx> Stream<'ctx>
             debug_assert!(size > 0);
             debug_assert!(size % frame_size == 0);
 
-            //LOGV("Trigger user callback with output buffer size=%zd, read_offset=%zd", size, read_offset);
+            logv!("Trigger user callback with output buffer size={}, read_offset={}", size, read_offset);
             let read_ptr = unsafe { (input_data as *const u8).offset(read_offset as isize) };
             let got = unsafe { self.data_callback.unwrap()(self as *const _ as *mut _,
                                                            self.user_ptr,
@@ -701,7 +701,7 @@ fn read_from_input(s: *mut pa_stream, buffer: *mut *const c_void, size: *mut usi
 
 unsafe extern fn stream_write_callback(s: *mut pa_stream, nbytes: usize, u: *mut c_void)
 {
-//  LOGV("Output callback to be written buffer size %zd", nbytes);
+    logv!("Output callback to be written buffer size {}", nbytes);
     let mut stm = &mut *(u as *mut Stream);
     if stm.shutdown || stm.state != cubeb::STATE_STARTED {
         return;
@@ -715,9 +715,9 @@ unsafe extern fn stream_write_callback(s: *mut pa_stream, nbytes: usize, u: *mut
     }
 }
 
-unsafe extern fn stream_read_callback(s: *mut pa_stream, _nbytes: usize, u: *mut c_void)
+unsafe extern fn stream_read_callback(s: *mut pa_stream, nbytes: usize, u: *mut c_void)
 {
-    //  LOGV("Input callback buffer size %zd", nbytes);
+    logv!("Input callback buffer size {}", nbytes);
     let mut stm = &mut *(u as *mut Stream);
     if stm.shutdown {
         return;
@@ -800,8 +800,8 @@ fn set_buffering_attribute(latency_frames: u32,
         fragsize: minreq
     };
 
-    // LOG("Requested buffer attributes maxlength %u, tlength %u, prebuf %u, minreq %u, fragsize %u",
-    //   battr.maxlength, battr.tlength, battr.prebuf, battr.minreq, battr.fragsize);
+    log!("Requested buffer attributes maxlength {}, tlength {}, prebuf {}, minreq {}, fragsize {}",
+         battr.maxlength, battr.tlength, battr.prebuf, battr.minreq, battr.fragsize);
 
     battr
 }
