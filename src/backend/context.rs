@@ -25,8 +25,6 @@ macro_rules! dup_str {
     }
 }
 
-const PA_RATE_MAX: u32 = 48000*8;
-
 fn pa_channel_to_cubeb_channel(channel: pa_channel_position_t) -> cubeb::Channel
 {
     assert!(channel != PA_CHANNEL_POSITION_INVALID);
