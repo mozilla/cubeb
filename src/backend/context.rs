@@ -452,27 +452,27 @@ impl Context
 
 
 // Callbacks
-unsafe extern fn sink_info_callback(_context: *mut pa_context,
-                             info: *const pa_sink_info,
-                             eol: i32,
-                             u: *mut c_void)
-{
-    let mut ctx = &mut *(u as *mut Context);
-    if eol == 0 {
-        if !ctx.default_sink_info.is_null() {
-            let _ = Box::from_raw(ctx.default_sink_info);
-        }
-        ctx.default_sink_info = Box::into_raw(Box::new(*info));
-    }
-    pa_threaded_mainloop_signal(ctx.mainloop, 0);
-}
-
 unsafe extern fn server_info_callback(context: *mut pa_context, info: *const pa_server_info, u: *mut c_void)
 {
-  pa_context_get_sink_info_by_name(context,
-                                   (*info).default_sink_name,
-                                   Some(sink_info_callback),
-                                   u);
+    unsafe extern fn sink_info_callback(_context: *mut pa_context,
+                                        info: *const pa_sink_info,
+                                        eol: i32,
+                                        u: *mut c_void)
+    {
+        let mut ctx = &mut *(u as *mut Context);
+        if eol == 0 {
+            if !ctx.default_sink_info.is_null() {
+                let _ = Box::from_raw(ctx.default_sink_info);
+            }
+            ctx.default_sink_info = Box::into_raw(Box::new(*info));
+        }
+        pa_threaded_mainloop_signal(ctx.mainloop, 0);
+    }
+
+    pa_context_get_sink_info_by_name(context,
+                                     (*info).default_sink_name,
+                                     Some(sink_info_callback),
+                                     u);
 }
 
 struct PulseDevListData {
