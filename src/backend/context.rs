@@ -249,6 +249,15 @@ impl Context
                                               cb: cubeb::DeviceCollectionChangedCallback,
                                               user_ptr: *mut c_void) -> i32
     {
+        unsafe extern fn subscribe_success(_: *mut pa_context,
+                                           success: i32,
+                                           user_data: *mut c_void)
+        {
+            let ctx = &*(user_data as *mut Context);
+            debug_assert!(success != 0);
+            pa_threaded_mainloop_signal(ctx.mainloop, 0);
+        }
+
         self.collection_changed_callback = cb;
         self.collection_changed_user_ptr = user_ptr;
 
@@ -706,16 +715,6 @@ unsafe extern fn pulse_subscribe_callback(_ctx: *mut pa_context,
         },
         _ => {}
     }
-}
-
-
-unsafe extern fn subscribe_success(_: *mut pa_context,
-                                   success: i32,
-                                   user_data: *mut c_void)
-{
-    let ctx = &*(user_data as *mut Context);
-    debug_assert!(success != 0);
-    pa_threaded_mainloop_signal(ctx.mainloop, 0);
 }
 
 extern "C" {
