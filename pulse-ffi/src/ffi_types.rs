@@ -37,6 +37,10 @@ impl ::std::default::Default for Struct_pa_sample_spec {
 pub type pa_sample_spec = Struct_pa_sample_spec;
 pub type pa_usec_t = u64;
 
+// From pulse/timeval.h
+pub const PA_USEC_PER_MSEC: pa_usec_t = 1_000;
+pub const PA_USEC_PER_SEC: pa_usec_t = 1_000_000;
+
 pub const PA_CONTEXT_UNCONNECTED: c_int = 0;
 pub const PA_CONTEXT_CONNECTING: c_int = 1;
 pub const PA_CONTEXT_AUTHORIZING: c_int = 2;

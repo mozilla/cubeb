@@ -11,8 +11,6 @@ use std::ptr;
 use std::os::raw::{c_char,c_void};
 
 const PULSE_NO_GAIN: f32 = -1.0;
-const PA_USEC_PER_MSEC: pa_usec_t = 1000;
-const PA_USEC_PER_SEC: pa_usec_t = 1000000;
 
 fn cubeb_channel_to_pa_channel(channel: cubeb::Channel) -> pa_channel_position_t
 {
