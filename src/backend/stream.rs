@@ -710,7 +710,7 @@ unsafe extern fn stream_write_callback(s: *mut pa_stream, nbytes: usize, u: *mut
     if stm.input_stream.is_null() {
         // Output/playback only operation.
         // Write directly to output
-        debug_assert!(!!stm.input_stream.is_null() && !stm.output_stream.is_null());
+        debug_assert!(!stm.output_stream.is_null());
         stm.trigger_user_callback(s, ptr::null(), nbytes);
     }
 }
