@@ -75,11 +75,11 @@ impl Context
         let mut ctx = Box::new(Context{
             ops: &PULSE_OPS,
             mainloop: unsafe { pa_threaded_mainloop_new() },
-            context: 0 as *mut _,
-            default_sink_info: 0 as *mut _,
+            context: ptr::null_mut(),
+            default_sink_info: ptr::null_mut(),
             context_name: name,
             collection_changed_callback: None,
-            collection_changed_user_ptr: 0 as *mut _,
+            collection_changed_user_ptr: ptr::null_mut(),
             error: true,
             version_0_9_8: false,
             version_2_0_0: false,
@@ -260,7 +260,7 @@ impl Context
                 // Unregister subscription
                 pa_context_set_subscribe_callback(self.context,
                                                   None,
-                                                  0 as *mut _);
+                                                  ptr::null_mut());
             } else {
                 pa_context_set_subscribe_callback(self.context,
                                                   Some(pulse_subscribe_callback),
@@ -504,10 +504,10 @@ impl Default for PulseDevListData
 {
     fn default() -> Self {
         PulseDevListData {
-            default_sink_name: 0 as *mut _,
-            default_source_name: 0 as *mut _,
+            default_sink_name: ptr::null_mut(),
+            default_source_name: ptr::null_mut(),
             devinfo: Vec::new(),
-            context: 0 as *mut _
+            context: ptr::null_mut()
         }
     }
 }
