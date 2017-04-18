@@ -1,0 +1,15 @@
+[package]
+name = "cubeb-pulse"
+version = "0.0.1"
+authors = ["Dan Glastonbury <dglastonbury@mozilla.com>"]
+description = "Cubeb backed for PulseAudio written in Rust"
+
+[features]
+default = ["dynamic-link"]
+static-link = ["pulse-ffi/static-link"]
+dynamic-link = ["pulse-ffi/dynamic-link"]
+
+[dependencies]
+cubeb-ffi = { path = "cubeb-ffi" }
+pulse-ffi = { path = "pulse-ffi", default-features = false }
+semver = "^0.6"
