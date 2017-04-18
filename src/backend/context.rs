@@ -8,11 +8,11 @@ use backend::cork_state::CorkState;
 use backend::var_array::VarArray;
 use capi::PULSE_OPS;
 use cubeb;
-use std::os::raw::{c_char,c_int,c_void};
 use pulse_ffi::*;
 use semver;
 use std::default::Default;
 use std::ffi::CStr;
+use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 
 macro_rules! dup_str {
@@ -25,8 +25,7 @@ macro_rules! dup_str {
     }
 }
 
-fn pa_channel_to_cubeb_channel(channel: pa_channel_position_t) -> cubeb::Channel
-{
+fn pa_channel_to_cubeb_channel(channel: pa_channel_position_t) -> cubeb::Channel {
     assert!(channel != PA_CHANNEL_POSITION_INVALID);
     match channel {
         PA_CHANNEL_POSITION_MONO => cubeb::CHANNEL_MONO,
@@ -39,12 +38,11 @@ fn pa_channel_to_cubeb_channel(channel: pa_channel_position_t) -> cubeb::Channel
         PA_CHANNEL_POSITION_REAR_CENTER => cubeb::CHANNEL_RCENTER,
         PA_CHANNEL_POSITION_REAR_RIGHT => cubeb::CHANNEL_RRS,
         PA_CHANNEL_POSITION_LFE => cubeb::CHANNEL_LFE,
-        _ => cubeb::CHANNEL_INVALID
+        _ => cubeb::CHANNEL_INVALID,
     }
 }
 
-fn channel_map_to_layout(cm: &pa_channel_map) -> cubeb::ChannelLayout
-{
+fn channel_map_to_layout(cm: &pa_channel_map) -> cubeb::ChannelLayout {
     let mut cubeb_map: cubeb::ChannelMap = Default::default();
     cubeb_map.channels = cm.channels as u32;
     for i in 0usize..cm.channels as usize {
@@ -54,8 +52,7 @@ fn channel_map_to_layout(cm: &pa_channel_map) -> cubeb::ChannelLayout
 }
 
 #[derive(Debug)]
-pub struct Context
-{
+pub struct Context {
     pub ops: *const cubeb::Ops,
     pub mainloop: *mut pa_threaded_mainloop,
     pub context: *mut pa_context,
@@ -65,25 +62,23 @@ pub struct Context
     pub collection_changed_user_ptr: *mut c_void,
     pub error: bool,
     pub version_2_0_0: bool,
-    pub version_0_9_8: bool
+    pub version_0_9_8: bool,
 }
 
-impl Context
-{
-    pub fn new(name: *const c_char) -> Result<Box<Self>>
-    {
-        let mut ctx = Box::new(Context{
-            ops: &PULSE_OPS,
-            mainloop: unsafe { pa_threaded_mainloop_new() },
-            context: ptr::null_mut(),
-            default_sink_info: ptr::null_mut(),
-            context_name: name,
-            collection_changed_callback: None,
-            collection_changed_user_ptr: ptr::null_mut(),
-            error: true,
-            version_0_9_8: false,
-            version_2_0_0: false,
-        });
+impl Context {
+    pub fn new(name: *const c_char) -> Result<Box<Self>> {
+        let mut ctx = Box::new(Context {
+                                   ops: &PULSE_OPS,
+                                   mainloop: unsafe { pa_threaded_mainloop_new() },
+                                   context: ptr::null_mut(),
+                                   default_sink_info: ptr::null_mut(),
+                                   context_name: name,
+                                   collection_changed_callback: None,
+                                   collection_changed_user_ptr: ptr::null_mut(),
+                                   error: true,
+                                   version_0_9_8: false,
+                                   version_2_0_0: false,
+                               });
 
         unsafe { pa_threaded_mainloop_start(ctx.mainloop) };
 
@@ -104,8 +99,7 @@ impl Context
         Ok(ctx)
     }
 
-    pub fn destroy(&mut self)
-    {
+    pub fn destroy(&mut self) {
         if !self.default_sink_info.is_null() {
             let _ = unsafe { Box::from_raw(self.default_sink_info) };
         }
@@ -131,8 +125,8 @@ impl Context
                       latency_frames: u32,
                       data_callback: cubeb::DataCallback,
                       state_callback: cubeb::StateCallback,
-                      user_ptr: *mut c_void) -> Result<Box<Stream>>
-    {
+                      user_ptr: *mut c_void)
+                      -> Result<Box<Stream>> {
         if self.error && self.pulse_context_init() != 0 {
             return Err(cubeb::ERROR);
         }
@@ -149,8 +143,7 @@ impl Context
                     user_ptr)
     }
 
-    pub fn max_channel_count(&self) -> Result<u32>
-    {
+    pub fn max_channel_count(&self) -> Result<u32> {
         unsafe {
             pa_threaded_mainloop_lock(self.mainloop);
             while self.default_sink_info.is_null() {
@@ -162,8 +155,7 @@ impl Context
         }
     }
 
-    pub fn preferred_sample_rate(&self) -> Result<u32>
-    {
+    pub fn preferred_sample_rate(&self) -> Result<u32> {
         unsafe {
             pa_threaded_mainloop_lock(self.mainloop);
             while self.default_sink_info.is_null() {
@@ -175,14 +167,12 @@ impl Context
         }
     }
 
-    pub fn min_latency(&self, params: &cubeb::StreamParams) -> Result<u32>
-    {
+    pub fn min_latency(&self, params: &cubeb::StreamParams) -> Result<u32> {
         // According to PulseAudio developers, this is a safe minimum.
         Ok(25 * params.rate / 1000)
     }
 
-    pub fn preferred_channel_layout(&self) -> Result<cubeb::ChannelLayout>
-    {
+    pub fn preferred_channel_layout(&self) -> Result<cubeb::ChannelLayout> {
         unsafe {
             pa_threaded_mainloop_lock(self.mainloop);
             while self.default_sink_info.is_null() {
@@ -194,8 +184,7 @@ impl Context
         }
     }
 
-    pub fn enumerate_devices(&self, devtype: cubeb::DeviceType) -> Result<*mut cubeb::DeviceCollection>
-    {
+    pub fn enumerate_devices(&self, devtype: cubeb::DeviceType) -> Result<*mut cubeb::DeviceCollection> {
         let mut user_data: PulseDevListData = Default::default();
         user_data.context = self as *const _ as *mut _;
 
@@ -237,7 +226,10 @@ impl Context
         // and device array in C code on 64-bit platforms. Using an extra
         // pointer instead of the header size to achieve this.
         let mut coll: Box<VarArray<*const cubeb::DeviceInfo>> = VarArray::with_length(user_data.devinfo.len());
-        for (e1, e2) in user_data.devinfo.drain(..).zip(coll.as_mut_slice().iter_mut()) {
+        for (e1, e2) in user_data
+                .devinfo
+                .drain(..)
+                .zip(coll.as_mut_slice().iter_mut()) {
             *e2 = e1;
         }
 
@@ -247,12 +239,9 @@ impl Context
     pub fn register_device_collection_changed(&mut self,
                                               devtype: cubeb::DeviceType,
                                               cb: cubeb::DeviceCollectionChangedCallback,
-                                              user_ptr: *mut c_void) -> i32
-    {
-        unsafe extern fn subscribe_success(_: *mut pa_context,
-                                           success: i32,
-                                           user_data: *mut c_void)
-        {
+                                              user_ptr: *mut c_void)
+                                              -> i32 {
+        unsafe extern "C" fn subscribe_success(_: *mut pa_context, success: i32, user_data: *mut c_void) {
             let ctx = &*(user_data as *mut Context);
             debug_assert!(success != 0);
             pa_threaded_mainloop_signal(ctx.mainloop, 0);
@@ -267,15 +256,17 @@ impl Context
             let mut mask: pa_subscription_mask_t = PA_SUBSCRIPTION_MASK_NULL;
             if self.collection_changed_callback.is_none() {
                 // Unregister subscription
-                pa_context_set_subscribe_callback(self.context,
-                                                  None,
-                                                  ptr::null_mut());
+                pa_context_set_subscribe_callback(self.context, None, ptr::null_mut());
             } else {
                 pa_context_set_subscribe_callback(self.context,
                                                   Some(pulse_subscribe_callback),
                                                   self as *mut _ as *mut _);
-                if devtype == cubeb::DEVICE_TYPE_INPUT { mask |= PA_SUBSCRIPTION_MASK_SOURCE };
-                if devtype == cubeb::DEVICE_TYPE_OUTPUT { mask |= PA_SUBSCRIPTION_MASK_SOURCE };
+                if devtype == cubeb::DEVICE_TYPE_INPUT {
+                    mask |= PA_SUBSCRIPTION_MASK_SOURCE
+                };
+                if devtype == cubeb::DEVICE_TYPE_OUTPUT {
+                    mask |= PA_SUBSCRIPTION_MASK_SOURCE
+                };
             }
 
             let o = pa_context_subscribe(self.context,
@@ -297,10 +288,8 @@ impl Context
 
     //
 
-    pub fn pulse_stream_cork(&self, stream: *mut pa_stream, state: CorkState)
-    {
-        unsafe extern fn cork_success(_: *mut pa_stream, _: i32, u: *mut c_void)
-        {
+    pub fn pulse_stream_cork(&self, stream: *mut pa_stream, state: CorkState) {
+        unsafe extern "C" fn cork_success(_: *mut pa_stream, _: i32, u: *mut c_void) {
             let mainloop = u as *mut pa_threaded_mainloop;
             pa_threaded_mainloop_signal(mainloop, 0);
         }
@@ -322,10 +311,8 @@ impl Context
         }
     }
 
-    pub fn pulse_context_init(&mut self) -> i32
-    {
-        unsafe extern fn error_state(c: *mut pa_context, u: *mut c_void)
-        {
+    pub fn pulse_context_init(&mut self) -> i32 {
+        unsafe extern "C" fn error_state(c: *mut pa_context, u: *mut c_void) {
             let mut ctx = &mut *(u as *mut Context);
             if !PA_CONTEXT_IS_GOOD(pa_context_get_state(c)) {
                 ctx.error = true;
@@ -346,9 +333,7 @@ impl Context
                 return cubeb::ERROR;
             }
 
-            pa_context_set_state_callback(self.context,
-                                          Some(error_state),
-                                          self as *mut _ as *mut _);
+            pa_context_set_state_callback(self.context, Some(error_state), self as *mut _ as *mut _);
 
             pa_threaded_mainloop_lock(self.mainloop);
             pa_context_connect(self.context, ptr::null(), 0, ptr::null());
@@ -374,10 +359,8 @@ impl Context
         cubeb::OK
     }
 
-    unsafe fn pulse_context_destroy(&mut self)
-    {
-        unsafe extern fn drain_complete(_c: *mut pa_context, u: *mut c_void)
-        {
+    unsafe fn pulse_context_destroy(&mut self) {
+        unsafe extern "C" fn drain_complete(_c: *mut pa_context, u: *mut c_void) {
             let mainloop = u as *mut pa_threaded_mainloop;
             pa_threaded_mainloop_signal(mainloop, 0);
         }
@@ -394,8 +377,7 @@ impl Context
         pa_threaded_mainloop_unlock(self.mainloop);
     }
 
-    pub fn operation_wait(&self, stream: *mut pa_stream, o: *mut pa_operation) -> bool
-    {
+    pub fn operation_wait(&self, stream: *mut pa_stream, o: *mut pa_operation) -> bool {
         unsafe {
             while pa_operation_get_state(o) == PA_OPERATION_RUNNING {
                 pa_threaded_mainloop_wait(self.mainloop);
@@ -412,8 +394,7 @@ impl Context
         true
     }
 
-    pub fn wait_until_context_ready(&self) -> bool
-    {
+    pub fn wait_until_context_ready(&self) -> bool {
         loop {
             let state = unsafe { pa_context_get_state(self.context) };
             if !PA_CONTEXT_IS_GOOD(state) {
@@ -430,8 +411,7 @@ impl Context
         true
     }
 
-    fn state_from_sink_port(&self, i: *const pa_port_info) -> cubeb::DeviceState
-    {
+    fn state_from_sink_port(&self, i: *const pa_port_info) -> cubeb::DeviceState {
         if !i.is_null() {
             let info = unsafe { *i };
             if self.version_2_0_0 && info.available == PA_PORT_AVAILABLE_NO {
@@ -444,8 +424,7 @@ impl Context
         }
     }
 
-    fn state_from_source_port(&self, i: *mut pa_port_info) -> cubeb::DeviceState
-    {
+    fn state_from_source_port(&self, i: *mut pa_port_info) -> cubeb::DeviceState {
         if !i.is_null() {
             let info = unsafe { *i };
             if self.version_2_0_0 && info.available == PA_PORT_AVAILABLE_NO {
@@ -461,13 +440,11 @@ impl Context
 
 
 // Callbacks
-unsafe extern fn server_info_callback(context: *mut pa_context, info: *const pa_server_info, u: *mut c_void)
-{
-    unsafe extern fn sink_info_callback(_context: *mut pa_context,
-                                        info: *const pa_sink_info,
-                                        eol: i32,
-                                        u: *mut c_void)
-    {
+unsafe extern "C" fn server_info_callback(context: *mut pa_context, info: *const pa_server_info, u: *mut c_void) {
+    unsafe extern "C" fn sink_info_callback(_context: *mut pa_context,
+                                            info: *const pa_sink_info,
+                                            eol: i32,
+                                            u: *mut c_void) {
         let mut ctx = &mut *(u as *mut Context);
         if eol == 0 {
             if !ctx.default_sink_info.is_null() {
@@ -485,10 +462,10 @@ unsafe extern fn server_info_callback(context: *mut pa_context, info: *const pa_
 }
 
 struct PulseDevListData {
-  default_sink_name: *mut c_char,
-  default_source_name: *mut c_char,
-  devinfo: Vec<*const cubeb::DeviceInfo>,
-  context: *mut Context
+    default_sink_name: *mut c_char,
+    default_source_name: *mut c_char,
+    devinfo: Vec<*const cubeb::DeviceInfo>,
+    context: *mut Context,
 }
 
 impl Drop for PulseDevListData {
@@ -509,34 +486,33 @@ impl Drop for PulseDevListData {
     }
 }
 
-impl Default for PulseDevListData
-{
+impl Default for PulseDevListData {
     fn default() -> Self {
         PulseDevListData {
             default_sink_name: ptr::null_mut(),
             default_source_name: ptr::null_mut(),
             devinfo: Vec::new(),
-            context: ptr::null_mut()
+            context: ptr::null_mut(),
         }
     }
 }
 
-fn pulse_format_to_cubeb_format(format: pa_sample_format_t) -> cubeb::DeviceFmt
-{
-  match format {
-    PA_SAMPLE_S16LE => cubeb::DEVICE_FMT_S16LE,
-    PA_SAMPLE_S16BE => cubeb::DEVICE_FMT_S16BE,
-    PA_SAMPLE_FLOAT32LE => cubeb::DEVICE_FMT_F32LE,
-    PA_SAMPLE_FLOAT32BE => cubeb::DEVICE_FMT_F32BE,
-    _ => { panic!("Invalid format"); }
-  }
+fn pulse_format_to_cubeb_format(format: pa_sample_format_t) -> cubeb::DeviceFmt {
+    match format {
+        PA_SAMPLE_S16LE => cubeb::DEVICE_FMT_S16LE,
+        PA_SAMPLE_S16BE => cubeb::DEVICE_FMT_S16BE,
+        PA_SAMPLE_FLOAT32LE => cubeb::DEVICE_FMT_F32LE,
+        PA_SAMPLE_FLOAT32BE => cubeb::DEVICE_FMT_F32BE,
+        _ => {
+            panic!("Invalid format");
+        },
+    }
 }
 
-unsafe extern fn pulse_sink_info_cb(_context: *mut pa_context,
-                                    i: *const pa_sink_info,
-                                    eol: i32,
-                                    user_data: *mut c_void)
-{
+unsafe extern "C" fn pulse_sink_info_cb(_context: *mut pa_context,
+                                        i: *const pa_sink_info,
+                                        eol: i32,
+                                        user_data: *mut c_void) {
     if eol != 0 || i.is_null() {
         return;
     }
@@ -558,7 +534,8 @@ unsafe extern fn pulse_sink_info_cb(_context: *mut pa_context,
     };
 
     let vendor_name = {
-        let prop = pa_proplist_gets(info.proplist, b"device.vendor.name\0".as_ptr() as *const c_char);
+        let prop = pa_proplist_gets(info.proplist,
+                                    b"device.vendor.name\0".as_ptr() as *const c_char);
         if !prop.is_null() {
             pa_xstrdup(prop)
         } else {
@@ -566,12 +543,11 @@ unsafe extern fn pulse_sink_info_cb(_context: *mut pa_context,
         }
     };
 
-    let preferred =
-        if strcmp(info.name, list_data.default_sink_name) == 0 {
-            cubeb::DEVICE_PREF_ALL
-        } else {
-            cubeb::DevicePref::empty()
-        };
+    let preferred = if strcmp(info.name, list_data.default_sink_name) == 0 {
+        cubeb::DEVICE_PREF_ALL
+    } else {
+        cubeb::DevicePref::empty()
+    };
 
     let ctx = &(*list_data.context);
 
@@ -598,11 +574,10 @@ unsafe extern fn pulse_sink_info_cb(_context: *mut pa_context,
     pa_threaded_mainloop_signal(ctx.mainloop, 0);
 }
 
-unsafe extern fn pulse_source_info_cb(_context: *mut pa_context,
-                                      i: *const pa_source_info,
-                                      eol: i32,
-                                      user_data: *mut c_void)
-{
+unsafe extern "C" fn pulse_source_info_cb(_context: *mut pa_context,
+                                          i: *const pa_source_info,
+                                          eol: i32,
+                                          user_data: *mut c_void) {
     if eol != 0 || i.is_null() {
         return;
     }
@@ -624,7 +599,8 @@ unsafe extern fn pulse_source_info_cb(_context: *mut pa_context,
     };
 
     let vendor_name = {
-        let prop = pa_proplist_gets(info.proplist, b"device.vendor.name\0".as_ptr() as *mut c_char);
+        let prop = pa_proplist_gets(info.proplist,
+                                    b"device.vendor.name\0".as_ptr() as *mut c_char);
         if !prop.is_null() {
             pa_xstrdup(prop)
         } else {
@@ -632,12 +608,11 @@ unsafe extern fn pulse_source_info_cb(_context: *mut pa_context,
         }
     };
 
-    let preferred =
-        if strcmp(info.name, list_data.default_source_name) == 0 {
-            cubeb::DEVICE_PREF_ALL
-        } else {
-            cubeb::DevicePref::empty()
-        };
+    let preferred = if strcmp(info.name, list_data.default_source_name) == 0 {
+        cubeb::DEVICE_PREF_ALL
+    } else {
+        cubeb::DevicePref::empty()
+    };
 
     let ctx = &(*list_data.context);
 
@@ -665,10 +640,9 @@ unsafe extern fn pulse_source_info_cb(_context: *mut pa_context,
     pa_threaded_mainloop_signal(ctx.mainloop, 0);
 }
 
-unsafe extern fn pulse_server_info_cb(_context: *mut pa_context,
-                                      i: *const pa_server_info,
-                                      user_data: *mut c_void)
-{
+unsafe extern "C" fn pulse_server_info_cb(_context: *mut pa_context,
+                                          i: *const pa_server_info,
+                                          user_data: *mut c_void) {
     assert!(!i.is_null());
     let info = *i;
     let list_data = &mut *(user_data as *mut PulseDevListData);
@@ -679,11 +653,10 @@ unsafe extern fn pulse_server_info_cb(_context: *mut pa_context,
     pa_threaded_mainloop_signal((*list_data.context).mainloop, 0);
 }
 
-unsafe extern fn pulse_subscribe_callback(_ctx: *mut pa_context,
-                                          t: pa_subscription_event_type_t,
-                                          index: u32,
-                                          user_data: *mut c_void)
-{
+unsafe extern "C" fn pulse_subscribe_callback(_ctx: *mut pa_context,
+                                              t: pa_subscription_event_type_t,
+                                              index: u32,
+                                              user_data: *mut c_void) {
     let mut ctx = &mut *(user_data as *mut Context);
 
     match t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK {
@@ -692,28 +665,27 @@ unsafe extern fn pulse_subscribe_callback(_ctx: *mut pa_context,
 
             if cubeb::g_log_level != cubeb::LogLevel::Disabled {
                 if (t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SOURCE &&
-                    (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_REMOVE {
-                   log!("Removing sink index %d", index);
+                   (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_REMOVE {
+                    log!("Removing sink index %d", index);
                 } else if (t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SOURCE &&
-                           (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_NEW {
+                          (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_NEW {
                     log!("Adding sink index %d", index);
                 }
                 if (t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SINK &&
-                    (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_REMOVE {
+                   (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_REMOVE {
                     log!("Removing source index %d", index);
                 } else if (t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SINK &&
-                           (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_NEW {
+                          (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_NEW {
                     log!("Adding source index %d", index);
                 }
             }
 
             if (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_REMOVE ||
-                (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_NEW {
-                    ctx.collection_changed_callback.unwrap()(ctx as *mut _ as *mut _,
-                                                             ctx.collection_changed_user_ptr);
-                }
+               (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_NEW {
+                ctx.collection_changed_callback.unwrap()(ctx as *mut _ as *mut _, ctx.collection_changed_user_ptr);
+            }
         },
-        _ => {}
+        _ => {},
     }
 }
 

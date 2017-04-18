@@ -3,8 +3,8 @@
 // This program is made available under an ISC-style license.  See the
 // accompanying file LICENSE for details.
 
-use std::os::raw::{c_char,c_long,c_void};
 use std::default::Default;
+use std::os::raw::{c_char, c_long, c_void};
 use std::ptr;
 
 #[macro_export]
@@ -231,7 +231,12 @@ pub struct DeviceCollection {
     pub device: [*const DeviceInfo; 0],
 }
 
-pub type DataCallback = Option<unsafe extern "C" fn(stream: *mut Stream, user_ptr: *mut c_void, input_buffer: *const c_void, output_buffer: *mut c_void, nframes: c_long) -> c_long>;
+pub type DataCallback = Option<unsafe extern "C" fn(stream: *mut Stream,
+                                                    user_ptr: *mut c_void,
+                                                    input_buffer: *const c_void,
+                                                    output_buffer: *mut c_void,
+                                                    nframes: c_long)
+                                                    -> c_long>;
 pub type StateCallback = Option<unsafe extern "C" fn(stream: *mut Stream, user_ptr: *mut c_void, state: State)>;
 pub type DeviceChangedCallback = Option<unsafe extern "C" fn(user_ptr: *mut c_void)>;
 pub type DeviceCollectionChangedCallback = Option<unsafe extern "C" fn(context: *mut Context, user_ptr: *mut c_void)>;
@@ -242,23 +247,48 @@ pub struct Ops {
     pub init: Option<unsafe extern "C" fn(context: *mut *mut Context, context_name: *const c_char) -> i32>,
     pub get_backend_id: Option<unsafe extern "C" fn(context: *mut Context) -> *const c_char>,
     pub get_max_channel_count: Option<unsafe extern "C" fn(context: *mut Context, max_channels: *mut u32) -> i32>,
-    pub get_min_latency:  Option<unsafe extern "C" fn(context: *mut Context, params: StreamParams, latency_ms: *mut u32) -> i32>,
-    pub get_preferred_sample_rate:  Option<unsafe extern "C" fn(context: *mut Context, rate: *mut u32) -> i32>,
-    pub get_preferred_channel_layout:  Option<unsafe extern "C" fn(context: *mut Context, layout: *mut ChannelLayout) -> i32>,
-    pub enumerate_devices:  Option<unsafe extern "C" fn(context: *mut Context, devtype: DeviceType, collection: *mut *mut DeviceCollection) -> i32>,
-    pub destroy:  Option<unsafe extern "C" fn(context: *mut Context)>,
-    pub stream_init: Option<unsafe extern "C" fn(context: *mut Context, stream: *mut *mut Stream, stream_name: *const c_char, input_device: DeviceId, input_stream_params: *mut StreamParams, output_device: DeviceId, output_stream_params: *mut StreamParams, latency: u32, data_callback: DataCallback, state_callback: StateCallback, user_ptr: *mut c_void) -> i32>,
+    pub get_min_latency: Option<unsafe extern "C" fn(context: *mut Context,
+                                                     params: StreamParams,
+                                                     latency_ms: *mut u32)
+                                                     -> i32>,
+    pub get_preferred_sample_rate: Option<unsafe extern "C" fn(context: *mut Context, rate: *mut u32) -> i32>,
+    pub get_preferred_channel_layout:
+        Option<unsafe extern "C" fn(context: *mut Context, layout: *mut ChannelLayout) -> i32>,
+    pub enumerate_devices: Option<unsafe extern "C" fn(context: *mut Context,
+                                                       devtype: DeviceType,
+                                                       collection: *mut *mut DeviceCollection)
+                                                       -> i32>,
+    pub destroy: Option<unsafe extern "C" fn(context: *mut Context)>,
+    pub stream_init: Option<unsafe extern "C" fn(context: *mut Context,
+                                                 stream: *mut *mut Stream,
+                                                 stream_name: *const c_char,
+                                                 input_device: DeviceId,
+                                                 input_stream_params: *mut StreamParams,
+                                                 output_device: DeviceId,
+                                                 output_stream_params: *mut StreamParams,
+                                                 latency: u32,
+                                                 data_callback: DataCallback,
+                                                 state_callback: StateCallback,
+                                                 user_ptr: *mut c_void)
+                                                 -> i32>,
     pub stream_destroy: Option<unsafe extern "C" fn(stream: *mut Stream)>,
     pub stream_start: Option<unsafe extern "C" fn(stream: *mut Stream) -> i32>,
     pub stream_stop: Option<unsafe extern "C" fn(stream: *mut Stream) -> i32>,
     pub stream_get_position: Option<unsafe extern "C" fn(stream: *mut Stream, position: *mut u64) -> i32>,
     pub stream_get_latency: Option<unsafe extern "C" fn(stream: *mut Stream, latency: *mut u32) -> i32>,
     pub stream_set_volume: Option<unsafe extern "C" fn(stream: *mut Stream, volumes: f32) -> i32>,
-    pub stream_set_panning: Option<unsafe extern "C" fn(stream: *mut Stream, panning: f32)-> i32>,
+    pub stream_set_panning: Option<unsafe extern "C" fn(stream: *mut Stream, panning: f32) -> i32>,
     pub stream_get_current_device: Option<unsafe extern "C" fn(stream: *mut Stream, device: *mut *const Device) -> i32>,
     pub stream_device_destroy: Option<unsafe extern "C" fn(stream: *mut Stream, device: *mut Device) -> i32>,
-    pub stream_register_device_changed_callback: Option<unsafe extern "C" fn(stream: *mut Stream, device_changed_callback: DeviceChangedCallback) -> i32>,
-    pub register_device_collection_changed: Option<unsafe extern "C" fn(context: *mut Context, devtype: DeviceType, callback: DeviceCollectionChangedCallback, user_ptr: *mut c_void) -> i32>
+    pub stream_register_device_changed_callback:
+        Option<unsafe extern "C" fn(stream: *mut Stream,
+                                    device_changed_callback: DeviceChangedCallback)
+                                    -> i32>,
+    pub register_device_collection_changed: Option<unsafe extern "C" fn(context: *mut Context,
+                                                                        devtype: DeviceType,
+                                                                        callback: DeviceCollectionChangedCallback,
+                                                                        user_ptr: *mut c_void)
+                                                                        -> i32>,
 }
 
 extern "C" {
@@ -271,7 +301,7 @@ extern "C" {
 pub struct LayoutMap {
     pub name: *const c_char,
     pub channels: u32,
-    pub layout: ChannelLayout
+    pub layout: ChannelLayout,
 }
 
 // cubeb_mixer.h
@@ -302,18 +332,22 @@ pub const CHANNEL_MAX: Channel = Channel(10);
 #[derive(Clone, Copy, Debug)]
 pub struct ChannelMap {
     pub channels: u32,
-    pub map: [Channel;10],
+    pub map: [Channel; 10],
 }
 impl ::std::default::Default for ChannelMap {
     fn default() -> Self {
         ChannelMap {
             channels: 0,
-            map: [
-                CHANNEL_INVALID, CHANNEL_INVALID, CHANNEL_INVALID,
-                CHANNEL_INVALID, CHANNEL_INVALID, CHANNEL_INVALID,
-                CHANNEL_INVALID, CHANNEL_INVALID, CHANNEL_INVALID,
-                CHANNEL_INVALID
-            ],
+            map: [CHANNEL_INVALID,
+                  CHANNEL_INVALID,
+                  CHANNEL_INVALID,
+                  CHANNEL_INVALID,
+                  CHANNEL_INVALID,
+                  CHANNEL_INVALID,
+                  CHANNEL_INVALID,
+                  CHANNEL_INVALID,
+                  CHANNEL_INVALID,
+                  CHANNEL_INVALID],
         }
     }
 }
@@ -322,11 +356,18 @@ extern "C" {
     pub fn cubeb_channel_map_to_layout(channel_map: *const ChannelMap) -> ChannelLayout;
     pub fn cubeb_should_upmix(stream: *const StreamParams, mixer: *const StreamParams) -> bool;
     pub fn cubeb_should_downmix(stream: *const StreamParams, mixer: *const StreamParams) -> bool;
-    pub fn cubeb_downmix_float(input: *const f32, inframes: c_long, output: *mut f32,
-                               in_channels: u32, out_channels: u32,
-                               in_layout: ChannelLayout, out_layout: ChannelLayout);
-    pub fn cubeb_upmix_float(input: *const f32, inframes: c_long, output: *mut f32,
-                             in_channels: u32, out_channels: u32);
+    pub fn cubeb_downmix_float(input: *const f32,
+                               inframes: c_long,
+                               output: *mut f32,
+                               in_channels: u32,
+                               out_channels: u32,
+                               in_layout: ChannelLayout,
+                               out_layout: ChannelLayout);
+    pub fn cubeb_upmix_float(input: *const f32,
+                             inframes: c_long,
+                             output: *mut f32,
+                             in_channels: u32,
+                             out_channels: u32);
 }
 
 #[test]

@@ -6,18 +6,16 @@
 // This program is made available under an ISC-style license.  See the
 // accompanying file LICENSE for details.
 
-use pulse_ffi::{pa_xrealloc};
+use pulse_ffi::pa_xrealloc;
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct VarArray<T>
-{
+pub struct VarArray<T> {
     len: u32,
-    data: [T;0],
+    data: [T; 0],
 }
 
-impl<T> VarArray<T>
-{
+impl<T> VarArray<T> {
     pub fn len(&self) -> usize {
         self.len as usize
     }
@@ -28,7 +26,7 @@ impl<T> VarArray<T>
         let size = size_of::<Self>() + count * size_of::<T>();
         let raw_ptr = match ptr {
             Some(box_ptr) => Box::into_raw(box_ptr) as *mut u8,
-            None => 0 as *mut u8
+            None => 0 as *mut u8,
         };
         let mem = pa_xrealloc(raw_ptr as *mut _, size);
         let mut result: Box<Self> = transmute(mem);
@@ -36,26 +34,22 @@ impl<T> VarArray<T>
         result
     }
 
-    pub fn with_length(len: usize) -> Box<VarArray<T>>
-    {
-        unsafe {
-            Self::_realloc(None, len)
-        }
+    pub fn with_length(len: usize) -> Box<VarArray<T>> {
+        unsafe { Self::_realloc(None, len) }
     }
 
     pub fn as_mut_slice<'r>(&'r mut self) -> &'r mut [T] {
         use std::slice::from_raw_parts_mut;
 
-        unsafe {
-            from_raw_parts_mut(&self.data as *const _ as *mut _, self.len())
-        }
+        unsafe { from_raw_parts_mut(&self.data as *const _ as *mut _, self.len()) }
     }
 }
 
-impl<T> Drop for VarArray<T>
-{
+impl<T> Drop for VarArray<T> {
     fn drop(&mut self) {
         let ptr = self as *mut Self;
-        unsafe { Self::_realloc(Some(Box::from_raw(ptr)), 0); }
+        unsafe {
+            Self::_realloc(Some(Box::from_raw(ptr)), 0);
+        }
     }
 }

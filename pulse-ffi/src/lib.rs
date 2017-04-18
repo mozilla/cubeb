@@ -10,5 +10,5 @@ pub use ffi_funcs::*;
 
 #[cfg(feature = "dynamic-link")]
 pub unsafe fn open() -> Option<LibLoader> {
-    return LibLoader::open()
+    return LibLoader::open();
 }
