@@ -63,22 +63,53 @@ pub struct Context {
     pub error: bool,
     pub version_2_0_0: bool,
     pub version_0_9_8: bool,
+    #[cfg(feature = "dynamic-link")]
+    pub libpulse: LibLoader,
 }
 
 impl Context {
+    #[cfg(feature = "dynamic-link")]
+    fn _new(name: *const i8) -> Result<Box<Self>> {
+        let libpulse = unsafe { open() };
+        if libpulse.is_none() {
+            return Err(cubeb::ERROR);
+        }
+
+        let ctx = Box::new(Context {
+                               ops: &PULSE_OPS,
+                               libpulse: libpulse.unwrap(),
+                               mainloop: unsafe { pa_threaded_mainloop_new() },
+                               context: 0 as *mut _,
+                               default_sink_info: 0 as *mut _,
+                               context_name: name,
+                               collection_changed_callback: None,
+                               collection_changed_user_ptr: 0 as *mut _,
+                               error: true,
+                               version_0_9_8: false,
+                               version_2_0_0: false,
+                           });
+
+        Ok(ctx)
+    }
+
+    #[cfg(feature = "static-link")]
+    fn _new(name: *const i8) -> Result<Box<Self>> {
+        Ok(Box::new(Context {
+                        ops: &PULSE_OPS,
+                        mainloop: unsafe { pa_threaded_mainloop_new() },
+                        context: 0 as *mut _,
+                        default_sink_info: 0 as *mut _,
+                        context_name: name,
+                        collection_changed_callback: None,
+                        collection_changed_user_ptr: 0 as *mut _,
+                        error: true,
+                        version_0_9_8: false,
+                        version_2_0_0: false,
+                    }))
+    }
+
     pub fn new(name: *const c_char) -> Result<Box<Self>> {
-        let mut ctx = Box::new(Context {
-                                   ops: &PULSE_OPS,
-                                   mainloop: unsafe { pa_threaded_mainloop_new() },
-                                   context: ptr::null_mut(),
-                                   default_sink_info: ptr::null_mut(),
-                                   context_name: name,
-                                   collection_changed_callback: None,
-                                   collection_changed_user_ptr: ptr::null_mut(),
-                                   error: true,
-                                   version_0_9_8: false,
-                                   version_2_0_0: false,
-                               });
+        let mut ctx = try!(Context::_new(name));
 
         unsafe { pa_threaded_mainloop_start(ctx.mainloop) };
 
