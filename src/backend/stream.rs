@@ -7,7 +7,7 @@ use backend::*;
 use backend::cork_state::CorkState;
 use cubeb;
 use pulse_ffi::*;
-use std::os::raw::{c_char, c_void};
+use std::os::raw::{c_char, c_long, c_void};
 use std::ptr;
 
 const PULSE_NO_GAIN: f32 = -1.0;
@@ -575,7 +575,7 @@ impl<'ctx> Stream<'ctx> {
                                             self.user_ptr,
                                             read_ptr as *const _ as *mut _,
                                             buffer,
-                                            (size / frame_size) as i64)
+                                            (size / frame_size) as c_long)
             };
             if got < 0 {
                 unsafe {
@@ -723,7 +723,7 @@ unsafe extern "C" fn stream_read_callback(s: *mut pa_stream, nbytes: usize, u: *
                                                      stm.user_ptr,
                                                      read_data,
                                                      ptr::null_mut(),
-                                                     read_frames as i64);
+                                                     read_frames as c_long);
                 if got < 0 || got as usize != read_frames {
                     pa_stream_cancel_write(s);
                     stm.shutdown = true;
