@@ -6,7 +6,7 @@ macro_rules! cstr {
   ($x:expr) => { concat!($x, "\0").as_bytes().as_ptr() as *const c_char }
 }
 
-#[cfg(feature = "static-link")]
+#[cfg(not(feature = "dlopen"))]
 mod static_fns {
     use std::os::raw::{c_char, c_double, c_int, c_float, c_uint, c_void};
     use super::*;
@@ -154,10 +154,10 @@ mod static_fns {
     }
 }
 
-#[cfg(feature = "static-link")]
+#[cfg(not(feature = "dlopen"))]
 pub use self::static_fns::*;
 
-#[cfg(feature = "dynamic-link")]
+#[cfg(feature = "dlopen")]
 mod dynamic_fns {
     use std::os::raw::{c_char, c_double, c_int, c_float, c_uint, c_void};
     use libc::{dlclose, dlopen, dlsym, RTLD_LAZY};
@@ -1273,5 +1273,5 @@ mod dynamic_fns {
 
 }
 
-#[cfg(feature = "dynamic-link")]
+#[cfg(feature = "dlopen")]
 pub use self::dynamic_fns::*;
