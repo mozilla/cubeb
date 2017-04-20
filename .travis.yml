@@ -1,49 +1,67 @@
 language: rust
-sudo: false
 cache: cargo
-os:
-- linux
 notifications:
   email:
     on_success: never
-script: |
-  curl -sSL https://raw.githubusercontent.com/djg/travis-rust-matrix/master/test | bash
+
 rust:
-  - 1.15.1
-  - stable
-  - nightly
+- 1.15.1
+- stable
+- nightly
+
+env:
+# default jobs with and without optional features.
+-
+- FEATURES=pulse-dlopen
+
+# Invoke cargo with optional target or features switches.
+script: >
+  cargo test
+  ${TARGET:+--target ${TARGET}}
+  ${FEATURES:+--features ${FEATURES}}
+
+# Install cross target if necessary.
+before_install:
+  if test -n "${TARGET}"; then rustup target add ${TARGET}; fi
+
 addons: &apt_64
   apt:
     packages:
     - libpulse-dev
-env:
-  # default jobs
-  - ARCH=x86_64
-  - ARCH=x86_64 CARGOOPTS="--features pulse-dlopen"
+
 matrix:
   include:
   # Add in 32-bit builds
   - rust: 1.15.1
-    env: ARCH=i686
+    env:
+    - TARGET=i686-unknown-linux-gnu
     addons: &apt_32
       apt:
         packages:
         - gcc-multilib
         - libpulse-dev:i386
   - rust: 1.15.1
-    env: ARCH=i686 CARGOOPTS="--features pulse-dlopen"
+    env:
+    - TARGET=i686-unknown-linux-gnu
+    - FEATURES=pulse-dlopen
     addons: *apt_32
   - rust: stable
-    env: ARCH=i686
+    env:
+    - TARGET=i686-unknown-linux-gnu
     addons: *apt_32
   - rust: stable
-    env: ARCH=i686 CARGOOPTS="--features pulse-dlopen"
+    env:
+    - TARGET=i686-unknown-linux-gnu
+    - FEATURES=pulse-dlopen
     addons: *apt_32
   - rust: nightly
-    env: ARCH=i686
+    env:
+    - TARGET=i686-unknown-linux-gnu
     addons: *apt_32
   - rust: nightly
-    env: ARCH=i686 CARGOOPTS="--features pulse-dlopen"
+    env:
+    - TARGET=i686-unknown-linux-gnu
+    - FEATURES=pulse-dlopen
     addons: *apt_32
   allow_failures:
   - rust: nightly
