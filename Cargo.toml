@@ -5,11 +5,9 @@ authors = ["Dan Glastonbury <dglastonbury@mozilla.com>"]
 description = "Cubeb backed for PulseAudio written in Rust"
 
 [features]
-default = ["dynamic-link"]
-static-link = ["pulse-ffi/static-link"]
-dynamic-link = ["pulse-ffi/dynamic-link"]
+pulse-dlopen = ["pulse-ffi/dlopen"]
 
 [dependencies]
 cubeb-ffi = { path = "cubeb-ffi" }
-pulse-ffi = { path = "pulse-ffi", default-features = false }
+pulse-ffi = { path = "pulse-ffi" }
 semver = "^0.6"
