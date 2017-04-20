@@ -63,12 +63,12 @@ pub struct Context {
     pub error: bool,
     pub version_2_0_0: bool,
     pub version_0_9_8: bool,
-    #[cfg(feature = "dynamic-link")]
+    #[cfg(feature = "pulse-dlopen")]
     pub libpulse: LibLoader,
 }
 
 impl Context {
-    #[cfg(feature = "dynamic-link")]
+    #[cfg(feature = "pulse-dlopen")]
     fn _new(name: *const i8) -> Result<Box<Self>> {
         let libpulse = unsafe { open() };
         if libpulse.is_none() {
@@ -92,7 +92,7 @@ impl Context {
         Ok(ctx)
     }
 
-    #[cfg(feature = "static-link")]
+    #[cfg(not(feature = "pulse-dlopen"))]
     fn _new(name: *const i8) -> Result<Box<Self>> {
         Ok(Box::new(Context {
                         ops: &PULSE_OPS,
