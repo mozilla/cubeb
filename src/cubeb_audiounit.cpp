@@ -1088,6 +1088,12 @@ audiounit_convert_channel_layout(AudioChannelLayout * layout)
     return CUBEB_LAYOUT_UNDEFINED;
   }
 
+  // This devices has more channels that we can support, bail out.
+  if (layout->mNumberChannelDescriptions >= CHANNEL_MAX) {
+    LOG("Audio device has more than %d channels, bailing out.", CHANNEL_MAX);
+    return CUBEB_LAYOUT_UNDEFINED;
+  }
+
   cubeb_channel_map cm;
   cm.channels = layout->mNumberChannelDescriptions;
   for (UInt32 i = 0; i < layout->mNumberChannelDescriptions; ++i) {
