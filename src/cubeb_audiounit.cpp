@@ -225,7 +225,7 @@ channel_label_to_cubeb_channel(UInt32 label)
     case kAudioChannelLabel_RearSurroundLeft: return CHANNEL_RLS;
     case kAudioChannelLabel_RearSurroundRight: return CHANNEL_RRS;
     case kAudioChannelLabel_CenterSurround: return CHANNEL_RCENTER;
-    case kAudioChannelLayoutTag_Unknown: return CHANNEL_UNMAPPED;
+    case kAudioChannelLabel_Unknown: return CHANNEL_UNMAPPED;
     default: return CHANNEL_INVALID;
   }
 }
@@ -244,7 +244,7 @@ cubeb_channel_to_channel_label(cubeb_channel channel)
     case CHANNEL_RLS: return kAudioChannelLabel_RearSurroundLeft;
     case CHANNEL_RRS: return kAudioChannelLabel_RearSurroundRight;
     case CHANNEL_RCENTER: return kAudioChannelLabel_CenterSurround;
-    case CHANNEL_UNMAPPED: return kAudioChannelLayoutTag_Unknown;
+    case CHANNEL_UNMAPPED: return kAudioChannelLabel_Unknown;
     default: return kAudioChannelLabel_Unknown;
   }
 }
