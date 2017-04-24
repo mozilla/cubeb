@@ -7,6 +7,8 @@
 extern crate bitflags;
 
 mod ffi;
+mod log;
 pub mod mixer;
 
 pub use ffi::*;
+pub use log::*;
