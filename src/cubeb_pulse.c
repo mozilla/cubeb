@@ -760,10 +760,13 @@ create_pa_stream(cubeb_stream * stm,
   ss.rate = stream_params->rate;
   ss.channels = stream_params->channels;
 
-  pa_channel_map cm;
-  layout_to_channel_map(stream_params->layout, &cm);
-
-  *pa_stm = WRAP(pa_stream_new)(stm->context->context, stream_name, &ss, &cm);
+  if (stream_params->layout == CUBEB_LAYOUT_UNDEFINED) {
+    *pa_stm = WRAP(pa_stream_new)(stm->context->context, stream_name, &ss, NULL);
+  } else {
+    pa_channel_map cm;
+    layout_to_channel_map(stream_params->layout, &cm);
+    *pa_stm = WRAP(pa_stream_new)(stm->context->context, stream_name, &ss, &cm);
+  }
   return (*pa_stm == NULL) ? CUBEB_ERROR : CUBEB_OK;
 }
 
