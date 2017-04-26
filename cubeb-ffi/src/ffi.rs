@@ -7,44 +7,6 @@ use std::default::Default;
 use std::os::raw::{c_char, c_long, c_void};
 use std::ptr;
 
-#[macro_export]
-macro_rules! log_internal {
-    ($level:expr, $msg:expr) => {
-        #[allow(unused_unsafe)]
-        unsafe {
-            if $level <= $crate::g_log_level {
-                if let Some(log_callback) = $crate::g_log_callback {
-                    let cstr = ::std::ffi::CString::new(concat!("%s:%d: ", $msg, "\n")).unwrap();
-                    log_callback(cstr.as_ptr(), file!(), line!());
-                }
-            }
-        }
-    };
-    ($level:expr, $fmt:expr, $($arg:tt)+) => {
-        #[allow(unused_unsafe)]
-        unsafe {
-            if $level <= $crate::g_log_level {
-                if let Some(log_callback) = $crate::g_log_callback {
-                    let cstr = ::std::ffi::CString::new(concat!("%s:%d: ", $fmt, "\n")).unwrap();
-                    log_callback(cstr.as_ptr(), file!(), line!(), $($arg)+);
-                }
-            }
-        }
-    }
-}
-
-#[macro_export]
-macro_rules! logv {
-    ($msg:expr) => (log_internal!($crate::LogLevel::Verbose, $msg));
-    ($fmt:expr, $($arg:tt)+) => (log_internal!($crate::LogLevel::Verbose, $fmt, $($arg)*));
-}
-
-#[macro_export]
-macro_rules! log {
-    ($msg:expr) => (log_internal!($crate::LogLevel::Normal, $msg));
-    ($fmt:expr, $($arg:tt)+) => (log_internal!($crate::LogLevel::Normal, $fmt, $($arg)*));
-}
-
 pub enum Context {}
 pub enum Stream {}
 
@@ -69,14 +31,6 @@ pub const SAMPLE_S16NE: SampleFormat = SAMPLE_S16BE;
 pub const SAMPLE_FLOAT32NE: SampleFormat = SAMPLE_FLOAT32BE;
 
 pub type DeviceId = *const c_void;
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum LogLevel {
-    Disabled = 0,
-    Normal = 1,
-    Verbose = 2,
-}
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -240,8 +194,6 @@ pub type DataCallback = Option<unsafe extern "C" fn(stream: *mut Stream,
 pub type StateCallback = Option<unsafe extern "C" fn(stream: *mut Stream, user_ptr: *mut c_void, state: State)>;
 pub type DeviceChangedCallback = Option<unsafe extern "C" fn(user_ptr: *mut c_void)>;
 pub type DeviceCollectionChangedCallback = Option<unsafe extern "C" fn(context: *mut Context, user_ptr: *mut c_void)>;
-pub type LogCallback = Option<unsafe extern "C" fn(fmt: *const c_char, ...)>;
-
 
 pub type StreamInitFn = Option<unsafe extern "C" fn(context: *mut Context,
                                                     stream: *mut *mut Stream,
@@ -294,11 +246,6 @@ pub struct Ops {
                                     device_changed_callback: DeviceChangedCallback)
                                     -> i32>,
     pub register_device_collection_changed: RegisterDeviceCollectionChangedFn,
-}
-
-extern "C" {
-    pub static g_log_level: LogLevel;
-    pub static g_log_callback: LogCallback;
 }
 
 #[repr(C)]
@@ -540,7 +487,7 @@ fn bindgen_test_layout_cubeb_device_info() {
 #[test]
 fn bindgen_test_layout_cubeb_device_collection() {
     assert_eq!(::std::mem::size_of::<DeviceCollection>(),
-               16usize,
+               8usize,
                concat!("Size of: ", stringify!(DeviceCollection)));
     assert_eq!(::std::mem::align_of::<DeviceCollection>(),
                8usize,
@@ -558,16 +505,4 @@ fn bindgen_test_layout_cubeb_device_collection() {
                        "::",
                        stringify!(device)));
 
-}
-
-#[test]
-fn test_normal_logging() {
-    log!("This is log at normal level");
-    log!("This is {} at normal level", "log with param");
-}
-
-#[test]
-fn test_verbose_logging() {
-    logv!("This is a log at verbose level");
-    logv!("This is {} at verbose level", "log with param");
 }
