@@ -4,7 +4,6 @@
 // accompanying file LICENSE for details.
 
 use backend::*;
-use backend::cork_state::CorkState;
 use capi::PULSE_OPS;
 use cubeb;
 use pulse_ffi::*;
@@ -345,29 +344,6 @@ impl Context {
     }
 
     //
-
-    pub fn pulse_stream_cork(&self, stream: *mut pa_stream, state: CorkState) {
-        unsafe extern "C" fn cork_success(_: *mut pa_stream, _: i32, u: *mut c_void) {
-            let mainloop = u as *mut pa_threaded_mainloop;
-            pa_threaded_mainloop_signal(mainloop, 0);
-        }
-
-        if stream.is_null() {
-            return;
-        }
-
-        let o = unsafe {
-            pa_stream_cork(stream,
-                           state.is_cork() as i32,
-                           Some(cork_success),
-                           self.mainloop as *mut _)
-        };
-
-        if !o.is_null() {
-            self.operation_wait(stream, o);
-            unsafe { pa_operation_unref(o) };
-        }
-    }
 
     pub fn pulse_context_init(&mut self) -> i32 {
         unsafe extern "C" fn error_state(c: *mut pa_context, u: *mut c_void) {

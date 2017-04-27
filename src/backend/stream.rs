@@ -219,7 +219,7 @@ impl<'ctx> Stream<'ctx> {
     }
 
     fn destroy(&mut self) {
-        self.stream_cork(CorkState::cork());
+        self.cork(CorkState::cork());
 
         unsafe {
             pa_threaded_mainloop_lock(self.context.mainloop);
@@ -250,7 +250,7 @@ impl<'ctx> Stream<'ctx> {
 
     pub fn start(&mut self) -> i32 {
         self.shutdown = false;
-        self.stream_cork(CorkState::uncork() | CorkState::notify());
+        self.cork(CorkState::uncork() | CorkState::notify());
 
         if !self.output_stream.is_null() && self.input_stream.is_null() {
             unsafe {
@@ -278,7 +278,7 @@ impl<'ctx> Stream<'ctx> {
             }
             pa_threaded_mainloop_unlock(self.context.mainloop);
         }
-        self.stream_cork(CorkState::cork() | CorkState::notify());
+        self.cork(CorkState::cork() | CorkState::notify());
 
         cubeb::OK
     }
@@ -485,10 +485,26 @@ impl<'ctx> Stream<'ctx> {
         }
     }
 
-    fn stream_cork(&mut self, state: CorkState) {
+    pub fn cork_stream(&self, stream: *mut pa_stream, state: CorkState) {
+        if !stream.is_null() {
+            let o = unsafe {
+                pa_stream_cork(stream,
+                               state.is_cork() as i32,
+                               Some(stream_success_callback),
+                               self as *const _ as *mut _)
+            };
+
+            if !o.is_null() {
+                self.context.operation_wait(stream, o);
+                unsafe { pa_operation_unref(o) };
+            }
+        }
+    }
+
+    fn cork(&mut self, state: CorkState) {
         unsafe { pa_threaded_mainloop_lock(self.context.mainloop) };
-        self.context.pulse_stream_cork(self.output_stream, state);
-        self.context.pulse_stream_cork(self.input_stream, state);
+        self.cork_stream(self.output_stream, state);
+        self.cork_stream(self.input_stream, state);
         unsafe { pa_threaded_mainloop_unlock(self.context.mainloop) };
 
         if state.is_notify() {
