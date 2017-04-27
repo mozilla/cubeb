@@ -290,7 +290,7 @@ impl Context {
                 group_id: group_id,
                 vendor_name: vendor_name,
                 devtype: cubeb::DEVICE_TYPE_OUTPUT,
-                state: ctx.state_from_sink_port(info.active_port),
+                state: ctx.state_from_port(info.active_port),
                 preferred: preferred,
                 format: cubeb::DeviceFmt::all(),
                 default_format: pulse_format_to_cubeb_format(info.sample_spec.format),
@@ -355,7 +355,7 @@ impl Context {
                 group_id: group_id,
                 vendor_name: vendor_name,
                 devtype: cubeb::DEVICE_TYPE_INPUT,
-                state: ctx.state_from_source_port(info.active_port),
+                state: ctx.state_from_port(info.active_port),
                 preferred: preferred,
                 format: cubeb::DeviceFmt::all(),
                 default_format: pulse_format_to_cubeb_format(info.sample_spec.format),
@@ -650,20 +650,7 @@ impl Context {
         true
     }
 
-    fn state_from_sink_port(&self, i: *const pa_port_info) -> cubeb::DeviceState {
-        if !i.is_null() {
-            let info = unsafe { *i };
-            if self.version_2_0_0 && info.available == PA_PORT_AVAILABLE_NO {
-                cubeb::DeviceState::Unplugged
-            } else {
-                cubeb::DeviceState::Enabled
-            }
-        } else {
-            cubeb::DeviceState::Enabled
-        }
-    }
-
-    fn state_from_source_port(&self, i: *mut pa_port_info) -> cubeb::DeviceState {
+    fn state_from_port(&self, i: *const pa_port_info) -> cubeb::DeviceState {
         if !i.is_null() {
             let info = unsafe { *i };
             if self.version_2_0_0 && info.available == PA_PORT_AVAILABLE_NO {
