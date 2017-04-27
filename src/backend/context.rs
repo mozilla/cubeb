@@ -121,6 +121,29 @@ impl Context {
     }
 
     pub fn new(name: *const c_char) -> Result<Box<Self>> {
+        unsafe extern "C" fn server_info_cb(context: *mut pa_context, info: *const pa_server_info, u: *mut c_void) {
+            unsafe extern "C" fn sink_info_cb(_: *mut pa_context,
+                                              info: *const pa_sink_info,
+                                              eol: i32,
+                                              u: *mut c_void) {
+                let mut ctx = &mut *(u as *mut Context);
+                if eol == 0 {
+                    let info = *info;
+                    ctx.default_sink_info = Some(DefaultInfo {
+                                                     sample_spec: info.sample_spec,
+                                                     channel_map: info.channel_map,
+                                                     flags: info.flags,
+                                                 });
+                }
+                pa_threaded_mainloop_signal(ctx.mainloop, 0);
+            }
+
+            let o = pa_context_get_sink_info_by_name(context, (*info).default_sink_name, Some(sink_info_cb), u);
+            if !o.is_null() {
+                pa_operation_unref(o);
+            }
+        }
+
         let mut ctx = try!(Context::_new(name));
 
         unsafe { pa_threaded_mainloop_start(ctx.mainloop) };
@@ -136,12 +159,13 @@ impl Context {
              * and signalling the mainloop to end the wait. */
             pa_threaded_mainloop_lock(ctx.mainloop);
             let o = pa_context_get_server_info(ctx.context,
-                                               Some(server_info_callback),
+                                               Some(server_info_cb),
                                                ctx.as_mut() as *mut Context as *mut _);
             if !o.is_null() {
                 ctx.operation_wait(ptr::null_mut(), o);
                 pa_operation_unref(o);
             }
+
             pa_threaded_mainloop_unlock(ctx.mainloop);
             assert!(ctx.default_sink_info.is_some());
         }
@@ -217,6 +241,150 @@ impl Context {
     }
 
     pub fn enumerate_devices(&self, devtype: cubeb::DeviceType) -> Result<cubeb::DeviceCollection> {
+        unsafe extern "C" fn add_output_device(_context: *mut pa_context,
+                                               i: *const pa_sink_info,
+                                               eol: i32,
+                                               user_data: *mut c_void) {
+            if eol != 0 || i.is_null() {
+                return;
+            }
+
+            debug_assert!(!user_data.is_null());
+
+            let info = *i;
+            let mut list_data = &mut *(user_data as *mut PulseDevListData);
+
+            let device_id = pa_xstrdup(info.name);
+
+            let group_id = {
+                let prop = pa_proplist_gets(info.proplist, b"sysfs.path\0".as_ptr() as *const c_char);
+                if !prop.is_null() {
+                    pa_xstrdup(prop)
+                } else {
+                    ptr::null_mut()
+                }
+            };
+
+            let vendor_name = {
+                let prop = pa_proplist_gets(info.proplist,
+                                            b"device.vendor.name\0".as_ptr() as *const c_char);
+                if !prop.is_null() {
+                    pa_xstrdup(prop)
+                } else {
+                    ptr::null_mut()
+                }
+            };
+
+            let preferred = if strcmp(info.name, list_data.default_sink_name) == 0 {
+                cubeb::DEVICE_PREF_ALL
+            } else {
+                cubeb::DevicePref::empty()
+            };
+
+            let ctx = &(*list_data.context);
+
+            let devinfo = cubeb::DeviceInfo {
+                device_id: device_id,
+                devid: device_id as cubeb::DeviceId,
+                friendly_name: pa_xstrdup(info.description),
+                group_id: group_id,
+                vendor_name: vendor_name,
+                devtype: cubeb::DEVICE_TYPE_OUTPUT,
+                state: ctx.state_from_sink_port(info.active_port),
+                preferred: preferred,
+                format: cubeb::DeviceFmt::all(),
+                default_format: pulse_format_to_cubeb_format(info.sample_spec.format),
+                max_channels: info.channel_map.channels as u32,
+                min_rate: 1,
+                max_rate: PA_RATE_MAX,
+                default_rate: info.sample_spec.rate,
+                latency_lo: 0,
+                latency_hi: 0,
+            };
+            list_data.devinfo.push(devinfo);
+
+            pa_threaded_mainloop_signal(ctx.mainloop, 0);
+        }
+
+        unsafe extern "C" fn add_input_device(_context: *mut pa_context,
+                                              i: *const pa_source_info,
+                                              eol: i32,
+                                              user_data: *mut c_void) {
+            if eol != 0 || i.is_null() {
+                return;
+            }
+
+            debug_assert!(!user_data.is_null());
+
+            let info = *i;
+            let mut list_data = &mut *(user_data as *mut PulseDevListData);
+
+            let device_id = pa_xstrdup(info.name);
+
+            let group_id = {
+                let prop = pa_proplist_gets(info.proplist, b"sysfs.path\0".as_ptr() as *mut c_char);
+                if !prop.is_null() {
+                    pa_xstrdup(prop)
+                } else {
+                    ptr::null_mut()
+                }
+            };
+
+            let vendor_name = {
+                let prop = pa_proplist_gets(info.proplist,
+                                            b"device.vendor.name\0".as_ptr() as *mut c_char);
+                if !prop.is_null() {
+                    pa_xstrdup(prop)
+                } else {
+                    ptr::null_mut()
+                }
+            };
+
+            let preferred = if strcmp(info.name, list_data.default_source_name) == 0 {
+                cubeb::DEVICE_PREF_ALL
+            } else {
+                cubeb::DevicePref::empty()
+            };
+
+            let ctx = &(*list_data.context);
+
+            let devinfo = cubeb::DeviceInfo {
+                device_id: device_id,
+                devid: device_id as cubeb::DeviceId,
+                friendly_name: pa_xstrdup(info.description),
+                group_id: group_id,
+                vendor_name: vendor_name,
+                devtype: cubeb::DEVICE_TYPE_INPUT,
+                state: ctx.state_from_source_port(info.active_port),
+                preferred: preferred,
+                format: cubeb::DeviceFmt::all(),
+                default_format: pulse_format_to_cubeb_format(info.sample_spec.format),
+                max_channels: info.channel_map.channels as u32,
+                min_rate: 1,
+                max_rate: PA_RATE_MAX,
+                default_rate: info.sample_spec.rate,
+                latency_lo: 0,
+                latency_hi: 0,
+            };
+
+            list_data.devinfo.push(devinfo);
+
+            pa_threaded_mainloop_signal(ctx.mainloop, 0);
+        }
+
+        unsafe extern "C" fn default_device_names(_context: *mut pa_context,
+                                                  i: *const pa_server_info,
+                                                  user_data: *mut c_void) {
+            assert!(!i.is_null());
+            let info = *i;
+            let list_data = &mut *(user_data as *mut PulseDevListData);
+
+            dup_str!(list_data.default_sink_name, info.default_sink_name);
+            dup_str!(list_data.default_source_name, info.default_source_name);
+
+            pa_threaded_mainloop_signal((*list_data.context).mainloop, 0);
+        }
+
         let mut user_data: PulseDevListData = Default::default();
         user_data.context = self as *const _ as *mut _;
 
@@ -224,7 +392,7 @@ impl Context {
             pa_threaded_mainloop_lock(self.mainloop);
 
             let o = pa_context_get_server_info(self.context,
-                                               Some(pulse_server_info_cb),
+                                               Some(default_device_names),
                                                &mut user_data as *mut _ as *mut _);
             if !o.is_null() {
                 self.operation_wait(ptr::null_mut(), o);
@@ -233,7 +401,7 @@ impl Context {
 
             if devtype == cubeb::DEVICE_TYPE_OUTPUT {
                 let o = pa_context_get_sink_info_list(self.context,
-                                                      Some(pulse_sink_info_cb),
+                                                      Some(add_output_device),
                                                       &mut user_data as *mut _ as *mut _);
                 if !o.is_null() {
                     self.operation_wait(ptr::null_mut(), o);
@@ -243,7 +411,7 @@ impl Context {
 
             if devtype == cubeb::DEVICE_TYPE_INPUT {
                 let o = pa_context_get_source_info_list(self.context,
-                                                        Some(pulse_source_info_cb),
+                                                        Some(add_input_device),
                                                         &mut user_data as *mut _ as *mut _);
                 if !o.is_null() {
                     self.operation_wait(ptr::null_mut(), o);
@@ -298,7 +466,44 @@ impl Context {
                                               cb: cubeb::DeviceCollectionChangedCallback,
                                               user_ptr: *mut c_void)
                                               -> i32 {
-        unsafe extern "C" fn subscribe_success(_: *mut pa_context, success: i32, user_data: *mut c_void) {
+        unsafe extern "C" fn update_collection(_ctx: *mut pa_context,
+                                               t: pa_subscription_event_type_t,
+                                               index: u32,
+                                               user_data: *mut c_void) {
+            let mut ctx = &mut *(user_data as *mut Context);
+
+            match t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK {
+                PA_SUBSCRIPTION_EVENT_SOURCE |
+                PA_SUBSCRIPTION_EVENT_SINK => {
+
+                    if cubeb::log_enabled() {
+                        if (t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SOURCE &&
+                           (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_REMOVE {
+                            log!("Removing sink index %d", index);
+                        } else if (t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SOURCE &&
+                                  (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_NEW {
+                            log!("Adding sink index %d", index);
+                        }
+                        if (t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SINK &&
+                           (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_REMOVE {
+                            log!("Removing source index %d", index);
+                        } else if (t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SINK &&
+                                  (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_NEW {
+                            log!("Adding source index %d", index);
+                        }
+                    }
+
+                    if (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_REMOVE ||
+                       (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_NEW {
+                        ctx.collection_changed_callback.unwrap()(ctx as *mut _ as *mut _,
+                                                                 ctx.collection_changed_user_ptr);
+                    }
+                },
+                _ => {},
+            }
+        }
+
+        unsafe extern "C" fn success(_: *mut pa_context, success: i32, user_data: *mut c_void) {
             let ctx = &*(user_data as *mut Context);
             debug_assert_ne!(success, 0);
             pa_threaded_mainloop_signal(ctx.mainloop, 0);
@@ -316,7 +521,7 @@ impl Context {
                 pa_context_set_subscribe_callback(self.context, None, ptr::null_mut());
             } else {
                 pa_context_set_subscribe_callback(self.context,
-                                                  Some(pulse_subscribe_callback),
+                                                  Some(update_collection),
                                                   self as *mut _ as *mut _);
                 if devtype == cubeb::DEVICE_TYPE_INPUT {
                     mask |= PA_SUBSCRIPTION_MASK_SOURCE
@@ -328,7 +533,7 @@ impl Context {
 
             let o = pa_context_subscribe(self.context,
                                          mask,
-                                         Some(subscribe_success),
+                                         Some(success),
                                          self as *const _ as *mut _);
             if o.is_null() {
                 log!("Context subscribe failed");
@@ -472,33 +677,6 @@ impl Context {
     }
 }
 
-// Callbacks
-unsafe extern "C" fn server_info_callback(context: *mut pa_context, info: *const pa_server_info, u: *mut c_void) {
-    unsafe extern "C" fn sink_info_callback(_context: *mut pa_context,
-                                            info: *const pa_sink_info,
-                                            eol: i32,
-                                            u: *mut c_void) {
-        let mut ctx = &mut *(u as *mut Context);
-        if eol == 0 {
-            let info = *info;
-            ctx.default_sink_info = Some(DefaultInfo {
-                                             sample_spec: info.sample_spec,
-                                             channel_map: info.channel_map,
-                                             flags: info.flags,
-                                         });
-        }
-        pa_threaded_mainloop_signal(ctx.mainloop, 0);
-    }
-
-    let o = pa_context_get_sink_info_by_name(context,
-                                             (*info).default_sink_name,
-                                             Some(sink_info_callback),
-                                             u);
-    if !o.is_null() {
-        pa_operation_unref(o);
-    }
-}
-
 struct PulseDevListData {
     default_sink_name: *mut c_char,
     default_source_name: *mut c_char,
@@ -541,186 +719,6 @@ fn pulse_format_to_cubeb_format(format: pa_sample_format_t) -> cubeb::DeviceFmt 
         _ => {
             panic!("Invalid format");
         },
-    }
-}
-
-unsafe extern "C" fn pulse_sink_info_cb(_context: *mut pa_context,
-                                        i: *const pa_sink_info,
-                                        eol: i32,
-                                        user_data: *mut c_void) {
-    if eol != 0 || i.is_null() {
-        return;
-    }
-
-    debug_assert!(!user_data.is_null());
-
-    let info = *i;
-    let mut list_data = &mut *(user_data as *mut PulseDevListData);
-
-    let device_id = pa_xstrdup(info.name);
-
-    let group_id = {
-        let prop = pa_proplist_gets(info.proplist, b"sysfs.path\0".as_ptr() as *const c_char);
-        if !prop.is_null() {
-            pa_xstrdup(prop)
-        } else {
-            ptr::null_mut()
-        }
-    };
-
-    let vendor_name = {
-        let prop = pa_proplist_gets(info.proplist,
-                                    b"device.vendor.name\0".as_ptr() as *const c_char);
-        if !prop.is_null() {
-            pa_xstrdup(prop)
-        } else {
-            ptr::null_mut()
-        }
-    };
-
-    let preferred = if strcmp(info.name, list_data.default_sink_name) == 0 {
-        cubeb::DEVICE_PREF_ALL
-    } else {
-        cubeb::DevicePref::empty()
-    };
-
-    let ctx = &(*list_data.context);
-
-    let devinfo = cubeb::DeviceInfo {
-        device_id: device_id,
-        devid: device_id as cubeb::DeviceId,
-        friendly_name: pa_xstrdup(info.description),
-        group_id: group_id,
-        vendor_name: vendor_name,
-        devtype: cubeb::DEVICE_TYPE_OUTPUT,
-        state: ctx.state_from_sink_port(info.active_port),
-        preferred: preferred,
-        format: cubeb::DeviceFmt::all(),
-        default_format: pulse_format_to_cubeb_format(info.sample_spec.format),
-        max_channels: info.channel_map.channels as u32,
-        min_rate: 1,
-        max_rate: PA_RATE_MAX,
-        default_rate: info.sample_spec.rate,
-        latency_lo: 0,
-        latency_hi: 0,
-    };
-    list_data.devinfo.push(devinfo);
-
-    pa_threaded_mainloop_signal(ctx.mainloop, 0);
-}
-
-unsafe extern "C" fn pulse_source_info_cb(_context: *mut pa_context,
-                                          i: *const pa_source_info,
-                                          eol: i32,
-                                          user_data: *mut c_void) {
-    if eol != 0 || i.is_null() {
-        return;
-    }
-
-    debug_assert!(!user_data.is_null());
-
-    let info = *i;
-    let mut list_data = &mut *(user_data as *mut PulseDevListData);
-
-    let device_id = pa_xstrdup(info.name);
-
-    let group_id = {
-        let prop = pa_proplist_gets(info.proplist, b"sysfs.path\0".as_ptr() as *mut c_char);
-        if !prop.is_null() {
-            pa_xstrdup(prop)
-        } else {
-            ptr::null_mut()
-        }
-    };
-
-    let vendor_name = {
-        let prop = pa_proplist_gets(info.proplist,
-                                    b"device.vendor.name\0".as_ptr() as *mut c_char);
-        if !prop.is_null() {
-            pa_xstrdup(prop)
-        } else {
-            ptr::null_mut()
-        }
-    };
-
-    let preferred = if strcmp(info.name, list_data.default_source_name) == 0 {
-        cubeb::DEVICE_PREF_ALL
-    } else {
-        cubeb::DevicePref::empty()
-    };
-
-    let ctx = &(*list_data.context);
-
-    let devinfo = cubeb::DeviceInfo {
-        device_id: device_id,
-        devid: device_id as cubeb::DeviceId,
-        friendly_name: pa_xstrdup(info.description),
-        group_id: group_id,
-        vendor_name: vendor_name,
-        devtype: cubeb::DEVICE_TYPE_INPUT,
-        state: ctx.state_from_source_port(info.active_port),
-        preferred: preferred,
-        format: cubeb::DeviceFmt::all(),
-        default_format: pulse_format_to_cubeb_format(info.sample_spec.format),
-        max_channels: info.channel_map.channels as u32,
-        min_rate: 1,
-        max_rate: PA_RATE_MAX,
-        default_rate: info.sample_spec.rate,
-        latency_lo: 0,
-        latency_hi: 0,
-    };
-
-    list_data.devinfo.push(devinfo);
-
-    pa_threaded_mainloop_signal(ctx.mainloop, 0);
-}
-
-unsafe extern "C" fn pulse_server_info_cb(_context: *mut pa_context,
-                                          i: *const pa_server_info,
-                                          user_data: *mut c_void) {
-    assert!(!i.is_null());
-    let info = *i;
-    let list_data = &mut *(user_data as *mut PulseDevListData);
-
-    dup_str!(list_data.default_sink_name, info.default_sink_name);
-    dup_str!(list_data.default_source_name, info.default_source_name);
-
-    pa_threaded_mainloop_signal((*list_data.context).mainloop, 0);
-}
-
-unsafe extern "C" fn pulse_subscribe_callback(_ctx: *mut pa_context,
-                                              t: pa_subscription_event_type_t,
-                                              index: u32,
-                                              user_data: *mut c_void) {
-    let mut ctx = &mut *(user_data as *mut Context);
-
-    match t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK {
-        PA_SUBSCRIPTION_EVENT_SOURCE |
-        PA_SUBSCRIPTION_EVENT_SINK => {
-
-            if cubeb::log_enabled() {
-                if (t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SOURCE &&
-                   (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_REMOVE {
-                    log!("Removing sink index %d", index);
-                } else if (t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SOURCE &&
-                          (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_NEW {
-                    log!("Adding sink index %d", index);
-                }
-                if (t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SINK &&
-                   (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_REMOVE {
-                    log!("Removing source index %d", index);
-                } else if (t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SINK &&
-                          (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_NEW {
-                    log!("Adding source index %d", index);
-                }
-            }
-
-            if (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_REMOVE ||
-               (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_NEW {
-                ctx.collection_changed_callback.unwrap()(ctx as *mut _ as *mut _, ctx.collection_changed_user_ptr);
-            }
-        },
-        _ => {},
     }
 }
 

@@ -99,6 +99,84 @@ impl<'ctx> Stream<'ctx> {
                user_ptr: *mut c_void)
                -> Result<Box<Stream<'ctx>>> {
 
+        unsafe extern "C" fn check_error(s: *mut pa_stream, u: *mut c_void) {
+            let stm = &mut *(u as *mut Stream);
+            if !PA_STREAM_IS_GOOD(pa_stream_get_state(s)) {
+                stm.state_change_callback(cubeb::STATE_ERROR);
+            }
+            pa_threaded_mainloop_signal(stm.context.mainloop, 0);
+        }
+
+        unsafe extern "C" fn read_data(s: *mut pa_stream, nbytes: usize, u: *mut c_void) {
+            fn read_from_input(s: *mut pa_stream, buffer: *mut *const c_void, size: *mut usize) -> i32 {
+                let readable_size = unsafe { pa_stream_readable_size(s) };
+                if readable_size > 0 && unsafe { pa_stream_peek(s, buffer, size) } < 0 {
+                    return -1;
+                }
+
+                readable_size as i32
+            }
+
+            logv!("Input callback buffer size {}", nbytes);
+            let mut stm = &mut *(u as *mut Stream);
+            if stm.shutdown {
+                return;
+            }
+
+            let mut read_data: *const c_void = ptr::null();
+            let mut read_size: usize = 0;
+            while read_from_input(s, &mut read_data, &mut read_size) > 0 {
+                /* read_data can be NULL in case of a hole. */
+                if !read_data.is_null() {
+                    let in_frame_size = pa_frame_size(&stm.input_sample_spec);
+                    let read_frames = read_size / in_frame_size;
+
+                    if !stm.output_stream.is_null() {
+                        // input/capture + output/playback operation
+                        let out_frame_size = pa_frame_size(&stm.output_sample_spec);
+                        let write_size = read_frames * out_frame_size;
+                        // Offer full duplex data for writing
+                        let stream = stm.output_stream;
+                        stm.trigger_user_callback(stream, read_data, write_size);
+                    } else {
+                        // input/capture only operation. Call callback directly
+                        let got = stm.data_callback.unwrap()(stm as *mut _ as *mut _,
+                                                             stm.user_ptr,
+                                                             read_data,
+                                                             ptr::null_mut(),
+                                                             read_frames as c_long);
+                        if got < 0 || got as usize != read_frames {
+                            pa_stream_cancel_write(s);
+                            stm.shutdown = true;
+                            break;
+                        }
+                    }
+                }
+
+                if read_size > 0 {
+                    pa_stream_drop(s);
+                }
+
+                if stm.shutdown {
+                    return;
+                }
+            }
+        }
+        unsafe extern "C" fn write_data(s: *mut pa_stream, nbytes: usize, u: *mut c_void) {
+            logv!("Output callback to be written buffer size {}", nbytes);
+            let mut stm = &mut *(u as *mut Stream);
+            if stm.shutdown || stm.state != cubeb::STATE_STARTED {
+                return;
+            }
+
+            if stm.input_stream.is_null() {
+                // Output/playback only operation.
+                // Write directly to output
+                debug_assert!(!stm.output_stream.is_null());
+                stm.trigger_user_callback(s, ptr::null(), nbytes);
+            }
+        }
+
         let mut stm = Box::new(Stream {
                                    context: context,
                                    output_stream: ptr::null_mut(),
@@ -129,10 +207,10 @@ impl<'ctx> Stream<'ctx> {
                 stm.output_sample_spec = *pa_stream_get_sample_spec(stm.output_stream);
 
                 pa_stream_set_state_callback(stm.output_stream,
-                                             Some(stream_state_callback),
+                                             Some(check_error),
                                              stm.as_mut() as *mut _ as *mut _);
                 pa_stream_set_write_callback(stm.output_stream,
-                                             Some(stream_write_callback),
+                                             Some(write_data),
                                              stm.as_mut() as *mut _ as *mut _);
 
                 let battr = set_buffering_attribute(latency_frames, &stm.output_sample_spec);
@@ -160,10 +238,10 @@ impl<'ctx> Stream<'ctx> {
                 stm.input_sample_spec = *(pa_stream_get_sample_spec(stm.input_stream));
 
                 pa_stream_set_state_callback(stm.input_stream,
-                                             Some(stream_state_callback),
+                                             Some(check_error),
                                              stm.as_mut() as *mut _ as *mut _);
                 pa_stream_set_read_callback(stm.input_stream,
-                                            Some(stream_read_callback),
+                                            Some(read_data),
                                             stm.as_mut() as *mut _ as *mut _);
 
                 let battr = set_buffering_attribute(latency_frames, &stm.input_sample_spec);
@@ -249,6 +327,16 @@ impl<'ctx> Stream<'ctx> {
     }
 
     pub fn start(&mut self) -> i32 {
+        unsafe extern "C" fn output_preroll(_a: *mut pa_mainloop_api, u: *mut c_void) {
+            let mut stm = &mut *(u as *mut Stream);
+            if stm.shutdown {
+                return;
+            }
+            let writable_size = pa_stream_writable_size(stm.output_stream);
+            let stream = stm.output_stream;
+            stm.trigger_user_callback(stream, ptr::null_mut(), writable_size);
+        }
+
         self.shutdown = false;
         self.cork(CorkState::uncork() | CorkState::notify());
 
@@ -259,7 +347,7 @@ impl<'ctx> Stream<'ctx> {
                  * from PA server thread. */
                 pa_threaded_mainloop_lock(self.context.mainloop);
                 pa_mainloop_api_once(pa_threaded_mainloop_get_api(self.context.mainloop),
-                                     Some(pulse_defer_event_cb),
+                                     Some(output_preroll),
                                      self as *mut _ as *mut _);
                 pa_threaded_mainloop_unlock(self.context.mainloop);
             }
@@ -365,7 +453,7 @@ impl<'ctx> Stream<'ctx> {
                 let op = pa_context_set_sink_input_volume(self.context.context,
                                                           index,
                                                           &cvol,
-                                                          Some(volume_success),
+                                                          Some(context_success),
                                                           self as *mut _ as *mut _);
                 if !op.is_null() {
                     self.context.operation_wait(self.output_stream, op);
@@ -379,6 +467,24 @@ impl<'ctx> Stream<'ctx> {
     }
 
     pub fn set_panning(&mut self, panning: f32) -> i32 {
+        #[repr(C)]
+        struct SinkInputInfoResult {
+            pub cvol: *mut pa_cvolume,
+            pub mainloop: *mut pa_threaded_mainloop,
+        }
+
+        unsafe extern "C" fn get_input_volume(_c: *mut pa_context,
+                                              i: *const pa_sink_input_info,
+                                              eol: i32,
+                                              u: *mut c_void) {
+            let info = &*i;
+            let mut r = &mut *(u as *mut SinkInputInfoResult);
+            if eol == 0 {
+                *r.cvol = info.volume;
+            }
+            pa_threaded_mainloop_signal(r.mainloop, 0);
+        }
+
         if self.output_stream.is_null() {
             return cubeb::ERROR;
         }
@@ -402,7 +508,7 @@ impl<'ctx> Stream<'ctx> {
 
             let op = pa_context_get_sink_input_info(self.context.context,
                                                     index,
-                                                    Some(sink_input_info_cb),
+                                                    Some(get_input_volume),
                                                     &mut r as *mut _ as *mut _);
             if !op.is_null() {
                 self.context.operation_wait(self.output_stream, op);
@@ -414,7 +520,7 @@ impl<'ctx> Stream<'ctx> {
             let op = pa_context_set_sink_input_volume(self.context.context,
                                                       index,
                                                       &cvol,
-                                                      Some(volume_success),
+                                                      Some(context_success),
                                                       self as *mut _ as *mut _);
             if !op.is_null() {
                 self.context.operation_wait(self.output_stream, op);
@@ -490,7 +596,7 @@ impl<'ctx> Stream<'ctx> {
             let o = unsafe {
                 pa_stream_cork(stream,
                                state.is_cork() as i32,
-                               Some(stream_success_callback),
+                               Some(stream_success),
                                self as *const _ as *mut _)
             };
 
@@ -522,7 +628,7 @@ impl<'ctx> Stream<'ctx> {
         if !self.output_stream.is_null() {
             let o = unsafe {
                 pa_stream_update_timing_info(self.output_stream,
-                                             Some(stream_success_callback),
+                                             Some(stream_success),
                                              self as *const _ as *mut _)
             };
 
@@ -541,7 +647,7 @@ impl<'ctx> Stream<'ctx> {
         if !self.input_stream.is_null() {
             let o = unsafe {
                 pa_stream_update_timing_info(self.input_stream,
-                                             Some(stream_success_callback),
+                                             Some(stream_success),
                                              self as *const _ as *mut _)
             };
 
@@ -576,6 +682,19 @@ impl<'ctx> Stream<'ctx> {
     }
 
     fn trigger_user_callback(&mut self, s: *mut pa_stream, input_data: *const c_void, nbytes: usize) {
+        unsafe extern "C" fn drained_cb(a: *mut pa_mainloop_api,
+                                        e: *mut pa_time_event,
+                                        _tv: *const timeval,
+                                        u: *mut c_void) {
+            let mut stm = &mut *(u as *mut Stream);
+            debug_assert_eq!(stm.drain_timer, e);
+            stm.state_change_callback(cubeb::STATE_DRAINED);
+            /* there's no pa_rttime_free, so use this instead. */
+            (*a).time_free.unwrap()(stm.drain_timer);
+            stm.drain_timer = ptr::null_mut();
+            pa_threaded_mainloop_signal(stm.context.mainloop, 0);
+        }
+
         let frame_size = unsafe { pa_frame_size(&self.output_sample_spec) };
         debug_assert_eq!(nbytes % frame_size, 0);
 
@@ -657,7 +776,7 @@ impl<'ctx> Stream<'ctx> {
                 self.drain_timer = unsafe {
                     pa_context_rttime_new(self.context.context,
                                           pa_rtclock_now() + 2 * latency,
-                                          Some(stream_drain_callback),
+                                          Some(drained_cb),
                                           self as *const _ as *mut _)
                 };
                 self.shutdown = true;
@@ -671,101 +790,16 @@ impl<'ctx> Stream<'ctx> {
     }
 }
 
-unsafe extern "C" fn stream_success_callback(_s: *mut pa_stream, _success: i32, u: *mut c_void) {
+unsafe extern "C" fn stream_success(_: *mut pa_stream, success: i32, u: *mut c_void) {
     let stm = &*(u as *mut Stream);
+    debug_assert_ne!(success, 0);
     pa_threaded_mainloop_signal(stm.context.mainloop, 0);
 }
 
-unsafe extern "C" fn stream_drain_callback(a: *mut pa_mainloop_api,
-                                           e: *mut pa_time_event,
-                                           _tv: *const timeval,
-                                           u: *mut c_void) {
-    let mut stm = &mut *(u as *mut Stream);
-    debug_assert_eq!(stm.drain_timer, e);
-    stm.state_change_callback(cubeb::STATE_DRAINED);
-    /* there's no pa_rttime_free, so use this instead. */
-    (*a).time_free.unwrap()(stm.drain_timer);
-    stm.drain_timer = ptr::null_mut();
+unsafe extern "C" fn context_success(_: *mut pa_context, success: i32, u: *mut c_void) {
+    let stm = &*(u as *mut Stream);
+    debug_assert_ne!(success, 0);
     pa_threaded_mainloop_signal(stm.context.mainloop, 0);
-}
-
-unsafe extern "C" fn stream_state_callback(s: *mut pa_stream, u: *mut c_void) {
-    let stm = &mut *(u as *mut Stream);
-    if !PA_STREAM_IS_GOOD(pa_stream_get_state(s)) {
-        stm.state_change_callback(cubeb::STATE_ERROR);
-    }
-    pa_threaded_mainloop_signal(stm.context.mainloop, 0);
-}
-
-fn read_from_input(s: *mut pa_stream, buffer: *mut *const c_void, size: *mut usize) -> i32 {
-    let readable_size = unsafe { pa_stream_readable_size(s) };
-    if readable_size > 0 && unsafe { pa_stream_peek(s, buffer, size) } < 0 {
-        return -1;
-    }
-
-    readable_size as i32
-}
-
-unsafe extern "C" fn stream_write_callback(s: *mut pa_stream, nbytes: usize, u: *mut c_void) {
-    logv!("Output callback to be written buffer size {}", nbytes);
-    let mut stm = &mut *(u as *mut Stream);
-    if stm.shutdown || stm.state != cubeb::STATE_STARTED {
-        return;
-    }
-
-    if stm.input_stream.is_null() {
-        // Output/playback only operation.
-        // Write directly to output
-        debug_assert!(!stm.output_stream.is_null());
-        stm.trigger_user_callback(s, ptr::null(), nbytes);
-    }
-}
-
-unsafe extern "C" fn stream_read_callback(s: *mut pa_stream, nbytes: usize, u: *mut c_void) {
-    logv!("Input callback buffer size {}", nbytes);
-    let mut stm = &mut *(u as *mut Stream);
-    if stm.shutdown {
-        return;
-    }
-
-    let mut read_data: *const c_void = ptr::null();
-    let mut read_size: usize = 0;
-    while read_from_input(s, &mut read_data, &mut read_size) > 0 {
-        /* read_data can be NULL in case of a hole. */
-        if !read_data.is_null() {
-            let in_frame_size = pa_frame_size(&stm.input_sample_spec);
-            let read_frames = read_size / in_frame_size;
-
-            if !stm.output_stream.is_null() {
-                // input/capture + output/playback operation
-                let out_frame_size = pa_frame_size(&stm.output_sample_spec);
-                let write_size = read_frames * out_frame_size;
-                // Offer full duplex data for writing
-                let stream = stm.output_stream;
-                stm.trigger_user_callback(stream, read_data, write_size);
-            } else {
-                // input/capture only operation. Call callback directly
-                let got = stm.data_callback.unwrap()(stm as *mut _ as *mut _,
-                                                     stm.user_ptr,
-                                                     read_data,
-                                                     ptr::null_mut(),
-                                                     read_frames as c_long);
-                if got < 0 || got as usize != read_frames {
-                    pa_stream_cancel_write(s);
-                    stm.shutdown = true;
-                    break;
-                }
-            }
-        }
-
-        if read_size > 0 {
-            pa_stream_drop(s);
-        }
-
-        if stm.shutdown {
-            return;
-        }
-    }
 }
 
 fn wait_until_io_stream_ready(stream: *mut pa_stream, mainloop: *mut pa_threaded_mainloop) -> bool {
@@ -806,35 +840,4 @@ fn set_buffering_attribute(latency_frames: u32, sample_spec: &pa_sample_spec) ->
          battr.fragsize);
 
     battr
-}
-
-unsafe extern "C" fn pulse_defer_event_cb(_a: *mut pa_mainloop_api, u: *mut c_void) {
-    let mut stm = &mut *(u as *mut Stream);
-    if stm.shutdown {
-        return;
-    }
-    let writable_size = pa_stream_writable_size(stm.output_stream);
-    let stream = stm.output_stream;
-    stm.trigger_user_callback(stream, ptr::null_mut(), writable_size);
-}
-
-#[repr(C)]
-struct SinkInputInfoResult {
-    pub cvol: *mut pa_cvolume,
-    pub mainloop: *mut pa_threaded_mainloop,
-}
-
-unsafe extern "C" fn sink_input_info_cb(_c: *mut pa_context, i: *const pa_sink_input_info, eol: i32, u: *mut c_void) {
-    let info = &*i;
-    let mut r = &mut *(u as *mut SinkInputInfoResult);
-    if eol == 0 {
-        *r.cvol = info.volume;
-    }
-    pa_threaded_mainloop_signal(r.mainloop, 0);
-}
-
-unsafe extern "C" fn volume_success(_c: *mut pa_context, success: i32, u: *mut c_void) {
-    let stm = &*(u as *mut Stream);
-    debug_assert_ne!(success, 0);
-    pa_threaded_mainloop_signal(stm.context.mainloop, 0);
 }
