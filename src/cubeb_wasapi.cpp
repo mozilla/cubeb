@@ -1881,8 +1881,6 @@ void close_wasapi_stream(cubeb_stream * stm)
   stm->resampler.reset();
 
   stm->mix_buffer.clear();
-  stm->mixing.reset();
-  stm->linear_input_buffer.reset();
 }
 
 void wasapi_stream_destroy(cubeb_stream * stm)
@@ -1902,6 +1900,11 @@ void wasapi_stream_destroy(cubeb_stream * stm)
   CloseHandle(stm->reconfigure_event);
   CloseHandle(stm->refill_event);
   CloseHandle(stm->input_available_event);
+
+  // The variables intialized in wasapi_stream_init,
+  // must be destroyed in wasapi_stream_destroy.
+  stm->mixing.reset();
+  stm->linear_input_buffer.reset();
 
   {
     auto_lock lock(stm->stream_reset_lock);
