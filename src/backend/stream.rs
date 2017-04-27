@@ -6,6 +6,7 @@
 use backend::*;
 use backend::cork_state::CorkState;
 use cubeb;
+use pulse;
 use pulse_ffi::*;
 use std::os::raw::{c_char, c_long, c_void};
 use std::ptr;
@@ -104,7 +105,7 @@ impl<'ctx> Stream<'ctx> {
             if !PA_STREAM_IS_GOOD(pa_stream_get_state(s)) {
                 stm.state_change_callback(cubeb::STATE_ERROR);
             }
-            pa_threaded_mainloop_signal(stm.context.mainloop, 0);
+            stm.context.mainloop.signal(false);
         }
 
         unsafe extern "C" fn read_data(s: *mut pa_stream, nbytes: usize, u: *mut c_void) {
@@ -193,12 +194,12 @@ impl<'ctx> Stream<'ctx> {
                                });
 
         unsafe {
-            pa_threaded_mainloop_lock(stm.context.mainloop);
+            stm.context.mainloop.lock();
             if let Some(ref stream_params) = output_stream_params {
                 match stm.pulse_stream_init(stream_params, stream_name) {
                     Ok(s) => stm.output_stream = s,
                     Err(e) => {
-                        pa_threaded_mainloop_unlock(stm.context.mainloop);
+                        stm.context.mainloop.unlock();
                         stm.destroy();
                         return Err(e);
                     },
@@ -229,7 +230,7 @@ impl<'ctx> Stream<'ctx> {
                 match stm.pulse_stream_init(stream_params, stream_name) {
                     Ok(s) => stm.input_stream = s,
                     Err(e) => {
-                        pa_threaded_mainloop_unlock(stm.context.mainloop);
+                        stm.context.mainloop.unlock();
                         stm.destroy();
                         return Err(e);
                     },
@@ -261,7 +262,7 @@ impl<'ctx> Stream<'ctx> {
                 false
             };
 
-            pa_threaded_mainloop_unlock(stm.context.mainloop);
+            stm.context.mainloop.unlock();
 
             if !r {
                 stm.destroy();
@@ -271,8 +272,8 @@ impl<'ctx> Stream<'ctx> {
             if cubeb::log_enabled() {
                 if output_stream_params.is_some() {
                     let output_att = *pa_stream_get_buffer_attr(stm.output_stream);
-                    log!("Output buffer attributes maxlength %u, tlength %u, \
-                         prebuf %u, minreq %u, fragsize %u",
+                    log!("Output buffer attributes maxlength {}, tlength {}, \
+                         prebuf {}, minreq {}, fragsize {}",
                          output_att.maxlength,
                          output_att.tlength,
                          output_att.prebuf,
@@ -282,8 +283,8 @@ impl<'ctx> Stream<'ctx> {
 
                 if input_stream_params.is_some() {
                     let input_att = *pa_stream_get_buffer_attr(stm.input_stream);
-                    log!("Input buffer attributes maxlength %u, tlength %u, \
-                          prebuf %u, minreq %u, fragsize %u",
+                    log!("Input buffer attributes maxlength {}, tlength {}, \
+                          prebuf {}, minreq {}, fragsize {}",
                          input_att.maxlength,
                          input_att.tlength,
                          input_att.prebuf,
@@ -299,15 +300,15 @@ impl<'ctx> Stream<'ctx> {
     fn destroy(&mut self) {
         self.cork(CorkState::cork());
 
+        self.context.mainloop.lock();
         unsafe {
-            pa_threaded_mainloop_lock(self.context.mainloop);
             if !self.output_stream.is_null() {
                 if !self.drain_timer.is_null() {
                     /* there's no pa_rttime_free, so use this instead. */
-                    let ma = pa_threaded_mainloop_get_api(self.context.mainloop);
-                    if !ma.is_null() {
-                        (*ma).time_free.unwrap()(self.drain_timer);
-                    }
+                    self.context
+                        .mainloop
+                        .get_api()
+                        .time_free(self.drain_timer);
                 }
 
                 pa_stream_set_state_callback(self.output_stream, None, ptr::null_mut());
@@ -322,49 +323,47 @@ impl<'ctx> Stream<'ctx> {
                 pa_stream_disconnect(self.input_stream);
                 pa_stream_unref(self.input_stream);
             }
-            pa_threaded_mainloop_unlock(self.context.mainloop);
         }
+        self.context.mainloop.unlock();
     }
 
     pub fn start(&mut self) -> i32 {
-        unsafe extern "C" fn output_preroll(_a: *mut pa_mainloop_api, u: *mut c_void) {
-            let mut stm = &mut *(u as *mut Stream);
-            if stm.shutdown {
-                return;
+        fn output_preroll(_: &pulse::MainloopApi, u: *mut c_void) {
+            let mut stm = unsafe { &mut *(u as *mut Stream) };
+            if !stm.shutdown {
+                let writable_size = unsafe { pa_stream_writable_size(stm.output_stream) };
+                let stream = stm.output_stream;
+                stm.trigger_user_callback(stream, ptr::null_mut(), writable_size);
             }
-            let writable_size = pa_stream_writable_size(stm.output_stream);
-            let stream = stm.output_stream;
-            stm.trigger_user_callback(stream, ptr::null_mut(), writable_size);
         }
 
         self.shutdown = false;
         self.cork(CorkState::uncork() | CorkState::notify());
 
         if !self.output_stream.is_null() && self.input_stream.is_null() {
-            unsafe {
-                /* On output only case need to manually call user cb once in order to make
-                 * things roll. This is done via a defer event in order to execute it
-                 * from PA server thread. */
-                pa_threaded_mainloop_lock(self.context.mainloop);
-                pa_mainloop_api_once(pa_threaded_mainloop_get_api(self.context.mainloop),
-                                     Some(output_preroll),
-                                     self as *mut _ as *mut _);
-                pa_threaded_mainloop_unlock(self.context.mainloop);
-            }
+            /* On output only case need to manually call user cb once in order to make
+             * things roll. This is done via a defer event in order to execute it
+             * from PA server thread. */
+            self.context.mainloop.lock();
+            self.context
+                .mainloop
+                .get_api()
+                .once(output_preroll, self as *mut _ as *mut _);
+            self.context.mainloop.unlock();
         }
 
         cubeb::OK
     }
 
     pub fn stop(&mut self) -> i32 {
-        unsafe {
-            pa_threaded_mainloop_lock(self.context.mainloop);
+        {
+            self.context.mainloop.lock();
             self.shutdown = true;
             // If draining is taking place wait to finish
             while !self.drain_timer.is_null() {
-                pa_threaded_mainloop_wait(self.context.mainloop);
+                self.context.mainloop.wait();
             }
-            pa_threaded_mainloop_unlock(self.context.mainloop);
+            self.context.mainloop.unlock();
         }
         self.cork(CorkState::cork() | CorkState::notify());
 
@@ -377,16 +376,16 @@ impl<'ctx> Stream<'ctx> {
         }
 
         let position = unsafe {
-            let in_thread = pa_threaded_mainloop_in_thread(self.context.mainloop);
+            let in_thread = self.context.mainloop.in_thread();
 
-            if in_thread == 0 {
-                pa_threaded_mainloop_lock(self.context.mainloop);
+            if !in_thread {
+                self.context.mainloop.lock();
             }
 
             let mut r_usec: pa_usec_t = Default::default();
             let r = pa_stream_get_time(self.output_stream, &mut r_usec);
-            if in_thread == 0 {
-                pa_threaded_mainloop_unlock(self.context.mainloop);
+            if !in_thread {
+                self.context.mainloop.unlock();
             }
 
             if r != 0 {
@@ -424,11 +423,7 @@ impl<'ctx> Stream<'ctx> {
         }
 
         unsafe {
-            pa_threaded_mainloop_lock(self.context.mainloop);
-
-            while self.context.default_sink_info.is_none() {
-                pa_threaded_mainloop_wait(self.context.mainloop);
-            }
+            self.context.mainloop.lock();
 
             let mut cvol: pa_cvolume = Default::default();
 
@@ -461,16 +456,16 @@ impl<'ctx> Stream<'ctx> {
                 }
             }
 
-            pa_threaded_mainloop_unlock(self.context.mainloop);
+            self.context.mainloop.unlock();
         }
         cubeb::OK
     }
 
     pub fn set_panning(&mut self, panning: f32) -> i32 {
         #[repr(C)]
-        struct SinkInputInfoResult {
+        struct SinkInputInfoResult<'a> {
             pub cvol: *mut pa_cvolume,
-            pub mainloop: *mut pa_threaded_mainloop,
+            pub mainloop: &'a pulse::ThreadedMainloop,
         }
 
         unsafe extern "C" fn get_input_volume(_c: *mut pa_context,
@@ -482,7 +477,7 @@ impl<'ctx> Stream<'ctx> {
             if eol == 0 {
                 *r.cvol = info.volume;
             }
-            pa_threaded_mainloop_signal(r.mainloop, 0);
+            r.mainloop.signal(false);
         }
 
         if self.output_stream.is_null() {
@@ -490,11 +485,11 @@ impl<'ctx> Stream<'ctx> {
         }
 
         unsafe {
-            pa_threaded_mainloop_lock(self.context.mainloop);
+            self.context.mainloop.lock();
 
             let map = pa_stream_get_channel_map(self.output_stream);
             if pa_channel_map_can_balance(map) == 0 {
-                pa_threaded_mainloop_unlock(self.context.mainloop);
+                self.context.mainloop.unlock();
                 return cubeb::ERROR;
             }
 
@@ -503,7 +498,7 @@ impl<'ctx> Stream<'ctx> {
             let mut cvol: pa_cvolume = Default::default();
             let mut r = SinkInputInfoResult {
                 cvol: &mut cvol,
-                mainloop: self.context.mainloop,
+                mainloop: &self.context.mainloop,
             };
 
             let op = pa_context_get_sink_input_info(self.context.context,
@@ -527,7 +522,7 @@ impl<'ctx> Stream<'ctx> {
                 pa_operation_unref(op);
             }
 
-            pa_threaded_mainloop_unlock(self.context.mainloop);
+            self.context.mainloop.unlock();
         }
 
         cubeb::OK
@@ -608,10 +603,12 @@ impl<'ctx> Stream<'ctx> {
     }
 
     fn cork(&mut self, state: CorkState) {
-        unsafe { pa_threaded_mainloop_lock(self.context.mainloop) };
-        self.cork_stream(self.output_stream, state);
-        self.cork_stream(self.input_stream, state);
-        unsafe { pa_threaded_mainloop_unlock(self.context.mainloop) };
+        {
+            self.context.mainloop.lock();
+            self.cork_stream(self.output_stream, state);
+            self.cork_stream(self.input_stream, state);
+            self.context.mainloop.unlock()
+        }
 
         if state.is_notify() {
             self.state_change_callback(if state.is_cork() {
@@ -670,11 +667,11 @@ impl<'ctx> Stream<'ctx> {
     }
 
     fn wait_until_stream_ready(&self) -> bool {
-        if !self.output_stream.is_null() && !wait_until_io_stream_ready(self.output_stream, self.context.mainloop) {
+        if !self.output_stream.is_null() && !wait_until_io_stream_ready(self.output_stream, &self.context.mainloop) {
             return false;
         }
 
-        if !self.input_stream.is_null() && !wait_until_io_stream_ready(self.input_stream, self.context.mainloop) {
+        if !self.input_stream.is_null() && !wait_until_io_stream_ready(self.input_stream, &self.context.mainloop) {
             return false;
         }
 
@@ -692,7 +689,7 @@ impl<'ctx> Stream<'ctx> {
             /* there's no pa_rttime_free, so use this instead. */
             (*a).time_free.unwrap()(stm.drain_timer);
             stm.drain_timer = ptr::null_mut();
-            pa_threaded_mainloop_signal(stm.context.mainloop, 0);
+            stm.context.mainloop.signal(false);
         }
 
         let frame_size = unsafe { pa_frame_size(&self.output_sample_spec) };
@@ -793,16 +790,16 @@ impl<'ctx> Stream<'ctx> {
 unsafe extern "C" fn stream_success(_: *mut pa_stream, success: i32, u: *mut c_void) {
     let stm = &*(u as *mut Stream);
     debug_assert_ne!(success, 0);
-    pa_threaded_mainloop_signal(stm.context.mainloop, 0);
+    stm.context.mainloop.signal(false);
 }
 
 unsafe extern "C" fn context_success(_: *mut pa_context, success: i32, u: *mut c_void) {
     let stm = &*(u as *mut Stream);
     debug_assert_ne!(success, 0);
-    pa_threaded_mainloop_signal(stm.context.mainloop, 0);
+    stm.context.mainloop.signal(false);
 }
 
-fn wait_until_io_stream_ready(stream: *mut pa_stream, mainloop: *mut pa_threaded_mainloop) -> bool {
+fn wait_until_io_stream_ready(stream: *mut pa_stream, mainloop: &pulse::ThreadedMainloop) -> bool {
     if stream.is_null() || mainloop.is_null() {
         return false;
     }
@@ -815,7 +812,7 @@ fn wait_until_io_stream_ready(stream: *mut pa_stream, mainloop: *mut pa_threaded
         if state == PA_STREAM_READY {
             break;
         }
-        unsafe { pa_threaded_mainloop_wait(mainloop) };
+        mainloop.wait();
     }
 
     true

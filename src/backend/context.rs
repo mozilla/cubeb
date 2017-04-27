@@ -6,6 +6,7 @@
 use backend::*;
 use capi::PULSE_OPS;
 use cubeb;
+use pulse;
 use pulse_ffi::*;
 use semver;
 use std::default::Default;
@@ -60,7 +61,7 @@ pub struct DefaultInfo {
 #[derive(Debug)]
 pub struct Context {
     pub ops: *const cubeb::Ops,
-    pub mainloop: *mut pa_threaded_mainloop,
+    pub mainloop: pulse::ThreadedMainloop,
     pub context: *mut pa_context,
     pub default_sink_info: Option<DefaultInfo>,
     pub context_name: *const c_char,
@@ -108,7 +109,7 @@ impl Context {
     fn _new(name: *const i8) -> Result<Box<Self>> {
         Ok(Box::new(Context {
                         ops: &PULSE_OPS,
-                        mainloop: unsafe { pa_threaded_mainloop_new() },
+                        mainloop: pulse::ThreadedMainloop::new(),
                         context: 0 as *mut _,
                         default_sink_info: None,
                         context_name: name,
@@ -135,7 +136,7 @@ impl Context {
                                                      flags: info.flags,
                                                  });
                 }
-                pa_threaded_mainloop_signal(ctx.mainloop, 0);
+                ctx.mainloop.signal(false);
             }
 
             let o = pa_context_get_sink_info_by_name(context, (*info).default_sink_name, Some(sink_info_cb), u);
@@ -146,18 +147,21 @@ impl Context {
 
         let mut ctx = try!(Context::_new(name));
 
-        unsafe { pa_threaded_mainloop_start(ctx.mainloop) };
+        if ctx.mainloop.start() < 0 {
+            ctx.destroy();
+            return Err(cubeb::ERROR);
+        }
 
         if ctx.pulse_context_init() != cubeb::OK {
             ctx.destroy();
             return Err(cubeb::ERROR);
         }
 
+        ctx.mainloop.lock();
         unsafe {
             /* server_info_callback performs a second async query,
              * which is responsible for initializing default_sink_info
              * and signalling the mainloop to end the wait. */
-            pa_threaded_mainloop_lock(ctx.mainloop);
             let o = pa_context_get_server_info(ctx.context,
                                                Some(server_info_cb),
                                                ctx.as_mut() as *mut Context as *mut _);
@@ -166,9 +170,9 @@ impl Context {
                 pa_operation_unref(o);
             }
 
-            pa_threaded_mainloop_unlock(ctx.mainloop);
             assert!(ctx.default_sink_info.is_some());
         }
+        ctx.mainloop.unlock();
 
         // Return the result.
         Ok(ctx)
@@ -180,10 +184,7 @@ impl Context {
         }
 
         if !self.mainloop.is_null() {
-            unsafe {
-                pa_threaded_mainloop_stop(self.mainloop);
-                pa_threaded_mainloop_free(self.mainloop);
-            }
+            self.mainloop.stop();
         }
     }
 
@@ -303,7 +304,7 @@ impl Context {
             };
             list_data.devinfo.push(devinfo);
 
-            pa_threaded_mainloop_signal(ctx.mainloop, 0);
+            ctx.mainloop.signal(false);
         }
 
         unsafe extern "C" fn add_input_device(_context: *mut pa_context,
@@ -369,7 +370,7 @@ impl Context {
 
             list_data.devinfo.push(devinfo);
 
-            pa_threaded_mainloop_signal(ctx.mainloop, 0);
+            ctx.mainloop.signal(false);
         }
 
         unsafe extern "C" fn default_device_names(_context: *mut pa_context,
@@ -382,14 +383,14 @@ impl Context {
             dup_str!(list_data.default_sink_name, info.default_sink_name);
             dup_str!(list_data.default_source_name, info.default_source_name);
 
-            pa_threaded_mainloop_signal((*list_data.context).mainloop, 0);
+            (*list_data.context).mainloop.signal(false);
         }
 
         let mut user_data: PulseDevListData = Default::default();
         user_data.context = self as *const _ as *mut _;
 
         unsafe {
-            pa_threaded_mainloop_lock(self.mainloop);
+            self.mainloop.lock();
 
             let o = pa_context_get_server_info(self.context,
                                                Some(default_device_names),
@@ -419,7 +420,7 @@ impl Context {
                 }
             }
 
-            pa_threaded_mainloop_unlock(self.mainloop);
+            self.mainloop.unlock();
         }
 
         // Extract the array of cubeb_device_info from
@@ -506,14 +507,14 @@ impl Context {
         unsafe extern "C" fn success(_: *mut pa_context, success: i32, user_data: *mut c_void) {
             let ctx = &*(user_data as *mut Context);
             debug_assert_ne!(success, 0);
-            pa_threaded_mainloop_signal(ctx.mainloop, 0);
+            ctx.mainloop.signal(false);
         }
 
         self.collection_changed_callback = cb;
         self.collection_changed_user_ptr = user_ptr;
 
         unsafe {
-            pa_threaded_mainloop_lock(self.mainloop);
+            self.mainloop.lock();
 
             let mut mask: pa_subscription_mask_t = PA_SUBSCRIPTION_MASK_NULL;
             if self.collection_changed_callback.is_none() {
@@ -542,7 +543,7 @@ impl Context {
             self.operation_wait(ptr::null_mut(), o);
             pa_operation_unref(o);
 
-            pa_threaded_mainloop_unlock(self.mainloop);
+            self.mainloop.unlock();
         }
 
         cubeb::OK
@@ -556,7 +557,7 @@ impl Context {
             if !PA_CONTEXT_IS_GOOD(pa_context_get_state(c)) {
                 ctx.error = true;
             }
-            pa_threaded_mainloop_signal(ctx.mainloop, 0);
+            ctx.mainloop.signal(false);
         }
 
         if !self.context.is_null() {
@@ -565,8 +566,7 @@ impl Context {
         }
 
         unsafe {
-            self.context = pa_context_new(pa_threaded_mainloop_get_api(self.mainloop),
-                                          self.context_name);
+            self.context = pa_context_new(self.mainloop.get_api().raw_mut(), self.context_name);
 
             if self.context.is_null() {
                 return cubeb::ERROR;
@@ -574,17 +574,17 @@ impl Context {
 
             pa_context_set_state_callback(self.context, Some(error_state), self as *mut _ as *mut _);
 
-            pa_threaded_mainloop_lock(self.mainloop);
+            self.mainloop.lock();
             pa_context_connect(self.context, ptr::null(), 0, ptr::null());
 
             if !self.wait_until_context_ready() {
-                pa_threaded_mainloop_unlock(self.mainloop);
+                self.mainloop.unlock();
                 self.pulse_context_destroy();
                 self.context = ptr::null_mut();
                 return cubeb::ERROR;
             }
 
-            pa_threaded_mainloop_unlock(self.mainloop);
+            self.mainloop.unlock();
         }
 
         let version_str = unsafe { CStr::from_ptr(pa_get_library_version()) };
@@ -599,13 +599,13 @@ impl Context {
     }
 
     unsafe fn pulse_context_destroy(&mut self) {
-        unsafe extern "C" fn drain_complete(_c: *mut pa_context, u: *mut c_void) {
-            let mainloop = u as *mut pa_threaded_mainloop;
-            pa_threaded_mainloop_signal(mainloop, 0);
+        unsafe extern "C" fn drain_complete(_: *mut pa_context, u: *mut c_void) {
+            let ctx = &*(u as *mut Context);
+            ctx.mainloop.signal(false);
         }
 
-        pa_threaded_mainloop_lock(self.mainloop);
-        let o = pa_context_drain(self.context, Some(drain_complete), self.mainloop as *mut _);
+        self.mainloop.lock();
+        let o = pa_context_drain(self.context, Some(drain_complete), self as *mut _ as *mut _);
         if !o.is_null() {
             self.operation_wait(ptr::null_mut(), o);
             pa_operation_unref(o);
@@ -613,13 +613,13 @@ impl Context {
         pa_context_set_state_callback(self.context, None, ptr::null_mut());
         pa_context_disconnect(self.context);
         pa_context_unref(self.context);
-        pa_threaded_mainloop_unlock(self.mainloop);
+        self.mainloop.unlock();
     }
 
     pub fn operation_wait(&self, stream: *mut pa_stream, o: *mut pa_operation) -> bool {
         unsafe {
             while pa_operation_get_state(o) == PA_OPERATION_RUNNING {
-                pa_threaded_mainloop_wait(self.mainloop);
+                self.mainloop.wait();
                 if !PA_CONTEXT_IS_GOOD(pa_context_get_state(self.context)) {
                     return false;
                 }
@@ -642,9 +642,7 @@ impl Context {
             if state == PA_CONTEXT_READY {
                 break;
             }
-            unsafe {
-                pa_threaded_mainloop_wait(self.mainloop);
-            }
+            self.mainloop.wait();
         }
 
         true

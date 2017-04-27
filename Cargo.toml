@@ -13,4 +13,5 @@ crate-type = ["staticlib", "rlib"]
 [dependencies]
 cubeb-ffi = { path = "cubeb-ffi" }
 pulse-ffi = { path = "pulse-ffi" }
+pulse = { path = "pulse-rs" }
 semver = "^0.6"
