@@ -10,7 +10,7 @@ pub struct Operation(*mut ffi::pa_operation);
 
 impl Operation {
     pub unsafe fn from_raw_ptr(raw: *mut ffi::pa_operation) -> Operation {
-        return Operation(raw);
+        Operation(raw)
     }
 
     pub fn cancel(&mut self) {
@@ -39,5 +39,5 @@ impl Drop for Operation {
 }
 
 pub unsafe fn from_raw_ptr(raw: *mut ffi::pa_operation) -> Operation {
-    return Operation(raw);
+    Operation::from_raw_ptr(raw)
 }

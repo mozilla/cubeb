@@ -12,11 +12,13 @@ mod error;
 mod context;
 mod mainloop_api;
 mod operation;
+mod stream;
 mod threaded_mainloop;
 mod util;
 
 pub use context::Context;
 pub use error::ErrorCode;
+pub use ffi::pa_buffer_attr as BufferAttr;
 pub use ffi::pa_channel_map as ChannelMap;
 pub use ffi::pa_cvolume as CVolume;
 pub use ffi::pa_sample_spec as SampleSpec;
@@ -28,6 +30,7 @@ pub use ffi::pa_usec_t as USec;
 pub use ffi::timeval as TimeVal;
 pub use mainloop_api::MainloopApi;
 pub use operation::Operation;
+pub use stream::Stream;
 pub use threaded_mainloop::ThreadedMainloop;
 
 #[allow(non_camel_case_types)]
@@ -38,7 +41,7 @@ pub enum SampleFormat {
     U8 = ffi::PA_SAMPLE_U8,
     Alaw = ffi::PA_SAMPLE_ALAW,
     Ulaw = ffi::PA_SAMPLE_ULAW,
-    S16LE = ffi::PA_SAMPLE_S16LE,
+    Signed16LE = ffi::PA_SAMPLE_S16LE,
     Signed16BE = ffi::PA_SAMPLE_S16BE,
     Float32LE = ffi::PA_SAMPLE_FLOAT32LE,
     Float32BE = ffi::PA_SAMPLE_FLOAT32BE,
@@ -53,6 +56,12 @@ pub enum SampleFormat {
 impl Default for SampleFormat {
     fn default() -> Self {
         SampleFormat::Invalid
+    }
+}
+
+impl Into<ffi::pa_sample_format_t> for SampleFormat {
+    fn into(self) -> ffi::pa_sample_format_t {
+        self as ffi::pa_sample_format_t
     }
 }
 
@@ -225,6 +234,47 @@ impl Into<ffi::pa_stream_direction_t> for StreamDirection {
     }
 }
 
+bitflags! {
+    pub flags StreamFlags : u32 {
+        const STREAM_START_CORKED = ffi::PA_STREAM_START_CORKED,
+        const STREAM_INTERPOLATE_TIMING = ffi::PA_STREAM_INTERPOLATE_TIMING,
+        const STREAM_NOT_MONOTONIC = ffi::PA_STREAM_NOT_MONOTONIC,
+        const STREAM_AUTO_TIMING_UPDATE = ffi::PA_STREAM_AUTO_TIMING_UPDATE,
+        const STREAM_NO_REMAP_CHANNELS = ffi::PA_STREAM_NO_REMAP_CHANNELS,
+        const STREAM_NO_REMIX_CHANNELS = ffi::PA_STREAM_NO_REMIX_CHANNELS,
+        const STREAM_FIX_FORMAT = ffi::PA_STREAM_FIX_FORMAT,
+        const STREAM_FIX_RATE = ffi::PA_STREAM_FIX_RATE,
+        const STREAM_FIX_CHANNELS = ffi::PA_STREAM_FIX_CHANNELS,
+        const STREAM_DONT_MOVE = ffi::PA_STREAM_DONT_MOVE,
+        const STREAM_VARIABLE_RATE = ffi::PA_STREAM_VARIABLE_RATE,
+        const STREAM_PEAK_DETECT = ffi::PA_STREAM_PEAK_DETECT,
+        const STREAM_START_MUTED = ffi::PA_STREAM_START_MUTED,
+        const STREAM_ADJUST_LATENCY = ffi::PA_STREAM_ADJUST_LATENCY,
+        const STREAM_EARLY_REQUESTS = ffi::PA_STREAM_EARLY_REQUESTS,
+        const STREAM_DONT_INHIBIT_AUTO_SUSPEND = ffi::PA_STREAM_DONT_INHIBIT_AUTO_SUSPEND,
+        const STREAM_START_UNMUTED = ffi::PA_STREAM_START_UNMUTED,
+        const STREAM_FAIL_ON_SUSPEND = ffi::PA_STREAM_FAIL_ON_SUSPEND,
+        const STREAM_RELATIVE_VOLUME = ffi::PA_STREAM_RELATIVE_VOLUME,
+        const STREAM_PASSTHROUGH = ffi::PA_STREAM_PASSTHROUGH,
+    }
+}
+
+impl StreamFlags {
+    pub fn try_from(x: ffi::pa_stream_flags_t) -> Option<Self> {
+        if (x >> 20) == 0 {
+            Some(unsafe { ::std::mem::transmute(x) })
+        } else {
+            None
+        }
+    }
+}
+
+impl Into<ffi::pa_stream_flags_t> for StreamFlags {
+    fn into(self) -> ffi::pa_stream_flags_t {
+        self.bits() as ffi::pa_stream_flags_t
+    }
+}
+
 bitflags!{
     pub flags SubscriptionMask : u32 {
         const SUBSCRIPTION_MASK_SINK = ffi::PA_SUBSCRIPTION_MASK_SINK,
@@ -297,6 +347,31 @@ impl SubscriptionEvent {
 
     pub fn event_type(self) -> SubscriptionEventType {
         unsafe { ::std::mem::transmute(((self.0 & ffi::PA_SUBSCRIPTION_EVENT_TYPE_MASK) >> 4)) }
+    }
+}
+
+#[repr(i32)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SeekMode {
+    Relative = ffi::PA_SEEK_RELATIVE,
+    Absolute = ffi::PA_SEEK_ABSOLUTE,
+    RelativeOnRead = ffi::PA_SEEK_RELATIVE_ON_READ,
+    RelativeEnd = ffi::PA_SEEK_RELATIVE_END,
+}
+
+impl SeekMode {
+    pub fn try_from(x: ffi::pa_seek_mode_t) -> Option<Self> {
+        if x >= ffi::PA_SEEK_RELATIVE && x <= ffi::PA_SEEK_RELATIVE_END {
+            Some(unsafe { ::std::mem::transmute(x) })
+        } else {
+            None
+        }
+    }
+}
+
+impl Into<ffi::pa_seek_mode_t> for SeekMode {
+    fn into(self) -> ffi::pa_seek_mode_t {
+        self as ffi::pa_seek_mode_t
     }
 }
 
