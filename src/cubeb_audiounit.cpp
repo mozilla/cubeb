@@ -1236,7 +1236,8 @@ audiounit_init_mixer(cubeb_stream * stm)
   // The audio rendering mechanism on OS X will drop the extra channels beyond
   // the channels that audio device can provide, so we need to downmix the
   // audio data by ourselves to keep all the information.
-  stm->mixer.reset(cubeb_mixer_create(&stm->output_stream_params, CUBEB_MIXER_DIRECTION_DOWNMIX));
+  stm->mixer.reset(cubeb_mixer_create(stm->output_stream_params.format,
+                                      CUBEB_MIXER_DIRECTION_DOWNMIX));
 }
 
 static int

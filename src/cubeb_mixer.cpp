@@ -468,7 +468,6 @@ cubeb_should_mix(cubeb_stream_params const * stream, cubeb_stream_params const *
   return cubeb_should_upmix(stream, mixer) || cubeb_should_downmix(stream, mixer);
 }
 
-// An identical mixer interface beyond every backend.
 struct cubeb_mixer {
   virtual void mix(void * const input_buffer, long frames, void * output_buffer,
                    cubeb_stream_params const * stream_params,
@@ -504,11 +503,11 @@ struct cubeb_mixer_impl : public cubeb_mixer {
   cubeb_mixer_direction const direction;
 };
 
-cubeb_mixer * cubeb_mixer_create(cubeb_stream_params const * stream_params,
+cubeb_mixer * cubeb_mixer_create(cubeb_sample_format format,
                                  cubeb_mixer_direction direction)
 {
-  assert(stream_params);
-  switch(stream_params->format) {
+  assert(direction | CUBEB_MIXER_DIRECTION_DOWNMIX | CUBEB_MIXER_DIRECTION_UPMIX);
+  switch(format) {
     case CUBEB_SAMPLE_S16NE:
       return new cubeb_mixer_impl<short>(direction);
     case CUBEB_SAMPLE_FLOAT32NE:

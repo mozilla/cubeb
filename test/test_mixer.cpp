@@ -136,7 +136,7 @@ downmix_test(float const * data, cubeb_channel_layout in_layout, cubeb_channel_l
 
   // Create a mixer for downmix only.
   std::unique_ptr<cubeb_mixer, decltype(&cubeb_mixer_destroy)>
-    mixer(cubeb_mixer_create(&in_params, CUBEB_MIXER_DIRECTION_DOWNMIX), cubeb_mixer_destroy);
+    mixer(cubeb_mixer_create(in_params.format, CUBEB_MIXER_DIRECTION_DOWNMIX), cubeb_mixer_destroy);
 
   cubeb_mixer_mix(mixer.get(), in.data(), inframes, out.data(), &in_params, &out_params);
 

@@ -1775,7 +1775,8 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
     default:
       return CUBEB_ERROR_INVALID_FORMAT;
   }
-  stm->mixer.reset(cubeb_mixer_create(output_stream_params ? output_stream_params : input_stream_params,
+  stm->mixer.reset(cubeb_mixer_create(output_stream_params ? output_stream_params->format :
+                                                             input_stream_params->format,
                                       CUBEB_MIXER_DIRECTION_ALL));
 
   stm->latency = latency_frames;

@@ -75,7 +75,7 @@ typedef enum {
 } cubeb_mixer_direction;
 
 typedef struct cubeb_mixer cubeb_mixer;
-cubeb_mixer * cubeb_mixer_create(cubeb_stream_params const * stream_params,
+cubeb_mixer * cubeb_mixer_create(cubeb_sample_format format,
                                  cubeb_mixer_direction direction);
 void cubeb_mixer_destroy(cubeb_mixer * mixer);
 void cubeb_mixer_mix(cubeb_mixer * mixer,
