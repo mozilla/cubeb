@@ -163,6 +163,7 @@ impl<'ctx> Stream<'ctx> {
                 }
             }
         }
+
         unsafe extern "C" fn write_data(s: *mut pa_stream, nbytes: usize, u: *mut c_void) {
             logv!("Output callback to be written buffer size {}", nbytes);
             let mut stm = &mut *(u as *mut Stream);
@@ -432,11 +433,11 @@ impl<'ctx> Stream<'ctx> {
             let flags = {
                 match self.context.default_sink_info {
                     Some(ref info) => info.flags,
-                    _ => 0,
+                    _ => pulse::SinkFlags::empty(),
                 }
             };
 
-            if (flags & PA_SINK_FLAT_VOLUME) != 0 {
+            if flags.contains(pulse::SINK_FLAT_VOLUME) {
                 self.volume = volume;
             } else {
                 let ss = pa_stream_get_sample_spec(self.output_stream);
@@ -445,14 +446,10 @@ impl<'ctx> Stream<'ctx> {
 
                 let index = pa_stream_get_index(self.output_stream);
 
-                let op = pa_context_set_sink_input_volume(self.context.context,
-                                                          index,
-                                                          &cvol,
-                                                          Some(context_success),
-                                                          self as *mut _ as *mut _);
-                if !op.is_null() {
-                    self.context.operation_wait(self.output_stream, op);
-                    pa_operation_unref(op);
+                if let Ok(o) = self.context
+                       .context
+                       .set_sink_input_volume(index, &cvol, context_success, self as *mut _ as *mut _) {
+                    self.context.operation_wait(self.output_stream, &o);
                 }
             }
 
@@ -464,18 +461,15 @@ impl<'ctx> Stream<'ctx> {
     pub fn set_panning(&mut self, panning: f32) -> i32 {
         #[repr(C)]
         struct SinkInputInfoResult<'a> {
-            pub cvol: *mut pa_cvolume,
+            pub cvol: pulse::CVolume,
             pub mainloop: &'a pulse::ThreadedMainloop,
         }
 
-        unsafe extern "C" fn get_input_volume(_c: *mut pa_context,
-                                              i: *const pa_sink_input_info,
-                                              eol: i32,
-                                              u: *mut c_void) {
-            let info = &*i;
-            let mut r = &mut *(u as *mut SinkInputInfoResult);
+        fn get_input_volume(_: &pulse::Context, info: *const pulse::SinkInputInfo, eol: i32, u: *mut c_void) {
+            let mut r = unsafe { &mut *(u as *mut SinkInputInfoResult) };
             if eol == 0 {
-                *r.cvol = info.volume;
+                let info = unsafe { *info };
+                r.cvol = info.volume;
             }
             r.mainloop.signal(false);
         }
@@ -495,31 +489,23 @@ impl<'ctx> Stream<'ctx> {
 
             let index = pa_stream_get_index(self.output_stream);
 
-            let mut cvol: pa_cvolume = Default::default();
             let mut r = SinkInputInfoResult {
-                cvol: &mut cvol,
+                cvol: pulse::CVolume::default(),
                 mainloop: &self.context.mainloop,
             };
 
-            let op = pa_context_get_sink_input_info(self.context.context,
-                                                    index,
-                                                    Some(get_input_volume),
-                                                    &mut r as *mut _ as *mut _);
-            if !op.is_null() {
-                self.context.operation_wait(self.output_stream, op);
-                pa_operation_unref(op);
+            if let Ok(o) = self.context
+                   .context
+                   .get_sink_input_info(index, get_input_volume, &mut r as *mut _ as *mut _) {
+                self.context.operation_wait(self.output_stream, &o);
             }
 
-            pa_cvolume_set_balance(&mut cvol, map, panning);
+            pa_cvolume_set_balance(&mut r.cvol, map, panning);
 
-            let op = pa_context_set_sink_input_volume(self.context.context,
-                                                      index,
-                                                      &cvol,
-                                                      Some(context_success),
-                                                      self as *mut _ as *mut _);
-            if !op.is_null() {
-                self.context.operation_wait(self.output_stream, op);
-                pa_operation_unref(op);
+            if let Ok(o) = self.context
+                   .context
+                   .set_sink_input_volume(index, &r.cvol, context_success, self as *mut _ as *mut _) {
+                self.context.operation_wait(self.output_stream, &o);
             }
 
             self.context.mainloop.unlock();
@@ -572,12 +558,13 @@ impl<'ctx> Stream<'ctx> {
             rate: stream_params.rate,
         };
 
-        let stream = if stream_params.layout == cubeb::LAYOUT_UNDEFINED {
-            unsafe { pa_stream_new(self.context.context, stream_name, &ss, ptr::null_mut()) }
+        let cm: *const pa_channel_map = if stream_params.layout != cubeb::LAYOUT_UNDEFINED {
+            &layout_to_channel_map(stream_params.layout)
         } else {
-            let cm = layout_to_channel_map(stream_params.layout);
-            unsafe { pa_stream_new(self.context.context, stream_name, &ss, &cm) }
+            ptr::null()
         };
+
+        let stream = unsafe { pa_stream_new(self.context.context.raw_mut(), stream_name, &ss, cm) };
 
         if !stream.is_null() {
             Ok(stream)
@@ -596,8 +583,8 @@ impl<'ctx> Stream<'ctx> {
             };
 
             if !o.is_null() {
-                self.context.operation_wait(stream, o);
-                unsafe { pa_operation_unref(o) };
+                let o = unsafe { pulse::Operation::from_raw_ptr(o) };
+                self.context.operation_wait(stream, &o);
             }
         }
     }
@@ -630,10 +617,8 @@ impl<'ctx> Stream<'ctx> {
             };
 
             if !o.is_null() {
-                r = self.context.operation_wait(self.output_stream, o);
-                unsafe {
-                    pa_operation_unref(o);
-                }
+                let o = unsafe { pulse::Operation::from_raw_ptr(o) };
+                r = self.context.operation_wait(self.output_stream, &o);
             }
 
             if !r {
@@ -649,10 +634,8 @@ impl<'ctx> Stream<'ctx> {
             };
 
             if !o.is_null() {
-                r = self.context.operation_wait(self.input_stream, o);
-                unsafe {
-                    pa_operation_unref(o);
-                }
+                let o = unsafe { pulse::Operation::from_raw_ptr(o) };
+                r = self.context.operation_wait(self.input_stream, &o);
             }
         }
 
@@ -679,15 +662,12 @@ impl<'ctx> Stream<'ctx> {
     }
 
     fn trigger_user_callback(&mut self, s: *mut pa_stream, input_data: *const c_void, nbytes: usize) {
-        unsafe extern "C" fn drained_cb(a: *mut pa_mainloop_api,
-                                        e: *mut pa_time_event,
-                                        _tv: *const timeval,
-                                        u: *mut c_void) {
-            let mut stm = &mut *(u as *mut Stream);
+        fn drained_cb(a: &pulse::MainloopApi, e: *mut pa_time_event, _tv: &pulse::TimeVal, u: *mut c_void) {
+            let mut stm = unsafe { &mut *(u as *mut Stream) };
             debug_assert_eq!(stm.drain_timer, e);
             stm.state_change_callback(cubeb::STATE_DRAINED);
             /* there's no pa_rttime_free, so use this instead. */
-            (*a).time_free.unwrap()(stm.drain_timer);
+            a.time_free(stm.drain_timer);
             stm.drain_timer = ptr::null_mut();
             stm.context.mainloop.signal(false);
         }
@@ -770,12 +750,11 @@ impl<'ctx> Stream<'ctx> {
                 /* pa_stream_drain is useless, see PA bug# 866. this is a workaround. */
                 /* arbitrary safety margin: double the current latency. */
                 debug_assert!(self.drain_timer.is_null());
-                self.drain_timer = unsafe {
-                    pa_context_rttime_new(self.context.context,
-                                          pa_rtclock_now() + 2 * latency,
-                                          Some(drained_cb),
-                                          self as *const _ as *mut _)
-                };
+                self.drain_timer = self.context
+                    .context
+                    .rttime_new(unsafe { pa_rtclock_now() } + 2 * latency,
+                                drained_cb,
+                                self as *const _ as *mut _);
                 self.shutdown = true;
                 return;
             }
@@ -793,8 +772,8 @@ unsafe extern "C" fn stream_success(_: *mut pa_stream, success: i32, u: *mut c_v
     stm.context.mainloop.signal(false);
 }
 
-unsafe extern "C" fn context_success(_: *mut pa_context, success: i32, u: *mut c_void) {
-    let stm = &*(u as *mut Stream);
+fn context_success(_: &pulse::Context, success: i32, u: *mut c_void) {
+    let stm = unsafe { &*(u as *mut Stream) };
     debug_assert_ne!(success, 0);
     stm.context.mainloop.signal(false);
 }
