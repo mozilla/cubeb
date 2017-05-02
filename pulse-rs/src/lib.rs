@@ -12,6 +12,7 @@ mod error;
 mod context;
 mod mainloop_api;
 mod operation;
+mod proplist;
 mod stream;
 mod threaded_mainloop;
 mod util;
@@ -27,9 +28,12 @@ pub use ffi::pa_sink_info as SinkInfo;
 pub use ffi::pa_sink_input_info as SinkInputInfo;
 pub use ffi::pa_source_info as SourceInfo;
 pub use ffi::pa_usec_t as USec;
+pub use ffi::pa_volume_t as Volume;
 pub use ffi::timeval as TimeVal;
 pub use mainloop_api::MainloopApi;
 pub use operation::Operation;
+pub use proplist::Proplist;
+use std::os::raw::{c_char, c_uint};
 pub use stream::Stream;
 pub use threaded_mainloop::ThreadedMainloop;
 
@@ -543,3 +547,88 @@ impl Into<ffi::pa_channel_position_t> for ChannelPosition {
     }
 }
 pub type Result<T> = ::std::result::Result<T, error::ErrorCode>;
+
+pub trait CVolumeExt {
+    fn set(&mut self, channels: c_uint, v: Volume);
+    fn set_balance(&mut self, map: &ChannelMap, new_balance: f32);
+}
+
+impl CVolumeExt for CVolume {
+    fn set(&mut self, channels: c_uint, v: Volume) {
+        unsafe {
+            ffi::pa_cvolume_set(self, channels, v);
+        }
+    }
+
+    fn set_balance(&mut self, map: &ChannelMap, new_balance: f32) {
+        unsafe {
+            ffi::pa_cvolume_set_balance(self, map, new_balance);
+        }
+    }
+}
+
+pub trait ChannelMapExt {
+    fn init() -> ChannelMap;
+    fn can_balance(&self) -> bool;
+}
+
+impl ChannelMapExt for ChannelMap {
+    fn init() -> ChannelMap {
+        let mut cm = ChannelMap::default();
+        unsafe {
+            ffi::pa_channel_map_init(&mut cm);
+        }
+        cm
+    }
+    fn can_balance(&self) -> bool {
+        unsafe { ffi::pa_channel_map_can_balance(self) > 0 }
+    }
+}
+
+pub trait ProplistExt {
+    fn proplist(&self) -> Proplist;
+}
+
+impl ProplistExt for SinkInfo {
+    fn proplist(&self) -> Proplist {
+        unsafe { proplist::from_raw_ptr(self.proplist) }
+    }
+}
+
+impl ProplistExt for SourceInfo {
+    fn proplist(&self) -> Proplist {
+        unsafe { proplist::from_raw_ptr(self.proplist) }
+    }
+}
+
+pub trait SampleSpecExt {
+    fn frame_size(&self) -> usize;
+}
+
+impl SampleSpecExt for SampleSpec {
+    fn frame_size(&self) -> usize {
+        unsafe { ffi::pa_frame_size(self) }
+    }
+}
+
+pub trait USecExt {
+    fn to_bytes(self, spec: &SampleSpec) -> usize;
+}
+
+impl USecExt for USec {
+    fn to_bytes(self, spec: &SampleSpec) -> usize {
+        unsafe { ffi::pa_usec_to_bytes(self, spec) }
+    }
+}
+
+pub fn library_version() -> *const c_char {
+    unsafe { ffi::pa_get_library_version() }
+}
+
+pub fn sw_volume_from_linear(vol: f64) -> Volume {
+    unsafe { ffi::pa_sw_volume_from_linear(vol) }
+}
+
+pub fn rtclock_now() -> USec {
+    unsafe { ffi::pa_rtclock_now() }
+}
