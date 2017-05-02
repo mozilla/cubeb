@@ -8,6 +8,7 @@ use backend::cork_state::CorkState;
 use cubeb;
 use pulse;
 use pulse_ffi::*;
+use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_long, c_void};
 use std::ptr;
 
@@ -58,8 +59,12 @@ pub struct Device(cubeb::Device);
 impl Drop for Device {
     fn drop(&mut self) {
         unsafe {
-            pa_xfree(self.0.input_name as *mut _);
-            pa_xfree(self.0.output_name as *mut _);
+            if !self.0.input_name.is_null() {
+                let _ = CString::from_raw(self.0.input_name);
+            }
+            if !self.0.output_name.is_null() {
+                let _ = CString::from_raw(self.0.output_name);
+            }
         }
     }
 }
@@ -519,11 +524,25 @@ impl<'ctx> Stream<'ctx> {
             let mut dev = Box::new(cubeb::Device::default());
 
             if !self.input_stream.is_null() {
-                dev.input_name = unsafe { pa_xstrdup(pa_stream_get_device_name(self.input_stream)) };
+                dev.input_name = {
+                    let name = unsafe { pa_stream_get_device_name(self.input_stream) };
+                    if name.is_null() {
+                        ptr::null_mut()
+                    } else {
+                        unsafe { CStr::from_ptr(name) }.to_owned().into_raw()
+                    }
+                }
             }
 
             if !self.output_stream.is_null() {
-                dev.output_name = unsafe { pa_xstrdup(pa_stream_get_device_name(self.output_stream)) };
+                dev.output_name = {
+                    let name = unsafe { pa_stream_get_device_name(self.output_stream) };
+                    if name.is_null() {
+                        ptr::null_mut()
+                    } else {
+                        unsafe { CStr::from_ptr(name) }.to_owned().into_raw()
+                    }
+                }
             }
 
             Ok(dev)
