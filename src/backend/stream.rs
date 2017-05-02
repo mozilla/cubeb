@@ -6,7 +6,7 @@
 use backend::*;
 use backend::cork_state::CorkState;
 use cubeb;
-use pulse;
+use pulse::{self, CVolumeExt, ChannelMapExt, SampleSpecExt, USecExt};
 use pulse_ffi::*;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_long, c_void};
@@ -43,10 +43,7 @@ fn layout_to_channel_map(layout: cubeb::ChannelLayout) -> pulse::ChannelMap {
 
     let order = cubeb::mixer::channel_index_to_order(layout);
 
-    let mut cm: pa_channel_map = Default::default();
-    unsafe {
-        pa_channel_map_init(&mut cm);
-    }
+    let mut cm = pulse::ChannelMap::init();
     cm.channels = order.len() as u8;
     for (s, d) in order.iter().zip(cm.map.iter_mut()) {
         *d = cubeb_channel_to_pa_channel(*s);
@@ -136,12 +133,12 @@ impl<'ctx> Stream<'ctx> {
             while read_from_input(s, &mut read_data, &mut read_size) > 0 {
                 /* read_data can be NULL in case of a hole. */
                 if !read_data.is_null() {
-                    let in_frame_size = unsafe { pa_frame_size(&stm.input_sample_spec) };
+                    let in_frame_size = stm.input_sample_spec.frame_size();
                     let read_frames = read_size / in_frame_size;
 
                     if !stm.output_stream.is_null() {
                         // input/capture + output/playback operation
-                        let out_frame_size = unsafe { pa_frame_size(&stm.output_sample_spec) };
+                        let out_frame_size = stm.output_sample_spec.frame_size();
                         let write_size = read_frames * out_frame_size;
                         // Offer full duplex data for writing
                         let stream = &stm.output_stream as *const _;
@@ -402,8 +399,8 @@ impl<'ctx> Stream<'ctx> {
         } else {
             match self.output_stream.get_time() {
                 Ok(r_usec) => {
-                    let bytes = unsafe { pa_usec_to_bytes(r_usec, &self.output_sample_spec) };
-                    Ok((bytes / unsafe { pa_frame_size(&self.output_sample_spec) }) as u64)
+                    let bytes = r_usec.to_bytes(&self.output_sample_spec);
+                    Ok((bytes / self.output_sample_spec.frame_size()) as u64)
                 },
                 Err(_) => Err(cubeb::ERROR),
             }
@@ -454,8 +451,8 @@ impl<'ctx> Stream<'ctx> {
                 self.volume = volume;
             } else {
                 let channels = self.output_stream.get_sample_spec().channels;
-                let vol = unsafe { pa_sw_volume_from_linear(volume as f64) };
-                unsafe { pa_cvolume_set(&mut cvol, channels as u32, vol) };
+                let vol = pulse::sw_volume_from_linear(volume as f64);
+                cvol.set(channels as u32, vol);
 
                 let index = self.output_stream.get_index();
 
@@ -494,7 +491,7 @@ impl<'ctx> Stream<'ctx> {
             self.context.mainloop.lock();
 
             let map = self.output_stream.get_channel_map();
-            if unsafe { pa_channel_map_can_balance(map) } == 0 {
+            if !map.can_balance() {
                 self.context.mainloop.unlock();
                 return cubeb::ERROR;
             }
@@ -512,7 +509,7 @@ impl<'ctx> Stream<'ctx> {
                 self.context.operation_wait(&self.output_stream, &o);
             }
 
-            unsafe { pa_cvolume_set_balance(&mut r.cvol, map, panning) };
+            r.cvol.set_balance(map, panning);
 
             let context_ptr = self.context as *const _ as *mut _;
             if let Ok(o) = self.context
@@ -698,7 +695,7 @@ impl<'ctx> Stream<'ctx> {
 
         let s = unsafe { &*stream };
 
-        let frame_size = unsafe { pa_frame_size(&self.output_sample_spec) };
+        let frame_size = self.output_sample_spec.frame_size();
         debug_assert_eq!(nbytes % frame_size, 0);
 
         let mut towrite = nbytes;
@@ -732,7 +729,7 @@ impl<'ctx> Stream<'ctx> {
 
                     // If more iterations move offset of read buffer
                     if !input_data.is_null() {
-                        let in_frame_size = unsafe { pa_frame_size(&self.input_sample_spec) };
+                        let in_frame_size = self.input_sample_spec.frame_size();
                         read_offset += (size / frame_size) * in_frame_size;
                     }
 
@@ -775,9 +772,7 @@ impl<'ctx> Stream<'ctx> {
                         let stream_ptr = self as *const _ as *mut _;
                         self.drain_timer = self.context
                             .context
-                            .rttime_new(unsafe { pa_rtclock_now() } + 2 * latency,
-                                        drained_cb,
-                                        stream_ptr);
+                            .rttime_new(pulse::rtclock_now() + 2 * latency, drained_cb, stream_ptr);
                         self.shutdown = true;
                         return;
                     }
@@ -804,7 +799,7 @@ fn context_success(_: &pulse::Context, success: i32, u: *mut c_void) {
 }
 
 fn set_buffering_attribute(latency_frames: u32, sample_spec: &pa_sample_spec) -> pa_buffer_attr {
-    let tlength = latency_frames * unsafe { pa_frame_size(sample_spec) } as u32;
+    let tlength = latency_frames * sample_spec.frame_size() as u32;
     let minreq = tlength / 4;
     let battr = pa_buffer_attr {
         maxlength: u32::max_value(),

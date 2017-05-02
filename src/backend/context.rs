@@ -6,7 +6,7 @@
 use backend::*;
 use capi::PULSE_OPS;
 use cubeb;
-use pulse;
+use pulse::{self, ProplistExt};
 use pulse_ffi::*;
 use semver;
 use std::default::Default;
@@ -246,24 +246,15 @@ impl Context {
             let mut list_data = unsafe { &mut *(user_data as *mut PulseDevListData) };
             let info = unsafe { &*i };
 
-            let group_id = {
-                let prop = unsafe { pa_proplist_gets(info.proplist, cstr!("sysfs.path")) };
-                if !prop.is_null() {
-                    unsafe { CStr::from_ptr(prop).to_owned().into_raw() }
-                } else {
-                    ptr::null_mut()
-                }
+            let group_id = match info.proplist().gets(cstr!("sysfs.path")) {
+                Some(p) => p.to_owned().into_raw(),
+                _ => ptr::null_mut(),
             };
 
-            let vendor_name = {
-                let prop = unsafe { pa_proplist_gets(info.proplist, cstr!("device.vendor.name")) };
-                if !prop.is_null() {
-                    unsafe { CStr::from_ptr(prop).to_owned().into_raw() }
-                } else {
-                    ptr::null_mut()
-                }
+            let vendor_name = match info.proplist().gets(cstr!("device.vendor.name")) {
+                Some(p) => p.to_owned().into_raw(),
+                _ => ptr::null_mut(),
             };
-
 
             let info_name = unsafe { CStr::from_ptr(info.name) }.to_owned();
             let info_description = unsafe { CStr::from_ptr(info.description) }.to_owned();
@@ -312,22 +303,14 @@ impl Context {
             let mut list_data = unsafe { &mut *(user_data as *mut PulseDevListData) };
             let info = unsafe { &*i };
 
-            let group_id = {
-                let prop = unsafe { pa_proplist_gets(info.proplist, cstr!("sysfs.path")) };
-                if !prop.is_null() {
-                    unsafe { CStr::from_ptr(prop).to_owned().into_raw() }
-                } else {
-                    ptr::null_mut()
-                }
+            let group_id = match info.proplist().gets(cstr!("sysfs.path")) {
+                Some(p) => p.to_owned().into_raw(),
+                _ => ptr::null_mut(),
             };
 
-            let vendor_name = {
-                let prop = unsafe { pa_proplist_gets(info.proplist, cstr!("device.vendor.name")) };
-                if !prop.is_null() {
-                    unsafe { CStr::from_ptr(prop).to_owned().into_raw() }
-                } else {
-                    ptr::null_mut()
-                }
+            let vendor_name = match info.proplist().gets(cstr!("device.vendor.name")) {
+                Some(p) => p.to_owned().into_raw(),
+                _ => ptr::null_mut(),
             };
 
             let info_name = unsafe { CStr::from_ptr(info.name) }.to_owned();
@@ -564,8 +547,8 @@ impl Context {
 
         self.mainloop.unlock();
 
-        let version_str = unsafe { CStr::from_ptr(pa_get_library_version()) };
-        if let Ok(version) = semver::Version::parse(version_str.to_string_lossy().as_ref()) {
+        let version_str = unsafe { CStr::from_ptr(pulse::library_version()) };
+        if let Ok(version) = semver::Version::parse(&version_str.to_string_lossy()) {
             self.version_0_9_8 = version >= semver::Version::parse("0.9.8").expect("Failed to parse version");
             self.version_2_0_0 = version >= semver::Version::parse("2.0.0").expect("Failed to parse version");
         }
