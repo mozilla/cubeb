@@ -477,7 +477,7 @@ struct cubeb_mixer {
 
 template<typename T>
 struct cubeb_mixer_impl : public cubeb_mixer {
-  cubeb_mixer_impl(cubeb_mixer_direction d)
+  explicit cubeb_mixer_impl(cubeb_mixer_direction d)
     : direction(d)
   {
   }
