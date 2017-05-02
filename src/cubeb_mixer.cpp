@@ -469,7 +469,7 @@ cubeb_should_mix(cubeb_stream_params const * stream, cubeb_stream_params const *
 }
 
 struct cubeb_mixer {
-  virtual void mix(void * const input_buffer, long frames, void * output_buffer,
+  virtual void mix(void * input_buffer, long frames, void * output_buffer,
                    cubeb_stream_params const * stream_params,
                    cubeb_stream_params const * mixer_params) = 0;
   virtual ~cubeb_mixer() {};
@@ -482,7 +482,7 @@ struct cubeb_mixer_impl : public cubeb_mixer {
   {
   }
 
-  void mix(void * const input_buffer, long frames, void * output_buffer,
+  void mix(void * input_buffer, long frames, void * output_buffer,
            cubeb_stream_params const * stream_params,
            cubeb_stream_params const * mixer_params)
   {

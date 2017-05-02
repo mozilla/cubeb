@@ -79,7 +79,7 @@ cubeb_mixer * cubeb_mixer_create(cubeb_sample_format format,
                                  cubeb_mixer_direction direction);
 void cubeb_mixer_destroy(cubeb_mixer * mixer);
 void cubeb_mixer_mix(cubeb_mixer * mixer,
-                     void * const input_buffer, long frames, void * output_buffer,
+                     void * input_buffer, long frames, void * output_buffer,
                      cubeb_stream_params const * stream_params,
                      cubeb_stream_params const * mixer_params);
 
