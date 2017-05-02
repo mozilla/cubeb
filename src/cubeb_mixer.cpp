@@ -506,7 +506,8 @@ struct cubeb_mixer_impl : public cubeb_mixer {
 cubeb_mixer * cubeb_mixer_create(cubeb_sample_format format,
                                  unsigned char direction)
 {
-  assert(direction | CUBEB_MIXER_DIRECTION_DOWNMIX | CUBEB_MIXER_DIRECTION_UPMIX);
+  assert(direction & CUBEB_MIXER_DIRECTION_DOWNMIX ||
+         direction & CUBEB_MIXER_DIRECTION_UPMIX);
   switch(format) {
     case CUBEB_SAMPLE_S16NE:
       return new cubeb_mixer_impl<short>(direction);
