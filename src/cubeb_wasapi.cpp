@@ -1777,7 +1777,7 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
   }
   stm->mixer.reset(cubeb_mixer_create(output_stream_params ? output_stream_params->format :
                                                              input_stream_params->format,
-                                      CUBEB_MIXER_DIRECTION_ALL));
+                                      CUBEB_MIXER_DIRECTION_DOWNMIX | CUBEB_MIXER_DIRECTION_UPMIX));
 
   stm->latency = latency_frames;
 

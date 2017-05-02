@@ -477,7 +477,7 @@ struct cubeb_mixer {
 
 template<typename T>
 struct cubeb_mixer_impl : public cubeb_mixer {
-  explicit cubeb_mixer_impl(cubeb_mixer_direction d)
+  explicit cubeb_mixer_impl(unsigned int d)
     : direction(d)
   {
   }
@@ -500,11 +500,11 @@ struct cubeb_mixer_impl : public cubeb_mixer {
 
   ~cubeb_mixer_impl() {};
 
-  cubeb_mixer_direction const direction;
+  unsigned char const direction;
 };
 
 cubeb_mixer * cubeb_mixer_create(cubeb_sample_format format,
-                                 cubeb_mixer_direction direction)
+                                 unsigned char direction)
 {
   assert(direction | CUBEB_MIXER_DIRECTION_DOWNMIX | CUBEB_MIXER_DIRECTION_UPMIX);
   switch(format) {
