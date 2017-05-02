@@ -162,7 +162,7 @@ impl Context {
          * and signalling the mainloop to end the wait. */
         let user_data: *mut c_void = ctx.as_mut() as *mut _ as *mut _;
         if let Ok(o) = ctx.context.get_server_info(server_info_cb, user_data) {
-            ctx.operation_wait(ptr::null_mut(), &o);
+            ctx.operation_wait(None, &o);
         }
         assert!(ctx.default_sink_info.is_some());
         ctx.mainloop.unlock();
@@ -182,7 +182,7 @@ impl Context {
     }
 
     pub fn new_stream(&mut self,
-                      stream_name: *const c_char,
+                      stream_name: &CStr,
                       input_device: cubeb::DeviceId,
                       input_stream_params: Option<cubeb::StreamParams>,
                       output_device: cubeb::DeviceId,
@@ -382,20 +382,20 @@ impl Context {
 
             if let Ok(o) = self.context
                    .get_server_info(default_device_names, &mut user_data as *mut _ as *mut _) {
-                self.operation_wait(ptr::null_mut(), &o);
+                self.operation_wait(None, &o);
             }
 
             if devtype == cubeb::DEVICE_TYPE_OUTPUT {
                 if let Ok(o) = self.context
                        .get_sink_info_list(add_output_device, &mut user_data as *mut _ as *mut _) {
-                    self.operation_wait(ptr::null_mut(), &o);
+                    self.operation_wait(None, &o);
                 }
             }
 
             if devtype == cubeb::DEVICE_TYPE_INPUT {
                 if let Ok(o) = self.context
                        .get_source_info_list(add_input_device, &mut user_data as *mut _ as *mut _) {
-                    self.operation_wait(ptr::null_mut(), &o);
+                    self.operation_wait(None, &o);
                 }
             }
 
@@ -511,7 +511,7 @@ impl Context {
 
         if let Ok(o) = self.context
                .subscribe(mask, success, self as *const _ as *mut _) {
-            self.operation_wait(ptr::null_mut(), &o);
+            self.operation_wait(None, &o);
         } else {
             log!("Context subscribe failed");
             return cubeb::ERROR;
@@ -584,7 +584,7 @@ impl Context {
         self.mainloop.lock();
         let context_ptr: *mut c_void = self as *mut _ as *mut _;
         if let Ok(o) = self.context.drain(drain_complete, context_ptr) {
-            self.operation_wait(ptr::null_mut(), &o);
+            self.operation_wait(None, &o);
         }
         self.context.clear_state_callback();
         self.context.disconnect();
@@ -592,15 +592,20 @@ impl Context {
         self.mainloop.unlock();
     }
 
-    pub fn operation_wait(&self, stream: *mut pa_stream, o: &pulse::Operation) -> bool {
+    pub fn operation_wait<'a, S>(&self, s: S, o: &pulse::Operation) -> bool
+        where S: Into<Option<&'a pulse::Stream>>
+    {
+        let stream = s.into();
         while o.get_state() == PA_OPERATION_RUNNING {
             self.mainloop.wait();
             if !self.context.get_state().is_good() {
                 return false;
             }
 
-            if !stream.is_null() && !PA_STREAM_IS_GOOD(unsafe { pa_stream_get_state(stream) }) {
-                return false;
+            if let Some(stm) = stream {
+                if !stm.get_state().is_good() {
+                    return false;
+                }
             }
         }
 
