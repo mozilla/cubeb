@@ -93,7 +93,7 @@ impl Context {
                                default_sink_info: None,
                                context_name: name,
                                collection_changed_callback: None,
-                               collection_changed_user_ptr: 0 as *mut _,
+                               collection_changed_user_ptr: ptr::null_mut(),
                                error: true,
                                version_0_9_8: false,
                                version_2_0_0: false,
@@ -111,7 +111,7 @@ impl Context {
                         default_sink_info: None,
                         context_name: name,
                         collection_changed_callback: None,
-                        collection_changed_user_ptr: 0 as *mut _,
+                        collection_changed_user_ptr: ptr::null_mut(),
                         error: true,
                         version_0_9_8: false,
                         version_2_0_0: false,
@@ -358,7 +358,7 @@ impl Context {
             (*list_data.context).mainloop.signal(false);
         }
 
-        let mut user_data: PulseDevListData = PulseDevListData::new(&self);
+        let mut user_data = PulseDevListData::new(self);
 
         {
             self.mainloop.lock();

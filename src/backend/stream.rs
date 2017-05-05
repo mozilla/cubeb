@@ -486,7 +486,7 @@ impl<'ctx> Stream<'ctx> {
         }
 
         if self.output_stream.is_null() {
-            return cubeb::ERROR;
+            cubeb::ERROR
         } else {
             self.context.mainloop.lock();
 
