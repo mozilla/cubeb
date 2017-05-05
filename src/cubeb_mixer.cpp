@@ -359,7 +359,8 @@ cubeb_downmix(T const * const in, long inframes, T * out,
               cubeb_stream_params const * stream_params,
               cubeb_stream_params const * mixer_params)
 {
-  assert(in && out && inframes);
+  assert(in && out);
+  assert(inframes);
   assert(stream_params->channels >= mixer_params->channels &&
          mixer_params->channels > 0);
   assert(stream_params->layout != CUBEB_LAYOUT_UNDEFINED);
@@ -407,8 +408,9 @@ cubeb_upmix(T const * in, long inframes, T * out,
             cubeb_stream_params const * stream_params,
             cubeb_stream_params const * mixer_params)
 {
-  assert(in && out && inframes &&
-         mixer_params->channels >= stream_params->channels &&
+  assert(in && out);
+  assert(inframes);
+  assert(mixer_params->channels >= stream_params->channels &&
          stream_params->channels > 0);
 
   unsigned int in_channels = stream_params->channels;
@@ -486,6 +488,10 @@ struct cubeb_mixer_impl : public cubeb_mixer {
            cubeb_stream_params const * stream_params,
            cubeb_stream_params const * mixer_params)
   {
+    if (frames <= 0) {
+      return;
+    }
+
     T * in = static_cast<T*>(input_buffer);
     T * out = static_cast<T*>(output_buffer);
 
