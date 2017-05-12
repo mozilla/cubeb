@@ -680,11 +680,8 @@ audiounit_property_listener_callback(AudioObjectID /* id */, UInt32 address_coun
         break;
       case kAudioDevicePropertyDataSource: {
           LOG("Event[%u] - mSelector == kAudioHardwarePropertyDataSource", (unsigned int) i);
-          if (has_output(stm)) {
-              stm->output_device = 0;
-          }
+          return noErr;
         }
-        break;
       default:
         LOG("Event[%u] - mSelector == Unexpected Event id %d, return", (unsigned int) i, addresses[i].mSelector);
         return noErr;
