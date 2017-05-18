@@ -47,6 +47,7 @@ add_library(cubeb
   src/cubeb_resampler.cpp
   src/cubeb_panner.cpp
   src/cubeb_log.cpp
+  src/cubeb_utils.c
    $<TARGET_OBJECTS:speex>)
 target_include_directories(cubeb PUBLIC include)
 target_include_directories(cubeb PRIVATE src)
