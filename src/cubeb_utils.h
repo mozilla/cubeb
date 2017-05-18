@@ -342,7 +342,8 @@ using auto_lock = std::lock_guard<owned_critical_section>;
 extern "C" {
 #endif
 
-int cubeb_utils_default_device_collection_destroy(cubeb_device_collection * collection);
+int cubeb_utils_default_device_collection_destroy(cubeb * context,
+                                                  cubeb_device_collection * collection);
 
 #ifdef __cplusplus
 }

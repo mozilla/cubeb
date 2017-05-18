@@ -615,10 +615,12 @@ CUBEB_EXPORT int cubeb_enumerate_devices(cubeb * context,
                                          cubeb_device_collection ** collection);
 
 /** Destroy a cubeb_device_collection, and its `cubeb_device_info`.
+    @param context
     @param collection collection to destroy
     @retval CUBEB_OK
     @retval CUBEB_ERROR_INVALID_PARAMETER if collection is an invalid pointer */
-CUBEB_EXPORT int cubeb_device_collection_destroy(cubeb_device_collection * collection);
+CUBEB_EXPORT int cubeb_device_collection_destroy(cubeb * context,
+                                                 cubeb_device_collection * collection);
 
 /** Registers a callback which is called when the system detects
     a new device or a device is removed.

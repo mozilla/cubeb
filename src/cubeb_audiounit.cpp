@@ -3125,14 +3125,14 @@ audiounit_enumerate_devices(cubeb * /* context */, cubeb_device_type type,
   }
 
   *collection = static_cast<cubeb_device_collection *>(malloc(sizeof(cubeb_device_collection) +
-							      sizeof(cubeb_device_info*) * (hwdevs.size() > 0 ? hwdevs.size() - 1 : 0)));
+                                                              sizeof(cubeb_device_info*) * (hwdevs.size() > 0 ? hwdevs.size() - 1 : 0)));
   (*collection)->count = 0;
 
   if (type & CUBEB_DEVICE_TYPE_OUTPUT) {
     for (i = 0; i < hwdevs.size(); i++) {
       cubeb_device_info * cur = audiounit_create_device_from_hwdev(hwdevs[i], CUBEB_DEVICE_TYPE_OUTPUT);
       if (cur != nullptr)
-	(*collection)->device[(*collection)->count++] = cur;
+        (*collection)->device[(*collection)->count++] = cur;
     }
   }
 
@@ -3140,7 +3140,7 @@ audiounit_enumerate_devices(cubeb * /* context */, cubeb_device_type type,
     for (i = 0; i < hwdevs.size(); i++) {
       cubeb_device_info * cur = audiounit_create_device_from_hwdev(hwdevs[i], CUBEB_DEVICE_TYPE_INPUT);
       if (cur != nullptr)
-	(*collection)->device[(*collection)->count++] = cur;
+        (*collection)->device[(*collection)->count++] = cur;
     }
   }
 
@@ -3305,6 +3305,7 @@ cubeb_ops const audiounit_ops = {
   /*.get_preferred_sample_rate =*/ audiounit_get_preferred_sample_rate,
   /*.get_preferred_channel_layout =*/ audiounit_get_preferred_channel_layout,
   /*.enumerate_devices =*/ audiounit_enumerate_devices,
+  /*.device_collection_destroy =*/ cubeb_utils_default_device_collection_destroy,
   /*.destroy =*/ audiounit_destroy,
   /*.stream_init =*/ audiounit_stream_init,
   /*.stream_destroy =*/ audiounit_stream_destroy,

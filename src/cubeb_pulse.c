@@ -13,6 +13,7 @@
 #include "cubeb/cubeb.h"
 #include "cubeb-internal.h"
 #include "cubeb_mixer.h"
+#include "cubeb_utils.h"
 #include <stdio.h>
 
 #ifdef DISABLE_LIBPULSE_DLOPEN
@@ -1223,7 +1224,7 @@ pulse_sink_info_cb(pa_context * context, const pa_sink_info * info,
   devinfo->type = CUBEB_DEVICE_TYPE_OUTPUT;
   devinfo->state = pulse_get_state_from_sink_port(info->active_port);
   devinfo->preferred = (strcmp(info->name, list_data->default_sink_name) == 0) ?
-				 CUBEB_DEVICE_PREF_ALL : CUBEB_DEVICE_PREF_NONE;
+                                 CUBEB_DEVICE_PREF_ALL : CUBEB_DEVICE_PREF_NONE;
 
   devinfo->format = CUBEB_DEVICE_FMT_ALL;
   devinfo->default_format = pulse_format_to_cubeb_format(info->sample_spec.format);
@@ -1284,7 +1285,7 @@ pulse_source_info_cb(pa_context * context, const pa_source_info * info,
   devinfo->type = CUBEB_DEVICE_TYPE_INPUT;
   devinfo->state = pulse_get_state_from_source_port(info->active_port);
   devinfo->preferred = (strcmp(info->name, list_data->default_source_name) == 0) ?
-				   CUBEB_DEVICE_PREF_ALL : CUBEB_DEVICE_PREF_NONE;
+                                   CUBEB_DEVICE_PREF_ALL : CUBEB_DEVICE_PREF_NONE;
 
   devinfo->format = CUBEB_DEVICE_FMT_ALL;
   devinfo->default_format = pulse_format_to_cubeb_format(info->sample_spec.format);
@@ -1495,6 +1496,7 @@ static struct cubeb_ops const pulse_ops = {
   .get_preferred_sample_rate = pulse_get_preferred_sample_rate,
   .get_preferred_channel_layout = pulse_get_preferred_channel_layout,
   .enumerate_devices = pulse_enumerate_devices,
+  .device_collection_destroy = cubeb_utils_default_device_collection_destroy,
   .destroy = pulse_destroy,
   .stream_init = pulse_stream_init,
   .stream_destroy = pulse_stream_destroy,

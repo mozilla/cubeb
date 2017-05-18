@@ -24,10 +24,13 @@ device_info_destroy(cubeb_device_info * info)
 }
 
 int
-cubeb_utils_default_device_collection_destroy(cubeb_device_collection * collection)
+cubeb_utils_default_device_collection_destroy(cubeb * context,
+                                              cubeb_device_collection * collection)
 {
   uint32_t i;
   XASSERT(collection);
+
+  (void) context;
 
   for (i = 0; i < collection->count; i++)
     device_info_destroy(collection->device[i]);
