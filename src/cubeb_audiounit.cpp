@@ -3305,6 +3305,7 @@ cubeb_ops const audiounit_ops = {
   /*.get_preferred_sample_rate =*/ audiounit_get_preferred_sample_rate,
   /*.get_preferred_channel_layout =*/ audiounit_get_preferred_channel_layout,
   /*.enumerate_devices =*/ audiounit_enumerate_devices,
+  /*.device_collection_destroy =*/ cubeb_utils_default_device_collection_destroy,
   /*.destroy =*/ audiounit_destroy,
   /*.stream_init =*/ audiounit_stream_init,
   /*.stream_destroy =*/ audiounit_stream_destroy,

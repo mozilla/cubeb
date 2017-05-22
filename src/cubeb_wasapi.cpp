@@ -2323,6 +2323,7 @@ cubeb_ops const wasapi_ops = {
   /*.get_preferred_sample_rate =*/ wasapi_get_preferred_sample_rate,
   /*.get_preferred_channel_layout =*/ wasapi_get_preferred_channel_layout,
   /*.enumerate_devices =*/ wasapi_enumerate_devices,
+  /*.device_collection_destroy =*/ cubeb_utils_default_device_collection_destroy,
   /*.destroy =*/ wasapi_destroy,
   /*.stream_init =*/ wasapi_stream_init,
   /*.stream_destroy =*/ wasapi_stream_destroy,
