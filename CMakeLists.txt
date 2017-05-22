@@ -19,7 +19,8 @@ set(CMAKE_C_STANDARD 99)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/googletest/.git")
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/googletest/.git" OR
+   NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/sanitizers-cmake/.git")
   message(FATAL_ERROR "submodules not initialized: run\n\tgit submodule update --init --recursive\nin base git checkout")
 endif()
 
