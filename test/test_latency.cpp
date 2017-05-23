@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <memory>
 #include "cubeb/cubeb.h"
+#include "common.h"
 
 TEST(cubeb, latency)
 {
@@ -12,7 +13,7 @@ TEST(cubeb, latency)
   uint32_t latency_frames;
   cubeb_channel_layout layout;
 
-  r = cubeb_init(&ctx, "Cubeb audio test", NULL);
+  r = common_init(&ctx, "Cubeb audio test");
   ASSERT_EQ(r, CUBEB_OK);
 
   std::unique_ptr<cubeb, decltype(&cubeb_destroy)>
