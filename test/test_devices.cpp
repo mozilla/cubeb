@@ -13,6 +13,7 @@
 #include <string.h>
 #include <memory>
 #include "cubeb/cubeb.h"
+#include "common.h"
 
 static void
 print_device_info(cubeb_device_info * info, FILE * f)
@@ -110,7 +111,7 @@ TEST(cubeb, enumerate_devices)
   cubeb * ctx = NULL;
   cubeb_device_collection * collection = NULL;
 
-  r = cubeb_init(&ctx, "Cubeb audio test", NULL);
+  r = common_init(&ctx, "Cubeb audio test");
   ASSERT_EQ(r, CUBEB_OK) << "Error initializing cubeb library";
 
   std::unique_ptr<cubeb, decltype(&cubeb_destroy)>

@@ -108,4 +108,26 @@ void print_log(const char * msg, ...)
   va_end(args);
 }
 
+/** Initialize cubeb with backend override.
+ *  Create call cubeb_init passing value for CUBEB_BACKEND env var as
+ *  override. */
+int common_init(cubeb ** ctx, char const * ctx_name)
+{
+  int r;
+  char const * backend;
+  char const * ctx_backend;
+
+  backend = getenv("CUBEB_BACKEND");
+  r = cubeb_init(ctx, ctx_name, backend);
+  if (r == CUBEB_OK && backend) {
+    ctx_backend = cubeb_get_backend_id(*ctx);
+    if (strcmp(backend, ctx_backend) != 0) {
+      fprintf(stderr, "Requested backend `%s', got `%s'\n",
+              backend, ctx_backend);
+    }
+  }
+
+  return r;
+}
+
 #endif /* TEST_COMMON */

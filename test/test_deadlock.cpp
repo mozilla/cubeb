@@ -81,7 +81,7 @@ cubeb * get_cubeb_context_unlocked()
   }
 
   int r = CUBEB_OK;
-  r = cubeb_init(&context, "Cubeb deadlock test", NULL);
+  r = common_init(&context, "Cubeb deadlock test");
   if (r != CUBEB_OK) {
     context = nullptr;
   }
