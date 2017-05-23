@@ -2142,13 +2142,12 @@ wasapi_is_default_device(EDataFlow flow, ERole role, LPCWSTR device_id,
   return ret;
 }
 
-static cubeb_device_info *
-wasapi_create_device(IMMDeviceEnumerator * enumerator, IMMDevice * dev)
+static int
+wasapi_create_device(cubeb_device_info * ret, IMMDeviceEnumerator * enumerator, IMMDevice * dev)
 {
   com_ptr<IMMEndpoint> endpoint;
   com_ptr<IMMDevice> devnode;
   com_ptr<IAudioClient> client;
-  cubeb_device_info * ret = NULL;
   EDataFlow flow;
   DWORD state = DEVICE_STATE_NOTPRESENT;
   com_ptr<IPropertyStore> propstore;
@@ -2163,24 +2162,23 @@ wasapi_create_device(IMMDeviceEnumerator * enumerator, IMMDevice * dev)
   };
 
   hr = dev->QueryInterface(IID_PPV_ARGS(endpoint.receive()));
-  if (FAILED(hr)) return nullptr;
+  if (FAILED(hr)) return CUBEB_ERROR;
 
   hr = endpoint->GetDataFlow(&flow);
-  if (FAILED(hr)) return nullptr;
+  if (FAILED(hr)) return CUBEB_ERROR;
 
   wchar_t * tmp = nullptr;
   hr = dev->GetId(&tmp);
-  if (FAILED(hr)) return nullptr;
+  if (FAILED(hr)) return CUBEB_ERROR;
   com_heap_ptr<wchar_t> device_id(tmp);
 
   hr = dev->OpenPropertyStore(STGM_READ, propstore.receive());
-  if (FAILED(hr)) return nullptr;
+  if (FAILED(hr)) return CUBEB_ERROR;
 
   hr = dev->GetState(&state);
-  if (FAILED(hr)) return nullptr;
+  if (FAILED(hr)) return CUBEB_ERROR;
 
-  ret = (cubeb_device_info *)calloc(1, sizeof(cubeb_device_info));
-
+  XASSERT(ret);
   ret->device_id = wstr_to_utf8(device_id.get());
   ret->devid = reinterpret_cast<cubeb_devid>(ret->device_id);
   prop_variant namevar;
@@ -2192,7 +2190,7 @@ wasapi_create_device(IMMDeviceEnumerator * enumerator, IMMDevice * dev)
   if (devnode) {
     com_ptr<IPropertyStore> ps;
     hr = devnode->OpenPropertyStore(STGM_READ, ps.receive());
-    if (FAILED(hr)) return ret;
+    if (FAILED(hr)) return CUBEB_ERROR;
 
     prop_variant instancevar;
     hr = ps->GetValue(PKEY_Device_InstanceId, &instancevar);
@@ -2253,22 +2251,19 @@ wasapi_create_device(IMMDeviceEnumerator * enumerator, IMMDevice * dev)
     ret->latency_hi = 0;
   }
 
-  return ret;
+  return CUBEB_OK;
 }
 
 static int
 wasapi_enumerate_devices(cubeb * context, cubeb_device_type type,
-                         cubeb_device_collection ** out)
+                         cubeb_device_collection * out)
 {
   auto_com com;
   com_ptr<IMMDeviceEnumerator> enumerator;
   com_ptr<IMMDeviceCollection> collection;
-  cubeb_device_info * cur;
   HRESULT hr;
   UINT cc, i;
   EDataFlow flow;
-
-  *out = NULL;
 
   if (!com.ok())
     return CUBEB_ERROR;
@@ -2296,22 +2291,26 @@ wasapi_enumerate_devices(cubeb * context, cubeb_device_type type,
     LOG("IMMDeviceCollection::GetCount() failed: %lx", hr);
     return CUBEB_ERROR;
   }
-  *out = (cubeb_device_collection *) malloc(sizeof(cubeb_device_collection) +
-      sizeof(cubeb_device_info*) * (cc > 0 ? cc - 1 : 0));
-  if (!*out) {
+  cubeb_device_info * devices =
+    (cubeb_device_info *) calloc(cc, sizeof(cubeb_device_info));
+  if (!devices) {
     return CUBEB_ERROR;
   }
-  (*out)->count = 0;
+  out->count = 0;
   for (i = 0; i < cc; i++) {
     com_ptr<IMMDevice> dev;
     hr = collection->Item(i, dev.receive());
     if (FAILED(hr)) {
       LOG("IMMDeviceCollection::Item(%u) failed: %lx", i-1, hr);
-    } else if ((cur = wasapi_create_device(enumerator.get(), dev.get())) != NULL) {
-      (*out)->device[(*out)->count++] = cur;
+      continue;
+    }
+    auto cur = &devices[out->count];
+    if (wasapi_create_device(cur, enumerator.get(), dev.get()) == CUBEB_OK) {
+      out->count += 1;
     }
   }
 
+  out->device = devices;
   return CUBEB_OK;
 }
 
