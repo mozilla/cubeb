@@ -550,7 +550,7 @@ void log_device(cubeb_device_info * device_info)
 
 int cubeb_enumerate_devices(cubeb * context,
                             cubeb_device_type devtype,
-                            cubeb_device_collection ** collection)
+                            cubeb_device_collection * collection)
 {
   int rv;
   if ((devtype & (CUBEB_DEVICE_TYPE_INPUT | CUBEB_DEVICE_TYPE_OUTPUT)) == 0)
@@ -563,8 +563,8 @@ int cubeb_enumerate_devices(cubeb * context,
   rv = context->ops->enumerate_devices(context, devtype, collection);
 
   if (g_cubeb_log_callback) {
-    for (uint32_t i = 0; i < (*collection)->count; i++) {
-      log_device((*collection)->device[i]);
+    for (size_t i = 0; i < collection->count; i++) {
+      log_device(&collection->device[i]);
     }
   }
 
