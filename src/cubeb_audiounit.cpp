@@ -388,8 +388,9 @@ is_extra_input_needed(cubeb_stream * stm)
 
 static void
 audiounit_mix_output_buffer(cubeb_stream * stm,
+                            long output_frames,
                             void * output_buffer,
-                            long output_frames)
+                            unsigned long output_buffer_length)
 {
   cubeb_stream_params output_mixer_params = {
     stm->output_stream_params.format,
@@ -400,7 +401,9 @@ audiounit_mix_output_buffer(cubeb_stream * stm,
 
   // The downmixing(from 5.1) supports in-place conversion, so we can use
   // the same buffer for both input and output of the mixer.
-  cubeb_mixer_mix(stm->mixer.get(), output_buffer, output_frames, output_buffer,
+  cubeb_mixer_mix(stm->mixer.get(), output_frames,
+                  output_buffer, output_buffer_length,
+                  output_buffer, output_buffer_length,
                   &stm->output_stream_params, &output_mixer_params);
 }
 
@@ -522,7 +525,8 @@ audiounit_output_callback(void * user_ptr,
   }
 
   /* Mixing */
-  audiounit_mix_output_buffer(stm, output_buffer, output_frames);
+  unsigned long output_buffer_length = outBufferList->mBuffers[0].mDataByteSize;
+  audiounit_mix_output_buffer(stm, output_frames, output_buffer, output_buffer_length);
 
   return noErr;
 }

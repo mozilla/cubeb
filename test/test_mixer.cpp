@@ -146,7 +146,7 @@ downmix_test(float const * data, cubeb_channel_layout in_layout, cubeb_channel_l
   std::unique_ptr<cubeb_mixer, decltype(&cubeb_mixer_destroy)>
     mixer(cubeb_mixer_create(in_params.format, CUBEB_MIXER_DIRECTION_DOWNMIX), cubeb_mixer_destroy);
 
-  cubeb_mixer_mix(mixer.get(), in.data(), inframes, out.data(), &in_params, &out_params);
+  cubeb_mixer_mix(mixer.get(), inframes, in.data(), in.size(), out.data(), out.size(), &in_params, &out_params);
 
   uint32_t in_layout_mask = 0;
   for (unsigned int i = 0 ; i < in_params.channels; ++i) {

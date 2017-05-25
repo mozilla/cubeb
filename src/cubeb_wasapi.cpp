@@ -558,7 +558,12 @@ refill(cubeb_stream * stm, void * input_buffer, long input_frames_count,
   XASSERT(out_frames == output_frames_needed || stm->draining || !has_output(stm));
 
   if (has_output(stm) && cubeb_should_mix(&stm->output_stream_params, &stm->output_mix_params)) {
-    cubeb_mixer_mix(stm->mixer.get(), dest, out_frames, output_buffer,
+    XASSERT(dest == stm->mix_buffer.data());
+    unsigned long dest_len = out_frames * stm->output_stream_params.channels;
+    XASSERT(dest_len <= stm->mix_buffer.size() / stm->bytes_per_sample);
+    unsigned long output_buffer_len = out_frames * stm->output_mix_params.channels;
+    cubeb_mixer_mix(stm->mixer.get(), out_frames,
+                    dest, dest_len, output_buffer, output_buffer_len,
                     &stm->output_stream_params, &stm->output_mix_params);
   }
 
@@ -621,11 +626,14 @@ bool get_input_buffer(cubeb_stream * stm)
         bool ok = stm->linear_input_buffer->reserve(stm->linear_input_buffer->length() +
                                                    packet_size * stm->input_stream_params.channels);
         XASSERT(ok);
-        cubeb_mixer_mix(stm->mixer.get(), input_packet, packet_size,
-                        stm->linear_input_buffer->end(),
+        unsigned long input_packet_length = packet_size * stm->input_mix_params.channels;
+        unsigned long linear_input_buffer_length = packet_size * stm->input_stream_params.channels;
+        cubeb_mixer_mix(stm->mixer.get(), packet_size,
+                        input_packet, input_packet_length,
+                        stm->linear_input_buffer->end(), linear_input_buffer_length,
                         &stm->input_mix_params,
                         &stm->input_stream_params);
-        stm->linear_input_buffer->set_length(stm->linear_input_buffer->length() + packet_size * stm->input_stream_params.channels);
+        stm->linear_input_buffer->set_length(stm->linear_input_buffer->length() + linear_input_buffer_length);
       } else {
         stm->linear_input_buffer->push(input_packet,
                                       packet_size * stm->input_stream_params.channels);
