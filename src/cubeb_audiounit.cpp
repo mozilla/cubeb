@@ -2917,8 +2917,9 @@ audiounit_strref_to_cstr_utf8(CFStringRef strref)
   }
 
   len = CFStringGetLength(strref);
-  size = CFStringGetMaximumSizeForEncoding(len, kCFStringEncodingUTF8);
-  ret = new char[size+1];
+  // Add 1 to size to allow for '\0' termination character.
+  size = CFStringGetMaximumSizeForEncoding(len, kCFStringEncodingUTF8) + 1;
+  ret = new char[size];
 
   if (!CFStringGetCString(strref, ret, size, kCFStringEncodingUTF8)) {
     delete [] ret;
