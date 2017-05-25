@@ -379,8 +379,8 @@ cubeb_downmix(T const * const in, long inframes, T * out,
       return;
     }
 
-  // We only support downmix for audio 5.1 currently.
 #if defined(USE_AUDIOUNIT)
+  // We only support downmix for audio 5.1 on OS X currently.
   return;
 #endif
 
