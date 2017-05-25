@@ -88,6 +88,7 @@ audio_input audio_inputs[CUBEB_LAYOUT_MAX] = {
   { CUBEB_LAYOUT_3F4_LFE,       { L, R, C, LFE, RLS, RRS, LS, RS } }
 };
 
+// The test cases must be aligned with cubeb_downmix.
 void
 downmix_test(float const * data, cubeb_channel_layout in_layout, cubeb_channel_layout out_layout)
 {
@@ -126,7 +127,14 @@ downmix_test(float const * data, cubeb_channel_layout in_layout, cubeb_channel_l
 
   unsigned int const inframes = 10;
   vector<float> in(in_params.channels * inframes);
+#if defined(__APPLE__)
+  // The mixed buffer size doesn't be changed based on the channel layout set on OSX.
+  // Please see the comment above downmix_3f2 in cubeb_mixer.cpp.
+  vector<float> out(in_params.channels * inframes);
+#else
+  // In normal case, the mixed buffer size is based on the mixing channel layout.
   vector<float> out(out_params.channels * inframes);
+#endif
 
   for (unsigned int offset = 0 ; offset < inframes * in_params.channels ; offset += in_params.channels) {
     for (unsigned int i = 0 ; i < in_params.channels ; ++i) {
@@ -161,6 +169,11 @@ downmix_test(float const * data, cubeb_channel_layout in_layout, cubeb_channel_l
       ASSERT_EQ(downmix_results[index], out[index]);
       continue;
     }
+
+#if defined(__APPLE__)
+    // We only support downmix for audio 5.1 on OS X currently.
+    return;
+#endif
 
     // mix_remap
     if (out_layout_mask & in_layout_mask) {
