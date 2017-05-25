@@ -165,8 +165,8 @@ downmix_test(float const * data, cubeb_channel_layout in_layout, cubeb_channel_l
     if ((in_layout == CUBEB_LAYOUT_3F2 || in_layout == CUBEB_LAYOUT_3F2_LFE) &&
         out_layout >= CUBEB_LAYOUT_MONO && out_layout <= CUBEB_LAYOUT_2F2_LFE) {
       auto & downmix_results = DOWNMIX_3F2_RESULTS[in_layout - CUBEB_LAYOUT_3F2][out_layout - CUBEB_LAYOUT_MONO];
-      fprintf(stderr, "[3f2] Expect: %lf, Get: %lf\n", downmix_results[index], out[index]);
-      ASSERT_EQ(downmix_results[index], out[index]);
+      fprintf(stderr, "[3f2] Expect: %lf, Get: %lf\n", downmix_results[index], out[i]);
+      ASSERT_EQ(downmix_results[index], out[i]);
       continue;
     }
 
@@ -178,14 +178,14 @@ downmix_test(float const * data, cubeb_channel_layout in_layout, cubeb_channel_l
     // mix_remap
     if (out_layout_mask & in_layout_mask) {
       uint32_t mask = 1 << CHANNEL_INDEX_TO_ORDER[out_layout][index];
-      fprintf(stderr, "[map channels] Expect: %lf, Get: %lf\n", (mask & in_layout_mask) ? audio_inputs[out_layout].data[index] : 0, out[index]);
-      ASSERT_EQ((mask & in_layout_mask) ? audio_inputs[out_layout].data[index] : 0, out[index]);
+      fprintf(stderr, "[map channels] Expect: %lf, Get: %lf\n", (mask & in_layout_mask) ? audio_inputs[out_layout].data[index] : 0, out[i]);
+      ASSERT_EQ((mask & in_layout_mask) ? audio_inputs[out_layout].data[index] : 0, out[i]);
       continue;
     }
 
     // downmix_fallback
-    fprintf(stderr, "[fallback] Expect: %lf, Get: %lf\n", audio_inputs[in_layout].data[index], out[index]);
-    ASSERT_EQ(audio_inputs[in_layout].data[index], out[index]);
+    fprintf(stderr, "[fallback] Expect: %lf, Get: %lf\n", audio_inputs[in_layout].data[index], out[i]);
+    ASSERT_EQ(audio_inputs[in_layout].data[index], out[i]);
   }
 }
 
