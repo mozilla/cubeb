@@ -753,6 +753,7 @@ bool
 refill_callback_input(cubeb_stream * stm)
 {
   bool rv;
+  size_t input_frames;
 
   XASSERT(has_input(stm) && !has_output(stm));
 
@@ -761,16 +762,16 @@ refill_callback_input(cubeb_stream * stm)
     return rv;
   }
 
-  // This can happen at the very beginning of the stream.
-  if (!stm->linear_input_buffer->length()) {
+  input_frames = stm->linear_input_buffer->length() / stm->input_stream_params.channels;
+  if (!input_frames) {
     return true;
   }
 
-  ALOGV("Input callback: input frames: %Iu", stm->linear_input_buffer->length());
+  ALOGV("Input callback: input frames: %Iu", input_frames);
 
   long read = refill(stm,
                      stm->linear_input_buffer->data(),
-                     stm->linear_input_buffer->length(),
+                     input_frames,
                      nullptr,
                      0);
 
