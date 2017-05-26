@@ -731,11 +731,11 @@ refill_callback_duplex(cubeb_stream * stm)
 
 
   ALOGV("Duplex callback: input frames: %Iu, output frames: %Iu",
-        stm->linear_input_buffer->length(), output_frames);
+        input_frames, output_frames);
 
   refill(stm,
          stm->linear_input_buffer->data(),
-         stm->linear_input_buffer->length(),
+         input_frames,
          output_buffer,
          output_frames);
 
