@@ -105,6 +105,29 @@ print_device_collection(cubeb_device_collection * collection, FILE * f)
     print_device_info(&collection->device[i], f);
 }
 
+TEST(cubeb, destroy_default_collection)
+{
+  int r;
+  cubeb * ctx = NULL;
+  cubeb_device_collection collection{ nullptr, 0 };
+
+  r = common_init(&ctx, "Cubeb audio test");
+  ASSERT_EQ(r, CUBEB_OK) << "Error initializing cubeb library";
+
+  std::unique_ptr<cubeb, decltype(&cubeb_destroy)>
+    cleanup_cubeb_at_exit(ctx, cubeb_destroy);
+
+  ASSERT_EQ(collection.device, nullptr);
+  ASSERT_EQ(collection.count, (size_t) 0);
+
+  r = cubeb_device_collection_destroy(ctx, &collection);
+  if (r != CUBEB_ERROR_NOT_SUPPORTED) {
+    ASSERT_EQ(r, CUBEB_OK);
+    ASSERT_EQ(collection.device, nullptr);
+    ASSERT_EQ(collection.count, (size_t) 0);
+  }
+}
+
 TEST(cubeb, enumerate_devices)
 {
   int r;
