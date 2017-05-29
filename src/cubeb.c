@@ -574,13 +574,24 @@ int cubeb_enumerate_devices(cubeb * context,
 int cubeb_device_collection_destroy(cubeb * context,
                                     cubeb_device_collection * collection)
 {
+  int r;
+
   if (context == NULL || collection == NULL)
     return CUBEB_ERROR_INVALID_PARAMETER;
 
   if (!context->ops->device_collection_destroy)
     return CUBEB_ERROR_NOT_SUPPORTED;
 
-  return context->ops->device_collection_destroy(context, collection);
+  if (!collection->device)
+    return CUBEB_OK;
+
+  r = context->ops->device_collection_destroy(context, collection);
+  if (r == CUBEB_OK) {
+    collection->device = NULL;
+    collection->count = 0;
+  }
+
+  return r;
 }
 
 int cubeb_register_device_collection_changed(cubeb * context,
