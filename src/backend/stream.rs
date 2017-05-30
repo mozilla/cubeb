@@ -338,7 +338,7 @@ impl<'ctx> Stream<'ctx> {
         unsafe {
             pa_threaded_mainloop_lock(self.context.mainloop);
 
-            while self.context.default_sink_info.is_null() {
+            while self.context.default_sink_info.is_none() {
                 pa_threaded_mainloop_wait(self.context.mainloop);
             }
 
@@ -346,7 +346,14 @@ impl<'ctx> Stream<'ctx> {
 
             /* if the pulse daemon is configured to use flat volumes,
              * apply our own gain instead of changing the input volume on the sink. */
-            if ((*self.context.default_sink_info).flags & PA_SINK_FLAT_VOLUME) != 0 {
+            let flags = {
+                match self.context.default_sink_info {
+                    Some(ref info) => info.flags,
+                    _ => 0,
+                }
+            };
+
+            if (flags & PA_SINK_FLAT_VOLUME) != 0 {
                 self.volume = volume;
             } else {
                 let ss = pa_stream_get_sample_spec(self.output_stream);

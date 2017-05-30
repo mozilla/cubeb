@@ -179,10 +179,10 @@ pub struct DeviceInfo {
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct DeviceCollection {
+    /// Array of device info.
+    pub device: *const DeviceInfo,
     /// Device count in collection.
-    pub count: u32,
-    /// Array of pointers to device info.
-    pub device: [*const DeviceInfo; 0],
+    pub count: usize,
 }
 
 pub type DataCallback = Option<unsafe extern "C" fn(stream: *mut Stream,
@@ -228,8 +228,10 @@ pub struct Ops {
         Option<unsafe extern "C" fn(context: *mut Context, layout: *mut ChannelLayout) -> i32>,
     pub enumerate_devices: Option<unsafe extern "C" fn(context: *mut Context,
                                                        devtype: DeviceType,
-                                                       collection: *mut *mut DeviceCollection)
+                                                       collection: *mut DeviceCollection)
                                                        -> i32>,
+    pub device_collection_destroy:
+        Option<unsafe extern "C" fn(context: *mut Context, collection: *mut DeviceCollection) -> i32>,
     pub destroy: Option<unsafe extern "C" fn(context: *mut Context)>,
     pub stream_init: StreamInitFn,
     pub stream_destroy: Option<unsafe extern "C" fn(stream: *mut Stream)>,
