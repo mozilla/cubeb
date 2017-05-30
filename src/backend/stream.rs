@@ -464,9 +464,12 @@ impl<'ctx> Stream<'ctx> {
             rate: stream_params.rate,
         };
 
-        let cm = layout_to_channel_map(stream_params.layout);
-
-        let stream = unsafe { pa_stream_new(self.context.context, stream_name, &ss, &cm) };
+        let stream = if stream_params.layout == cubeb::LAYOUT_UNDEFINED {
+            unsafe { pa_stream_new(self.context.context, stream_name, &ss, ptr::null_mut()) }
+        } else {
+            let cm = layout_to_channel_map(stream_params.layout);
+            unsafe { pa_stream_new(self.context.context, stream_name, &ss, &cm) }
+        };
 
         if !stream.is_null() {
             Ok(stream)
