@@ -146,6 +146,7 @@ downmix_test(float const * data, cubeb_channel_layout in_layout, cubeb_channel_l
   std::unique_ptr<cubeb_mixer, decltype(&cubeb_mixer_destroy)>
     mixer(cubeb_mixer_create(in_params.format, CUBEB_MIXER_DIRECTION_DOWNMIX), cubeb_mixer_destroy);
 
+  assert(!in.empty() && !out.empty() && out.size() <= in.size());
   cubeb_mixer_mix(mixer.get(), inframes, in.data(), in.size(), out.data(), out.size(), &in_params, &out_params);
 
   uint32_t in_layout_mask = 0;
@@ -158,8 +159,19 @@ downmix_test(float const * data, cubeb_channel_layout in_layout, cubeb_channel_l
     out_layout_mask |= 1 << CHANNEL_INDEX_TO_ORDER[out_layout][i];
   }
 
-  for (unsigned int i = 0 ; i < inframes * out_params.channels ; ++i) {
+  for (unsigned int i = 0 ; i < out.size() ; ++i) {
+    assert(in_params.channels && out_params.channels);
+#if defined(__APPLE__)
+    // The size of audio mix buffer(vector out above) on OS X is same as input,
+    // so we need to check whether the out[i] will be dropped or not.
+    unsigned int index = i % in_params.channels;
+    if (index >= out_params.channels) {
+      // The out[i] will be dropped, so we don't care the data inside.
+      continue;
+    }
+#else
     unsigned int index = i % out_params.channels;
+#endif
 
     // downmix_3f2
     if ((in_layout == CUBEB_LAYOUT_3F2 || in_layout == CUBEB_LAYOUT_3F2_LFE) &&
