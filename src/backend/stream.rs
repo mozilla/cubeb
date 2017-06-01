@@ -395,7 +395,7 @@ impl<'ctx> Stream<'ctx> {
         }
 
         let r = if self.output_stream.is_null() {
-            return Err(cubeb::ERROR);
+            Err(cubeb::ERROR)
         } else {
             match self.output_stream.get_time() {
                 Ok(r_usec) => {
