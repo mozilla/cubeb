@@ -82,6 +82,8 @@ pub enum ContextState {
 }
 
 impl ContextState {
+    // This function implements the PA_CONTENT_IS_GOOD macro from pulse/def.h
+    // It must match the version from PA headers.
     pub fn is_good(self) -> bool {
         match self {
             ContextState::Connecting |
@@ -124,6 +126,8 @@ pub enum StreamState {
 }
 
 impl StreamState {
+    // This function implements the PA_STREAM_IS_GOOD macro from pulse/def.h
+    // It must match the version from PA headers.
     pub fn is_good(self) -> bool {
         match self {
             StreamState::Creating | StreamState::Ready => true,
