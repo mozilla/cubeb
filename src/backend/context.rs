@@ -146,7 +146,7 @@ impl Context {
         };
         let mut ctx = try!(Context::_new(name));
 
-        if ctx.mainloop.start() < 0 {
+        if ctx.mainloop.start().is_err() {
             ctx.destroy();
             return Err(cubeb::ERROR);
         }

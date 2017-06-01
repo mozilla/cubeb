@@ -3,6 +3,8 @@
 // This program is made available under an ISC-style license.  See the
 // accompanying file LICENSE for details.
 
+use ErrorCode;
+use Result;
 use ffi;
 use mainloop_api;
 use mainloop_api::MainloopApi;
@@ -27,8 +29,11 @@ impl ThreadedMainloop {
         self.0.is_null()
     }
 
-    pub fn start(&self) -> i32 {
-        unsafe { ffi::pa_threaded_mainloop_start(self.raw_mut()) as i32 }
+    pub fn start(&self) -> Result<()> {
+        match unsafe { ffi::pa_threaded_mainloop_start(self.raw_mut()) } {
+            0 => Ok(()),
+            _ => Err(ErrorCode::from_error_code(ffi::PA_ERR_UNKNOWN)),
+        }
     }
 
     pub fn stop(&self) {
