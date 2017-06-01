@@ -47,6 +47,18 @@ use util::UnwrapCStr;
 //		mem::forget(object);
 //		result
 
+// Aid in returning Operation from callbacks
+macro_rules! op_or_err {
+    ($self_:ident, $e:expr) => {{
+        let o = unsafe { $e };
+        if o.is_null() {
+            Err(ErrorCode::from_error_code($self_.errno()))
+        } else {
+            Ok(unsafe { operation::from_raw_ptr(o) })
+        }
+    }}
+}
+
 #[repr(C)]
 #[derive(Debug)]
 pub struct Context(*mut ffi::pa_context);
@@ -141,11 +153,8 @@ impl Context {
             result
         }
 
-        let o = unsafe { ffi::pa_context_drain(self.raw_mut(), Some(wrapped::<CB>), userdata) };
-        if o.is_null() {
-            return Err(ErrorCode::from_error_code(self.errno()));
-        }
-        Ok(unsafe { operation::from_raw_ptr(o) })
+        op_or_err!(self,
+                   ffi::pa_context_drain(self.raw_mut(), Some(wrapped::<CB>), userdata))
     }
 
     pub fn rttime_new<CB>(&self, usec: USec, _: CB, userdata: *mut c_void) -> *mut ffi::pa_time_event
@@ -191,11 +200,8 @@ impl Context {
             result
         }
 
-        let o = unsafe { ffi::pa_context_get_server_info(self.raw_mut(), Some(wrapped::<CB>), userdata) };
-        if o.is_null() {
-            return Err(ErrorCode::from_error_code(self.errno()));
-        }
-        Ok(unsafe { operation::from_raw_ptr(o) })
+        op_or_err!(self,
+                   ffi::pa_context_get_server_info(self.raw_mut(), Some(wrapped::<CB>), userdata))
     }
 
     pub fn get_sink_info_by_name<CB>(&self, name: &CStr, _: CB, userdata: *mut c_void) -> Result<Operation>
@@ -218,13 +224,8 @@ impl Context {
             result
         }
 
-        let o = unsafe {
-            ffi::pa_context_get_sink_info_by_name(self.raw_mut(), name.as_ptr(), Some(wrapped::<CB>), userdata)
-        };
-        if o.is_null() {
-            return Err(ErrorCode::from_error_code(self.errno()));
-        }
-        Ok(unsafe { operation::from_raw_ptr(o) })
+        op_or_err!(self,
+                   ffi::pa_context_get_sink_info_by_name(self.raw_mut(), name.as_ptr(), Some(wrapped::<CB>), userdata))
     }
 
     pub fn get_sink_info_list<CB>(&self, _: CB, userdata: *mut c_void) -> Result<Operation>
@@ -247,11 +248,8 @@ impl Context {
             result
         }
 
-        let o = unsafe { ffi::pa_context_get_sink_info_list(self.raw_mut(), Some(wrapped::<CB>), userdata) };
-        if o.is_null() {
-            return Err(ErrorCode::from_error_code(self.errno()));
-        }
-        Ok(unsafe { operation::from_raw_ptr(o) })
+        op_or_err!(self,
+                   ffi::pa_context_get_sink_info_list(self.raw_mut(), Some(wrapped::<CB>), userdata))
     }
 
     pub fn get_sink_input_info<CB>(&self, idx: u32, _: CB, userdata: *mut c_void) -> Result<Operation>
@@ -274,11 +272,8 @@ impl Context {
             result
         }
 
-        let o = unsafe { ffi::pa_context_get_sink_input_info(self.raw_mut(), idx, Some(wrapped::<CB>), userdata) };
-        if o.is_null() {
-            return Err(ErrorCode::from_error_code(self.errno()));
-        }
-        Ok(unsafe { ::operation::from_raw_ptr(o) })
+        op_or_err!(self,
+                   ffi::pa_context_get_sink_input_info(self.raw_mut(), idx, Some(wrapped::<CB>), userdata))
     }
 
     pub fn get_source_info_list<CB>(&self, _: CB, userdata: *mut c_void) -> Result<Operation>
@@ -301,11 +296,8 @@ impl Context {
             result
         }
 
-        let o = unsafe { ffi::pa_context_get_source_info_list(self.raw_mut(), Some(wrapped::<CB>), userdata) };
-        if o.is_null() {
-            return Err(ErrorCode::from_error_code(self.errno()));
-        }
-        Ok(unsafe { ::operation::from_raw_ptr(o) })
+        op_or_err!(self,
+                   ffi::pa_context_get_source_info_list(self.raw_mut(), Some(wrapped::<CB>), userdata))
     }
 
     pub fn set_sink_input_volume<CB>(&self,
@@ -330,13 +322,8 @@ impl Context {
             result
         }
 
-        let o = unsafe {
-            ffi::pa_context_set_sink_input_volume(self.raw_mut(), idx, volume, Some(wrapped::<CB>), userdata)
-        };
-        if o.is_null() {
-            return Err(ErrorCode::from_error_code(self.errno()));
-        }
-        Ok(unsafe { operation::from_raw_ptr(o) })
+        op_or_err!(self,
+                   ffi::pa_context_set_sink_input_volume(self.raw_mut(), idx, volume, Some(wrapped::<CB>), userdata))
     }
 
     pub fn subscribe<CB>(&self, m: SubscriptionMask, _: CB, userdata: *mut c_void) -> Result<Operation>
@@ -356,11 +343,8 @@ impl Context {
             result
         }
 
-        let o = unsafe { ffi::pa_context_subscribe(self.raw_mut(), m.into(), Some(wrapped::<CB>), userdata) };
-        if o.is_null() {
-            return Err(ErrorCode::from_error_code(self.errno()));
-        }
-        Ok(unsafe { operation::from_raw_ptr(o) })
+        op_or_err!(self,
+                   ffi::pa_context_subscribe(self.raw_mut(), m.into(), Some(wrapped::<CB>), userdata))
     }
 
     pub fn clear_subscribe_callback(&self) {
