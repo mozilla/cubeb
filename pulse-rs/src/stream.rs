@@ -147,10 +147,12 @@ impl Stream {
                                -> Result<()>
         where CB: Fn(*mut c_void)
     {
+        // See: A note about `wrapped` functions
         unsafe extern "C" fn wrapped<F>(p: *mut c_void)
             where F: Fn(*mut c_void)
         {
-            mem::transmute::<_, &F>(&())(p)
+            use std::mem::uninitialized;
+            uninitialized::<F>()(p)
         }
 
         let r = unsafe {
@@ -206,12 +208,15 @@ impl Stream {
     {
         debug_assert_eq!(mem::size_of::<CB>(), 0);
 
+        // See: A note about `wrapped` functions
         unsafe extern "C" fn wrapped<F>(s: *mut ffi::pa_stream, success: c_int, userdata: *mut c_void)
             where F: Fn(&Stream, i32, *mut c_void)
         {
+            use std::mem::{forget, uninitialized};
             let mut stm = stream::from_raw_ptr(s);
-            let result = mem::transmute::<_, &F>(&())(&mut stm, success, userdata);
-            mem::forget(stm);
+            let result = uninitialized::<F>()(&mut stm, success, userdata);
+            forget(stm);
+
             result
         }
 
@@ -238,12 +243,15 @@ impl Stream {
     {
         debug_assert_eq!(mem::size_of::<CB>(), 0);
 
+        // See: A note about `wrapped` functions
         unsafe extern "C" fn wrapped<F>(s: *mut ffi::pa_stream, userdata: *mut c_void)
             where F: Fn(&Stream, *mut c_void)
         {
+            use std::mem::{forget, uninitialized};
             let mut stm = stream::from_raw_ptr(s);
-            let result = mem::transmute::<_, &F>(&())(&mut stm, userdata);
-            mem::forget(stm);
+            let result = uninitialized::<F>()(&mut stm, userdata);
+            forget(stm);
+
             result
         }
 
@@ -263,12 +271,15 @@ impl Stream {
     {
         debug_assert_eq!(mem::size_of::<CB>(), 0);
 
+        // See: A note about `wrapped` functions
         unsafe extern "C" fn wrapped<F>(s: *mut ffi::pa_stream, nbytes: usize, userdata: *mut c_void)
             where F: Fn(&Stream, usize, *mut c_void)
         {
+            use std::mem::{forget, uninitialized};
             let mut stm = stream::from_raw_ptr(s);
-            let result = mem::transmute::<_, &F>(&())(&mut stm, nbytes, userdata);
-            mem::forget(stm);
+            let result = uninitialized::<F>()(&mut stm, nbytes, userdata);
+            forget(stm);
+
             result
         }
 
@@ -288,12 +299,15 @@ impl Stream {
     {
         debug_assert_eq!(mem::size_of::<CB>(), 0);
 
+        // See: A note about `wrapped` functions
         unsafe extern "C" fn wrapped<F>(s: *mut ffi::pa_stream, nbytes: usize, userdata: *mut c_void)
             where F: Fn(&Stream, usize, *mut c_void)
         {
+            use std::mem::{forget, uninitialized};
             let mut stm = stream::from_raw_ptr(s);
-            let result = mem::transmute::<_, &F>(&())(&mut stm, nbytes, userdata);
-            mem::forget(stm);
+            let result = uninitialized::<F>()(&mut stm, nbytes, userdata);
+            forget(stm);
+
             result
         }
 
@@ -307,12 +321,15 @@ impl Stream {
     {
         debug_assert_eq!(mem::size_of::<CB>(), 0);
 
+        // See: A note about `wrapped` functions
         unsafe extern "C" fn wrapped<F>(s: *mut ffi::pa_stream, success: c_int, userdata: *mut c_void)
             where F: Fn(&Stream, i32, *mut c_void)
         {
+            use std::mem::{forget, uninitialized};
             let mut stm = stream::from_raw_ptr(s);
-            let result = mem::transmute::<_, &F>(&())(&mut stm, success, userdata);
-            mem::forget(stm);
+            let result = uninitialized::<F>()(&mut stm, success, userdata);
+            forget(stm);
+
             result
         }
 
