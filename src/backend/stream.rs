@@ -708,7 +708,6 @@ impl<'ctx> Stream<'ctx> {
                 Ok((buffer, size)) => {
                     debug_assert!(size > 0);
                     debug_assert_eq!(size % frame_size, 0);
-                    // Note: this has failed running under rr on occassion - needs investigation.
 
                     logv!("Trigger user callback with output buffer size={}, read_offset={}",
                           size,
