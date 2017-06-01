@@ -3,21 +3,20 @@
 // This program is made available under an ISC-style license.  See the
 // accompanying file LICENSE for details.
 
-//#[macro_use]
-//extern crate bitflags;
+#[macro_use]
+extern crate bitflags;
 extern crate pulse_ffi as ffi;
 
 #[macro_use]
-//mod error;
-//mod context;
+mod error;
+mod context;
 mod mainloop_api;
-//mod operation;
+mod operation;
 mod threaded_mainloop;
-//mod util;
+mod util;
 
-//pub use context::Context;
-//pub use error::ErrorCode;
-
+pub use context::Context;
+pub use error::ErrorCode;
 pub use ffi::pa_channel_map as ChannelMap;
 pub use ffi::pa_cvolume as CVolume;
 pub use ffi::pa_sample_spec as SampleSpec;
@@ -28,10 +27,9 @@ pub use ffi::pa_source_info as SourceInfo;
 pub use ffi::pa_usec_t as USec;
 pub use ffi::timeval as TimeVal;
 pub use mainloop_api::MainloopApi;
-//pub use operation::Operation;
+pub use operation::Operation;
 pub use threaded_mainloop::ThreadedMainloop;
 
-/*
 #[allow(non_camel_case_types)]
 #[repr(i32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -469,5 +467,4 @@ impl Into<ffi::pa_channel_position_t> for ChannelPosition {
         self as ffi::pa_channel_position_t
     }
 }
-*/
-//pub type Result<T> = ::std::result::Result<T, error::ErrorCode>;
+pub type Result<T> = ::std::result::Result<T, error::ErrorCode>;
