@@ -138,35 +138,6 @@ impl Stream {
         error_result!((), r)
     }
 
-    pub fn write_with_free<CB>(&self,
-                               data: *const c_void,
-                               nbytes: usize,
-                               _: CB,
-                               offset: i64,
-                               seek: SeekMode)
-                               -> Result<()>
-        where CB: Fn(*mut c_void)
-    {
-        // See: A note about `wrapped` functions
-        unsafe extern "C" fn wrapped<F>(p: *mut c_void)
-            where F: Fn(*mut c_void)
-        {
-            use std::mem::uninitialized;
-            uninitialized::<F>()(p)
-        }
-
-        let r = unsafe {
-            ffi::pa_stream_write(self.raw_mut(),
-                                 data,
-                                 nbytes,
-                                 Some(wrapped::<CB>),
-                                 offset,
-                                 seek.into())
-        };
-        error_result!((), r)
-    }
-
-
     pub unsafe fn peek(&self, data: *mut *const c_void, length: *mut usize) -> Result<()> {
         let r = ffi::pa_stream_peek(self.raw_mut(), data, length);
         error_result!((), r)
