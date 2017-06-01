@@ -131,7 +131,7 @@ impl Context {
                                                      flags: flags,
                                                  });
                 }
-                ctx.mainloop.signal(false);
+                ctx.mainloop.signal();
             }
 
             let _ = context.get_sink_info_by_name(unsafe { CStr::from_ptr(info.default_sink_name) },
@@ -289,7 +289,7 @@ impl Context {
             };
             list_data.devinfo.push(devinfo);
 
-            ctx.mainloop.signal(false);
+            ctx.mainloop.signal();
         }
 
         fn add_input_device(_: &pulse::Context, i: *const pulse::SourceInfo, eol: i32, user_data: *mut c_void) {
@@ -346,7 +346,7 @@ impl Context {
 
             list_data.devinfo.push(devinfo);
 
-            ctx.mainloop.signal(false);
+            ctx.mainloop.signal();
         }
 
         fn default_device_names(_: &pulse::Context, info: &pulse::ServerInfo, user_data: *mut c_void) {
@@ -355,7 +355,7 @@ impl Context {
             list_data.default_sink_name = unsafe { CStr::from_ptr(info.default_sink_name) }.to_owned();
             list_data.default_source_name = unsafe { CStr::from_ptr(info.default_source_name) }.to_owned();
 
-            (*list_data.context).mainloop.signal(false);
+            (*list_data.context).mainloop.signal();
         }
 
         let mut user_data = PulseDevListData::new(self);
@@ -468,7 +468,7 @@ impl Context {
         fn success(_: &pulse::Context, success: i32, user_data: *mut c_void) {
             let ctx = unsafe { &*(user_data as *mut Context) };
             debug_assert_ne!(success, 0);
-            ctx.mainloop.signal(false);
+            ctx.mainloop.signal();
         }
 
         self.collection_changed_callback = cb;
@@ -511,7 +511,7 @@ impl Context {
             if !c.get_state().is_good() {
                 ctx.error = true;
             }
-            ctx.mainloop.signal(false);
+            ctx.mainloop.signal();
         }
 
         if !self.context.is_null() {
@@ -561,7 +561,7 @@ impl Context {
     fn context_destroy(&mut self) {
         fn drain_complete(_: &pulse::Context, u: *mut c_void) {
             let ctx = unsafe { &*(u as *mut Context) };
-            ctx.mainloop.signal(false);
+            ctx.mainloop.signal();
         }
 
         self.mainloop.lock();

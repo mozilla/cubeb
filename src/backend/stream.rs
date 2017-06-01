@@ -106,7 +106,7 @@ impl<'ctx> Stream<'ctx> {
             if !s.get_state().is_good() {
                 stm.state_change_callback(cubeb::STATE_ERROR);
             }
-            stm.context.mainloop.signal(false);
+            stm.context.mainloop.signal();
         }
 
         fn read_data(s: &pulse::Stream, nbytes: usize, u: *mut c_void) {
@@ -482,7 +482,7 @@ impl<'ctx> Stream<'ctx> {
                 let info = unsafe { *info };
                 r.cvol = info.volume;
             }
-            r.mainloop.signal(false);
+            r.mainloop.signal();
         }
 
         if self.output_stream.is_null() {
@@ -690,7 +690,7 @@ impl<'ctx> Stream<'ctx> {
             /* there's no pa_rttime_free, so use this instead. */
             a.time_free(stm.drain_timer);
             stm.drain_timer = ptr::null_mut();
-            stm.context.mainloop.signal(false);
+            stm.context.mainloop.signal();
         }
 
         let s = unsafe { &*stream };
@@ -789,13 +789,13 @@ impl<'ctx> Stream<'ctx> {
 fn stream_success(_: &pulse::Stream, success: i32, u: *mut c_void) {
     let stm = unsafe { &*(u as *mut Stream) };
     debug_assert_ne!(success, 0);
-    stm.context.mainloop.signal(false);
+    stm.context.mainloop.signal();
 }
 
 fn context_success(_: &pulse::Context, success: i32, u: *mut c_void) {
     let ctx = unsafe { &*(u as *mut Context) };
     debug_assert_ne!(success, 0);
-    ctx.mainloop.signal(false);
+    ctx.mainloop.signal();
 }
 
 fn set_buffering_attribute(latency_frames: u32, sample_spec: &pa_sample_spec) -> pa_buffer_attr {

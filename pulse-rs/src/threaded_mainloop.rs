@@ -60,9 +60,9 @@ impl ThreadedMainloop {
         }
     }
 
-    pub fn signal(&self, wait_for_accept: bool) {
+    pub fn signal(&self) {
         unsafe {
-            ffi::pa_threaded_mainloop_signal(self.raw_mut(), wait_for_accept as i32);
+            ffi::pa_threaded_mainloop_signal(self.raw_mut(), 0);
         }
     }
 
