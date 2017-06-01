@@ -757,7 +757,10 @@ impl<'ctx> Stream<'ctx> {
 
                     if (got as usize) < size / frame_size {
                         let latency = match s.get_latency() {
-                            Ok((l, _)) => l,
+                            Ok((l, negative)) => {
+                                assert_ne!(negative, true);
+                                l
+                            },
                             Err(e) => {
                                 debug_assert_eq!(e, pulse::ErrorCode::from_error_code(PA_ERR_NODATA));
                                 /* this needs a better guess. */
