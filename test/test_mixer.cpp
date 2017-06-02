@@ -174,7 +174,7 @@ downmix_test(float const * data, cubeb_channel_layout in_layout, cubeb_channel_l
   }
 
   for (unsigned int i = 0 ; i < out.size() ; ++i) {
-    assert(in_params.channels && out_params.channels);
+    assert(in_params.channels && out_params.channels); // to pass the scan-build warning: Division by zero.
 #if defined(__APPLE__)
     // The size of audio mix buffer(vector out above) on OS X is same as input,
     // so we need to check whether the out[i] will be dropped or not.
