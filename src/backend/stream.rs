@@ -162,7 +162,7 @@ impl<'ctx> Stream<'ctx> {
                 }
 
                 if read_size > 0 {
-                    let _ = s.drop_record();
+                    let _ = s.drop();
                 }
 
                 if stm.shutdown {
