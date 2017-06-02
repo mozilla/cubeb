@@ -52,6 +52,7 @@
 #include <stdexcept>      // for std::logic_error
 #include <string>         // for std::string
 #include <unistd.h>       // for sleep, usleep
+#include <atomic>         // for std::atomic
 
 // The signal alias for calling our thread killer.
 #define CALL_THREAD_KILLER SIGUSR1
@@ -61,7 +62,7 @@
 bool killed = false;
 
 // This indicator will become true when the assigned task is done.
-bool task_done = false;
+std::atomic<bool> task_done{ false };
 
 // Indicating the data callback is fired or not.
 bool called = false;
@@ -69,7 +70,7 @@ bool called = false;
 // Toggle to true when running data callback. Before data callback gets
 // the mutex for cubeb context, it toggles back to false.
 // The task to get channel layout should be executed when this is true.
-bool callbacking_before_getting_context = false;
+std::atomic<bool> callbacking_before_getting_context{ false };
 
 owned_critical_section context_mutex;
 cubeb * context = nullptr;
@@ -242,11 +243,11 @@ TEST(cubeb, run_deadlock_test)
 
   ASSERT_TRUE(called);
 
-  fprintf(stderr, "\n%sDeadlock detected!\n", (called && !task_done) ? "" : "No ");
+  fprintf(stderr, "\n%sDeadlock detected!\n", (called && !task_done.load()) ? "" : "No ");
 
   // Check the task is killed by ourselves if deadlock happends.
   // Otherwise, thread_killer should not be triggered.
-  ASSERT_NE(task_done, killed);
+  ASSERT_NE(task_done.load(), killed);
 
-  ASSERT_TRUE(task_done);
+  ASSERT_TRUE(task_done.load());
 }
