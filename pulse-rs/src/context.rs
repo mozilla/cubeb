@@ -381,12 +381,6 @@ impl Context {
     }
 }
 
-impl Clone for Context {
-    fn clone(&self) -> Self {
-        unsafe { Context(ffi::pa_context_ref(self.raw_mut())) }
-    }
-}
-
 impl ::std::default::Default for Context {
     fn default() -> Self {
         Context(::std::ptr::null_mut())

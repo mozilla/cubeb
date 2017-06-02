@@ -354,12 +354,6 @@ impl Stream {
     }
 }
 
-impl Clone for Stream {
-    fn clone(&self) -> Self {
-        unsafe { stream::from_raw_ptr(ffi::pa_stream_ref(self.raw_mut())) }
-    }
-}
-
 impl ::std::default::Default for Stream {
     fn default() -> Self {
         Stream(::std::ptr::null_mut())
