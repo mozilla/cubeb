@@ -79,7 +79,7 @@ struct cubeb {
   // The queue is asynchronously deallocated once all references to it are released
   dispatch_queue_t serial_queue = dispatch_queue_create(DISPATCH_QUEUE_LABEL, DISPATCH_QUEUE_SERIAL);
   // Current used channel layout
-  cubeb_channel_layout layout;
+  std::atomic<cubeb_channel_layout> layout{ CUBEB_LAYOUT_UNDEFINED };
 };
 
 static std::unique_ptr<AudioChannelLayout, decltype(&free)>
