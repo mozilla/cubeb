@@ -88,6 +88,20 @@ audio_input audio_inputs[CUBEB_LAYOUT_MAX] = {
   { CUBEB_LAYOUT_3F4_LFE,       { L, R, C, LFE, RLS, RRS, LS, RS } }
 };
 
+char const * channel_names[CHANNEL_UNMAPPED + 1] = {
+  "mono",                   // CHANNEL_MONO
+  "left",                   // CHANNEL_LEFT
+  "right",                  // CHANNEL_RIGHT
+  "center",                 // CHANNEL_CENTER
+  "left surround",          // CHANNEL_LS
+  "right surround",         // CHANNEL_RS
+  "rear left surround",     // CHANNEL_RLS
+  "rear center",            // CHANNEL_RCENTER
+  "rear right surround",    // CHANNEL_RRS
+  "low frequency effects",  // CHANNEL_LFE
+  "unmapped"                // CHANNEL_UNMAPPED
+};
+
 // The test cases must be aligned with cubeb_downmix.
 void
 downmix_test(float const * data, cubeb_channel_layout in_layout, cubeb_channel_layout out_layout)

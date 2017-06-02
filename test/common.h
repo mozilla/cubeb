@@ -69,20 +69,6 @@ layout_info const layout_infos[CUBEB_LAYOUT_MAX] = {
   { "3f4 lfe",        8,  CUBEB_LAYOUT_3F4_LFE }
 };
 
-char const * channel_names[CHANNEL_UNMAPPED + 1] = {
-  "mono",                   // CHANNEL_MONO
-  "left",                   // CHANNEL_LEFT
-  "right",                  // CHANNEL_RIGHT
-  "center",                 // CHANNEL_CENTER
-  "left surround",          // CHANNEL_LS
-  "right surround",         // CHANNEL_RS
-  "rear left surround",     // CHANNEL_RLS
-  "rear center",            // CHANNEL_RCENTER
-  "rear right surround",    // CHANNEL_RRS
-  "low frequency effects",  // CHANNEL_LFE
-  "unmapped"                // CHANNEL_UNMAPPED
-};
-
 int has_available_input_device(cubeb * ctx)
 {
   cubeb_device_collection devices;
