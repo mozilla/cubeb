@@ -201,12 +201,12 @@ impl<'ctx> Stream<'ctx> {
                                    state: cubeb::STATE_ERROR,
                                });
 
-        {
+        if let Some(ref context) = stm.context.context {
             stm.context.mainloop.lock();
 
             // Setup output stream
             if let Some(ref stream_params) = output_stream_params {
-                match Stream::stream_init(&stm.context.context, stream_params, stream_name) {
+                match Stream::stream_init(context, stream_params, stream_name) {
                     Ok(s) => {
                         stm.output_sample_spec = *s.get_sample_spec();
 
@@ -240,7 +240,7 @@ impl<'ctx> Stream<'ctx> {
 
             // Set up input stream
             if let Some(ref stream_params) = input_stream_params {
-                match Stream::stream_init(&stm.context.context, stream_params, stream_name) {
+                match Stream::stream_init(context, stream_params, stream_name) {
                     Ok(s) => {
                         stm.input_sample_spec = *s.get_sample_spec();
 
@@ -433,7 +433,7 @@ impl<'ctx> Stream<'ctx> {
             return cubeb::ERROR;
         }
 
-        {
+        if let Some(ref context) = self.context.context {
             self.context.mainloop.lock();
 
             let mut cvol: pa_cvolume = Default::default();
@@ -457,9 +457,7 @@ impl<'ctx> Stream<'ctx> {
                 let index = self.output_stream.get_index();
 
                 let context_ptr = self.context as *const _ as *mut _;
-                if let Ok(o) = self.context
-                       .context
-                       .set_sink_input_volume(index, &cvol, context_success, context_ptr) {
+                if let Ok(o) = context.set_sink_input_volume(index, &cvol, context_success, context_ptr) {
                     self.context.operation_wait(&self.output_stream, &o);
                 }
             }
@@ -485,42 +483,42 @@ impl<'ctx> Stream<'ctx> {
             r.mainloop.signal();
         }
 
-        if self.output_stream.is_null() {
-            cubeb::ERROR
-        } else {
-            self.context.mainloop.lock();
+        if let Some(ref context) = self.context.context {
+            if self.output_stream.is_null() {
+                cubeb::ERROR
+            } else {
+                self.context.mainloop.lock();
 
-            let map = self.output_stream.get_channel_map();
-            if !map.can_balance() {
+                let map = self.output_stream.get_channel_map();
+                if !map.can_balance() {
+                    self.context.mainloop.unlock();
+                    return cubeb::ERROR;
+                }
+
+                let index = self.output_stream.get_index();
+
+                let mut r = SinkInputInfoResult {
+                    cvol: pulse::CVolume::default(),
+                    mainloop: &self.context.mainloop,
+                };
+
+                if let Ok(o) = context.get_sink_input_info(index, get_input_volume, &mut r as *mut _ as *mut _) {
+                    self.context.operation_wait(&self.output_stream, &o);
+                }
+
+                r.cvol.set_balance(map, panning);
+
+                let context_ptr = self.context as *const _ as *mut _;
+                if let Ok(o) = context.set_sink_input_volume(index, &r.cvol, context_success, context_ptr) {
+                    self.context.operation_wait(&self.output_stream, &o);
+                }
+
                 self.context.mainloop.unlock();
-                return cubeb::ERROR;
+
+                cubeb::OK
             }
-
-            let index = self.output_stream.get_index();
-
-            let mut r = SinkInputInfoResult {
-                cvol: pulse::CVolume::default(),
-                mainloop: &self.context.mainloop,
-            };
-
-            if let Ok(o) = self.context
-                   .context
-                   .get_sink_input_info(index, get_input_volume, &mut r as *mut _ as *mut _) {
-                self.context.operation_wait(&self.output_stream, &o);
-            }
-
-            r.cvol.set_balance(map, panning);
-
-            let context_ptr = self.context as *const _ as *mut _;
-            if let Ok(o) = self.context
-                   .context
-                   .set_sink_input_volume(index, &r.cvol, context_success, context_ptr) {
-                self.context.operation_wait(&self.output_stream, &o);
-            }
-
-            self.context.mainloop.unlock();
-
-            cubeb::OK
+        } else {
+            cubeb::ERROR
         }
     }
 
@@ -772,9 +770,10 @@ impl<'ctx> Stream<'ctx> {
                         /* arbitrary safety margin: double the current latency. */
                         debug_assert!(self.drain_timer.is_null());
                         let stream_ptr = self as *const _ as *mut _;
-                        self.drain_timer = self.context
-                            .context
-                            .rttime_new(pulse::rtclock_now() + 2 * latency, drained_cb, stream_ptr);
+                        if let Some(ref context) = self.context.context {
+                            self.drain_timer =
+                                context.rttime_new(pulse::rtclock_now() + 2 * latency, drained_cb, stream_ptr);
+                        }
                         self.shutdown = true;
                         return;
                     }

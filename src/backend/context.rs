@@ -59,7 +59,7 @@ pub struct DefaultInfo {
 pub struct Context {
     pub ops: *const cubeb::Ops,
     pub mainloop: pulse::ThreadedMainloop,
-    pub context: pulse::Context,
+    pub context: Option<pulse::Context>,
     pub default_sink_info: Option<DefaultInfo>,
     pub context_name: Option<CString>,
     pub collection_changed_callback: cubeb::DeviceCollectionChangedCallback,
@@ -89,7 +89,7 @@ impl Context {
                                ops: &PULSE_OPS,
                                libpulse: libpulse.unwrap(),
                                mainloop: pulse::ThreadedMainloop::new(),
-                               context: pulse::Context::default(),
+                               context: None,
                                default_sink_info: None,
                                context_name: name,
                                collection_changed_callback: None,
@@ -107,7 +107,7 @@ impl Context {
         Ok(Box::new(Context {
                         ops: &PULSE_OPS,
                         mainloop: pulse::ThreadedMainloop::new(),
-                        context: pulse::Context::default(),
+                        context: None,
                         default_sink_info: None,
                         context_name: name,
                         collection_changed_callback: None,
@@ -161,8 +161,10 @@ impl Context {
          * which is responsible for initializing default_sink_info
          * and signalling the mainloop to end the wait. */
         let user_data: *mut c_void = ctx.as_mut() as *mut _ as *mut _;
-        if let Ok(o) = ctx.context.get_server_info(server_info_cb, user_data) {
-            ctx.operation_wait(None, &o);
+        if let Some(ref context) = ctx.context {
+            if let Ok(o) = context.get_server_info(server_info_cb, user_data) {
+                ctx.operation_wait(None, &o);
+            }
         }
         assert!(ctx.default_sink_info.is_some());
         ctx.mainloop.unlock();
@@ -172,7 +174,7 @@ impl Context {
     }
 
     pub fn destroy(&mut self) {
-        if !self.context.is_null() {
+        if self.context.is_some() {
             self.context_destroy();
         }
 
@@ -360,24 +362,21 @@ impl Context {
 
         let mut user_data = PulseDevListData::new(self);
 
-        {
+        if let Some(ref context) = self.context {
             self.mainloop.lock();
 
-            if let Ok(o) = self.context
-                   .get_server_info(default_device_names, &mut user_data as *mut _ as *mut _) {
+            if let Ok(o) = context.get_server_info(default_device_names, &mut user_data as *mut _ as *mut _) {
                 self.operation_wait(None, &o);
             }
 
             if devtype == cubeb::DEVICE_TYPE_OUTPUT {
-                if let Ok(o) = self.context
-                       .get_sink_info_list(add_output_device, &mut user_data as *mut _ as *mut _) {
+                if let Ok(o) = context.get_sink_info_list(add_output_device, &mut user_data as *mut _ as *mut _) {
                     self.operation_wait(None, &o);
                 }
             }
 
             if devtype == cubeb::DEVICE_TYPE_INPUT {
-                if let Ok(o) = self.context
-                       .get_source_info_list(add_input_device, &mut user_data as *mut _ as *mut _) {
+                if let Ok(o) = context.get_source_info_list(add_input_device, &mut user_data as *mut _ as *mut _) {
                     self.operation_wait(None, &o);
                 }
             }
@@ -474,33 +473,33 @@ impl Context {
         self.collection_changed_callback = cb;
         self.collection_changed_user_ptr = user_ptr;
 
-        self.mainloop.lock();
+        let user_data: *mut c_void = self as *mut _ as *mut _;
+        if let Some(ref context) = self.context {
+            self.mainloop.lock();
 
-        let mut mask = pulse::SubscriptionMask::empty();
-        if self.collection_changed_callback.is_none() {
-            // Unregister subscription
-            self.context.clear_subscribe_callback();
-        } else {
-            let user_data: *mut c_void = self as *mut _ as *mut _;
-            self.context
-                .set_subscribe_callback(update_collection, user_data);
-            if devtype.contains(cubeb::DEVICE_TYPE_INPUT) {
-                mask |= pulse::SUBSCRIPTION_MASK_SOURCE
-            };
-            if devtype.contains(cubeb::DEVICE_TYPE_OUTPUT) {
-                mask = pulse::SUBSCRIPTION_MASK_SINK
-            };
+            let mut mask = pulse::SubscriptionMask::empty();
+            if self.collection_changed_callback.is_none() {
+                // Unregister subscription
+                context.clear_subscribe_callback();
+            } else {
+                context.set_subscribe_callback(update_collection, user_data);
+                if devtype.contains(cubeb::DEVICE_TYPE_INPUT) {
+                    mask |= pulse::SUBSCRIPTION_MASK_SOURCE
+                };
+                if devtype.contains(cubeb::DEVICE_TYPE_OUTPUT) {
+                    mask = pulse::SUBSCRIPTION_MASK_SINK
+                };
+            }
+
+            if let Ok(o) = context.subscribe(mask, success, self as *const _ as *mut _) {
+                self.operation_wait(None, &o);
+            } else {
+                log!("Context subscribe failed");
+                return cubeb::ERROR;
+            }
+
+            self.mainloop.unlock();
         }
-
-        if let Ok(o) = self.context
-               .subscribe(mask, success, self as *const _ as *mut _) {
-            self.operation_wait(None, &o);
-        } else {
-            log!("Context subscribe failed");
-            return cubeb::ERROR;
-        }
-
-        self.mainloop.unlock();
 
         cubeb::OK
     }
@@ -514,7 +513,7 @@ impl Context {
             ctx.mainloop.signal();
         }
 
-        if !self.context.is_null() {
+        if self.context.is_some() {
             debug_assert!(self.error);
             self.context_destroy();
         }
@@ -527,21 +526,21 @@ impl Context {
             pulse::Context::new(&self.mainloop.get_api(), name)
         };
 
-        if self.context.is_null() {
+        let context_ptr: *mut c_void = self as *mut _ as *mut _;
+        if self.context.is_none() {
             return cubeb::ERROR;
         }
 
-        let context_ptr: *mut c_void = self as *mut _ as *mut _;
-        self.context.set_state_callback(error_state, context_ptr);
-
         self.mainloop.lock();
-        let _ = self.context
-            .connect(None, pulse::ContextFlags::empty(), ptr::null());
+        if let Some(ref context) = self.context {
+            context.set_state_callback(error_state, context_ptr);
+            let _ = context.connect(None, pulse::ContextFlags::empty(), ptr::null());
+        }
 
         if !self.wait_until_context_ready() {
             self.mainloop.unlock();
             self.context_destroy();
-            self.context = Default::default();
+            self.context = None;
             return cubeb::ERROR;
         }
 
@@ -564,15 +563,17 @@ impl Context {
             ctx.mainloop.signal();
         }
 
-        self.mainloop.lock();
         let context_ptr: *mut c_void = self as *mut _ as *mut _;
-        if let Ok(o) = self.context.drain(drain_complete, context_ptr) {
-            self.operation_wait(None, &o);
+        if let Some(ref context) = self.context {
+            self.mainloop.lock();
+            if let Ok(o) = context.drain(drain_complete, context_ptr) {
+                self.operation_wait(None, &o);
+            }
+            context.clear_state_callback();
+            context.disconnect();
+            self.mainloop.unlock();
         }
-        self.context.clear_state_callback();
-        self.context.disconnect();
-        self.context = pulse::Context::default();
-        self.mainloop.unlock();
+        self.context = None;
     }
 
     pub fn operation_wait<'a, S>(&self, s: S, o: &pulse::Operation) -> bool
@@ -581,8 +582,10 @@ impl Context {
         let stream = s.into();
         while o.get_state() == PA_OPERATION_RUNNING {
             self.mainloop.wait();
-            if !self.context.get_state().is_good() {
-                return false;
+            if let Some(ref context) = self.context {
+                if !context.get_state().is_good() {
+                    return false;
+                }
             }
 
             if let Some(stm) = stream {
@@ -596,15 +599,17 @@ impl Context {
     }
 
     pub fn wait_until_context_ready(&self) -> bool {
-        loop {
-            let state = self.context.get_state();
-            if !state.is_good() {
-                return false;
+        if let Some(ref context) = self.context {
+            loop {
+                let state = context.get_state();
+                if !state.is_good() {
+                    return false;
+                }
+                if state == pulse::ContextState::Ready {
+                    break;
+                }
+                self.mainloop.wait();
             }
-            if state == pulse::ContextState::Ready {
-                break;
-            }
-            self.mainloop.wait();
         }
 
         true

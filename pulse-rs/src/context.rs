@@ -64,19 +64,20 @@ macro_rules! op_or_err {
 pub struct Context(*mut ffi::pa_context);
 
 impl Context {
-    pub fn new<'a, OPT>(api: &MainloopApi, name: OPT) -> Self
+    pub fn new<'a, OPT>(api: &MainloopApi, name: OPT) -> Option<Self>
         where OPT: Into<Option<&'a CStr>>
     {
-        unsafe { Context(ffi::pa_context_new(api.raw_mut(), name.unwrap_cstr())) }
+        let ptr = unsafe { ffi::pa_context_new(api.raw_mut(), name.unwrap_cstr()) };
+        if ptr.is_null() {
+            None
+        } else {
+            Some(Context(ptr))
+        }
     }
 
     #[doc(hidden)]
     pub fn raw_mut(&self) -> &mut ffi::pa_context {
         unsafe { &mut *self.0 }
-    }
-
-    pub fn is_null(&self) -> bool {
-        self.0.is_null()
     }
 
     pub fn clear_state_callback(&self) {
@@ -381,18 +382,10 @@ impl Context {
     }
 }
 
-impl ::std::default::Default for Context {
-    fn default() -> Self {
-        Context(::std::ptr::null_mut())
-    }
-}
-
 impl Drop for Context {
     fn drop(&mut self) {
-        if !self.is_null() {
-            unsafe {
-                ffi::pa_context_unref(self.raw_mut());
-            }
+        unsafe {
+            ffi::pa_context_unref(self.raw_mut());
         }
     }
 }
