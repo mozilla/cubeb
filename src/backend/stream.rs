@@ -317,28 +317,32 @@ impl<'ctx> Stream<'ctx> {
 
         self.context.mainloop.lock();
         {
-            if let Some(ref output_stream) = self.output_stream {
-                if !self.drain_timer.is_null() {
-                    /* there's no pa_rttime_free, so use this instead. */
-                    self.context
-                        .mainloop
-                        .get_api()
-                        .time_free(self.drain_timer);
-                }
-
-                output_stream.clear_state_callback();
-                output_stream.clear_write_callback();
-                let _ = output_stream.disconnect();
+            match self.output_stream.take() {
+                Some(stm) => {
+                    if !self.drain_timer.is_null() {
+                        /* there's no pa_rttime_free, so use this instead. */
+                        self.context
+                            .mainloop
+                            .get_api()
+                            .time_free(self.drain_timer);
+                    }
+                    stm.clear_state_callback();
+                    stm.clear_write_callback();
+                    let _ = stm.disconnect();
+                    stm.unref();
+                },
+                _ => {},
             }
-            self.output_stream = None;
 
-            if let Some(ref input_stream) = self.input_stream {
-                input_stream.clear_state_callback();
-                input_stream.clear_read_callback();
-                let _ = input_stream.disconnect();
+            match self.input_stream.take() {
+                Some(stm) => {
+                    stm.clear_state_callback();
+                    stm.clear_read_callback();
+                    let _ = stm.disconnect();
+                    stm.unref();
+                },
+                _ => {},
             }
-            self.input_stream = None;
-
         }
         self.context.mainloop.unlock();
     }

@@ -80,6 +80,12 @@ impl Context {
         unsafe { &mut *self.0 }
     }
 
+    pub fn unref(self) {
+        unsafe {
+            ffi::pa_context_unref(self.raw_mut());
+        }
+    }
+
     pub fn clear_state_callback(&self) {
         unsafe {
             ffi::pa_context_set_state_callback(self.raw_mut(), None, ptr::null_mut());
@@ -378,14 +384,6 @@ impl Context {
 
         unsafe {
             ffi::pa_context_set_subscribe_callback(self.raw_mut(), Some(wrapped::<CB>), userdata);
-        }
-    }
-}
-
-impl Drop for Context {
-    fn drop(&mut self) {
-        unsafe {
-            ffi::pa_context_unref(self.raw_mut());
         }
     }
 }

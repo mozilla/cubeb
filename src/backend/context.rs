@@ -174,9 +174,7 @@ impl Context {
     }
 
     pub fn destroy(&mut self) {
-        if self.context.is_some() {
-            self.context_destroy();
-        }
+        self.context_destroy();
 
         if !self.mainloop.is_null() {
             self.mainloop.stop();
@@ -540,7 +538,6 @@ impl Context {
         if !self.wait_until_context_ready() {
             self.mainloop.unlock();
             self.context_destroy();
-            self.context = None;
             return cubeb::ERROR;
         }
 
@@ -564,16 +561,19 @@ impl Context {
         }
 
         let context_ptr: *mut c_void = self as *mut _ as *mut _;
-        if let Some(ref context) = self.context {
-            self.mainloop.lock();
-            if let Ok(o) = context.drain(drain_complete, context_ptr) {
-                self.operation_wait(None, &o);
-            }
-            context.clear_state_callback();
-            context.disconnect();
-            self.mainloop.unlock();
+        match self.context.take() {
+            Some(ctx) => {
+                self.mainloop.lock();
+                if let Ok(o) = ctx.drain(drain_complete, context_ptr) {
+                    self.operation_wait(None, &o);
+                }
+                ctx.clear_state_callback();
+                ctx.disconnect();
+                ctx.unref();
+                self.mainloop.unlock();
+            },
+            _ => {},
         }
-        self.context = None;
     }
 
     pub fn operation_wait<'a, S>(&self, s: S, o: &pulse::Operation) -> bool

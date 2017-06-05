@@ -38,6 +38,12 @@ impl Stream {
         unsafe { &mut *self.0 }
     }
 
+    pub fn unref(self) {
+        unsafe {
+            ffi::pa_stream_unref(self.raw_mut());
+        }
+    }
+
     pub fn get_state(&self) -> StreamState {
         StreamState::try_from(unsafe {
             ffi::pa_stream_get_state(self.raw_mut())
@@ -351,14 +357,6 @@ impl Stream {
             let ptr = ffi::pa_stream_get_buffer_attr(self.raw_mut());
             debug_assert!(!ptr.is_null());
             &*ptr
-        }
-    }
-}
-
-impl Drop for Stream {
-    fn drop(&mut self) {
-        unsafe {
-            ffi::pa_stream_unref(self.raw_mut());
         }
     }
 }
