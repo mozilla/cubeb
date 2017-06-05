@@ -141,8 +141,7 @@ impl<'ctx> Stream<'ctx> {
                         let out_frame_size = stm.output_sample_spec.frame_size();
                         let write_size = read_frames * out_frame_size;
                         // Offer full duplex data for writing
-                        let stream = &stm.output_stream as *const _;
-                        stm.trigger_user_callback(stream, read_data, write_size);
+                        stm.trigger_user_callback(read_data, write_size);
                     } else {
                         // input/capture only operation. Call callback directly
                         let got = unsafe {
@@ -171,7 +170,7 @@ impl<'ctx> Stream<'ctx> {
             }
         }
 
-        fn write_data(s: &pulse::Stream, nbytes: usize, u: *mut c_void) {
+        fn write_data(_: &pulse::Stream, nbytes: usize, u: *mut c_void) {
             logv!("Output callback to be written buffer size {}", nbytes);
             let mut stm = unsafe { &mut *(u as *mut Stream) };
             if stm.shutdown || stm.state != cubeb::STATE_STARTED {
@@ -182,7 +181,7 @@ impl<'ctx> Stream<'ctx> {
                 // Output/playback only operation.
                 // Write directly to output
                 debug_assert!(!stm.output_stream.is_null());
-                stm.trigger_user_callback(s, ptr::null(), nbytes);
+                stm.trigger_user_callback(ptr::null(), nbytes);
             }
         }
 
@@ -348,8 +347,7 @@ impl<'ctx> Stream<'ctx> {
             let mut stm = unsafe { &mut *(u as *mut Stream) };
             if !stm.shutdown {
                 if let Ok(size) = stm.output_stream.writable_size() {
-                    let stream = &stm.output_stream as *const _;
-                    stm.trigger_user_callback(stream, ptr::null_mut(), size);
+                    stm.trigger_user_callback(ptr::null_mut(), size);
                 }
             }
         }
@@ -680,7 +678,7 @@ impl<'ctx> Stream<'ctx> {
         true
     }
 
-    fn trigger_user_callback(&mut self, stream: *const pulse::Stream, input_data: *const c_void, nbytes: usize) {
+    fn trigger_user_callback(&mut self, input_data: *const c_void, nbytes: usize) {
         fn drained_cb(a: &pulse::MainloopApi, e: *mut pa_time_event, _tv: &pulse::TimeVal, u: *mut c_void) {
             let mut stm = unsafe { &mut *(u as *mut Stream) };
             debug_assert_eq!(stm.drain_timer, e);
@@ -691,7 +689,7 @@ impl<'ctx> Stream<'ctx> {
             stm.context.mainloop.signal();
         }
 
-        let s = unsafe { &*stream };
+        //let s = &self.output_stream;
 
         let frame_size = self.output_sample_spec.frame_size();
         debug_assert_eq!(nbytes % frame_size, 0);
@@ -699,7 +697,7 @@ impl<'ctx> Stream<'ctx> {
         let mut towrite = nbytes;
         let mut read_offset = 0usize;
         while towrite > 0 {
-            match s.begin_write(towrite) {
+            match self.output_stream.begin_write(towrite) {
                 Err(e) => {
                     panic!("Failed to write data: {}", e);
                 },
@@ -719,7 +717,7 @@ impl<'ctx> Stream<'ctx> {
                                                     (size / frame_size) as c_long)
                     };
                     if got < 0 {
-                        let _ = s.cancel_write();
+                        let _ = self.output_stream.cancel_write();
                         self.shutdown = true;
                         return;
                     }
@@ -747,14 +745,15 @@ impl<'ctx> Stream<'ctx> {
                         }
                     }
 
-                    let r = s.write(buffer,
-                                    got as usize * frame_size,
-                                    0,
-                                    pulse::SeekMode::Relative);
+                    let r = self.output_stream
+                        .write(buffer,
+                               got as usize * frame_size,
+                               0,
+                               pulse::SeekMode::Relative);
                     debug_assert!(r.is_ok());
 
                     if (got as usize) < size / frame_size {
-                        let latency = match s.get_latency() {
+                        let latency = match self.output_stream.get_latency() {
                             Ok((l, negative)) => {
                                 assert_ne!(negative, true);
                                 l
