@@ -69,8 +69,8 @@ impl Drop for Device {
 #[derive(Debug)]
 pub struct Stream<'ctx> {
     context: &'ctx Context,
-    output_stream: pulse::Stream,
-    input_stream: pulse::Stream,
+    output_stream: Option<pulse::Stream>,
+    input_stream: Option<pulse::Stream>,
     data_callback: cubeb::DataCallback,
     state_callback: cubeb::StateCallback,
     user_ptr: *mut c_void,
@@ -136,7 +136,7 @@ impl<'ctx> Stream<'ctx> {
                     let in_frame_size = stm.input_sample_spec.frame_size();
                     let read_frames = read_size / in_frame_size;
 
-                    if !stm.output_stream.is_null() {
+                    if stm.output_stream.is_some() {
                         // input/capture + output/playback operation
                         let out_frame_size = stm.output_sample_spec.frame_size();
                         let write_size = read_frames * out_frame_size;
@@ -177,18 +177,18 @@ impl<'ctx> Stream<'ctx> {
                 return;
             }
 
-            if stm.input_stream.is_null() {
+            if stm.input_stream.is_none() {
                 // Output/playback only operation.
                 // Write directly to output
-                debug_assert!(!stm.output_stream.is_null());
+                debug_assert!(stm.output_stream.is_some());
                 stm.trigger_user_callback(ptr::null(), nbytes);
             }
         }
 
         let mut stm = Box::new(Stream {
                                    context: context,
-                                   output_stream: pulse::Stream::default(),
-                                   input_stream: pulse::Stream::default(),
+                                   output_stream: None,
+                                   input_stream: None,
                                    data_callback: data_callback,
                                    state_callback: state_callback,
                                    user_ptr: user_ptr,
@@ -226,7 +226,7 @@ impl<'ctx> Stream<'ctx> {
                                                    None,
                                                    None);
 
-                        stm.output_stream = s;
+                        stm.output_stream = Some(s);
                     },
                     Err(e) => {
                         stm.context.mainloop.unlock();
@@ -258,7 +258,7 @@ impl<'ctx> Stream<'ctx> {
                                                  pulse::STREAM_START_CORKED |
                                                  pulse::STREAM_ADJUST_LATENCY);
 
-                        stm.input_stream = s;
+                        stm.input_stream = Some(s);
                     },
                     Err(e) => {
                         stm.context.mainloop.unlock();
@@ -285,8 +285,8 @@ impl<'ctx> Stream<'ctx> {
             }
 
             if cubeb::log_enabled() {
-                if output_stream_params.is_some() {
-                    let output_att = stm.output_stream.get_buffer_attr();
+                if let Some(ref output_stream) = stm.output_stream {
+                    let output_att = output_stream.get_buffer_attr();
                     log!("Output buffer attributes maxlength {}, tlength {}, \
                          prebuf {}, minreq {}, fragsize {}",
                          output_att.maxlength,
@@ -296,8 +296,8 @@ impl<'ctx> Stream<'ctx> {
                          output_att.fragsize);
                 }
 
-                if input_stream_params.is_some() {
-                    let input_att = stm.input_stream.get_buffer_attr();
+                if let Some(ref input_stream) = stm.input_stream {
+                    let input_att = input_stream.get_buffer_attr();
                     log!("Input buffer attributes maxlength {}, tlength {}, \
                           prebuf {}, minreq {}, fragsize {}",
                          input_att.maxlength,
@@ -317,7 +317,7 @@ impl<'ctx> Stream<'ctx> {
 
         self.context.mainloop.lock();
         {
-            if !self.output_stream.is_null() {
+            if let Some(ref output_stream) = self.output_stream {
                 if !self.drain_timer.is_null() {
                     /* there's no pa_rttime_free, so use this instead. */
                     self.context
@@ -326,18 +326,19 @@ impl<'ctx> Stream<'ctx> {
                         .time_free(self.drain_timer);
                 }
 
-                self.output_stream.clear_state_callback();
-                self.output_stream.clear_write_callback();
-                let _ = self.output_stream.disconnect();
-                self.output_stream = pulse::Stream::default();
+                output_stream.clear_state_callback();
+                output_stream.clear_write_callback();
+                let _ = output_stream.disconnect();
             }
+            self.output_stream = None;
 
-            if !self.input_stream.is_null() {
-                self.input_stream.clear_state_callback();
-                self.input_stream.clear_read_callback();
-                let _ = self.input_stream.disconnect();
-                self.input_stream = pulse::Stream::default();
+            if let Some(ref input_stream) = self.input_stream {
+                input_stream.clear_state_callback();
+                input_stream.clear_read_callback();
+                let _ = input_stream.disconnect();
             }
+            self.input_stream = None;
+
         }
         self.context.mainloop.unlock();
     }
@@ -346,16 +347,17 @@ impl<'ctx> Stream<'ctx> {
         fn output_preroll(_: &pulse::MainloopApi, u: *mut c_void) {
             let mut stm = unsafe { &mut *(u as *mut Stream) };
             if !stm.shutdown {
-                if let Ok(size) = stm.output_stream.writable_size() {
-                    stm.trigger_user_callback(ptr::null_mut(), size);
-                }
+                let size = stm.output_stream
+                    .as_ref()
+                    .map_or(0, |s| s.writable_size().unwrap_or(0));
+                stm.trigger_user_callback(ptr::null_mut(), size);
             }
         }
 
         self.shutdown = false;
         self.cork(CorkState::uncork() | CorkState::notify());
 
-        if !self.output_stream.is_null() && self.input_stream.is_null() {
+        if self.output_stream.is_some() && self.input_stream.is_none() {
             /* On output only case need to manually call user cb once in order to make
              * things roll. This is done via a defer event in order to execute it
              * from PA server thread. */
@@ -392,16 +394,17 @@ impl<'ctx> Stream<'ctx> {
             self.context.mainloop.lock();
         }
 
-        let r = if self.output_stream.is_null() {
-            Err(cubeb::ERROR)
-        } else {
-            match self.output_stream.get_time() {
-                Ok(r_usec) => {
-                    let bytes = r_usec.to_bytes(&self.output_sample_spec);
-                    Ok((bytes / self.output_sample_spec.frame_size()) as u64)
-                },
-                Err(_) => Err(cubeb::ERROR),
-            }
+        let r = match self.output_stream {
+            None => Err(cubeb::ERROR),
+            Some(ref stm) => {
+                match stm.get_time() {
+                    Ok(r_usec) => {
+                        let bytes = r_usec.to_bytes(&self.output_sample_spec);
+                        Ok((bytes / self.output_sample_spec.frame_size()) as u64)
+                    },
+                    Err(_) => Err(cubeb::ERROR),
+                }
+            },
         };
 
         if !in_thread {
@@ -412,57 +415,62 @@ impl<'ctx> Stream<'ctx> {
     }
 
     pub fn latency(&self) -> Result<u32> {
-        if self.output_stream.is_null() {
-            Err(cubeb::ERROR)
-        } else {
-            match self.output_stream.get_latency() {
-                Ok((r_usec, negative)) => {
-                    debug_assert!(negative);
-                    let latency = (r_usec * self.output_sample_spec.rate as pa_usec_t / PA_USEC_PER_SEC) as u32;
-                    Ok(latency)
-                },
-                Err(_) => Err(cubeb::ERROR),
-            }
+        match self.output_stream {
+            None => Err(cubeb::ERROR),
+            Some(ref stm) => {
+                match stm.get_latency() {
+                    Ok((r_usec, negative)) => {
+                        debug_assert!(negative);
+                        let latency = (r_usec * self.output_sample_spec.rate as pa_usec_t / PA_USEC_PER_SEC) as u32;
+                        Ok(latency)
+                    },
+                    Err(_) => Err(cubeb::ERROR),
+                }
+            },
         }
     }
 
     pub fn set_volume(&mut self, volume: f32) -> i32 {
-        if self.output_stream.is_null() {
-            return cubeb::ERROR;
-        }
+        match self.output_stream {
+            None => cubeb::ERROR,
+            Some(ref stm) => {
+                if let Some(ref context) = self.context.context {
+                    self.context.mainloop.lock();
 
-        if let Some(ref context) = self.context.context {
-            self.context.mainloop.lock();
+                    let mut cvol: pa_cvolume = Default::default();
 
-            let mut cvol: pa_cvolume = Default::default();
+                    /* if the pulse daemon is configured to use flat
+                     * volumes, apply our own gain instead of changing
+                     * the input volume on the sink. */
+                    let flags = {
+                        match self.context.default_sink_info {
+                            Some(ref info) => info.flags,
+                            _ => pulse::SinkFlags::empty(),
+                        }
+                    };
 
-            /* if the pulse daemon is configured to use flat volumes,
-             * apply our own gain instead of changing the input volume on the sink. */
-            let flags = {
-                match self.context.default_sink_info {
-                    Some(ref info) => info.flags,
-                    _ => pulse::SinkFlags::empty(),
+                    if flags.contains(pulse::SINK_FLAT_VOLUME) {
+                        self.volume = volume;
+                    } else {
+                        let channels = stm.get_sample_spec().channels;
+                        let vol = pulse::sw_volume_from_linear(volume as f64);
+                        cvol.set(channels as u32, vol);
+
+                        let index = stm.get_index();
+
+                        let context_ptr = self.context as *const _ as *mut _;
+                        if let Ok(o) = context.set_sink_input_volume(index, &cvol, context_success, context_ptr) {
+                            self.context.operation_wait(stm, &o);
+                        }
+                    }
+
+                    self.context.mainloop.unlock();
+                    cubeb::OK
+                } else {
+                    cubeb::ERROR
                 }
-            };
-
-            if flags.contains(pulse::SINK_FLAT_VOLUME) {
-                self.volume = volume;
-            } else {
-                let channels = self.output_stream.get_sample_spec().channels;
-                let vol = pulse::sw_volume_from_linear(volume as f64);
-                cvol.set(channels as u32, vol);
-
-                let index = self.output_stream.get_index();
-
-                let context_ptr = self.context as *const _ as *mut _;
-                if let Ok(o) = context.set_sink_input_volume(index, &cvol, context_success, context_ptr) {
-                    self.context.operation_wait(&self.output_stream, &o);
-                }
-            }
-
-            self.context.mainloop.unlock();
+            },
         }
-        cubeb::OK
     }
 
     pub fn set_panning(&mut self, panning: f32) -> i32 {
@@ -481,42 +489,43 @@ impl<'ctx> Stream<'ctx> {
             r.mainloop.signal();
         }
 
-        if let Some(ref context) = self.context.context {
-            if self.output_stream.is_null() {
-                cubeb::ERROR
-            } else {
-                self.context.mainloop.lock();
+        match self.output_stream {
+            None => cubeb::ERROR,
+            Some(ref stm) => {
+                if let Some(ref context) = self.context.context {
+                    self.context.mainloop.lock();
 
-                let map = self.output_stream.get_channel_map();
-                if !map.can_balance() {
+                    let map = stm.get_channel_map();
+                    if !map.can_balance() {
+                        self.context.mainloop.unlock();
+                        return cubeb::ERROR;
+                    }
+
+                    let index = stm.get_index();
+
+                    let mut r = SinkInputInfoResult {
+                        cvol: pulse::CVolume::default(),
+                        mainloop: &self.context.mainloop,
+                    };
+
+                    if let Ok(o) = context.get_sink_input_info(index, get_input_volume, &mut r as *mut _ as *mut _) {
+                        self.context.operation_wait(stm, &o);
+                    }
+
+                    r.cvol.set_balance(map, panning);
+
+                    let context_ptr = self.context as *const _ as *mut _;
+                    if let Ok(o) = context.set_sink_input_volume(index, &r.cvol, context_success, context_ptr) {
+                        self.context.operation_wait(stm, &o);
+                    }
+
                     self.context.mainloop.unlock();
-                    return cubeb::ERROR;
+
+                    cubeb::OK
+                } else {
+                    cubeb::ERROR
                 }
-
-                let index = self.output_stream.get_index();
-
-                let mut r = SinkInputInfoResult {
-                    cvol: pulse::CVolume::default(),
-                    mainloop: &self.context.mainloop,
-                };
-
-                if let Ok(o) = context.get_sink_input_info(index, get_input_volume, &mut r as *mut _ as *mut _) {
-                    self.context.operation_wait(&self.output_stream, &o);
-                }
-
-                r.cvol.set_balance(map, panning);
-
-                let context_ptr = self.context as *const _ as *mut _;
-                if let Ok(o) = context.set_sink_input_volume(index, &r.cvol, context_success, context_ptr) {
-                    self.context.operation_wait(&self.output_stream, &o);
-                }
-
-                self.context.mainloop.unlock();
-
-                cubeb::OK
-            }
-        } else {
-            cubeb::ERROR
+            },
         }
     }
 
@@ -524,21 +533,25 @@ impl<'ctx> Stream<'ctx> {
         if self.context.version_0_9_8 {
             let mut dev = Box::new(cubeb::Device::default());
 
-            if !self.input_stream.is_null() {
-                dev.input_name = match self.input_stream.get_device_name() {
-                    Ok(name) => name.to_owned().into_raw(),
-                    Err(_) => {
-                        return Err(cubeb::ERROR);
-                    },
+            if self.input_stream.is_some() {
+                if let Some(ref stm) = self.input_stream {
+                    dev.input_name = match stm.get_device_name() {
+                        Ok(name) => name.to_owned().into_raw(),
+                        Err(_) => {
+                            return Err(cubeb::ERROR);
+                        },
+                    }
                 }
             }
 
-            if !self.output_stream.is_null() {
-                dev.output_name = match self.output_stream.get_device_name() {
-                    Ok(name) => name.to_owned().into_raw(),
-                    Err(_) => {
-                        return Err(cubeb::ERROR);
-                    },
+            if !self.output_stream.is_some() {
+                if let Some(ref stm) = self.output_stream {
+                    dev.output_name = match stm.get_device_name() {
+                        Ok(name) => name.to_owned().into_raw(),
+                        Err(_) => {
+                            return Err(cubeb::ERROR);
+                        },
+                    }
                 }
             }
 
@@ -581,18 +594,17 @@ impl<'ctx> Stream<'ctx> {
 
         let stream = pulse::Stream::new(context, stream_name, &ss, cm.as_ref());
 
-        if !stream.is_null() {
-            Ok(stream)
-        } else {
-            Err(cubeb::ERROR)
+        match stream {
+            None => Err(cubeb::ERROR),
+            Some(stm) => Ok(stm),
         }
     }
 
-    pub fn cork_stream(&self, stream: &pulse::Stream, state: CorkState) {
-        if !stream.is_null() {
-            if let Ok(o) = stream.cork(state.is_cork() as i32,
-                                       stream_success,
-                                       self as *const _ as *mut _) {
+    pub fn cork_stream(&self, stream: Option<&pulse::Stream>, state: CorkState) {
+        if let Some(stm) = stream {
+            if let Ok(o) = stm.cork(state.is_cork() as i32,
+                                    stream_success,
+                                    self as *const _ as *mut _) {
                 self.context.operation_wait(stream, &o);
             }
         }
@@ -601,8 +613,8 @@ impl<'ctx> Stream<'ctx> {
     fn cork(&mut self, state: CorkState) {
         {
             self.context.mainloop.lock();
-            self.cork_stream(&self.output_stream, state);
-            self.cork_stream(&self.input_stream, state);
+            self.cork_stream(self.output_stream.as_ref(), state);
+            self.cork_stream(self.input_stream.as_ref(), state);
             self.context.mainloop.unlock()
         }
 
@@ -618,10 +630,9 @@ impl<'ctx> Stream<'ctx> {
     fn update_timing_info(&self) -> bool {
         let mut r = false;
 
-        if !self.output_stream.is_null() {
-            if let Ok(o) = self.output_stream
-                   .update_timing_info(stream_success, self as *const _ as *mut _) {
-                r = self.context.operation_wait(&self.output_stream, &o);
+        if let Some(ref stm) = self.output_stream {
+            if let Ok(o) = stm.update_timing_info(stream_success, self as *const _ as *mut _) {
+                r = self.context.operation_wait(stm, &o);
             }
 
             if !r {
@@ -629,11 +640,9 @@ impl<'ctx> Stream<'ctx> {
             }
         }
 
-        if !self.input_stream.is_null() {
-            if let Ok(o) = self.input_stream
-                   .update_timing_info(stream_success, self as *const _ as *mut _) {
-
-                r = self.context.operation_wait(&self.input_stream, &o);
+        if let Some(ref stm) = self.input_stream {
+            if let Ok(o) = stm.update_timing_info(stream_success, self as *const _ as *mut _) {
+                r = self.context.operation_wait(stm, &o);
             }
         }
 
@@ -649,7 +658,7 @@ impl<'ctx> Stream<'ctx> {
 
     fn wait_until_ready(&self) -> bool {
         fn wait_until_io_stream_ready(stm: &pulse::Stream, mainloop: &pulse::ThreadedMainloop) -> bool {
-            if stm.is_null() || mainloop.is_null() {
+            if mainloop.is_null() {
                 return false;
             }
 
@@ -667,12 +676,16 @@ impl<'ctx> Stream<'ctx> {
             true
         }
 
-        if !self.output_stream.is_null() && !wait_until_io_stream_ready(&self.output_stream, &self.context.mainloop) {
-            return false;
+        if let Some(ref stm) = self.output_stream {
+            if !wait_until_io_stream_ready(stm, &self.context.mainloop) {
+                return false;
+            }
         }
 
-        if !self.input_stream.is_null() && !wait_until_io_stream_ready(&self.input_stream, &self.context.mainloop) {
-            return false;
+        if let Some(ref stm) = self.input_stream {
+            if !wait_until_io_stream_ready(stm, &self.context.mainloop) {
+                return false;
+            }
         }
 
         true
@@ -689,100 +702,99 @@ impl<'ctx> Stream<'ctx> {
             stm.context.mainloop.signal();
         }
 
-        //let s = &self.output_stream;
+        if let Some(ref stm) = self.output_stream {
 
-        let frame_size = self.output_sample_spec.frame_size();
-        debug_assert_eq!(nbytes % frame_size, 0);
+            let frame_size = self.output_sample_spec.frame_size();
+            debug_assert_eq!(nbytes % frame_size, 0);
 
-        let mut towrite = nbytes;
-        let mut read_offset = 0usize;
-        while towrite > 0 {
-            match self.output_stream.begin_write(towrite) {
-                Err(e) => {
-                    panic!("Failed to write data: {}", e);
-                },
-                Ok((buffer, size)) => {
-                    debug_assert!(size > 0);
-                    debug_assert_eq!(size % frame_size, 0);
+            let mut towrite = nbytes;
+            let mut read_offset = 0usize;
+            while towrite > 0 {
+                match stm.begin_write(towrite) {
+                    Err(e) => {
+                        panic!("Failed to write data: {}", e);
+                    },
+                    Ok((buffer, size)) => {
+                        debug_assert!(size > 0);
+                        debug_assert_eq!(size % frame_size, 0);
 
-                    logv!("Trigger user callback with output buffer size={}, read_offset={}",
-                          size,
-                          read_offset);
-                    let read_ptr = unsafe { (input_data as *const u8).offset(read_offset as isize) };
-                    let got = unsafe {
-                        self.data_callback.unwrap()(self as *const _ as *mut _,
-                                                    self.user_ptr,
-                                                    read_ptr as *const _ as *mut _,
-                                                    buffer,
-                                                    (size / frame_size) as c_long)
-                    };
-                    if got < 0 {
-                        let _ = self.output_stream.cancel_write();
-                        self.shutdown = true;
-                        return;
-                    }
-
-                    // If more iterations move offset of read buffer
-                    if !input_data.is_null() {
-                        let in_frame_size = self.input_sample_spec.frame_size();
-                        read_offset += (size / frame_size) * in_frame_size;
-                    }
-
-                    if self.volume != PULSE_NO_GAIN {
-                        let samples = (self.output_sample_spec.channels as usize * size / frame_size) as isize;
-
-                        if self.output_sample_spec.format == PA_SAMPLE_S16BE ||
-                           self.output_sample_spec.format == PA_SAMPLE_S16LE {
-                            let b = buffer as *mut i16;
-                            for i in 0..samples {
-                                unsafe { *b.offset(i) *= self.volume as i16 };
-                            }
-                        } else {
-                            let b = buffer as *mut f32;
-                            for i in 0..samples {
-                                unsafe { *b.offset(i) *= self.volume };
-                            }
-                        }
-                    }
-
-                    let r = self.output_stream
-                        .write(buffer,
-                               got as usize * frame_size,
-                               0,
-                               pulse::SeekMode::Relative);
-                    debug_assert!(r.is_ok());
-
-                    if (got as usize) < size / frame_size {
-                        let latency = match self.output_stream.get_latency() {
-                            Ok((l, negative)) => {
-                                assert_ne!(negative, true);
-                                l
-                            },
-                            Err(e) => {
-                                debug_assert_eq!(e, pulse::ErrorCode::from_error_code(PA_ERR_NODATA));
-                                /* this needs a better guess. */
-                                100 * PA_USEC_PER_MSEC
-                            },
+                        logv!("Trigger user callback with output buffer size={}, read_offset={}",
+                              size,
+                              read_offset);
+                        let read_ptr = unsafe { (input_data as *const u8).offset(read_offset as isize) };
+                        let got = unsafe {
+                            self.data_callback.unwrap()(self as *const _ as *mut _,
+                                                        self.user_ptr,
+                                                        read_ptr as *const _ as *mut _,
+                                                        buffer,
+                                                        (size / frame_size) as c_long)
                         };
-
-                        /* pa_stream_drain is useless, see PA bug# 866. this is a workaround. */
-                        /* arbitrary safety margin: double the current latency. */
-                        debug_assert!(self.drain_timer.is_null());
-                        let stream_ptr = self as *const _ as *mut _;
-                        if let Some(ref context) = self.context.context {
-                            self.drain_timer =
-                                context.rttime_new(pulse::rtclock_now() + 2 * latency, drained_cb, stream_ptr);
+                        if got < 0 {
+                            let _ = stm.cancel_write();
+                            self.shutdown = true;
+                            return;
                         }
-                        self.shutdown = true;
-                        return;
-                    }
 
-                    towrite -= size;
-                },
+                        // If more iterations move offset of read buffer
+                        if !input_data.is_null() {
+                            let in_frame_size = self.input_sample_spec.frame_size();
+                            read_offset += (size / frame_size) * in_frame_size;
+                        }
+
+                        if self.volume != PULSE_NO_GAIN {
+                            let samples = (self.output_sample_spec.channels as usize * size / frame_size) as isize;
+
+                            if self.output_sample_spec.format == PA_SAMPLE_S16BE ||
+                               self.output_sample_spec.format == PA_SAMPLE_S16LE {
+                                let b = buffer as *mut i16;
+                                for i in 0..samples {
+                                    unsafe { *b.offset(i) *= self.volume as i16 };
+                                }
+                            } else {
+                                let b = buffer as *mut f32;
+                                for i in 0..samples {
+                                    unsafe { *b.offset(i) *= self.volume };
+                                }
+                            }
+                        }
+
+                        let r = stm.write(buffer,
+                                          got as usize * frame_size,
+                                          0,
+                                          pulse::SeekMode::Relative);
+                        debug_assert!(r.is_ok());
+
+                        if (got as usize) < size / frame_size {
+                            let latency = match stm.get_latency() {
+                                Ok((l, negative)) => {
+                                    assert_ne!(negative, true);
+                                    l
+                                },
+                                Err(e) => {
+                                    debug_assert_eq!(e, pulse::ErrorCode::from_error_code(PA_ERR_NODATA));
+                                    /* this needs a better guess. */
+                                    100 * PA_USEC_PER_MSEC
+                                },
+                            };
+
+                            /* pa_stream_drain is useless, see PA bug# 866. this is a workaround. */
+                            /* arbitrary safety margin: double the current latency. */
+                            debug_assert!(self.drain_timer.is_null());
+                            let stream_ptr = self as *const _ as *mut _;
+                            if let Some(ref context) = self.context.context {
+                                self.drain_timer =
+                                    context.rttime_new(pulse::rtclock_now() + 2 * latency, drained_cb, stream_ptr);
+                            }
+                            self.shutdown = true;
+                            return;
+                        }
+
+                        towrite -= size;
+                    },
+                }
             }
+            debug_assert_eq!(towrite, 0);
         }
-
-        debug_assert_eq!(towrite, 0);
     }
 }
 

@@ -17,24 +17,25 @@ use util::*;
 pub struct Stream(*mut ffi::pa_stream);
 
 impl Stream {
-    pub fn new<'a, CM>(c: &Context, name: &::std::ffi::CStr, ss: &SampleSpec, map: CM) -> Self
+    pub fn new<'a, CM>(c: &Context, name: &::std::ffi::CStr, ss: &SampleSpec, map: CM) -> Option<Self>
         where CM: Into<Option<&'a ChannelMap>>
     {
-        unsafe {
-            stream::from_raw_ptr(ffi::pa_stream_new(c.raw_mut(),
-                                                    name.as_ptr(),
-                                                    ss as *const _,
-                                                    to_ptr(map.into())))
+        let ptr = unsafe {
+            ffi::pa_stream_new(c.raw_mut(),
+                               name.as_ptr(),
+                               ss as *const _,
+                               to_ptr(map.into()))
+        };
+        if ptr.is_null() {
+            None
+        } else {
+            Some(Stream(ptr))
         }
     }
 
     #[doc(hidden)]
     pub fn raw_mut(&self) -> &mut ffi::pa_stream {
         unsafe { &mut *self.0 }
-    }
-
-    pub fn is_null(&self) -> bool {
-        self.0.is_null()
     }
 
     pub fn get_state(&self) -> StreamState {
@@ -354,18 +355,10 @@ impl Stream {
     }
 }
 
-impl ::std::default::Default for Stream {
-    fn default() -> Self {
-        Stream(::std::ptr::null_mut())
-    }
-}
-
 impl Drop for Stream {
     fn drop(&mut self) {
-        if !self.is_null() {
-            unsafe {
-                ffi::pa_stream_unref(self.raw_mut());
-            }
+        unsafe {
+            ffi::pa_stream_unref(self.raw_mut());
         }
     }
 }
