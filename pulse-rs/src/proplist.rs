@@ -4,15 +4,20 @@
 // accompanying file LICENSE for details.
 
 use ffi;
-use std::ffi::CStr;
-use std::os::raw::c_char;
+use std::ffi::{CStr, CString};
 
 #[derive(Debug)]
 pub struct Proplist(*mut ffi::pa_proplist);
 
 impl Proplist {
-    pub fn gets(&self, key: *const c_char) -> Option<&CStr> {
-        let r = unsafe { ffi::pa_proplist_gets(self.0, key) };
+    pub fn gets<T>(&self, key: T) -> Option<&CStr>
+        where T: Into<Vec<u8>>
+    {
+        let key = match CString::new(key) {
+            Ok(k) => k,
+            _ => return None,
+        };
+        let r = unsafe { ffi::pa_proplist_gets(self.0, key.as_ptr()) };
         if r.is_null() {
             None
         } else {

@@ -15,10 +15,6 @@ use std::mem;
 use std::os::raw::{c_char, c_void};
 use std::ptr;
 
-macro_rules! cstr {
-  ($x:expr) => { concat!($x, "\0").as_bytes().as_ptr() as *const c_char }
-}
-
 fn pa_channel_to_cubeb_channel(channel: pulse::ChannelPosition) -> cubeb::Channel {
     use pulse::ChannelPosition;
     assert_ne!(channel, ChannelPosition::Invalid);
@@ -246,12 +242,12 @@ impl Context {
             let mut list_data = unsafe { &mut *(user_data as *mut PulseDevListData) };
             let info = unsafe { &*i };
 
-            let group_id = match info.proplist().gets(cstr!("sysfs.path")) {
+            let group_id = match info.proplist().gets("sysfs.path") {
                 Some(p) => p.to_owned().into_raw(),
                 _ => ptr::null_mut(),
             };
 
-            let vendor_name = match info.proplist().gets(cstr!("device.vendor.name")) {
+            let vendor_name = match info.proplist().gets("device.vendor.name") {
                 Some(p) => p.to_owned().into_raw(),
                 _ => ptr::null_mut(),
             };
@@ -303,12 +299,12 @@ impl Context {
             let mut list_data = unsafe { &mut *(user_data as *mut PulseDevListData) };
             let info = unsafe { &*i };
 
-            let group_id = match info.proplist().gets(cstr!("sysfs.path")) {
+            let group_id = match info.proplist().gets("sysfs.path") {
                 Some(p) => p.to_owned().into_raw(),
                 _ => ptr::null_mut(),
             };
 
-            let vendor_name = match info.proplist().gets(cstr!("device.vendor.name")) {
+            let vendor_name = match info.proplist().gets("device.vendor.name") {
                 Some(p) => p.to_owned().into_raw(),
                 _ => ptr::null_mut(),
             };
