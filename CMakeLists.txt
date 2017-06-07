@@ -203,7 +203,14 @@ endif()
 
 cubeb_add_test(latency test_latency)
 cubeb_add_test(ring_array)
-cubeb_add_test(mixer)
+
+add_executable(test_mixer test/test_mixer.cpp src/cubeb_mixer.cpp)
+target_include_directories(test_mixer PRIVATE ${gtest_SOURCE_DIR}/include)
+target_include_directories(test_mixer PRIVATE src)
+target_link_libraries(test_mixer PRIVATE cubeb gtest_main)
+add_test(mixer test_mixer)
+add_sanitizers(test_mixer)
+
 cubeb_add_test(utils)
 cubeb_add_test(ring_buffer)
 
