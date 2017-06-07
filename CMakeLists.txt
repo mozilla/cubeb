@@ -204,13 +204,26 @@ if(BUILD_TESTS)
   target_link_libraries(test_resampler PRIVATE cubeb gtest_main)
   add_test(resampler test_resampler)
   add_sanitizers(test_resampler)
-    install(TARGETS test_resampler DESTINATION ${CMAKE_INSTALL_PREFIX})
+  install(TARGETS test_resampler DESTINATION ${CMAKE_INSTALL_PREFIX})
 
   cubeb_add_test(duplex)
 
   if (USE_WASAPI)
   cubeb_add_test(overload_callback)
   endif()
+
+  cubeb_add_test(latency test_latency)
+  cubeb_add_test(ring_array)
+
+  add_executable(test_mixer test/test_mixer.cpp src/cubeb_mixer.cpp)
+  target_include_directories(test_mixer PRIVATE ${gtest_SOURCE_DIR}/include)
+  target_include_directories(test_mixer PRIVATE src)
+  target_link_libraries(test_mixer PRIVATE cubeb gtest_main)
+  add_test(mixer test_mixer)
+  add_sanitizers(test_mixer)
+
+  cubeb_add_test(utils)
+  cubeb_add_test(ring_buffer)
 
   cubeb_add_test(latency test_latency)
   cubeb_add_test(ring_array)
