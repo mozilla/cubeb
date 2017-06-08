@@ -269,7 +269,18 @@ bitflags! {
 
 impl StreamFlags {
     pub fn try_from(x: ffi::pa_stream_flags_t) -> Option<Self> {
-        if (x >> 20) == 0 {
+        if (x &
+            !(ffi::PA_STREAM_NOFLAGS | ffi::PA_STREAM_START_CORKED | ffi::PA_STREAM_INTERPOLATE_TIMING |
+              ffi::PA_STREAM_NOT_MONOTONIC | ffi::PA_STREAM_AUTO_TIMING_UPDATE |
+              ffi::PA_STREAM_NO_REMAP_CHANNELS |
+              ffi::PA_STREAM_NO_REMIX_CHANNELS | ffi::PA_STREAM_FIX_FORMAT | ffi::PA_STREAM_FIX_RATE |
+              ffi::PA_STREAM_FIX_CHANNELS |
+              ffi::PA_STREAM_DONT_MOVE | ffi::PA_STREAM_VARIABLE_RATE | ffi::PA_STREAM_PEAK_DETECT |
+              ffi::PA_STREAM_START_MUTED | ffi::PA_STREAM_ADJUST_LATENCY |
+              ffi::PA_STREAM_EARLY_REQUESTS |
+              ffi::PA_STREAM_DONT_INHIBIT_AUTO_SUSPEND |
+              ffi::PA_STREAM_START_UNMUTED | ffi::PA_STREAM_FAIL_ON_SUSPEND |
+              ffi::PA_STREAM_RELATIVE_VOLUME | ffi::PA_STREAM_PASSTHROUGH)) == 0 {
             Some(unsafe { ::std::mem::transmute(x) })
         } else {
             None
@@ -300,7 +311,7 @@ bitflags!{
 
 impl SubscriptionMask {
     pub fn try_from(x: ffi::pa_subscription_mask_t) -> Option<Self> {
-        if (x >> 10) == 0 {
+        if (x & !ffi::PA_SUBSCRIPTION_MASK_ALL) == 0 {
             Some(unsafe { ::std::mem::transmute(x) })
         } else {
             None
@@ -342,7 +353,7 @@ pub enum SubscriptionEventType {
 pub struct SubscriptionEvent(ffi::pa_subscription_event_type_t);
 impl SubscriptionEvent {
     pub fn try_from(x: ffi::pa_subscription_event_type_t) -> Option<Self> {
-        if (x >> 6) == 0 {
+        if (x & !(ffi::PA_SUBSCRIPTION_EVENT_TYPE_MASK | ffi::PA_SUBSCRIPTION_EVENT_FACILITY_MASK)) == 0 {
             Some(SubscriptionEvent(x))
         } else {
             None
@@ -399,7 +410,11 @@ bitflags! {
 
 impl SinkFlags {
     pub fn try_from(x: ffi::pa_sink_flags_t) -> Option<SinkFlags> {
-        if (x >> 9) == 0 {
+        if (x &
+            !(ffi::PA_SOURCE_NOFLAGS | ffi::PA_SOURCE_HW_VOLUME_CTRL | ffi::PA_SOURCE_LATENCY |
+              ffi::PA_SOURCE_HARDWARE | ffi::PA_SOURCE_NETWORK | ffi::PA_SOURCE_HW_MUTE_CTRL |
+              ffi::PA_SOURCE_DECIBEL_VOLUME |
+              ffi::PA_SOURCE_DYNAMIC_LATENCY | ffi::PA_SOURCE_FLAT_VOLUME)) == 0 {
             Some(unsafe { ::std::mem::transmute(x) })
         } else {
             None
