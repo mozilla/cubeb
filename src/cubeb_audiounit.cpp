@@ -1288,6 +1288,7 @@ audiounit_set_channel_layout(AudioUnit unit,
   OSStatus r;
   size_t size = sizeof(AudioChannelLayout);
   auto layout = make_sized_audio_channel_layout(size);
+  assert(!layout->mChannelLayoutTag);
 
   switch (stream_params->layout) {
     case CUBEB_LAYOUT_DUAL_MONO:
@@ -1325,11 +1326,15 @@ audiounit_set_channel_layout(AudioUnit unit,
   if (layout->mChannelLayoutTag == kAudioChannelLayoutTag_Unknown) {
     size = offsetof(AudioChannelLayout, mChannelDescriptions[stream_params->channels]);
     layout = make_sized_audio_channel_layout(size);
+    assert(!layout->mChannelLayoutTag);
+    assert(!layout->mNumberChannelDescriptions);
     layout->mChannelLayoutTag = kAudioChannelLayoutTag_UseChannelDescriptions;
     layout->mNumberChannelDescriptions = stream_params->channels;
     for (UInt32 i = 0 ; i < stream_params->channels ; ++i) {
+      assert(!layout->mChannelDescriptions[i].mChannelLabel);
       layout->mChannelDescriptions[i].mChannelLabel =
         cubeb_channel_to_channel_label(CHANNEL_INDEX_TO_ORDER[stream_params->layout][i]);
+      assert(!layout->mChannelDescriptions[i].mChannelFlags);
       layout->mChannelDescriptions[i].mChannelFlags = kAudioChannelFlags_AllOff;
     }
   }

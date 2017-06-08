@@ -231,6 +231,8 @@ TEST(cubeb, run_channel_rate_test)
     3,
     4,
     6,
+    7,
+    8,
   };
 
   int freq_values[] = {
