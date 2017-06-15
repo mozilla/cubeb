@@ -613,6 +613,7 @@ static int
 audiounit_reinit_stream(cubeb_stream * stm)
 {
   auto_lock context_lock(stm->context->mutex);
+  assert(stm->input_unit || stm->output_unit);
   if (!stm->shutdown) {
     audiounit_stream_stop_internal(stm);
   }
@@ -626,7 +627,7 @@ audiounit_reinit_stream(cubeb_stream * stm)
     auto_lock lock(stm->mutex);
     float volume = 0.0;
     int vol_rv = CUBEB_ERROR;
-    if (has_output(stm)) {
+    if (stm->output_unit) {
       vol_rv = audiounit_stream_get_volume(stm, &volume);
     }
 
