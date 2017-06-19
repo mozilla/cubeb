@@ -73,7 +73,7 @@ generate_export_header(cubeb EXPORT_FILE_NAME ${CMAKE_BINARY_DIR}/exports/cubeb_
 target_include_directories(cubeb PUBLIC ${CMAKE_BINARY_DIR}/exports)
 
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/include DESTINATION ${CMAKE_INSTALL_PREFIX})
-install(DIRECTORY ${CMAKE_BINARY_DIR}/exports DESTINATION ${CMAKE_INSTALL_PREFIX}/include/cubeb)
+install(DIRECTORY ${CMAKE_BINARY_DIR}/exports/ DESTINATION ${CMAKE_INSTALL_PREFIX}/include/cubeb)
 
 add_library(speex OBJECT
   src/speex/resample.c)
