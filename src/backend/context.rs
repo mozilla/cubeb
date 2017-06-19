@@ -135,11 +135,7 @@ impl Context {
                                                   u);
         }
 
-        let name = if name.is_null() {
-            None
-        } else {
-            Some(unsafe { CStr::from_ptr(name) }.to_owned())
-        };
+        let name = super::try_cstr_from(name).map(|s| s.to_owned());
         let mut ctx = try!(Context::_new(name));
 
         if ctx.mainloop.start().is_err() {

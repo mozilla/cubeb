@@ -213,11 +213,7 @@ impl<'ctx> Stream<'ctx> {
                         s.set_write_callback(write_data, stm.as_mut() as *mut _ as *mut _);
 
                         let battr = set_buffering_attribute(latency_frames, &stm.output_sample_spec);
-                        let device_name = if output_device.is_null() {
-                            None
-                        } else {
-                            unsafe { Some(CStr::from_ptr(output_device as *const _)) }
-                        };
+                        let device_name = super::try_cstr_from(output_device as *const _);
                         let _ = s.connect_playback(device_name,
                                                    &battr,
                                                    pulse::STREAM_AUTO_TIMING_UPDATE | pulse::STREAM_INTERPOLATE_TIMING |
@@ -247,11 +243,7 @@ impl<'ctx> Stream<'ctx> {
                         s.set_read_callback(read_data, stm.as_mut() as *mut _ as *mut _);
 
                         let battr = set_buffering_attribute(latency_frames, &stm.input_sample_spec);
-                        let device_name = if input_device.is_null() {
-                            None
-                        } else {
-                            unsafe { Some(CStr::from_ptr(output_device as *const _)) }
-                        };
+                        let device_name = super::try_cstr_from(input_device as *const _);
                         let _ = s.connect_record(device_name,
                                                  &battr,
                                                  pulse::STREAM_AUTO_TIMING_UPDATE | pulse::STREAM_INTERPOLATE_TIMING |
