@@ -93,9 +93,9 @@ extern "C" {
 
     @code
     long data_cb(cubeb_stream * stm, void * user,
-                 void * input_buffer, void * output_buffer, long nframes)
+                 void const * input_buffer, void * output_buffer, long nframes)
     {
-      float * in  = input_buffer;
+      float const * in  = input_buffer;
       float * out = output_buffer;
 
       for (i = 0; i < nframes; ++i) {
@@ -249,8 +249,8 @@ typedef struct {
 
 /** Audio device description */
 typedef struct {
-  char * output_name; /**< The name of the output device */
-  char * input_name; /**< The name of the input device */
+  char const * output_name; /**< The name of the output device */
+  char const * input_name; /**< The name of the input device */
 } cubeb_device;
 
 /** Stream states signaled via state_callback. */
@@ -361,7 +361,7 @@ typedef struct {
  *  Returned by `cubeb_enumerate_devices` and destroyed by
  *  `cubeb_device_collection_destroy`. */
 typedef struct {
-  cubeb_device_info * device; /**< Array of pointers to device info. */
+  cubeb_device_info const * device; /**< Array of pointers to device info. */
   size_t count;               /**< Device count in collection. */
 } cubeb_device_collection;
 
@@ -455,7 +455,7 @@ CUBEB_EXPORT int cubeb_get_max_channel_count(cubeb * context, uint32_t * max_cha
     @retval CUBEB_ERROR_INVALID_PARAMETER
     @retval CUBEB_ERROR_NOT_SUPPORTED */
 CUBEB_EXPORT int cubeb_get_min_latency(cubeb * context,
-                                       cubeb_stream_params * params,
+                                       cubeb_stream_params const * params,
                                        uint32_t * latency_frames);
 
 /** Get the preferred sample rate for this backend: this is hardware and
@@ -509,9 +509,9 @@ CUBEB_EXPORT int cubeb_stream_init(cubeb * context,
                                    cubeb_stream ** stream,
                                    char const * stream_name,
                                    cubeb_devid input_device,
-                                   cubeb_stream_params * input_stream_params,
+                                   cubeb_stream_params const * input_stream_params,
                                    cubeb_devid output_device,
-                                   cubeb_stream_params * output_stream_params,
+                                   cubeb_stream_params const * output_stream_params,
                                    uint32_t latency_frames,
                                    cubeb_data_callback data_callback,
                                    cubeb_state_callback state_callback,

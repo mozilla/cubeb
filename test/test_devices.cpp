@@ -16,7 +16,7 @@
 #include "common.h"
 
 static void
-print_device_info(cubeb_device_info * info, FILE * f)
+print_device_info(cubeb_device_info const * info, FILE * f)
 {
   char devfmts[64] = "";
   const char * devtype, * devstate, * devdeffmt;

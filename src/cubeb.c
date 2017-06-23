@@ -57,8 +57,8 @@ int kai_init(cubeb ** context, char const * context_name);
 #endif
 
 static int
-validate_stream_params(cubeb_stream_params * input_stream_params,
-                       cubeb_stream_params * output_stream_params)
+validate_stream_params(cubeb_stream_params const * input_stream_params,
+                       cubeb_stream_params const * output_stream_params)
 {
   XASSERT(input_stream_params || output_stream_params);
   if (output_stream_params) {
@@ -82,8 +82,8 @@ validate_stream_params(cubeb_stream_params * input_stream_params,
     }
   }
 
-  cubeb_stream_params * params = input_stream_params ?
-                                 input_stream_params : output_stream_params;
+  cubeb_stream_params const * params = input_stream_params ?
+                                       input_stream_params : output_stream_params;
 
   switch (params->format) {
   case CUBEB_SAMPLE_S16LE:
@@ -245,7 +245,7 @@ cubeb_get_max_channel_count(cubeb * context, uint32_t * max_channels)
 }
 
 int
-cubeb_get_min_latency(cubeb * context, cubeb_stream_params * params, uint32_t * latency_ms)
+cubeb_get_min_latency(cubeb * context, cubeb_stream_params const * params, uint32_t * latency_ms)
 {
   if (!context || !params || !latency_ms) {
     return CUBEB_ERROR_INVALID_PARAMETER;
@@ -299,9 +299,9 @@ cubeb_destroy(cubeb * context)
 int
 cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_name,
                   cubeb_devid input_device,
-                  cubeb_stream_params * input_stream_params,
+                  cubeb_stream_params const * input_stream_params,
                   cubeb_devid output_device,
-                  cubeb_stream_params * output_stream_params,
+                  cubeb_stream_params const * output_stream_params,
                   unsigned int latency,
                   cubeb_data_callback data_callback,
                   cubeb_state_callback state_callback,

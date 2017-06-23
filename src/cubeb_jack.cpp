@@ -964,9 +964,9 @@ cbjack_stream_device_destroy(cubeb_stream * /*stream*/,
                              cubeb_device * device)
 {
   if (device->input_name)
-    free(device->input_name);
+    free((void *) device->input_name);
   if (device->output_name)
-    free(device->output_name);
+    free((void *) device->output_name);
   free(device);
   return CUBEB_OK;
 }

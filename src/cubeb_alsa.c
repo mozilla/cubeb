@@ -1343,7 +1343,7 @@ alsa_device_collection_destroy(cubeb * context,
 {
   assert(collection->count == 1);
   (void) context;
-  free(collection->device);
+  free((void *) collection->device);
   return CUBEB_OK;
 }
 

@@ -11,7 +11,7 @@
 #include <stdlib.h>
 
 static void
-device_info_destroy(cubeb_device_info * info)
+device_info_destroy(cubeb_device_info const * info)
 {
   XASSERT(info);
 
@@ -33,6 +33,6 @@ cubeb_utils_default_device_collection_destroy(cubeb * context,
   for (i = 0; i < collection->count; i++)
     device_info_destroy(&collection->device[i]);
 
-  free(collection->device);
+  free((void *) collection->device);
   return CUBEB_OK;
 }
