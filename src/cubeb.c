@@ -245,9 +245,9 @@ cubeb_get_max_channel_count(cubeb * context, uint32_t * max_channels)
 }
 
 int
-cubeb_get_min_latency(cubeb * context, cubeb_stream_params params, uint32_t * latency_ms)
+cubeb_get_min_latency(cubeb * context, cubeb_stream_params * params, uint32_t * latency_ms)
 {
-  if (!context || !latency_ms) {
+  if (!context || !params || !latency_ms) {
     return CUBEB_ERROR_INVALID_PARAMETER;
   }
 
@@ -255,7 +255,7 @@ cubeb_get_min_latency(cubeb * context, cubeb_stream_params params, uint32_t * la
     return CUBEB_ERROR_NOT_SUPPORTED;
   }
 
-  return context->ops->get_min_latency(context, params, latency_ms);
+  return context->ops->get_min_latency(context, *params, latency_ms);
 }
 
 int

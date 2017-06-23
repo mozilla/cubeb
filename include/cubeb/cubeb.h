@@ -37,7 +37,7 @@ extern "C" {
     int latency_frames;
     uint64_t ts;
 
-    rv = cubeb_get_min_latency(app_ctx, output_params, &latency_frames);
+    rv = cubeb_get_min_latency(app_ctx, &output_params, &latency_frames);
     if (rv != CUBEB_OK) {
       fprintf(stderr, "Could not get minimum latency");
       return rv;
@@ -455,7 +455,7 @@ CUBEB_EXPORT int cubeb_get_max_channel_count(cubeb * context, uint32_t * max_cha
     @retval CUBEB_ERROR_INVALID_PARAMETER
     @retval CUBEB_ERROR_NOT_SUPPORTED */
 CUBEB_EXPORT int cubeb_get_min_latency(cubeb * context,
-                                       cubeb_stream_params params,
+                                       cubeb_stream_params * params,
                                        uint32_t * latency_frames);
 
 /** Get the preferred sample rate for this backend: this is hardware and
