@@ -128,7 +128,7 @@ TEST(cubeb, context_variables)
 #if defined(__ANDROID__)
   params.stream_type = CUBEB_STREAM_TYPE_MUSIC;
 #endif
-  r = cubeb_get_min_latency(ctx, params, &value);
+  r = cubeb_get_min_latency(ctx, &params, &value);
   ASSERT_TRUE(r == CUBEB_OK || r == CUBEB_ERROR_NOT_SUPPORTED);
   if (r == CUBEB_OK) {
     ASSERT_TRUE(value > 0);
