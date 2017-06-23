@@ -33,8 +33,8 @@ extern "C" {
     cubeb * app_ctx;
     cubeb_init(&app_ctx, "Example Application");
     int rv;
-    int rate;
-    int latency_frames;
+    uint32_t rate;
+    uint32_t latency_frames;
     uint64_t ts;
 
     rv = cubeb_get_min_latency(app_ctx, &output_params, &latency_frames);
@@ -239,8 +239,8 @@ typedef enum {
 typedef struct {
   cubeb_sample_format format;   /**< Requested sample format.  One of
                                      #cubeb_sample_format. */
-  unsigned int rate;            /**< Requested sample rate.  Valid range is [1000, 192000]. */
-  unsigned int channels;        /**< Requested channel count.  Valid range is [1, 8]. */
+  uint32_t rate;                /**< Requested sample rate.  Valid range is [1000, 192000]. */
+  uint32_t channels;            /**< Requested channel count.  Valid range is [1, 8]. */
   cubeb_channel_layout layout;  /**< Requested channel layout. This must be consistent with the provided channels. */
 #if defined(__ANDROID__)
   cubeb_stream_type stream_type; /**< Used to map Android audio stream types */
@@ -348,13 +348,13 @@ typedef struct {
 
   cubeb_device_fmt format;    /**< Sample format supported. */
   cubeb_device_fmt default_format; /**< The default sample format for this device. */
-  unsigned int max_channels;  /**< Channels. */
-  unsigned int default_rate;  /**< Default/Preferred sample rate. */
-  unsigned int max_rate;      /**< Maximum sample rate supported. */
-  unsigned int min_rate;      /**< Minimum sample rate supported. */
+  uint32_t max_channels;      /**< Channels. */
+  uint32_t default_rate;      /**< Default/Preferred sample rate. */
+  uint32_t max_rate;          /**< Maximum sample rate supported. */
+  uint32_t min_rate;          /**< Minimum sample rate supported. */
 
-  unsigned int latency_lo;    /**< Lowest possible latency in frames. */
-  unsigned int latency_hi;    /**< Higest possible latency in frames. */
+  uint32_t latency_lo;        /**< Lowest possible latency in frames. */
+  uint32_t latency_hi;        /**< Higest possible latency in frames. */
 } cubeb_device_info;
 
 /** Device collection.
@@ -512,7 +512,7 @@ CUBEB_EXPORT int cubeb_stream_init(cubeb * context,
                                    cubeb_stream_params * input_stream_params,
                                    cubeb_devid output_device,
                                    cubeb_stream_params * output_stream_params,
-                                   unsigned int latency_frames,
+                                   uint32_t latency_frames,
                                    cubeb_data_callback data_callback,
                                    cubeb_state_callback state_callback,
                                    void * user_ptr);
