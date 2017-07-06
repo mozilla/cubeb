@@ -491,7 +491,8 @@ cubeb_should_downmix(cubeb_stream_params const * stream, cubeb_stream_params con
 bool
 cubeb_should_mix(cubeb_stream_params const * stream, cubeb_stream_params const * mixer)
 {
-  return cubeb_should_upmix(stream, mixer) || cubeb_should_downmix(stream, mixer);
+  return stream->layout != CUBEB_LAYOUT_UNDEFINED &&
+         (cubeb_should_upmix(stream, mixer) || cubeb_should_downmix(stream, mixer));
 }
 
 struct cubeb_mixer {
