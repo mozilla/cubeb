@@ -1763,7 +1763,8 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
     stm->output_stream_params = *output_stream_params;
     stm->output_device = utf8_to_wstr(reinterpret_cast<char const *>(output_device));
     // Make sure the layout matches the channel count.
-    XASSERT(stm->output_stream_params.channels == CUBEB_CHANNEL_LAYOUT_MAPS[stm->output_stream_params.layout].channels);
+    XASSERT(stm->output_stream_params.layout == CUBEB_LAYOUT_UNDEFINED ||
+            stm->output_stream_params.channels == CUBEB_CHANNEL_LAYOUT_MAPS[stm->output_stream_params.layout].channels);
   }
 
   switch (output_stream_params ? output_stream_params->format : input_stream_params->format) {
