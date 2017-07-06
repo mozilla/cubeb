@@ -244,6 +244,42 @@ TEST(cubeb, configure_stream)
   cubeb_destroy(ctx);
 }
 
+TEST(cubeb, configure_stream_undefined_layout)
+{
+  int r;
+  cubeb * ctx;
+  cubeb_stream * stream;
+  cubeb_stream_params params;
+
+  r = common_init(&ctx, "test_sanity");
+  ASSERT_EQ(r, CUBEB_OK);
+  ASSERT_NE(ctx, nullptr);
+
+  params.format = STREAM_FORMAT;
+  params.rate = STREAM_RATE;
+  params.channels = 2; // panning
+  params.layout = CUBEB_LAYOUT_UNDEFINED;
+#if defined(__ANDROID__)
+  params.stream_type = CUBEB_STREAM_TYPE_MUSIC;
+#endif
+
+  r = cubeb_stream_init(ctx, &stream, "test", NULL, NULL, NULL, &params, STREAM_LATENCY,
+                        test_data_callback, test_state_callback, &dummy);
+  ASSERT_EQ(r, CUBEB_OK);
+  ASSERT_NE(stream, nullptr);
+
+  r = cubeb_stream_start(stream);
+  ASSERT_EQ(r, CUBEB_OK);
+
+  delay(100);
+
+  r = cubeb_stream_stop(stream);
+  ASSERT_EQ(r, CUBEB_OK);
+
+  cubeb_stream_destroy(stream);
+  cubeb_destroy(ctx);
+}
+
 static void
 test_init_start_stop_destroy_multiple_streams(int early, int delay_ms)
 {
