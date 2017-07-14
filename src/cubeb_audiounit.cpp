@@ -1466,13 +1466,13 @@ audiounit_create_blank_aggregate_device(AudioObjectID * plugin_id, AudioDeviceID
   CFDictionaryAddValue(aggregate_device_dict, CFSTR(kAudioAggregateDeviceUIDKey), aggregate_device_UID);
   CFRelease(aggregate_device_UID);
 
-  int private_key = 1;
-  CFNumberRef aggregate_device_private_key = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &private_key);
+  int private_value = 1;
+  CFNumberRef aggregate_device_private_key = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &private_value);
   CFDictionaryAddValue(aggregate_device_dict, CFSTR(kAudioAggregateDeviceIsPrivateKey), aggregate_device_private_key);
   CFRelease(aggregate_device_private_key);
 
-  int stacked_key = 0;
-  CFNumberRef aggregate_device_stacked_key = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &stacked_key);
+  int stacked_value = 0;
+  CFNumberRef aggregate_device_stacked_key = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &stacked_value);
   CFDictionaryAddValue(aggregate_device_dict, CFSTR(kAudioAggregateDeviceIsStackedKey), aggregate_device_stacked_key);
   CFRelease(aggregate_device_stacked_key);
 
