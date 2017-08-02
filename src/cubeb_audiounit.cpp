@@ -1616,7 +1616,8 @@ audiounit_activate_clock_drift_compensation(const AudioDeviceID aggregate_device
                                                kAudioObjectPropertyScopeGlobal,
                                                kAudioObjectPropertyElementMaster };
 
-  for (UInt32 i = 0; i < subdevices_num; ++i) {
+  // Start from the second device since the first is the master clock
+  for (UInt32 i = 1; i < subdevices_num; ++i) {
     UInt32 drift_compensation_value = 1;
     rv = AudioObjectSetPropertyData(sub_devices[i],
                                     &address_drift,
