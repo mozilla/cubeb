@@ -416,7 +416,7 @@ impl<'ctx> Stream<'ctx> {
             Some(ref stm) => {
                 match stm.get_latency() {
                     Ok((r_usec, negative)) => {
-                        debug_assert!(negative);
+                        debug_assert_eq!(negative, false);
                         let latency = (r_usec * self.output_sample_spec.rate as pa_usec_t / PA_USEC_PER_SEC) as u32;
                         Ok(latency)
                     },
