@@ -155,6 +155,32 @@ void basic_api_test(T& ring)
   ASSERT_EQ(ring.available_write(), 128);
 }
 
+void test_reset_api() {
+	const size_t RING_BUFFER_SIZE = 128;
+	const size_t ENQUEUE_SIZE = RING_BUFFER_SIZE / 2;
+
+	lock_free_queue<float> ring(RING_BUFFER_SIZE);
+	std::thread t([&ring, ENQUEUE_SIZE] {
+		std::unique_ptr<float[]> in_buffer(new float[ENQUEUE_SIZE]);
+		ring.enqueue(in_buffer.get(), ENQUEUE_SIZE);
+	});
+
+	t.join();
+
+	ring.reset_thread_ids();
+
+	// Enqueue with a different thread. We have reset the thread ID
+	// in the ring buffer, this should work.
+	std::thread t2([&ring, ENQUEUE_SIZE] {
+		std::unique_ptr<float[]> in_buffer(new float[ENQUEUE_SIZE]);
+		ring.enqueue(in_buffer.get(), ENQUEUE_SIZE);
+	});
+
+	t2.join();
+
+	ASSERT_TRUE(true);
+}
+
 TEST(cubeb, ring_buffer)
 {
   /* Basic API test. */
@@ -196,4 +222,6 @@ TEST(cubeb, ring_buffer)
       test_ring_multi(ring, channels, capacity_frames);
     }
   }
+
+  test_reset_api();
 }
