@@ -17,14 +17,16 @@ extern "C" {
 /** Opaque handle referencing interned string storage. */
 typedef struct cubeb_strings cubeb_strings;
 
-/** Initialize a interned string structure.
+/** Initialize an interned string structure.
     @param strings An out param where an opaque pointer to the
     interned string storage will be returned.
     @retval CUBEB_OK in case of success.
     @retval CUBEB_ERROR in case of error. */
 CUBEB_EXPORT int cubeb_strings_init(cubeb_strings ** strings);
 
-/** */
+/** Destroy an interned string structure freeing all associated memory.
+    @param strings An opaque pointer to the interned string storage to
+                   destroy. */
 CUBEB_EXPORT void cubeb_strings_destroy(cubeb_strings * strings);
 
 /** Add string to internal storage.
