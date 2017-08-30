@@ -233,7 +233,7 @@ public:
    */
   void reset_thread_ids()
   {
-#ifndef DEBUG
+#ifndef NDEBUG
     consumer_id = producer_id = std::thread::id();
 #endif
   }
