@@ -446,25 +446,25 @@ channel_layout_to_mask(cubeb_channel_layout layout)
   // allocate it in stack, or it will be created and removed repeatedly.
   // Use static to allocate this local variable in data space instead of stack.
   static DWORD map[CUBEB_LAYOUT_MAX] = {
-    0,                    // CUBEB_LAYOUT_UNDEFINED
-    MASK_DUAL_MONO,       // CUBEB_LAYOUT_DUAL_MONO
-    MASK_DUAL_MONO_LFE,   // CUBEB_LAYOUT_DUAL_MONO_LFE
-    MASK_MONO,            // CUBEB_LAYOUT_MONO
-    MASK_MONO_LFE,        // CUBEB_LAYOUT_MONO_LFE
-    MASK_STEREO,          // CUBEB_LAYOUT_STEREO
-    MASK_STEREO_LFE,      // CUBEB_LAYOUT_STEREO_LFE
-    MASK_3F,              // CUBEB_LAYOUT_3F
-    MASK_3F_LFE,          // CUBEB_LAYOUT_3F_LFE
-    MASK_2F1,             // CUBEB_LAYOUT_2F1
-    MASK_2F1_LFE,         // CUBEB_LAYOUT_2F1_LFE
-    MASK_3F1,             // CUBEB_LAYOUT_3F1
-    MASK_3F1_LFE,         // CUBEB_LAYOUT_3F1_LFE
-    MASK_2F2,             // CUBEB_LAYOUT_2F2
-    MASK_2F2_LFE,         // CUBEB_LAYOUT_2F2_LFE
-    MASK_3F2,             // CUBEB_LAYOUT_3F2
-    MASK_3F2_LFE,         // CUBEB_LAYOUT_3F2_LFE
-    MASK_3F3R_LFE,        // CUBEB_LAYOUT_3F3R_LFE
-    MASK_3F4_LFE,         // CUBEB_LAYOUT_3F4_LFE
+    KSAUDIO_SPEAKER_DIRECTOUT, // CUBEB_LAYOUT_UNDEFINED
+    MASK_DUAL_MONO,            // CUBEB_LAYOUT_DUAL_MONO
+    MASK_DUAL_MONO_LFE,        // CUBEB_LAYOUT_DUAL_MONO_LFE
+    MASK_MONO,                 // CUBEB_LAYOUT_MONO
+    MASK_MONO_LFE,             // CUBEB_LAYOUT_MONO_LFE
+    MASK_STEREO,               // CUBEB_LAYOUT_STEREO
+    MASK_STEREO_LFE,           // CUBEB_LAYOUT_STEREO_LFE
+    MASK_3F,                   // CUBEB_LAYOUT_3F
+    MASK_3F_LFE,               // CUBEB_LAYOUT_3F_LFE
+    MASK_2F1,                  // CUBEB_LAYOUT_2F1
+    MASK_2F1_LFE,              // CUBEB_LAYOUT_2F1_LFE
+    MASK_3F1,                  // CUBEB_LAYOUT_3F1
+    MASK_3F1_LFE,              // CUBEB_LAYOUT_3F1_LFE
+    MASK_2F2,                  // CUBEB_LAYOUT_2F2
+    MASK_2F2_LFE,              // CUBEB_LAYOUT_2F2_LFE
+    MASK_3F2,                  // CUBEB_LAYOUT_3F2
+    MASK_3F2_LFE,              // CUBEB_LAYOUT_3F2_LFE
+    MASK_3F3R_LFE,             // CUBEB_LAYOUT_3F3R_LFE
+    MASK_3F4_LFE,              // CUBEB_LAYOUT_3F4_LFE
   };
   return map[layout];
 }
@@ -1434,8 +1434,6 @@ waveformatex_update_derived_properties(WAVEFORMATEX * format)
 static void
 handle_channel_layout(cubeb_stream * stm,  EDataFlow direction, com_heap_ptr<WAVEFORMATEX> & mix_format, const cubeb_stream_params * stream_params)
 {
-  // The CUBEB_LAYOUT_UNDEFINED can be used for input but it's not allowed for output.
-  XASSERT(direction == eCapture || stream_params->layout != CUBEB_LAYOUT_UNDEFINED);
   com_ptr<IAudioClient> & audio_client = (direction == eRender) ? stm->output_client : stm->input_client;
   XASSERT(audio_client);
   /* The docs say that GetMixFormat is always of type WAVEFORMATEXTENSIBLE [1],
