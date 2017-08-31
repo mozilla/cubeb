@@ -359,13 +359,13 @@ impl Context {
                 self.operation_wait(None, &o);
             }
 
-            if devtype == cubeb::DEVICE_TYPE_OUTPUT {
+            if devtype.contains(cubeb::DEVICE_TYPE_OUTPUT) {
                 if let Ok(o) = context.get_sink_info_list(add_output_device, &mut user_data as *mut _ as *mut _) {
                     self.operation_wait(None, &o);
                 }
             }
 
-            if devtype == cubeb::DEVICE_TYPE_INPUT {
+            if devtype.contains(cubeb::DEVICE_TYPE_INPUT) {
                 if let Ok(o) = context.get_source_info_list(add_input_device, &mut user_data as *mut _ as *mut _) {
                     self.operation_wait(None, &o);
                 }
