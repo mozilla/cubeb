@@ -39,8 +39,10 @@ template<typename T>
 passthrough_resampler<T>::passthrough_resampler(cubeb_stream * s,
                                                 cubeb_data_callback cb,
                                                 void * ptr,
-                                                uint32_t input_channels)
+                                                uint32_t input_channels,
+                                                uint32_t sample_rate)
   : processor(input_channels)
+  , sample_rate(sample_rate)
   , stream(s)
   , data_callback(cb)
   , user_ptr(ptr)
@@ -73,6 +75,7 @@ long passthrough_resampler<T>::fill(void * input_buffer, long * input_frames_cou
   if (input_buffer) {
     internal_input_buffer.pop(nullptr, frames_to_samples(output_frames));
     *input_frames_count = output_frames;
+    drop_audio_if_needed();
   }
 
   return rv;
@@ -205,6 +208,7 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>
   /* The number of frames returned from the callback. */
   long got = 0;
 
+
   /* We need to determine how much frames to present to the consumer.
    * - If we have a two way stream, but we're only resampling input, we resample
    * the input to the number of output frames.
@@ -242,9 +246,18 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>
 
   output_processor->written(got);
 
+  /* If either the input buffer or the output buffer grew too big, drop some
+     audio. This will glitch, but will prevent delay buildups. We drop before
+     adding the new audio in, because we always want to read/write recent audio. */
+  input_processor->drop_audio_if_needed();
+
   /* Process the output. If not enough frames have been returned from the
    * callback, drain the processors. */
-  return output_processor->output(out_buffer, output_frames_needed);
+  got = output_processor->output(out_buffer, output_frames_needed);
+
+  output_processor->drop_audio_if_needed();
+
+  return got;
 }
 
 /* Resampler C API */
