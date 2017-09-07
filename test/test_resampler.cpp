@@ -125,7 +125,7 @@ void test_delay_lines(uint32_t delay_frames, uint32_t channels, uint32_t chunk_m
   const size_t length_s = 2;
   const size_t rate = 44100;
   const size_t length_frames = rate * length_s;
-  delay_line<float> delay(delay_frames, channels);
+  delay_line<float> delay(delay_frames, channels, rate);
   auto_array<float> input;
   auto_array<float> output;
   uint32_t chunk_length = channels * chunk_ms * rate / 1000;
