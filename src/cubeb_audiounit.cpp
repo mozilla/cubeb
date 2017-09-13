@@ -674,7 +674,7 @@ audiounit_reinit_stream(cubeb_stream * stm, device_flags_value flags)
 }
 
 static char const *
-to_string(AudioObjectPropertySelector selector)
+event_addr_to_string(AudioObjectPropertySelector selector)
 {
   switch(selector) {
     case kAudioHardwarePropertyDefaultOutputDevice:
@@ -697,7 +697,7 @@ audiounit_property_listener_callback(AudioObjectID id, UInt32 address_count,
 {
   cubeb_stream * stm = (cubeb_stream*) user;
   if (stm->switching_device) {
-    LOG("Switch is taking place. Skip Event %s for id=%d", to_string(addresses[0].mSelector), id);
+    LOG("Switching is already taking place. Skip Event %s for id=%d", event_addr_to_string(addresses[0].mSelector), id);
     return noErr;
   }
   stm->switching_device = true;
