@@ -42,8 +42,8 @@ passthrough_resampler<T>::passthrough_resampler(cubeb_stream * s,
                                                 uint32_t input_channels,
                                                 uint32_t sample_rate)
   : processor(input_channels)
-  , sample_rate(sample_rate)
   , stream(s)
+  , sample_rate(sample_rate)
   , data_callback(cb)
   , user_ptr(ptr)
 {
@@ -208,7 +208,6 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>
   /* The number of frames returned from the callback. */
   long got = 0;
 
-
   /* We need to determine how much frames to present to the consumer.
    * - If we have a two way stream, but we're only resampling input, we resample
    * the input to the number of output frames.
@@ -246,9 +245,6 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>
 
   output_processor->written(got);
 
-  /* If either the input buffer or the output buffer grew too big, drop some
-     audio. This will glitch, but will prevent delay buildups. We drop before
-     adding the new audio in, because we always want to read/write recent audio. */
   input_processor->drop_audio_if_needed();
 
   /* Process the output. If not enough frames have been returned from the

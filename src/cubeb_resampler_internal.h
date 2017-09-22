@@ -38,6 +38,17 @@ MOZ_END_STD_NAMESPACE
 #include <stdio.h>
 
 /* This header file contains the internal C++ API of the resamplers, for testing. */
+namespace {
+// When dropping audio input frames to prevent building
+// an input delay, this function returns the number of frames
+// to keep in the buffer.
+// @parameter sample_rate The sample rate of the stream.
+// @return A number of frames to keep.
+uint32_t min_buffered_audio_frame(uint32_t sample_rate)
+{
+  return sample_rate / 20;
+}
+}
 
 int to_speex_quality(cubeb_resampler_quality q);
 
@@ -88,9 +99,9 @@ public:
 
   void drop_audio_if_needed()
   {
-    // only keep at most 100ms of audio
-    if (samples_to_frames(internal_input_buffer.length()) > sample_rate / 10) {
-      internal_input_buffer.pop(nullptr, samples_to_frames(internal_input_buffer.length()) - sample_rate / 10);
+    uint32_t to_keep = min_buffered_audio_frame(sample_rate);
+    if (samples_to_frames(internal_input_buffer.length()) > to_keep) {
+      internal_input_buffer.pop(nullptr, samples_to_frames(internal_input_buffer.length()) - to_keep);
     }
   }
 
@@ -175,7 +186,6 @@ public:
   : processor(channels)
   , resampling_ratio(static_cast<float>(source_rate) / target_rate)
   , source_rate(source_rate)
-  , target_rate(target_rate)
   , additional_latency(0)
   , leftover_samples(0)
   {
@@ -313,8 +323,9 @@ public:
   {
     // Keep at most 100ms buffered.
     uint32_t available = samples_to_frames(resampling_in_buffer.length());
-    if (available > source_rate / 10) {
-      resampling_in_buffer.pop(nullptr, frames_to_samples(available - source_rate / 10));
+    uint32_t to_keep = min_buffered_audio_frame(source_rate);
+    if (available > to_keep) {
+      resampling_in_buffer.pop(nullptr, frames_to_samples(available - to_keep));
     }
   }
 private:
@@ -354,7 +365,6 @@ private:
   /** Source rate / target rate. */
   const float resampling_ratio;
   const uint32_t source_rate;
-  const uint32_t target_rate;
   /** Storage for the input frames, to be resampled. Also contains
    * any unresampled frames after resampling. */
   auto_array<T> resampling_in_buffer;
@@ -373,7 +383,8 @@ class delay_line : public processor {
 public:
   /** Constructor
    * @parameter frames the number of frames of delay.
-   * @parameter channels the number of channels of this delay line. */
+   * @parameter channels the number of channels of this delay line.
+   * @parameter sample_rate sample-rate of the audio going through this delay line */
   delay_line(uint32_t frames, uint32_t channels, uint32_t sample_rate)
     : processor(channels)
     , length(frames)
@@ -409,7 +420,7 @@ public:
 
     delay_output_buffer.clear();
     delay_output_buffer.push(delay_input_buffer.data(),
-                             frames_to_samples(frames_needed));;
+                             frames_to_samples(frames_needed));
     delay_input_buffer.pop(nullptr, frames_to_samples(frames_needed));
     *input_frames_used = frames_needed;
 
@@ -471,8 +482,10 @@ public:
 
   void drop_audio_if_needed()
   {
-    if (samples_to_frames(delay_input_buffer.length()) > sample_rate / 10) {
-      delay_input_buffer.pop(nullptr, delay_input_buffer.length() - frames_to_samples(length));
+    size_t available = samples_to_frames(delay_input_buffer.length());
+    uint32_t to_keep = min_buffered_audio_frame(sample_rate);
+    if (available > to_keep) {
+      delay_input_buffer.pop(nullptr, available - frames_to_samples(sample_rate));
     }
   }
 private:
