@@ -100,8 +100,9 @@ public:
   void drop_audio_if_needed()
   {
     uint32_t to_keep = min_buffered_audio_frame(sample_rate);
-    if (samples_to_frames(internal_input_buffer.length()) > to_keep) {
-      internal_input_buffer.pop(nullptr, samples_to_frames(internal_input_buffer.length()) - to_keep);
+    uint32_t available = samples_to_frames(internal_input_buffer.length());
+    if (available > to_keep) {
+      internal_input_buffer.pop(nullptr, frames_to_samples(available - to_keep));
     }
   }
 
@@ -485,7 +486,7 @@ public:
     size_t available = samples_to_frames(delay_input_buffer.length());
     uint32_t to_keep = min_buffered_audio_frame(sample_rate);
     if (available > to_keep) {
-      delay_input_buffer.pop(nullptr, available - frames_to_samples(sample_rate));
+      delay_input_buffer.pop(nullptr, frames_to_samples(available - to_keep));
     }
   }
 private:

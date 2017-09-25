@@ -649,6 +649,18 @@ void is_seq(T * array, int stride, long count, long expected_start)
   }
 }
 
+template<typename T>
+void is_not_seq(T * array, int stride, long count, long expected_start)
+{
+  uint32_t output_index = 0;
+  for (long i = 0; i < count; i++) {
+    for (int j = 0; j < stride; j++) {
+      ASSERT_NE(array[output_index + j], expected_start + i);
+    }
+    output_index += stride;
+  }
+}
+
 // gtest does not support using ASSERT_EQ and friend in a function that returns
 // a value.
 template<typename T>
@@ -742,6 +754,92 @@ TEST(cubeb, resampler_passthrough_duplex_callback_reordering)
       got = cubeb_resampler_fill(resampler, input_buffer_glitch, &frames, output_buffer, BUF_BASE_SIZE);
       is_seq(output_buffer, 2, BUF_BASE_SIZE, output_seq_idx);
       output_seq_idx += BUF_BASE_SIZE;
+    } else {
+       // normal case
+      seq_idx = seq(input_buffer_normal, input_channels, seq_idx, BUF_BASE_SIZE);
+      long normal_input_frame_count = 256;
+      got = cubeb_resampler_fill(resampler, input_buffer_normal, &normal_input_frame_count, output_buffer, BUF_BASE_SIZE);
+      is_seq(output_buffer, 2, BUF_BASE_SIZE, output_seq_idx);
+      output_seq_idx += BUF_BASE_SIZE;
+    }
+    ASSERT_EQ(got, BUF_BASE_SIZE);
+  }
+
+  cubeb_resampler_destroy(resampler);
+}
+
+// Artificially simulate output thread underruns,
+// by building up artificial delay in the input.
+// Check that the frame drop logic kicks in.
+TEST(cubeb, resampler_drift_drop_data) {
+  cubeb_stream_params input_params;
+  cubeb_stream_params output_params;
+
+  const int input_channels = 1;
+  const int output_channels = 2;
+
+  input_params.channels = input_channels;
+  input_params.rate = 44100;
+  input_params.format = CUBEB_SAMPLE_FLOAT32NE;
+
+  output_params.channels = output_channels;
+  output_params.rate = input_params.rate;
+  output_params.format = CUBEB_SAMPLE_FLOAT32NE;
+
+  int target_rate = input_params.rate;
+
+  cubeb_resampler * resampler =
+    cubeb_resampler_create((cubeb_stream*)nullptr, &input_params, &output_params,
+                           target_rate, cb_passthrough_resampler_duplex, nullptr,
+                           CUBEB_RESAMPLER_QUALITY_VOIP);
+
+  const long BUF_BASE_SIZE = 256;
+
+  // The factor by which the deadline is missed. This is intentionally
+  // kind of large to trigger the frame drop quickly. In real life, multiple
+  // smaller under-runs would accumulate.
+  const long UNDERRUN_FACTOR = 6;
+  float input_buffer_prebuffer[input_channels * BUF_BASE_SIZE * 2];
+  float input_buffer_glitch[input_channels * BUF_BASE_SIZE * 2 * UNDERRUN_FACTOR];
+  float input_buffer_normal[input_channels * BUF_BASE_SIZE];
+  float output_buffer[output_channels * BUF_BASE_SIZE];
+
+  long seq_idx = 0;
+  long output_seq_idx = 0;
+
+  long prebuffer_frames = ARRAY_LENGTH(input_buffer_prebuffer) / input_params.channels;
+  seq_idx = seq(input_buffer_prebuffer, input_channels, seq_idx,
+                prebuffer_frames);
+
+  long got = cubeb_resampler_fill(resampler, input_buffer_prebuffer, &prebuffer_frames,
+                                  output_buffer, BUF_BASE_SIZE);
+
+  output_seq_idx += BUF_BASE_SIZE;
+
+  // prebuffer_frames will hold the frames used by the resampler.
+  ASSERT_EQ(prebuffer_frames, BUF_BASE_SIZE);
+  ASSERT_EQ(got, BUF_BASE_SIZE);
+
+  for (uint32_t i = 0; i < 300; i++) {
+    long int frames = BUF_BASE_SIZE;
+    if (i != 0 && (i % 100) == 1) {
+      // Once in a while, the output thread misses its deadline.
+      // The input thread still produces data, so it ends up accumulating. Simulate this by providing a
+      // much bigger input buffer. Check that the sequence is now unaligned, meaning we've dropped data
+      // to keep everything in sync.
+      seq_idx = seq(input_buffer_glitch, input_channels, seq_idx, BUF_BASE_SIZE * 2 * UNDERRUN_FACTOR);
+      frames = 2 * BUF_BASE_SIZE * UNDERRUN_FACTOR;
+      got = cubeb_resampler_fill(resampler, input_buffer_glitch, &frames, output_buffer, BUF_BASE_SIZE);
+      is_seq(output_buffer, 2, BUF_BASE_SIZE, output_seq_idx);
+      output_seq_idx += BUF_BASE_SIZE;
+    } else if (i != 0 && (i % 100) == 2) {
+      // On the next iteration, the sequence should be broken
+      seq_idx = seq(input_buffer_normal, input_channels, seq_idx, BUF_BASE_SIZE);
+      long normal_input_frame_count = 256;
+      got = cubeb_resampler_fill(resampler, input_buffer_normal, &normal_input_frame_count, output_buffer, BUF_BASE_SIZE);
+      is_not_seq(output_buffer, 2, BUF_BASE_SIZE, output_seq_idx);
+      // Reclock so that we can use is_seq again.
+      output_seq_idx = output_buffer[BUF_BASE_SIZE * 2 - 1] + 1;
     } else {
        // normal case
       seq_idx = seq(input_buffer_normal, input_channels, seq_idx, BUF_BASE_SIZE);
