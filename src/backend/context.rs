@@ -162,7 +162,6 @@ impl Context {
                 ctx.operation_wait(None, &o);
             }
         }
-        assert!(ctx.default_sink_info.is_some());
         ctx.mainloop.unlock();
 
         // Return the result.
