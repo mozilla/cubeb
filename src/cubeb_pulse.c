@@ -653,7 +653,6 @@ pulse_init(cubeb ** context, char const * context_name)
     WRAP(pa_operation_unref)(o);
   }
   WRAP(pa_threaded_mainloop_unlock)(ctx->mainloop);
-  assert(ctx->default_sink_info);
 
   *context = ctx;
 
@@ -673,6 +672,9 @@ pulse_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
   (void)ctx;
   assert(ctx && max_channels);
 
+  if (!ctx->default_sink_info)
+    return CUBEB_ERROR;
+
   *max_channels = ctx->default_sink_info->channel_map.channels;
 
   return CUBEB_OK;
@@ -684,6 +686,9 @@ pulse_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
   assert(ctx && rate);
   (void)ctx;
 
+  if (!ctx->default_sink_info)
+    return CUBEB_ERROR;
+
   *rate = ctx->default_sink_info->sample_spec.rate;
 
   return CUBEB_OK;
@@ -694,6 +699,9 @@ pulse_get_preferred_channel_layout(cubeb * ctx, cubeb_channel_layout * layout)
 {
   assert(ctx && layout);
   (void)ctx;
+
+  if (!ctx->default_sink_info)
+    return CUBEB_ERROR;
 
   *layout = channel_map_to_layout(&ctx->default_sink_info->channel_map);
 
@@ -1077,6 +1085,7 @@ pulse_stream_set_volume(cubeb_stream * stm, float volume)
   pa_volume_t vol;
   pa_cvolume cvol;
   const pa_sample_spec * ss;
+  cubeb * ctx;
 
   if (!stm->output_stream) {
     return CUBEB_ERROR;
@@ -1086,7 +1095,9 @@ pulse_stream_set_volume(cubeb_stream * stm, float volume)
 
   /* if the pulse daemon is configured to use flat volumes,
    * apply our own gain instead of changing the input volume on the sink. */
-  if (stm->context->default_sink_info->flags & PA_SINK_FLAT_VOLUME) {
+  ctx = stm->context;
+  if (ctx->default_sink_info &&
+      (ctx->default_sink_info->flags & PA_SINK_FLAT_VOLUME)) {
     stm->volume = volume;
   } else {
     ss = WRAP(pa_stream_get_sample_spec)(stm->output_stream);
@@ -1096,16 +1107,16 @@ pulse_stream_set_volume(cubeb_stream * stm, float volume)
 
     index = WRAP(pa_stream_get_index)(stm->output_stream);
 
-    op = WRAP(pa_context_set_sink_input_volume)(stm->context->context,
+    op = WRAP(pa_context_set_sink_input_volume)(ctx->context,
                                                 index, &cvol, volume_success,
                                                 stm);
     if (op) {
-      operation_wait(stm->context, stm->output_stream, op);
+      operation_wait(ctx, stm->output_stream, op);
       WRAP(pa_operation_unref)(op);
     }
   }
 
-  WRAP(pa_threaded_mainloop_unlock)(stm->context->mainloop);
+  WRAP(pa_threaded_mainloop_unlock)(ctx->mainloop);
 
   return CUBEB_OK;
 }
@@ -1236,12 +1247,12 @@ pulse_sink_info_cb(pa_context * context, const pa_sink_info * info,
   (void)context;
 
   if (eol || info == NULL)
-    return;
+    goto exit;
 
   device_id = info->name;
   if (intern_device_id(list_data->context, &device_id) != CUBEB_OK) {
     assert(false);
-    return;
+    goto exit;
   }
 
   pulse_ensure_dev_list_data_list_size(list_data);
@@ -1275,6 +1286,7 @@ pulse_sink_info_cb(pa_context * context, const pa_sink_info * info,
 
   list_data->count += 1;
 
+exit:
   WRAP(pa_threaded_mainloop_signal)(list_data->context->mainloop, 0);
 }
 
@@ -1305,12 +1317,12 @@ pulse_source_info_cb(pa_context * context, const pa_source_info * info,
   (void)context;
 
   if (eol)
-    return;
+    goto exit;
 
   device_id = info->name;
   if (intern_device_id(list_data->context, &device_id) != CUBEB_OK) {
     assert(false);
-    return;
+    goto exit;
   }
 
   pulse_ensure_dev_list_data_list_size(list_data);
@@ -1343,6 +1355,8 @@ pulse_source_info_cb(pa_context * context, const pa_source_info * info,
   devinfo->latency_hi = 0;
 
   list_data->count += 1;
+
+exit:
   WRAP(pa_threaded_mainloop_signal)(list_data->context->mainloop, 0);
 }
 
@@ -1355,8 +1369,10 @@ pulse_server_info_cb(pa_context * c, const pa_server_info * i, void * userdata)
 
   free(list_data->default_sink_name);
   free(list_data->default_source_name);
-  list_data->default_sink_name = strdup(i->default_sink_name);
-  list_data->default_source_name = strdup(i->default_source_name);
+  if (i->default_sink_name)
+    list_data->default_sink_name = strdup(i->default_sink_name);
+  if (i->default_source_name)
+    list_data->default_source_name = strdup(i->default_source_name);
 
   WRAP(pa_threaded_mainloop_signal)(list_data->context->mainloop, 0);
 }
