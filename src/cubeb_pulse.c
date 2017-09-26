@@ -1246,13 +1246,18 @@ pulse_sink_info_cb(pa_context * context, const pa_sink_info * info,
 
   (void)context;
 
-  if (eol || info == NULL)
-    goto exit;
+  if (eol) {
+    WRAP(pa_threaded_mainloop_signal)(list_data->context->mainloop, 0);
+    return;
+  }
+
+  if (info == NULL)
+    return;
 
   device_id = info->name;
   if (intern_device_id(list_data->context, &device_id) != CUBEB_OK) {
     assert(false);
-    goto exit;
+    return;
   }
 
   pulse_ensure_dev_list_data_list_size(list_data);
@@ -1285,9 +1290,6 @@ pulse_sink_info_cb(pa_context * context, const pa_sink_info * info,
   devinfo->latency_hi = 0;
 
   list_data->count += 1;
-
-exit:
-  WRAP(pa_threaded_mainloop_signal)(list_data->context->mainloop, 0);
 }
 
 static cubeb_device_state
@@ -1316,13 +1318,15 @@ pulse_source_info_cb(pa_context * context, const pa_source_info * info,
 
   (void)context;
 
-  if (eol)
-    goto exit;
+  if (eol) {
+    WRAP(pa_threaded_mainloop_signal)(list_data->context->mainloop, 0);
+    return;
+  }
 
   device_id = info->name;
   if (intern_device_id(list_data->context, &device_id) != CUBEB_OK) {
     assert(false);
-    goto exit;
+    return;
   }
 
   pulse_ensure_dev_list_data_list_size(list_data);
@@ -1355,9 +1359,6 @@ pulse_source_info_cb(pa_context * context, const pa_source_info * info,
   devinfo->latency_hi = 0;
 
   list_data->count += 1;
-
-exit:
-  WRAP(pa_threaded_mainloop_signal)(list_data->context->mainloop, 0);
 }
 
 static void
