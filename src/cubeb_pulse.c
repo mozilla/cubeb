@@ -1370,10 +1370,10 @@ pulse_server_info_cb(pa_context * c, const pa_server_info * i, void * userdata)
 
   free(list_data->default_sink_name);
   free(list_data->default_source_name);
-  if (i->default_sink_name)
-    list_data->default_sink_name = strdup(i->default_sink_name);
-  if (i->default_source_name)
-    list_data->default_source_name = strdup(i->default_source_name);
+  list_data->default_sink_name =
+    i->default_sink_name ? strdup(i->default_sink_name) : NULL;
+  list_data->default_source_name =
+    i->default_source_name ? strdup(i->default_source_name) : NULL;
 
   WRAP(pa_threaded_mainloop_signal)(list_data->context->mainloop, 0);
 }
