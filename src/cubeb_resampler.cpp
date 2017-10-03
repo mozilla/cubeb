@@ -43,9 +43,9 @@ passthrough_resampler<T>::passthrough_resampler(cubeb_stream * s,
                                                 uint32_t sample_rate)
   : processor(input_channels)
   , stream(s)
-  , sample_rate(sample_rate)
   , data_callback(cb)
   , user_ptr(ptr)
+  , sample_rate(sample_rate)
 {
 }
 
