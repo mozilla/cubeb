@@ -57,23 +57,55 @@ add_library(cubeb
   src/cubeb_log.cpp
   src/cubeb_strings.c
    $<TARGET_OBJECTS:speex>)
-target_include_directories(cubeb PUBLIC include)
+target_include_directories(cubeb 
+  PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include> 
+)
 target_include_directories(cubeb PRIVATE src)
 target_compile_definitions(cubeb PRIVATE OUTSIDE_SPEEX)
 target_compile_definitions(cubeb PRIVATE FLOATING_POINT)
 target_compile_definitions(cubeb PRIVATE EXPORT=)
 target_compile_definitions(cubeb PRIVATE RANDOM_PREFIX=speex)
 
-install(TARGETS cubeb DESTINATION ${CMAKE_INSTALL_PREFIX})
-
 add_sanitizers(cubeb)
 
 include(GenerateExportHeader)
 generate_export_header(cubeb EXPORT_FILE_NAME ${CMAKE_BINARY_DIR}/exports/cubeb_export.h)
-target_include_directories(cubeb PUBLIC ${CMAKE_BINARY_DIR}/exports)
+target_include_directories(cubeb 
+  PUBLIC $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/exports>
+)
 
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/include DESTINATION ${CMAKE_INSTALL_PREFIX})
 install(DIRECTORY ${CMAKE_BINARY_DIR}/exports/ DESTINATION ${CMAKE_INSTALL_PREFIX}/include/cubeb)
+
+include(CMakePackageConfigHelpers)
+write_basic_package_version_file(
+  "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
+  COMPATIBILITY SameMajorVersion
+)
+
+configure_package_config_file(
+  "Config.cmake.in"
+  "${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
+  INSTALL_DESTINATION "lib/cmake/${PROJECT_NAME}"
+)
+
+install(TARGETS cubeb
+  EXPORT "${PROJECT_NAME}Targets" 
+  DESTINATION ${CMAKE_INSTALL_PREFIX}
+  LIBRARY DESTINATION "lib"
+  ARCHIVE DESTINATION "lib"
+  RUNTIME DESTINATION "bin"
+  INCLUDES DESTINATION "include"
+)
+install(
+  FILES "${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake" "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
+  DESTINATION "lib/cmake/${PROJECT_NAME}"
+)
+install(
+  EXPORT "${PROJECT_NAME}Targets"
+  NAMESPACE "${PROJECT_NAME}::"
+  DESTINATION "lib/cmake/${PROJECT_NAME}"
+)
 
 add_library(speex OBJECT
   src/speex/resample.c)
