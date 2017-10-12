@@ -82,6 +82,11 @@ struct cubeb {
   dispatch_queue_t serial_queue = dispatch_queue_create(DISPATCH_QUEUE_LABEL, DISPATCH_QUEUE_SERIAL);
   // Current used channel layout
   std::atomic<cubeb_channel_layout> layout{ CUBEB_LAYOUT_UNDEFINED };
+  // Flag to be used in device_collection_callback to avoid deadlock.
+  // This is a different use of share_ptr. The important is not the value
+  // but the ability to track all parallel instances synchronized. When the
+  // share_ptr is unique means that there is no active create or delete in any thread.
+  std::shared_ptr<const bool> add_remove_aggregate_device{ new bool(true) };
 };
 
 static std::unique_ptr<AudioChannelLayout, decltype(&free)>
@@ -1695,7 +1700,12 @@ static int audiounit_destroy_aggregate_device(AudioObjectID plugin_id, AudioDevi
 static int
 audiounit_create_aggregate_device(cubeb_stream * stm)
 {
-  int r = audiounit_create_blank_aggregate_device(&stm->plugin_id, &stm->aggregate_device_id);
+  int r = 0;
+  {
+    // Signal that aggregate device is creating to be used by device_collection_change_callback
+    std::shared_ptr<const bool> creating_aggregate_device = stm->context->add_remove_aggregate_device;
+    r = audiounit_create_blank_aggregate_device(&stm->plugin_id, &stm->aggregate_device_id);
+  }
   if (r != CUBEB_OK) {
     LOG("(%p) Failed to create blank aggregate device", stm);
     audiounit_destroy_aggregate_device(stm->plugin_id, &stm->aggregate_device_id);
@@ -2583,6 +2593,8 @@ audiounit_close_stream(cubeb_stream *stm)
   stm->mixer.reset();
 
   if (stm->aggregate_device_id) {
+    // Signal that aggregate device is removing to be used by device_collection_callback
+    std::shared_ptr<const bool> removing_aggregate_device = stm->context->add_remove_aggregate_device;
     audiounit_destroy_aggregate_device(stm->plugin_id, &stm->aggregate_device_id);
     stm->aggregate_device_id = 0;
   }
@@ -3242,8 +3254,13 @@ audiounit_collection_changed_callback(AudioObjectID /* inObjectID */,
                                       void * inClientData)
 {
   cubeb * context = static_cast<cubeb *>(inClientData);
-  auto_lock lock(context->mutex);
 
+  // This is triggered from the change in aggregate device no need to populate
+  if (!context->add_remove_aggregate_device.unique()) {
+    return noErr;
+  }
+
+  auto_lock lock(context->mutex);
   if (context->collection_changed_callback == NULL) {
     /* Listener removed while waiting in mutex, abort. */
     return noErr;
