@@ -104,7 +104,7 @@ void state_cb_audio(cubeb_stream * /*stream*/, void * /*user*/, cubeb_state /*st
 // current used AudioUnit.
 template<typename T>
 long data_cb(cubeb_stream * /*stream*/, void * /*user*/,
-             const void * /*inputbuffer*/, void * /*outputbuffer*/, long nframes)
+             const void * /*inputbuffer*/, void * outputbuffer, long nframes)
 {
   called = true;
 
@@ -129,6 +129,8 @@ long data_cb(cubeb_stream * /*stream*/, void * /*user*/,
   char const * backend_id = cubeb_get_backend_id(get_cubeb_context());
   fprintf(stderr, "[%llu] callback on %s\n", tid, backend_id);
 
+  // Mute the output (or get deaf)
+  memset(outputbuffer, 0, nframes * 2 * sizeof(float));
   return nframes;
 }
 
@@ -250,4 +252,6 @@ TEST(cubeb, run_deadlock_test)
   ASSERT_NE(task_done.load(), killed);
 
   ASSERT_TRUE(task_done.load());
+
+  cubeb_stream_stop(stream);
 }
