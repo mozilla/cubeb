@@ -2498,7 +2498,9 @@ audiounit_stream_init(cubeb * context,
                       cubeb_state_callback state_callback,
                       void * user_ptr)
 {
-  std::unique_ptr<cubeb_stream, decltype(&audiounit_stream_destroy)> stm(nullptr, audiounit_stream_destroy);
+  std::unique_ptr<cubeb_stream, decltype(&audiounit_stream_destroy)> stm(new cubeb_stream(context),
+                                                                         audiounit_stream_destroy);
+  context->active_streams += 1;
   int r;
 
   assert(context);
@@ -2508,8 +2510,6 @@ audiounit_stream_init(cubeb * context,
       (output_device && !output_stream_params)) {
     return CUBEB_ERROR_INVALID_PARAMETER;
   }
-
-  stm.reset(new cubeb_stream(context));
 
   /* These could be different in the future if we have both
    * full-duplex stream and different devices for input vs output. */
@@ -2539,7 +2539,6 @@ audiounit_stream_init(cubeb * context,
     // It's not critical to lock here, because no other thread has been started
     // yet, but it allows to assert that the lock has been taken in
     // `audiounit_setup_stream`.
-    context->active_streams += 1;
     auto_lock lock(stm->mutex);
     r = audiounit_setup_stream(stm.get());
   }
