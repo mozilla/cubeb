@@ -83,10 +83,7 @@ struct cubeb {
   // Current used channel layout
   std::atomic<cubeb_channel_layout> layout{ CUBEB_LAYOUT_UNDEFINED };
   // Flag to be used in device_collection_callback to avoid deadlock.
-  // This is a different use of share_ptr. The important is not the value
-  // but the ability to track all parallel instances synchronized. When the
-  // share_ptr is unique means that there is no active create or delete in any thread.
-  std::shared_ptr<const bool> add_remove_aggregate_device{ new bool(true) };
+  std::atomic<int> creating_removing_aggregate_device{ 0 };
 };
 
 static std::unique_ptr<AudioChannelLayout, decltype(&free)>
@@ -1700,12 +1697,10 @@ static int audiounit_destroy_aggregate_device(AudioObjectID plugin_id, AudioDevi
 static int
 audiounit_create_aggregate_device(cubeb_stream * stm)
 {
-  int r = 0;
-  {
-    // Signal that aggregate device is creating to be used by device_collection_change_callback
-    std::shared_ptr<const bool> creating_aggregate_device = stm->context->add_remove_aggregate_device;
-    r = audiounit_create_blank_aggregate_device(&stm->plugin_id, &stm->aggregate_device_id);
-  }
+  // Signal that aggregate device is creating to be used by device_collection_change_callback
+  stm->context->creating_removing_aggregate_device += 1;
+  int r = audiounit_create_blank_aggregate_device(&stm->plugin_id, &stm->aggregate_device_id);
+  stm->context->creating_removing_aggregate_device -= 1;
   if (r != CUBEB_OK) {
     LOG("(%p) Failed to create blank aggregate device", stm);
     audiounit_destroy_aggregate_device(stm->plugin_id, &stm->aggregate_device_id);
@@ -2594,8 +2589,9 @@ audiounit_close_stream(cubeb_stream *stm)
 
   if (stm->aggregate_device_id) {
     // Signal that aggregate device is removing to be used by device_collection_callback
-    std::shared_ptr<const bool> removing_aggregate_device = stm->context->add_remove_aggregate_device;
+    stm->context->creating_removing_aggregate_device += 1;
     audiounit_destroy_aggregate_device(stm->plugin_id, &stm->aggregate_device_id);
+    stm->context->creating_removing_aggregate_device -= 1;
     stm->aggregate_device_id = 0;
   }
 }
@@ -3256,7 +3252,7 @@ audiounit_collection_changed_callback(AudioObjectID /* inObjectID */,
   cubeb * context = static_cast<cubeb *>(inClientData);
 
   // This is triggered from the change in aggregate device no need to populate
-  if (!context->add_remove_aggregate_device.unique()) {
+  if (context->creating_removing_aggregate_device > 0) {
     return noErr;
   }
 
