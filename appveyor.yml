@@ -7,6 +7,3 @@ build_script:
     cmake .
     cmake --build . --config Debug
 
-build:
-  verbosity: minimal
-
