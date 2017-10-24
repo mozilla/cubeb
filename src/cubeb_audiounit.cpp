@@ -651,13 +651,19 @@ audiounit_reinit_stream(cubeb_stream * stm, device_flags_value flags)
      * device. This is considered the most expected behavior for the user. */
     if (flags & DEV_INPUT) {
       r = audiounit_set_device_info(stm, 0, INPUT);
-      assert(r == CUBEB_OK);
+      if (r != CUBEB_OK) {
+        LOG("(%p) Set input device info failed. This can happen when last media device is unplugged", stm);
+        return CUBEB_ERROR;
+      }
     }
     /* Always use the default output on reinit. This is not correct in every case
      * but it is sufficient for Firefox and prevent reinit from reporting failures.
      * It will change soon when reinit mechanism will be updated. */
     r = audiounit_set_device_info(stm, 0, OUTPUT);
-    assert(r == CUBEB_OK);
+    if (r != CUBEB_OK) {
+      LOG("(%p) Set output device info failed. This can happen when last media device is unplugged", stm);
+      return CUBEB_ERROR;
+    }
 
     if (audiounit_setup_stream(stm) != CUBEB_OK) {
       LOG("(%p) Stream reinit failed.", stm);
