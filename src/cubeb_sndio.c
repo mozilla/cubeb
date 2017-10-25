@@ -90,7 +90,7 @@ sndio_mainloop(void *arg)
   }
   DPR("sndio_mainloop(), started\n");
 
-  pstart = pend = s->nfr;
+  pstart = pend = s->nfr * s->pbpf;
   for (;;) {
     if (!s->active) {
       DPR("sndio_mainloop() stopped\n");
