@@ -295,7 +295,9 @@ sndio_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
 static int
 sndio_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * latency_frames)
 {
-  // XXX Not yet implemented.
+  /*
+   * We've no device-independent minimum latency.
+   */
   *latency_frames = 2048;
 
   return CUBEB_OK;
