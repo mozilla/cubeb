@@ -128,8 +128,12 @@ sndio_mainloop(void *arg)
         continue;
     }
     revents = sio_revents(s->hdl, pfds);
-    if (revents & POLLHUP)
+
+    if (revents & POLLHUP) {
+      state = CUBEB_STATE_ERROR;
       break;
+    }
+
     if (revents & POLLOUT) {
       n = sio_write(s->hdl, s->pbuf + pstart, pend - pstart);
       if (n == 0) {
