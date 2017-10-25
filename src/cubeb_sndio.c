@@ -35,9 +35,9 @@ struct cubeb_stream {
   struct sio_hdl *hdl;            /* link us to sndio */
   int active;                     /* cubec_start() called */
   int conv;                       /* need float->s16 conversion */
-  unsigned char *buf;             /* data is prepared here */
+  unsigned char *pbuf;            /* play data is prepared here */
   unsigned int nfr;               /* number of frames in buf */
-  unsigned int bpf;               /* bytes per frame */
+  unsigned int pbpf;              /* play bytes per frame */
   unsigned int pchan;             /* number of play channels */
   uint64_t hwpos;                 /* frame number Joe hears right now */
   uint64_t swpos;                 /* number of frames produced/consumed */
@@ -78,7 +78,7 @@ sndio_mainloop(void *arg)
   struct pollfd pfds[MAXFDS];
   cubeb_stream *s = arg;
   int n, nfds, revents, state = CUBEB_STATE_STARTED;
-  size_t start = 0, end = 0;
+  size_t pstart = 0, pend = 0;
   long nfr;
 
   DPR("sndio_mainloop()\n");
@@ -90,21 +90,21 @@ sndio_mainloop(void *arg)
   }
   DPR("sndio_mainloop(), started\n");
 
-  start = end = s->nfr;
+  pstart = pend = s->nfr;
   for (;;) {
     if (!s->active) {
       DPR("sndio_mainloop() stopped\n");
       state = CUBEB_STATE_STOPPED;
       break;
     }
-    if (start == end) {
-      if (end < s->nfr) {
+    if (pstart == pend) {
+      if (pend < s->nfr) {
         DPR("sndio_mainloop() drained\n");
         state = CUBEB_STATE_DRAINED;
         break;
       }
       pthread_mutex_unlock(&s->mtx);
-      nfr = s->data_cb(s, s->arg, NULL, s->buf, s->nfr);
+      nfr = s->data_cb(s, s->arg, NULL, s->pbuf, s->nfr);
       pthread_mutex_lock(&s->mtx);
       if (nfr < 0) {
         DPR("sndio_mainloop() cb err\n");
@@ -112,12 +112,12 @@ sndio_mainloop(void *arg)
         break;
       }
       if (s->conv)
-        float_to_s16(s->buf, nfr * s->pchan);
+        float_to_s16(s->pbuf, nfr * s->pchan);
       s->swpos += nfr;
-      start = 0;
-      end = nfr * s->bpf;
+      pstart = 0;
+      pend = nfr * s->pbpf;
     }
-    if (end == 0)
+    if (pend == 0)
       continue;
     nfds = sio_pollfd(s->hdl, pfds, POLLOUT);
     if (nfds > 0) {
@@ -131,13 +131,13 @@ sndio_mainloop(void *arg)
     if (revents & POLLHUP)
       break;
     if (revents & POLLOUT) {
-      n = sio_write(s->hdl, s->buf + start, end - start);
+      n = sio_write(s->hdl, s->pbuf + pstart, pend - pstart);
       if (n == 0) {
         DPR("sndio_mainloop() werr\n");
         state = CUBEB_STATE_ERROR;
         break;
       }
-      start += n;
+      pstart += n;
     }
   }
   sio_stop(s->hdl);
@@ -243,7 +243,7 @@ sndio_stream_init(cubeb * context,
   sio_onmove(s->hdl, sndio_onmove, s);
   s->active = 0;
   s->nfr = rpar.round;
-  s->bpf = rpar.bps * rpar.pchan;
+  s->pbpf = rpar.bps * rpar.pchan;
   s->pchan = rpar.pchan;
   s->data_cb = data_callback;
   s->state_cb = state_callback;
@@ -257,8 +257,8 @@ sndio_stream_init(cubeb * context,
     s->conv = 0;
     size = rpar.round * rpar.pchan * rpar.bps;
   }
-  s->buf = malloc(size);
-  if (s->buf == NULL) {
+  s->pbuf = malloc(size);
+  if (s->pbuf == NULL) {
     sio_close(s->hdl);
     free(s);
     return CUBEB_ERROR;
