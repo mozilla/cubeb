@@ -33,12 +33,17 @@ struct cubeb_stream {
   pthread_t th;                   /* to run real-time audio i/o */
   pthread_mutex_t mtx;            /* protects hdl and pos */
   struct sio_hdl *hdl;            /* link us to sndio */
+  int mode;			  /* bitmap of SIO_{PLAY,REC} */
   int active;                     /* cubec_start() called */
   int conv;                       /* need float->s16 conversion */
+  unsigned char *rbuf;            /* rec data consumed from here */
   unsigned char *pbuf;            /* play data is prepared here */
-  unsigned int nfr;               /* number of frames in buf */
+  unsigned int nfr;               /* number of frames in ibuf and obuf */
+  unsigned int rbpf;              /* rec bytes per frame */
   unsigned int pbpf;              /* play bytes per frame */
+  unsigned int rchan;             /* number of rec channels */
   unsigned int pchan;             /* number of play channels */
+  unsigned int nblks;		  /* number of blocks in the buffer */
   uint64_t hwpos;                 /* frame number Joe hears right now */
   uint64_t swpos;                 /* number of frames produced/consumed */
   cubeb_data_callback data_cb;    /* cb to preapare data */
@@ -64,6 +69,18 @@ float_to_s16(void *ptr, long nsamp)
 }
 
 static void
+s16_to_float(void *ptr, long nsamp)
+{
+  int16_t *src = ptr;
+  float *dst = ptr;
+
+  src += nsamp;
+  dst += nsamp;
+  while (nsamp-- > 0)
+    *(--dst) = (1. / 32768) * *(--src);
+}
+
+static void
 sndio_onmove(void *arg, int delta)
 {
   cubeb_stream *s = (cubeb_stream *)arg;
@@ -77,8 +94,8 @@ sndio_mainloop(void *arg)
 #define MAXFDS 8
   struct pollfd pfds[MAXFDS];
   cubeb_stream *s = arg;
-  int n, eof = 0, nfds, revents, state = CUBEB_STATE_STARTED;
-  size_t pstart = 0, pend = 0;
+  int n, eof = 0, prime, nfds, events, revents, state = CUBEB_STATE_STARTED;
+  size_t pstart = 0, pend = 0, rstart = 0, rend = 0;
   long nfr;
 
   DPR("sndio_mainloop()\n");
@@ -90,7 +107,19 @@ sndio_mainloop(void *arg)
   }
   DPR("sndio_mainloop(), started\n");
 
-  pstart = pend = s->nfr * s->pbpf;
+  if (s->mode & SIO_PLAY) {
+    pstart = pend = s->nfr * s->pbpf;
+    prime = s->nblks;
+    if (s->mode & SIO_REC) {
+      memset(s->rbuf, 0, s->nfr * s->rbpf);
+      rstart = rend = s->nfr * s->rbpf;
+    }
+  } else {
+    prime = 0;
+    rstart = 0;
+    rend = s->nfr * s->rbpf;
+  }
+
   for (;;) {
     if (!s->active) {
       DPR("sndio_mainloop() stopped\n");
@@ -99,7 +128,8 @@ sndio_mainloop(void *arg)
     }
 
     /* do we have a complete block? */
-    if (pstart == pend) {
+    if ((!(s->mode & SIO_PLAY) || pstart == pend) &&
+	(!(s->mode & SIO_REC) || rstart == rend)) {
 
       if (eof) {
         DPR("sndio_mainloop() drained\n");
@@ -107,9 +137,12 @@ sndio_mainloop(void *arg)
         break;
       }
 
+      if ((s->mode & SIO_REC) && s->conv)
+        s16_to_float(s->rbuf, s->nfr * s->rchan);
+
       /* invoke call-back, it returns less that s->nfr if done */
       pthread_mutex_unlock(&s->mtx);
-      nfr = s->data_cb(s, s->arg, NULL, s->pbuf, s->nfr);
+      nfr = s->data_cb(s, s->arg, s->rbuf, s->pbuf, s->nfr);
       pthread_mutex_lock(&s->mtx);
       if (nfr < 0) {
         DPR("sndio_mainloop() cb err\n");
@@ -121,7 +154,7 @@ sndio_mainloop(void *arg)
       /* was this last call-back invocation (aka end-of-stream) ? */
       if (nfr < s->nfr) {
 
-        if (nfr == 0) {
+        if (!(s->mode & SIO_PLAY) || nfr == 0) {
           state = CUBEB_STATE_DRAINED;
           break;
 	}
@@ -131,13 +164,25 @@ sndio_mainloop(void *arg)
         eof = 1;
       }
 
-      if (s->conv)
+      if (prime > 0)
+        prime--;
+
+      if ((s->mode & SIO_PLAY) && s->conv)
           float_to_s16(s->pbuf, nfr * s->pchan);
 
-      pstart = 0;
+      if (s->mode & SIO_REC)
+        rstart = 0;
+      if (s->mode & SIO_PLAY)
+        pstart = 0;
     }
 
-    nfds = sio_pollfd(s->hdl, pfds, POLLOUT);
+    events = 0;
+    if ((s->mode & SIO_REC) && rstart < rend && prime == 0)
+      events |= POLLIN;
+    if ((s->mode & SIO_PLAY) && pstart < pend)
+      events |= POLLOUT;
+    nfds = sio_pollfd(s->hdl, pfds, events);
+
     if (nfds > 0) {
       pthread_mutex_unlock(&s->mtx);
       n = poll(pfds, nfds, -1);
@@ -162,6 +207,20 @@ sndio_mainloop(void *arg)
       }
       pstart += n;
     }
+
+    if (revents & POLLIN) {
+      n = sio_read(s->hdl, s->rbuf + rstart, rend - rstart);
+      if (n == 0 && sio_eof(s->hdl)) {
+        DPR("sndio_mainloop() rerr\n");
+        state = CUBEB_STATE_ERROR;
+        break;
+      }
+      rstart += n;
+    }
+
+    /* skip rec block, if not recording (yet) */
+    if (prime > 0 && (s->mode & SIO_REC))
+      rstart = rend;
   }
   sio_stop(s->hdl);
   s->hwpos = s->swpos;
@@ -208,21 +267,33 @@ sndio_stream_init(cubeb * context,
 {
   cubeb_stream *s;
   struct sio_par wpar, rpar;
-  DPR("sndio_stream_init(%s)\n", stream_name);
-  size_t size;
+  cubeb_sample_format format;
+  int rate;
+  size_t bps;
 
-  assert(!input_stream_params && "not supported.");
-  if (input_device || output_device) {
-    /* Device selection not yet implemented. */
-    return CUBEB_ERROR_DEVICE_UNAVAILABLE;
-  }
+  DPR("sndio_stream_init(%s)\n", stream_name);
 
   s = malloc(sizeof(cubeb_stream));
   if (s == NULL)
     return CUBEB_ERROR;
   memset(s, 0, sizeof(cubeb_stream));
+  s->mode = 0;
+  if (input_stream_params) {
+    s->mode |= SIO_REC;
+    format = input_stream_params->format;
+    rate = input_stream_params->rate;
+  }
+  if (output_stream_params) {
+    s->mode |= SIO_PLAY;
+    format = output_stream_params->format;
+    rate = output_stream_params->rate;
+  }
+  if (s->mode == 0) {
+    DPR("sndio_stream_init(), neither playing nor recording\n");
+    goto err;
+  }
   s->context = context;
-  s->hdl = sio_open(NULL, SIO_PLAY, 1);
+  s->hdl = sio_open(NULL, s->mode, 1);
   if (s->hdl == NULL) {
     DPR("sndio_stream_init(), sio_open() failed\n");
     goto err;
@@ -230,7 +301,7 @@ sndio_stream_init(cubeb * context,
   sio_initpar(&wpar);
   wpar.sig = 1;
   wpar.bits = 16;
-  switch (output_stream_params->format) {
+  switch (format) {
   case CUBEB_SAMPLE_S16LE:
     wpar.le = 1;
     break;
@@ -244,8 +315,11 @@ sndio_stream_init(cubeb * context,
     DPR("sndio_stream_init() unsupported format\n");
     goto err;
   }
-  wpar.rate = output_stream_params->rate;
-  wpar.pchan = output_stream_params->channels;
+  wpar.rate = rate;
+  if (s->mode & SIO_REC)
+    wpar.rchan = input_stream_params->channels;
+  if (s->mode & SIO_PLAY)
+    wpar.pchan = output_stream_params->channels;
   wpar.appbufsz = latency_frames;
   if (!sio_setpar(s->hdl, &wpar) || !sio_getpar(s->hdl, &rpar)) {
     DPR("sndio_stream_init(), sio_setpar() failed\n");
@@ -253,30 +327,41 @@ sndio_stream_init(cubeb * context,
   }
   if (rpar.bits != wpar.bits || rpar.le != wpar.le ||
       rpar.sig != wpar.sig || rpar.rate != wpar.rate ||
-      rpar.pchan != wpar.pchan) {
+      ((s->mode & SIO_REC) && rpar.rchan != wpar.rchan) ||
+      ((s->mode & SIO_PLAY) && rpar.pchan != wpar.pchan)) {
     DPR("sndio_stream_init() unsupported params\n");
     goto err;
   }
   sio_onmove(s->hdl, sndio_onmove, s);
   s->active = 0;
   s->nfr = rpar.round;
+  s->rbpf = rpar.bps * rpar.rchan;
   s->pbpf = rpar.bps * rpar.pchan;
+  s->rchan = rpar.rchan;
   s->pchan = rpar.pchan;
+  s->nblks = rpar.bufsz / rpar.round;
   s->data_cb = data_callback;
   s->state_cb = state_callback;
   s->arg = user_ptr;
   s->mtx = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
   s->hwpos = s->swpos = 0;
-  if (output_stream_params->format == CUBEB_SAMPLE_FLOAT32LE) {
+  if (format == CUBEB_SAMPLE_FLOAT32LE) {
     s->conv = 1;
-    size = rpar.round * rpar.pchan * sizeof(float);
+    bps = sizeof(float);
   } else {
     s->conv = 0;
-    size = rpar.round * rpar.pchan * rpar.bps;
+    bps = rpar.bps;
   }
-  s->pbuf = malloc(size);
-  if (s->pbuf == NULL)
-    goto err;
+  if (s->mode & SIO_PLAY) {
+    s->pbuf = malloc(bps * rpar.pchan * rpar.round);
+    if (s->pbuf == NULL)
+      goto err;
+  }
+  if (s->mode & SIO_REC) {
+    s->rbuf = malloc(bps * rpar.rchan * rpar.round);
+    if (s->rbuf == NULL)
+      goto err;
+  }
   *stream = s;
   DPR("sndio_stream_init() end, ok\n");
   (void)context;
@@ -286,6 +371,8 @@ err:
   if (s->hdl)
     sio_close(s->hdl);
   if (s->pbuf)
+    free(s->pbuf);
+  if (s->rbuf)
     free(s->pbuf);
   free(s);
   return CUBEB_ERROR;
@@ -329,7 +416,10 @@ sndio_stream_destroy(cubeb_stream *s)
 {
   DPR("sndio_stream_destroy()\n");
   sio_close(s->hdl);
-  free(s->pbuf);
+  if (s->mode & SIO_PLAY)
+    free(s->pbuf);
+  if (s->mode & SIO_REC)
+    free(s->rbuf);
   free(s);
 }
 
@@ -396,11 +486,6 @@ sndio_enumerate_devices(cubeb *context, cubeb_device_type type,
 {
   static char dev[] = SIO_DEVANY;
   cubeb_device_info *device;
-
-  if (type != CUBEB_DEVICE_TYPE_OUTPUT) {
-    collection->count = 0;
-    return CUBEB_OK;
-  }
 
   device = malloc(sizeof(cubeb_device_info));
   if (device == NULL)
