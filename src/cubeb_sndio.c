@@ -4,6 +4,7 @@
  * This program is made available under an ISC-style license.  See the
  * accompanying file LICENSE for details.
  */
+#include <inttypes.h>
 #include <math.h>
 #include <poll.h>
 #include <pthread.h>
@@ -337,7 +338,7 @@ static int
 sndio_stream_get_position(cubeb_stream *s, uint64_t *p)
 {
   pthread_mutex_lock(&s->mtx);
-  DPR("sndio_stream_get_position() %lld\n", s->rdpos);
+  DPR("sndio_stream_get_position() %" PRId64 "\n", s->rdpos);
   *p = s->rdpos / s->bpf;
   pthread_mutex_unlock(&s->mtx);
   return CUBEB_OK;
