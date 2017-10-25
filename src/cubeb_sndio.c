@@ -136,7 +136,7 @@ sndio_mainloop(void *arg)
 
     if (revents & POLLOUT) {
       n = sio_write(s->hdl, s->pbuf + pstart, pend - pstart);
-      if (n == 0) {
+      if (n == 0 && sio_eof(s->hdl)) {
         DPR("sndio_mainloop() werr\n");
         state = CUBEB_STATE_ERROR;
         break;
