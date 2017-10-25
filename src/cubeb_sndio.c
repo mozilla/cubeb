@@ -39,8 +39,8 @@ struct cubeb_stream {
   unsigned int nfr;               /* number of frames in buf */
   unsigned int bpf;               /* bytes per frame */
   unsigned int pchan;             /* number of play channels */
-  uint64_t rdpos;                 /* frame number Joe hears right now */
-  uint64_t wrpos;                 /* number of written frames */
+  uint64_t hwpos;                 /* frame number Joe hears right now */
+  uint64_t swpos;                 /* number of frames produced/consumed */
   cubeb_data_callback data_cb;    /* cb to preapare data */
   cubeb_state_callback state_cb;  /* cb to notify about state changes */
   void *arg;                      /* user arg to {data,state}_cb */
@@ -68,7 +68,7 @@ sndio_onmove(void *arg, int delta)
 {
   cubeb_stream *s = (cubeb_stream *)arg;
 
-  s->rdpos += delta * s->bpf;
+  s->hwpos += delta;
 }
 
 static void *
@@ -113,6 +113,7 @@ sndio_mainloop(void *arg)
       }
       if (s->conv)
         float_to_s16(s->buf, nfr * s->pchan);
+      s->swpos += nfr;
       start = 0;
       end = nfr * s->bpf;
     }
@@ -136,12 +137,11 @@ sndio_mainloop(void *arg)
         state = CUBEB_STATE_ERROR;
         break;
       }
-      s->wrpos += n;
       start += n;
     }
   }
   sio_stop(s->hdl);
-  s->rdpos = s->wrpos;
+  s->hwpos = s->swpos;
   pthread_mutex_unlock(&s->mtx);
   s->state_cb(s, s->arg, state);
   return NULL;
@@ -249,7 +249,7 @@ sndio_stream_init(cubeb * context,
   s->state_cb = state_callback;
   s->arg = user_ptr;
   s->mtx = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
-  s->rdpos = s->wrpos = 0;
+  s->hwpos = s->swpos = 0;
   if (output_stream_params->format == CUBEB_SAMPLE_FLOAT32LE) {
     s->conv = 1;
     size = rpar.round * rpar.pchan * sizeof(float);
@@ -338,8 +338,8 @@ static int
 sndio_stream_get_position(cubeb_stream *s, uint64_t *p)
 {
   pthread_mutex_lock(&s->mtx);
-  DPR("sndio_stream_get_position() %" PRId64 "\n", s->rdpos);
-  *p = s->rdpos / s->bpf;
+  DPR("sndio_stream_get_position() %" PRId64 "\n", s->hwpos);
+  *p = s->hwpos;
   pthread_mutex_unlock(&s->mtx);
   return CUBEB_OK;
 }
@@ -359,7 +359,7 @@ sndio_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
 {
   // http://www.openbsd.org/cgi-bin/man.cgi?query=sio_open
   // in the "Measuring the latency and buffers usage" paragraph.
-  *latency = (stm->wrpos - stm->rdpos) / stm->bpf;
+  *latency = stm->swpos - stm->hwpos;
   return CUBEB_OK;
 }
 
