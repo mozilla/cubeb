@@ -368,6 +368,51 @@ sndio_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
   return CUBEB_OK;
 }
 
+static int
+sndio_enumerate_devices(cubeb *context, cubeb_device_type type,
+	cubeb_device_collection *collection)
+{
+  static char dev[] = SIO_DEVANY;
+  cubeb_device_info *device;
+
+  if (type != CUBEB_DEVICE_TYPE_OUTPUT) {
+    collection->count = 0;
+    return CUBEB_OK;
+  }
+
+  device = malloc(sizeof(cubeb_device_info));
+  if (device == NULL)
+    return CUBEB_ERROR;
+
+  device->devid = dev;		/* passed to stream_init() */
+  device->device_id = dev;	/* printable in UI */
+  device->friendly_name = dev;	/* same, but friendly */
+  device->group_id = dev;	/* actual device if full-duplex */
+  device->vendor_name = NULL;   /* may be NULL */
+  device->type = type;		/* Input/Output */
+  device->state = CUBEB_DEVICE_STATE_ENABLED;
+  device->preferred = CUBEB_DEVICE_PREF_ALL;
+  device->format = CUBEB_DEVICE_FMT_S16NE;
+  device->default_format = CUBEB_DEVICE_FMT_S16NE;
+  device->max_channels = 16;
+  device->default_rate = 48000;
+  device->min_rate = 4000;
+  device->max_rate = 192000;
+  device->latency_lo = 480;
+  device->latency_hi = 9600;
+  collection->device = device;
+  collection->count = 1;
+  return CUBEB_OK;
+}
+
+static int
+sndio_device_collection_destroy(cubeb * context,
+	cubeb_device_collection * collection)
+{
+  free(collection->device);
+  return CUBEB_OK;
+}
+
 static struct cubeb_ops const sndio_ops = {
   .init = sndio_init,
   .get_backend_id = sndio_get_backend_id,
@@ -375,8 +420,8 @@ static struct cubeb_ops const sndio_ops = {
   .get_min_latency = sndio_get_min_latency,
   .get_preferred_sample_rate = sndio_get_preferred_sample_rate,
   .get_preferred_channel_layout = NULL,
-  .enumerate_devices = NULL,
-  .device_collection_destroy = NULL,
+  .enumerate_devices = sndio_enumerate_devices,
+  .device_collection_destroy = sndio_device_collection_destroy,
   .destroy = sndio_destroy,
   .stream_init = sndio_stream_init,
   .stream_destroy = sndio_stream_destroy,
