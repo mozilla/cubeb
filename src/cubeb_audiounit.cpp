@@ -703,6 +703,8 @@ event_addr_to_string(AudioObjectPropertySelector selector)
   }
 }
 
+static int audiounit_uninstall_system_changed_callback(cubeb_stream * stm);
+
 static OSStatus
 audiounit_property_listener_callback(AudioObjectID id, UInt32 address_count,
                                      const AudioObjectPropertyAddress * addresses,
@@ -781,6 +783,9 @@ audiounit_property_listener_callback(AudioObjectID id, UInt32 address_count,
   // Get/SetProperties method from inside notify callback
   dispatch_async(stm->context->serial_queue, ^() {
     if (audiounit_reinit_stream(stm, switch_side) != CUBEB_OK) {
+      if (audiounit_uninstall_system_changed_callback(stm) != CUBEB_OK) {
+        LOG("(%p) Could not uninstall the device changed callback", stm);
+      }
       stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STOPPED);
       LOG("(%p) Could not reopen the stream after switching.", stm);
     }
@@ -927,7 +932,7 @@ audiounit_uninstall_system_changed_callback(cubeb_stream * stm)
 {
   OSStatus r;
 
-  if (stm->output_unit) {
+  if (has_output(stm)) {
     r = audiounit_remove_listener(stm, kAudioObjectSystemObject, kAudioHardwarePropertyDefaultOutputDevice,
                                   kAudioObjectPropertyScopeGlobal, &audiounit_property_listener_callback);
     if (r != noErr) {
@@ -935,7 +940,7 @@ audiounit_uninstall_system_changed_callback(cubeb_stream * stm)
     }
   }
 
-  if (stm->input_unit) {
+  if (has_input(stm)) {
     r = audiounit_remove_listener(stm, kAudioObjectSystemObject, kAudioHardwarePropertyDefaultInputDevice,
                                   kAudioObjectPropertyScopeGlobal, &audiounit_property_listener_callback);
     if (r != noErr) {
