@@ -283,9 +283,12 @@ sndio_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
 static int
 sndio_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
 {
-  // XXX Not yet implemented.
-  *rate = 44100;
-
+  /*
+   * We've no device-independent prefered rate; any rate will work if
+   * sndiod is running. If it isn't, 48kHz is what is most likely to
+   * work as most (but not all) devices support it.
+   */
+  *rate = 48000;
   return CUBEB_OK;
 }
 
