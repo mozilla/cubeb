@@ -77,7 +77,7 @@ sndio_mainloop(void *arg)
 #define MAXFDS 8
   struct pollfd pfds[MAXFDS];
   cubeb_stream *s = arg;
-  int n, nfds, revents, state = CUBEB_STATE_STARTED;
+  int n, eof = 0, nfds, revents, state = CUBEB_STATE_STARTED;
   size_t pstart = 0, pend = 0;
   long nfr;
 
@@ -97,12 +97,17 @@ sndio_mainloop(void *arg)
       state = CUBEB_STATE_STOPPED;
       break;
     }
+
+    /* do we have a complete block? */
     if (pstart == pend) {
-      if (pend < s->nfr) {
+
+      if (eof) {
         DPR("sndio_mainloop() drained\n");
         state = CUBEB_STATE_DRAINED;
         break;
       }
+
+      /* invoke call-back, it returns less that s->nfr if done */
       pthread_mutex_unlock(&s->mtx);
       nfr = s->data_cb(s, s->arg, NULL, s->pbuf, s->nfr);
       pthread_mutex_lock(&s->mtx);
@@ -111,14 +116,27 @@ sndio_mainloop(void *arg)
         state = CUBEB_STATE_ERROR;
         break;
       }
-      if (s->conv)
-        float_to_s16(s->pbuf, nfr * s->pchan);
       s->swpos += nfr;
+
+      /* was this last call-back invocation (aka end-of-stream) ? */
+      if (nfr < s->nfr) {
+
+        if (nfr == 0) {
+          state = CUBEB_STATE_DRAINED;
+          break;
+	}
+
+        /* need to write (aka drain) the partial play block we got */
+        pend = nfr * s->pbpf;
+        eof = 1;
+      }
+
+      if (s->conv)
+          float_to_s16(s->pbuf, nfr * s->pchan);
+
       pstart = 0;
-      pend = nfr * s->pbpf;
     }
-    if (pend == 0)
-      continue;
+
     nfds = sio_pollfd(s->hdl, pfds, POLLOUT);
     if (nfds > 0) {
       pthread_mutex_unlock(&s->mtx);
@@ -127,6 +145,7 @@ sndio_mainloop(void *arg)
       if (n < 0)
         continue;
     }
+
     revents = sio_revents(s->hdl, pfds);
 
     if (revents & POLLHUP) {
