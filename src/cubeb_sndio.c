@@ -220,12 +220,12 @@ sndio_stream_init(cubeb * context,
   s = malloc(sizeof(cubeb_stream));
   if (s == NULL)
     return CUBEB_ERROR;
+  memset(s, 0, sizeof(cubeb_stream));
   s->context = context;
   s->hdl = sio_open(NULL, SIO_PLAY, 1);
   if (s->hdl == NULL) {
-    free(s);
     DPR("sndio_stream_init(), sio_open() failed\n");
-    return CUBEB_ERROR;
+    goto err;
   }
   sio_initpar(&wpar);
   wpar.sig = 1;
@@ -241,27 +241,21 @@ sndio_stream_init(cubeb * context,
     wpar.le = SIO_LE_NATIVE;
     break;
   default:
-    sio_close(s->hdl);
-    free(s);
     DPR("sndio_stream_init() unsupported format\n");
-    return CUBEB_ERROR_INVALID_FORMAT;
+    goto err;
   }
   wpar.rate = output_stream_params->rate;
   wpar.pchan = output_stream_params->channels;
   wpar.appbufsz = latency_frames;
   if (!sio_setpar(s->hdl, &wpar) || !sio_getpar(s->hdl, &rpar)) {
-    sio_close(s->hdl);
-    free(s);
     DPR("sndio_stream_init(), sio_setpar() failed\n");
-    return CUBEB_ERROR;
+    goto err;
   }
   if (rpar.bits != wpar.bits || rpar.le != wpar.le ||
       rpar.sig != wpar.sig || rpar.rate != wpar.rate ||
       rpar.pchan != wpar.pchan) {
-    sio_close(s->hdl);
-    free(s);
     DPR("sndio_stream_init() unsupported params\n");
-    return CUBEB_ERROR_INVALID_FORMAT;
+    goto err;
   }
   sio_onmove(s->hdl, sndio_onmove, s);
   s->active = 0;
@@ -281,16 +275,20 @@ sndio_stream_init(cubeb * context,
     size = rpar.round * rpar.pchan * rpar.bps;
   }
   s->pbuf = malloc(size);
-  if (s->pbuf == NULL) {
-    sio_close(s->hdl);
-    free(s);
-    return CUBEB_ERROR;
-  }
+  if (s->pbuf == NULL)
+    goto err;
   *stream = s;
   DPR("sndio_stream_init() end, ok\n");
   (void)context;
   (void)stream_name;
   return CUBEB_OK;
+err:
+  if (s->hdl)
+    sio_close(s->hdl);
+  if (s->pbuf)
+    free(s->pbuf);
+  free(s);
+  return CUBEB_ERROR;
 }
 
 static int
