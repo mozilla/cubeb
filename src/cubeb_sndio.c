@@ -329,6 +329,7 @@ sndio_stream_destroy(cubeb_stream *s)
 {
   DPR("sndio_stream_destroy()\n");
   sio_close(s->hdl);
+  free(s->pbuf);
   free(s);
 }
 
