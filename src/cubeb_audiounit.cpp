@@ -784,9 +784,9 @@ audiounit_property_listener_callback(AudioObjectID id, UInt32 address_count,
   dispatch_async(stm->context->serial_queue, ^() {
     if (audiounit_reinit_stream(stm, switch_side) != CUBEB_OK) {
       if (audiounit_uninstall_system_changed_callback(stm) != CUBEB_OK) {
-        LOG("(%p) Could not uninstall the device changed callback", stm);
+        LOG("(%p) Could not uninstall system changed callback", stm);
       }
-      stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STOPPED);
+      stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
       LOG("(%p) Could not reopen the stream after switching.", stm);
     }
     stm->switching_device = false;
