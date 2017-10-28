@@ -123,7 +123,7 @@ impl<'ctx> Stream<'ctx> {
             }
 
             logv!("Input callback buffer size {}", nbytes);
-            let mut stm = unsafe { &mut *(u as *mut Stream) };
+            let stm = unsafe { &mut *(u as *mut Stream) };
             if stm.shutdown {
                 return;
             }
@@ -172,7 +172,7 @@ impl<'ctx> Stream<'ctx> {
 
         fn write_data(_: &pulse::Stream, nbytes: usize, u: *mut c_void) {
             logv!("Output callback to be written buffer size {}", nbytes);
-            let mut stm = unsafe { &mut *(u as *mut Stream) };
+            let stm = unsafe { &mut *(u as *mut Stream) };
             if stm.shutdown || stm.state != cubeb::STATE_STARTED {
                 return;
             }
@@ -341,7 +341,7 @@ impl<'ctx> Stream<'ctx> {
 
     pub fn start(&mut self) -> i32 {
         fn output_preroll(_: &pulse::MainloopApi, u: *mut c_void) {
-            let mut stm = unsafe { &mut *(u as *mut Stream) };
+            let stm = unsafe { &mut *(u as *mut Stream) };
             if !stm.shutdown {
                 let size = stm.output_stream
                     .as_ref()
@@ -479,7 +479,7 @@ impl<'ctx> Stream<'ctx> {
         }
 
         fn get_input_volume(_: &pulse::Context, info: *const pulse::SinkInputInfo, eol: i32, u: *mut c_void) {
-            let mut r = unsafe { &mut *(u as *mut SinkInputInfoResult) };
+            let r = unsafe { &mut *(u as *mut SinkInputInfoResult) };
             if eol == 0 {
                 let info = unsafe { *info };
                 r.cvol = info.volume;
@@ -691,7 +691,7 @@ impl<'ctx> Stream<'ctx> {
 
     fn trigger_user_callback(&mut self, input_data: *const c_void, nbytes: usize) {
         fn drained_cb(a: &pulse::MainloopApi, e: *mut pa_time_event, _tv: &pulse::TimeVal, u: *mut c_void) {
-            let mut stm = unsafe { &mut *(u as *mut Stream) };
+            let stm = unsafe { &mut *(u as *mut Stream) };
             debug_assert_eq!(stm.drain_timer, e);
             stm.state_change_callback(cubeb::STATE_DRAINED);
             /* there's no pa_rttime_free, so use this instead. */

@@ -121,7 +121,7 @@ impl Context {
     pub fn new(name: *const c_char) -> Result<Box<Self>> {
         fn server_info_cb(context: &pulse::Context, info: &pulse::ServerInfo, u: *mut c_void) {
             fn sink_info_cb(_: &pulse::Context, i: *const pulse::SinkInfo, eol: i32, u: *mut c_void) {
-                let mut ctx = unsafe { &mut *(u as *mut Context) };
+                let ctx = unsafe { &mut *(u as *mut Context) };
                 if eol == 0 {
                     let info = unsafe { &*i };
                     let flags = pulse::SinkFlags::from_bits_truncate(info.flags);
@@ -231,7 +231,7 @@ impl Context {
 
     pub fn enumerate_devices(&self, devtype: cubeb::DeviceType) -> Result<cubeb::DeviceCollection> {
         fn add_output_device(_: &pulse::Context, i: *const pulse::SinkInfo, eol: i32, user_data: *mut c_void) {
-            let mut list_data = unsafe { &mut *(user_data as *mut PulseDevListData) };
+            let list_data = unsafe { &mut *(user_data as *mut PulseDevListData) };
             let ctx = &(*list_data.context);
 
             if eol != 0 {
@@ -287,7 +287,7 @@ impl Context {
         }
 
         fn add_input_device(_: &pulse::Context, i: *const pulse::SourceInfo, eol: i32, user_data: *mut c_void) {
-            let mut list_data = unsafe { &mut *(user_data as *mut PulseDevListData) };
+            let list_data = unsafe { &mut *(user_data as *mut PulseDevListData) };
             let ctx = &(*list_data.context);
 
             if eol != 0 {
@@ -423,7 +423,7 @@ impl Context {
                                               user_ptr: *mut c_void)
                                               -> i32 {
         fn update_collection(_: &pulse::Context, event: pulse::SubscriptionEvent, index: u32, user_data: *mut c_void) {
-            let mut ctx = unsafe { &mut *(user_data as *mut Context) };
+            let ctx = unsafe { &mut *(user_data as *mut Context) };
 
             let (f, t) = (event.event_facility(), event.event_type());
             match f {
@@ -500,7 +500,7 @@ impl Context {
 
     pub fn context_init(&mut self) -> i32 {
         fn error_state(c: &pulse::Context, u: *mut c_void) {
-            let mut ctx = unsafe { &mut *(u as *mut Context) };
+            let ctx = unsafe { &mut *(u as *mut Context) };
             if !c.get_state().is_good() {
                 ctx.error = true;
             }
