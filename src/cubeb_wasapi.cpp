@@ -612,22 +612,12 @@ refill(cubeb_stream * stm, void * input_buffer, long input_frames_count,
 
 /* This helper grabs all the frames available from a capture client, put them in
  * linear_input_buffer. linear_input_buffer should be cleared before the
- * callback exits. */
+ * callback exits. This helper does not work with exclusive mode streams. */
 bool get_input_buffer(cubeb_stream * stm)
 {
-  HRESULT hr;
-  UINT32 padding_in;
-
   XASSERT(has_input(stm));
 
-  hr = stm->input_client->GetCurrentPadding(&padding_in);
-  if (FAILED(hr)) {
-    LOG("Failed to get padding");
-    return false;
-  }
-  XASSERT(padding_in <= stm->input_buffer_frame_count);
-  UINT32 total_available_input = padding_in;
-
+  HRESULT hr;
   BYTE * input_packet = NULL;
   DWORD flags;
   UINT64 dev_pos;
@@ -635,16 +625,17 @@ bool get_input_buffer(cubeb_stream * stm)
   /* Get input packets until we have captured enough frames, and put them in a
    * contiguous buffer. */
   uint32_t offset = 0;
-  while (offset != total_available_input) {
-    hr = stm->capture_client->GetNextPacketSize(&next);
+  // If the input stream is event driven we should only ever expect to read a
+  // single packet each time. However, if we're pulling from the stream we may
+  // need to grab multiple packets worth of frames that have accumulated (so
+  // need a loop).
+  for (hr = stm->capture_client->GetNextPacketSize(&next);
+       next > 0;
+       hr = stm->capture_client->GetNextPacketSize(&next)) {
+
     if (FAILED(hr)) {
       LOG("cannot get next packet size: %lx", hr);
       return false;
-    }
-    /* This can happen if the capture stream has stopped. Just return in this
-     * case. */
-    if (!next) {
-      break;
     }
 
     UINT32 packet_size;
@@ -687,8 +678,7 @@ bool get_input_buffer(cubeb_stream * stm)
     offset += packet_size;
   }
 
-  XASSERT(stm->linear_input_buffer->length() >= total_available_input &&
-          offset == total_available_input);
+  XASSERT(stm->linear_input_buffer->length() >= offset);
 
   return true;
 }
