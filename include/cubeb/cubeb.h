@@ -213,6 +213,15 @@ typedef enum {
   CUBEB_LAYOUT_MAX
 } cubeb_channel_layout;
 
+/** Miscellaneous stream preferences. */
+typedef enum {
+  CUBEB_STREAM_PREF_NONE     = 0x00, /**< No stream preferences are requested. */
+  CUBEB_STREAM_PREF_LOOPBACK = 0x01 /**< Request a loopback stream. Should be
+                                         specified on the input params and an
+                                         output device to loopback from should
+                                         be passed in place of an input device. */
+} cubeb_stream_prefs;
+
 /** Stream format initialization parameters. */
 typedef struct {
   cubeb_sample_format format;   /**< Requested sample format.  One of
@@ -220,6 +229,7 @@ typedef struct {
   uint32_t rate;                /**< Requested sample rate.  Valid range is [1000, 192000]. */
   uint32_t channels;            /**< Requested channel count.  Valid range is [1, 8]. */
   cubeb_channel_layout layout;  /**< Requested channel layout. This must be consistent with the provided channels. */
+  cubeb_stream_prefs prefs;      /**< Requested preferences. */
 } cubeb_stream_params;
 
 /** Audio device description */
