@@ -112,7 +112,7 @@ to_string(io_side side)
 typedef uint32_t device_flags_value;
 
 enum device_flags {
-  DEV_UKNOWN            = 0x00, /* Unkown */
+  DEV_UNKNOWN           = 0x00, /* Unknown */
   DEV_INPUT             = 0x01, /* Record device like mic */
   DEV_OUTPUT            = 0x02, /* Playback device like speakers */
   DEV_SYSTEM_DEFAULT    = 0x04, /* System default device */
@@ -121,7 +121,7 @@ enum device_flags {
 
 struct device_info {
   AudioDeviceID id = kAudioObjectUnknown;
-  device_flags_value flags = DEV_UKNOWN;
+  device_flags_value flags = DEV_UNKNOWN;
 };
 
 struct cubeb_stream {
@@ -751,7 +751,7 @@ audiounit_property_listener_callback(AudioObjectID id, UInt32 address_count,
   }
 
   // Allow restart to choose the new default
-  device_flags_value switch_side = DEV_UKNOWN;
+  device_flags_value switch_side = DEV_UNKNOWN;
   if (has_input(stm)) {
     switch_side |= DEV_INPUT;
   }
