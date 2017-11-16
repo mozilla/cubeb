@@ -258,7 +258,7 @@ impl Context {
             let info_description = unsafe { CStr::from_ptr(info.description) }.to_owned();
 
             let preferred = if *info_name == *list_data.default_sink_name {
-                cubeb::DEVICE_PREF_ALL
+                cubeb::DevicePref::ALL
             } else {
                 cubeb::DevicePref::empty()
             };
@@ -271,7 +271,7 @@ impl Context {
                 friendly_name: friendly_name,
                 group_id: group_id,
                 vendor_name: vendor_name,
-                devtype: cubeb::DEVICE_TYPE_OUTPUT,
+                devtype: cubeb::DeviceType::OUTPUT,
                 state: ctx.state_from_port(info.active_port),
                 preferred: preferred,
                 format: cubeb::DeviceFmt::all(),
@@ -314,7 +314,7 @@ impl Context {
             let info_description = unsafe { CStr::from_ptr(info.description) }.to_owned();
 
             let preferred = if *info_name == *list_data.default_source_name {
-                cubeb::DEVICE_PREF_ALL
+                cubeb::DevicePref::ALL
             } else {
                 cubeb::DevicePref::empty()
             };
@@ -327,7 +327,7 @@ impl Context {
                 friendly_name: friendly_name,
                 group_id: group_id,
                 vendor_name: vendor_name,
-                devtype: cubeb::DEVICE_TYPE_INPUT,
+                devtype: cubeb::DeviceType::INPUT,
                 state: ctx.state_from_port(info.active_port),
                 preferred: preferred,
                 format: cubeb::DeviceFmt::all(),
@@ -366,13 +366,13 @@ impl Context {
                 self.operation_wait(None, &o);
             }
 
-            if devtype.contains(cubeb::DEVICE_TYPE_OUTPUT) {
+            if devtype.contains(cubeb::DeviceType::OUTPUT) {
                 if let Ok(o) = context.get_sink_info_list(add_output_device, &mut user_data as *mut _ as *mut _) {
                     self.operation_wait(None, &o);
                 }
             }
 
-            if devtype.contains(cubeb::DEVICE_TYPE_INPUT) {
+            if devtype.contains(cubeb::DeviceType::INPUT) {
                 if let Ok(o) = context.get_source_info_list(add_input_device, &mut user_data as *mut _ as *mut _) {
                     self.operation_wait(None, &o);
                 }
@@ -477,11 +477,11 @@ impl Context {
                 context.clear_subscribe_callback();
             } else {
                 context.set_subscribe_callback(update_collection, user_data);
-                if devtype.contains(cubeb::DEVICE_TYPE_INPUT) {
-                    mask |= pulse::SUBSCRIPTION_MASK_SOURCE
+                if devtype.contains(cubeb::DeviceType::INPUT) {
+                    mask |= pulse::SubscriptionMask::SOURCE
                 };
-                if devtype.contains(cubeb::DEVICE_TYPE_OUTPUT) {
-                    mask = pulse::SUBSCRIPTION_MASK_SINK
+                if devtype.contains(cubeb::DeviceType::OUTPUT) {
+                    mask = pulse::SubscriptionMask::SINK
                 };
             }
 
@@ -655,11 +655,11 @@ impl<'a> Drop for PulseDevListData<'a> {
 
 fn pulse_format_to_cubeb_format(format: pa_sample_format_t) -> cubeb::DeviceFmt {
     match format {
-        PA_SAMPLE_S16LE => cubeb::DEVICE_FMT_S16LE,
-        PA_SAMPLE_S16BE => cubeb::DEVICE_FMT_S16BE,
-        PA_SAMPLE_FLOAT32LE => cubeb::DEVICE_FMT_F32LE,
-        PA_SAMPLE_FLOAT32BE => cubeb::DEVICE_FMT_F32BE,
+        PA_SAMPLE_S16LE => cubeb::DeviceFmt::S16LE,
+        PA_SAMPLE_S16BE => cubeb::DeviceFmt::S16BE,
+        PA_SAMPLE_FLOAT32LE => cubeb::DeviceFmt::F32LE,
+        PA_SAMPLE_FLOAT32BE => cubeb::DeviceFmt::F32BE,
         // Unsupported format, return F32NE
-        _ => cubeb::CUBEB_FMT_F32NE,
+        _ => cubeb::DeviceFmt::F32NE,
     }
 }

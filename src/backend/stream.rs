@@ -216,9 +216,9 @@ impl<'ctx> Stream<'ctx> {
                         let device_name = super::try_cstr_from(output_device as *const _);
                         let _ = s.connect_playback(device_name,
                                                    &battr,
-                                                   pulse::STREAM_AUTO_TIMING_UPDATE | pulse::STREAM_INTERPOLATE_TIMING |
-                                                   pulse::STREAM_START_CORKED |
-                                                   pulse::STREAM_ADJUST_LATENCY,
+                                                   pulse::StreamFlags::AUTO_TIMING_UPDATE | pulse::StreamFlags::INTERPOLATE_TIMING |
+                                                   pulse::StreamFlags::START_CORKED |
+                                                   pulse::StreamFlags::ADJUST_LATENCY,
                                                    None,
                                                    None);
 
@@ -246,9 +246,9 @@ impl<'ctx> Stream<'ctx> {
                         let device_name = super::try_cstr_from(input_device as *const _);
                         let _ = s.connect_record(device_name,
                                                  &battr,
-                                                 pulse::STREAM_AUTO_TIMING_UPDATE | pulse::STREAM_INTERPOLATE_TIMING |
-                                                 pulse::STREAM_START_CORKED |
-                                                 pulse::STREAM_ADJUST_LATENCY);
+                                                 pulse::StreamFlags::AUTO_TIMING_UPDATE | pulse::StreamFlags::INTERPOLATE_TIMING |
+                                                 pulse::StreamFlags::START_CORKED |
+                                                 pulse::StreamFlags::ADJUST_LATENCY);
 
                         stm.input_stream = Some(s);
                     },
@@ -447,7 +447,7 @@ impl<'ctx> Stream<'ctx> {
                         }
                     };
 
-                    if flags.contains(pulse::SINK_FLAT_VOLUME) {
+                    if flags.contains(pulse::SinkFlags::FLAT_VOLUME) {
                         self.volume = volume;
                     } else {
                         let channels = stm.get_sample_spec().channels;
