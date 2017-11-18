@@ -1507,6 +1507,11 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
 {
   com_ptr<IMMDevice> device;
   HRESULT hr;
+  bool is_loopback = stream_params->prefs & CUBEB_STREAM_PREF_LOOPBACK;
+  if (is_loopback && direction != eCapture) {
+    LOG("Loopback pref can only be used with capture streams!\n");
+    return CUBEB_ERROR;
+  }
 
   stm->stream_reset_lock.assert_current_thread_owns();
   bool try_again = false;
@@ -1520,10 +1525,20 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
         return CUBEB_ERROR;
       }
     } else {
-      hr = get_default_endpoint(device, direction);
-      if (FAILED(hr)) {
-        LOG("Could not get default %s endpoint, error: %lx\n", DIRECTION_NAME, hr);
-        return CUBEB_ERROR;
+      if (is_loopback) {
+        // If the caller has requested loopback but not specified a device,
+        // attempt to use the default render device to loopback from
+        hr = get_default_endpoint(device, eRender);
+        if (FAILED(hr)) {
+          LOG("Could not get default render endpoint for loopback, error: %lx\n", hr);
+          return CUBEB_ERROR;
+        }
+      } else {
+        hr = get_default_endpoint(device, direction);
+        if (FAILED(hr)) {
+          LOG("Could not get default %s endpoint, error: %lx\n", DIRECTION_NAME, hr);
+          return CUBEB_ERROR;
+        }
       }
     }
 
@@ -1593,9 +1608,18 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
       mix_params->format, mix_params->rate, mix_params->channels,
       CUBEB_CHANNEL_LAYOUT_MAPS[mix_params->layout].name);
 
+  DWORD flags = AUDCLNT_STREAMFLAGS_NOPERSIST;
+
+  // Check if a loopback device should be requested. Note that event callbacks
+  // do not work with loopback devices, so only request these if not looping.
+  if (is_loopback) {
+    flags |= AUDCLNT_STREAMFLAGS_LOOPBACK;
+  } else {
+    flags |= AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
+  }
+
   hr = audio_client->Initialize(AUDCLNT_SHAREMODE_SHARED,
-                                AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
-                                AUDCLNT_STREAMFLAGS_NOPERSIST,
+                                flags,
                                 frames_to_hns(stm, stm->latency),
                                 0,
                                 mix_format.get(),
@@ -1616,11 +1640,14 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
     stm->mix_buffer.resize(frames_to_bytes_before_mix(stm, *buffer_frame_count));
   }
 
-  hr = audio_client->SetEventHandle(event);
-  if (FAILED(hr)) {
-    LOG("Could set the event handle for the %s client %lx.",
-        DIRECTION_NAME, hr);
-    return CUBEB_ERROR;
+  // Events are used if not looping back
+  if (!is_loopback) {
+    hr = audio_client->SetEventHandle(event);
+    if (FAILED(hr)) {
+      LOG("Could set the event handle for the %s client %lx.",
+          DIRECTION_NAME, hr);
+      return CUBEB_ERROR;
+    }
   }
 
   hr = audio_client->GetService(riid, render_or_capture_client.receive_vpp());
