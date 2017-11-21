@@ -254,6 +254,7 @@ if(BUILD_TESTS)
 
   if (USE_WASAPI)
     cubeb_add_test(overload_callback)
+    cubeb_add_test(loopback)
   endif()
 
   cubeb_add_test(latency test_latency)
