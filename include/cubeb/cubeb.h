@@ -164,10 +164,10 @@ typedef enum {
  * STEREO-LFE     L   R   LFE
  * 3F             L   R   C
  * 3F-LFE         L   R   C    LFE
- * 2F1            L   R   S
- * 2F1-LFE        L   R   LFE  S
- * 3F1            L   R   C    S
- * 3F1-LFE        L   R   C    LFE S
+ * 2F1            L   R   RC
+ * 2F1-LFE        L   R   LFE  RC
+ * 3F1            L   R   C    RC
+ * 3F1-LFE        L   R   C    LFE  RC
  * 2F2            L   R   LS   RS
  * 2F2-LFE        L   R   LFE  LS   RS
  * 3F2            L   R   C    LS   RS
