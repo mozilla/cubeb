@@ -499,9 +499,21 @@ mask_to_channel_layout(WAVEFORMATEX const * fmt)
     case MASK_3F1: return CUBEB_LAYOUT_3F1;
     case MASK_3F1_LFE: return CUBEB_LAYOUT_3F1_LFE;
     case MASK_2F2: return CUBEB_LAYOUT_2F2;
+    // Special case similar to MASK_2F2 but with rear left and right
+    // speakers instead of side left and right. This mapping is a band-aid as
+    // cubeb does not current have an enum to differentiate this and MASK_2F2,
+    // but is preferred to returning an undefined layout.
+    // See: https://github.com/kinetiknz/cubeb/issues/178 and https://bugzilla.mozilla.org/show_bug.cgi?id=1325023
+    case KSAUDIO_SPEAKER_QUAD: return CUBEB_LAYOUT_2F2;
     case MASK_2F2_LFE: return CUBEB_LAYOUT_2F2_LFE;
     case MASK_3F2: return CUBEB_LAYOUT_3F2;
     case MASK_3F2_LFE: return CUBEB_LAYOUT_3F2_LFE;
+    // Special case similar to MASK_3F2_LFE but with rear left and right
+    // speakers instead of side left and right. his mapping is a band-aid as
+    // cubeb does not current have an enum to differentiate this and MASK_3F2_LFE,
+    // but is preferred to returning an undefined layout.
+    // See: https://github.com/kinetiknz/cubeb/issues/178 and https://bugzilla.mozilla.org/show_bug.cgi?id=1325023
+    case KSAUDIO_SPEAKER_5POINT1: return CUBEB_LAYOUT_3F2_LFE;
     case MASK_3F3R_LFE: return CUBEB_LAYOUT_3F3R_LFE;
     case MASK_3F4_LFE: return CUBEB_LAYOUT_3F4_LFE;
     default: return CUBEB_LAYOUT_UNDEFINED;
