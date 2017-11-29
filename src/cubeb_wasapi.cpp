@@ -1572,7 +1572,7 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
   mix_params->channels = mix_format->nChannels;
   mix_params->layout = mask_to_channel_layout(mix_format.get());
   if (mix_params->layout == CUBEB_LAYOUT_UNDEFINED) {
-    LOG("Output using undefined layout!\n");
+    LOG("Stream using undefined layout! Any mixing may be unpredictable!\n");
   } else if (mix_format->nChannels != CUBEB_CHANNEL_LAYOUT_MAPS[mix_params->layout].channels) {
     // The CUBEB_CHANNEL_LAYOUT_MAPS[mix_params->layout].channels may be
     // different from the mix_params->channels. 6 channel ouput with stereo
