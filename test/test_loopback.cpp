@@ -398,3 +398,63 @@ TEST(cubeb, loopback_separate_streams)
   run_loopback_separate_streams_test(true);
   run_loopback_separate_streams_test(false);
 }
+
+void run_loopback_silence_test(bool is_float)
+{
+  cubeb *ctx;
+  cubeb_stream *input_stream;
+  cubeb_stream_params input_params;
+  int r;
+  uint32_t latency_frames = 0;
+
+  r = common_init(&ctx, "Cubeb loopback example: record silence");
+  ASSERT_EQ(r, CUBEB_OK) << "Error initializing cubeb library";
+
+  std::unique_ptr<cubeb, decltype(&cubeb_destroy)>
+    cleanup_cubeb_at_exit(ctx, cubeb_destroy);
+
+  input_params.format = is_float ? CUBEB_SAMPLE_FLOAT32NE : CUBEB_SAMPLE_S16LE;
+  input_params.rate = SAMPLE_FREQUENCY;
+  input_params.channels = 1;
+  input_params.layout = CUBEB_LAYOUT_MONO;
+  input_params.prefs = CUBEB_STREAM_PREF_LOOPBACK;
+
+  std::unique_ptr<user_state_loopback> user_data(new user_state_loopback());
+  ASSERT_TRUE(!!user_data) << "Error allocating user data";
+
+  r = cubeb_get_min_latency(ctx, &input_params, &latency_frames);
+  ASSERT_EQ(r, CUBEB_OK) << "Could not get minimal latency";
+
+  /* setup an input stream with loopback */
+  r = cubeb_stream_init(ctx, &input_stream, "Cubeb loopback input only",
+                        NULL, &input_params, NULL, NULL, latency_frames,
+                        is_float ? data_cb_loop_input_only<float> : data_cb_loop_input_only<short>,
+                        state_cb_loop, user_data.get());
+  ASSERT_EQ(r, CUBEB_OK) << "Error initializing cubeb stream";
+
+  std::unique_ptr<cubeb_stream, decltype(&cubeb_stream_destroy)>
+    cleanup_input_stream_at_exit(input_stream, cubeb_stream_destroy);
+
+  cubeb_stream_start(input_stream);
+  delay(50);
+  cubeb_stream_stop(input_stream);
+
+  /* lock user data to be extra sure to not race any outstanding callbacks */
+  std::lock_guard<std::mutex> lock(user_data->user_state_mutex);
+  std::vector<double>& input_frames = user_data->input_frames;
+
+  /* expect to have at least ~50ms of frames */
+  ASSERT_GE(input_frames.size(), SAMPLE_FREQUENCY / 20);
+  double EPISILON = 0.000001;
+  /* frames should be 0.0, but use epsilon to avoid possible issues with impls
+  that may use ~0.0 silence values. */
+  for (double frame : input_frames) {
+    ASSERT_LT(abs(frame), EPISILON);
+  }
+}
+
+TEST(cubeb, loopback_silence)
+{
+  run_loopback_silence_test(true);
+  run_loopback_silence_test(false);
+}
