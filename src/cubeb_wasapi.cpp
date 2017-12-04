@@ -562,6 +562,7 @@ long
 refill(cubeb_stream * stm, void * input_buffer, long input_frames_count,
        void * output_buffer, long output_frames_needed)
 {
+  XASSERT(!stm->draining);
   /* If we need to upmix after resampling, resample into the mix buffer to
      avoid a copy. */
   void * dest = nullptr;
@@ -768,6 +769,10 @@ refill_callback_duplex(cubeb_stream * stm)
     return true;
   }
 
+  /* Wait for draining is not important on duplex. */
+  if (stm->draining) {
+    return false;
+  }
 
   ALOGV("Duplex callback: input frames: %Iu, output frames: %Iu",
         input_frames, output_frames);
