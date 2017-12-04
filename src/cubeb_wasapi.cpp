@@ -1708,6 +1708,25 @@ int setup_wasapi_stream(cubeb_stream * stm)
                                            silent_buffer_count);
   }
 
+  // If we don't have an output device but are requesting a loopback device,
+  // we attempt to open that same device in output mode in order to drive the
+  // loopback via the output events.
+  if (!has_output(stm) && stm->input_stream_params.prefs & CUBEB_STREAM_PREF_LOOPBACK) {
+    stm->output_stream_params.rate = stm->input_stream_params.rate;
+    stm->output_stream_params.channels = stm->input_stream_params.channels;
+    stm->output_stream_params.layout = stm->input_stream_params.layout;
+    if (stm->input_device) {
+      size_t len = wcslen(stm->input_device.get());
+      std::unique_ptr<wchar_t[]> tmp(new wchar_t[len + 1]);
+      if (wcsncpy_s(tmp.get(), len + 1, stm->input_device.get(), len) != 0) {
+        LOG("Failed to copy device identifier while copying input stream"
+            " configuration to output stream configuration to drive loopback.");
+        return CUBEB_ERROR;
+      }
+      stm->output_device = move(tmp);
+    }
+  }
+
   if (has_output(stm)) {
     LOG("(%p) Setup render: device=%p", stm, stm->output_device.get());
     rv = setup_wasapi_stream_one_side(stm,
