@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <memory>
 #include <mutex>
+#include <string>
 #include "cubeb/cubeb.h"
 #include "common.h"
 
@@ -457,4 +458,111 @@ TEST(cubeb, loopback_silence)
 {
   run_loopback_silence_test(true);
   run_loopback_silence_test(false);
+}
+
+void run_loopback_device_selection_test(bool is_float)
+{
+  cubeb *ctx;
+  cubeb_device_collection collection;
+  cubeb_stream *input_stream;
+  cubeb_stream *output_stream;
+  cubeb_stream_params input_params;
+  cubeb_stream_params output_params;
+  int r;
+  uint32_t latency_frames = 0;
+
+  r = common_init(&ctx, "Cubeb loopback example: device selection, separate streams");
+  ASSERT_EQ(r, CUBEB_OK) << "Error initializing cubeb library";
+
+  std::unique_ptr<cubeb, decltype(&cubeb_destroy)>
+    cleanup_cubeb_at_exit(ctx, cubeb_destroy);
+
+  r = cubeb_enumerate_devices(ctx, CUBEB_DEVICE_TYPE_OUTPUT, &collection);
+  if (r == CUBEB_ERROR_NOT_SUPPORTED) {
+    fprintf(stderr, "Device enumeration not supported"
+            " for this backend, skipping this test.\n");
+    return;
+  }
+
+  ASSERT_EQ(r, CUBEB_OK) << "Error enumerating devices " << r;
+  /* get first preferred output device id */
+  std::string device_id;
+  for (size_t i = 0; i < collection.count; i++) {
+    if (collection.device[i].preferred) {
+      device_id = collection.device[i].device_id;
+      break;
+    }
+  }
+  cubeb_device_collection_destroy(ctx, &collection);
+  if (device_id.empty()) {
+    fprintf(stderr, "Could not find preferred device, aborting test.\n");
+    return;
+  }
+
+  input_params.format = is_float ? CUBEB_SAMPLE_FLOAT32NE : CUBEB_SAMPLE_S16LE;
+  input_params.rate = SAMPLE_FREQUENCY;
+  input_params.channels = 1;
+  input_params.layout = CUBEB_LAYOUT_MONO;
+  input_params.prefs = CUBEB_STREAM_PREF_LOOPBACK;
+  output_params.format = is_float ? CUBEB_SAMPLE_FLOAT32NE : CUBEB_SAMPLE_S16LE;
+  output_params.rate = SAMPLE_FREQUENCY;
+  output_params.channels = 1;
+  output_params.layout = CUBEB_LAYOUT_MONO;
+
+  std::unique_ptr<user_state_loopback> user_data(new user_state_loopback());
+  ASSERT_TRUE(!!user_data) << "Error allocating user data";
+
+  r = cubeb_get_min_latency(ctx, &output_params, &latency_frames);
+  ASSERT_EQ(r, CUBEB_OK) << "Could not get minimal latency";
+
+  /* setup an input stream with loopback */
+  r = cubeb_stream_init(ctx, &input_stream, "Cubeb loopback input only",
+                        device_id.c_str(), &input_params, NULL, NULL, latency_frames,
+                        is_float ? data_cb_loop_input_only<float> : data_cb_loop_input_only<short>,
+                        state_cb_loop, user_data.get());
+  ASSERT_EQ(r, CUBEB_OK) << "Error initializing cubeb stream";
+
+  std::unique_ptr<cubeb_stream, decltype(&cubeb_stream_destroy)>
+    cleanup_input_stream_at_exit(input_stream, cubeb_stream_destroy);
+
+  /* setup an output stream */
+  r = cubeb_stream_init(ctx, &output_stream, "Cubeb loopback output only",
+                        NULL, NULL, device_id.c_str(), &output_params, latency_frames,
+                        is_float ? data_cb_playback<float> : data_cb_playback<short>,
+                        state_cb_loop, user_data.get());
+  ASSERT_EQ(r, CUBEB_OK) << "Error initializing cubeb stream";
+
+  std::unique_ptr<cubeb_stream, decltype(&cubeb_stream_destroy)>
+    cleanup_output_stream_at_exit(output_stream, cubeb_stream_destroy);
+
+  cubeb_stream_start(input_stream);
+  cubeb_stream_start(output_stream);
+  delay(150);
+  cubeb_stream_stop(output_stream);
+  cubeb_stream_stop(input_stream);
+
+  /* lock user data to be extra sure to not race any outstanding callbacks */
+  std::lock_guard<std::mutex> lock(user_data->user_state_mutex);
+  std::vector<double>& output_frames = user_data->output_frames;
+  std::vector<double>& input_frames = user_data->input_frames;
+  ASSERT_LE(output_frames.size(), input_frames.size())
+    << "#Output frames should be less or equal to #input frames";
+
+  size_t phase = find_phase(user_data->output_frames, user_data->input_frames, NUM_FRAMES_TO_OUTPUT);
+
+  /* extract vectors of just the relevant signal from output and input */
+  auto output_frames_signal_start = output_frames.begin();
+  auto output_frames_signal_end = output_frames.begin() + NUM_FRAMES_TO_OUTPUT;
+  std::vector<double> trimmed_output_frames(output_frames_signal_start, output_frames_signal_end);
+  auto input_frames_signal_start = input_frames.begin() + phase;
+  auto input_frames_signal_end = input_frames.begin() + phase + NUM_FRAMES_TO_OUTPUT;
+  std::vector<double> trimmed_input_frames(input_frames_signal_start, input_frames_signal_end);
+
+  compare_signals(trimmed_output_frames, trimmed_input_frames);
+}
+
+TEST(cubeb, loopback_device_selection)
+{
+  run_loopback_device_selection_test(true);
+  run_loopback_device_selection_test(false);
 }
