@@ -28,6 +28,7 @@
 
 #define JACK_API_VISIT(X)                       \
   X(jack_activate)                              \
+  X(jack_deactivate)                            \
   X(jack_client_close)                          \
   X(jack_client_open)                           \
   X(jack_connect)                               \
@@ -141,10 +142,9 @@ static struct cubeb_ops const cbjack_ops = {
 struct cubeb_stream {
   cubeb * context;
 
-  /**< Mutex for each stream */
-  pthread_mutex_t mutex;
-
-  bool in_use; /**< Set to false iff the stream is free */
+  bool taken; /**< Atomic var: grabs the stream immediately */
+  bool in_use; /**< Atomic var: Set to false iff the stream is free */
+  bool active;
   bool ports_ready; /**< Set to true iff the JACK ports are ready */
 
   cubeb_data_callback data_callback;
@@ -169,9 +169,6 @@ struct cubeb {
   struct cubeb_ops const * ops;
   void * libjack;
 
-  /**< Mutex for whole context */
-  pthread_mutex_t mutex;
-
   /**< Audio buffers, converted to float */
   float in_float_interleaved_buffer[FIFO_SIZE * MAX_CHANNELS];
   float out_float_interleaved_buffer[FIFO_SIZE * MAX_CHANNELS];
@@ -188,6 +185,7 @@ struct cubeb {
   cubeb_device_collection_changed_callback collection_changed_callback;
 
   bool active;
+  bool in_use;
   unsigned int jack_sample_rate;
   unsigned int jack_latency;
   unsigned int jack_xruns;
@@ -288,11 +286,15 @@ cbjack_graph_order_callback(void * arg)
   int i;
   jack_latency_range_t latency_range;
   jack_nframes_t port_latency, max_latency = 0;
+  cubeb_stream *stm = NULL;
+
+  if (!ctx->active)
+    return 0;
 
   for (int j = 0; j < MAX_STREAMS; j++) {
-    cubeb_stream *stm = &ctx->streams[j];
+    stm = &ctx->streams[j];
 
-    if (!stm->in_use)
+    if (!stm->active)
       continue;
     if (!stm->ports_ready)
       continue;
@@ -308,7 +310,7 @@ cbjack_graph_order_callback(void * arg)
       max_latency = 128;
   }
 
-  ctx->jack_latency = max_latency;
+  ctx->jack_latency = max_latency * 1000 / ctx->jack_sample_rate;
 
   return 0;
 }
@@ -318,21 +320,28 @@ cbjack_process(jack_nframes_t nframes, void * arg)
 {
   cubeb * ctx = (cubeb *)arg;
   int t_jack_xruns = ctx->jack_xruns;
-  int i;
+  int i, j;
+  cubeb_stream *stm = NULL;
 
-  for (int j = 0; j < MAX_STREAMS; j++) {
-    cubeb_stream *stm = &ctx->streams[j];
+  // Context atomic setter 
+  if (!(ctx->active = ctx->in_use)) {
+    ctx->jack_xruns -= t_jack_xruns;
+    return 0;
+  }
+
+  for (j = 0; j < MAX_STREAMS; j++) {
+    stm = &ctx->streams[j];
     float *bufs_out[stm->out_params.channels];
     float *bufs_in[stm->in_params.channels];
 
-    if (!stm->in_use)
+    // Stream atomic setter
+    if (!(stm->active = stm->in_use))
       continue;
 
     // handle xruns by skipping audio that should have been played
     for (i = 0; i < t_jack_xruns; i++) {
         stm->position += ctx->fragment_size * stm->ratio;
     }
-    ctx->jack_xruns -= t_jack_xruns;
 
     if (!stm->ports_ready)
       continue;
@@ -368,62 +377,38 @@ cbjack_process(jack_nframes_t nframes, void * arg)
       }
     } else {
 
-      // try to lock stream mutex
-      if (pthread_mutex_trylock(&stm->mutex) == 0) {
+      int16_t *in_s16ne = stm->context->in_resampled_interleaved_buffer_s16ne;
+      float *in_float = stm->context->in_resampled_interleaved_buffer_float;
 
-        int16_t *in_s16ne = stm->context->in_resampled_interleaved_buffer_s16ne;
-        float *in_float = stm->context->in_resampled_interleaved_buffer_float;
-
-        // unpaused, play audio
-        if (stm->devs == DUPLEX) {
-          if (stm->out_params.format == CUBEB_SAMPLE_S16NE) {
-            cbjack_interleave_capture(stm, bufs_in, nframes, true);
-            cbjack_deinterleave_playback_refill_s16ne(stm, &in_s16ne, bufs_out, nframes);
-          } else if (stm->out_params.format == CUBEB_SAMPLE_FLOAT32NE) {
-            cbjack_interleave_capture(stm, bufs_in, nframes, false);
-            cbjack_deinterleave_playback_refill_float(stm, &in_float, bufs_out, nframes);
-          }
-        } else if (stm->devs == IN_ONLY) {
-          if (stm->in_params.format == CUBEB_SAMPLE_S16NE) {
-            cbjack_interleave_capture(stm, bufs_in, nframes, true);
-            cbjack_deinterleave_playback_refill_s16ne(stm, &in_s16ne, nullptr, nframes);
-          } else if (stm->in_params.format == CUBEB_SAMPLE_FLOAT32NE) {
-            cbjack_interleave_capture(stm, bufs_in, nframes, false);
-            cbjack_deinterleave_playback_refill_float(stm, &in_float, nullptr, nframes);
-          }
-        } else if (stm->devs == OUT_ONLY) {
-          if (stm->out_params.format == CUBEB_SAMPLE_S16NE) {
-            cbjack_deinterleave_playback_refill_s16ne(stm, nullptr, bufs_out, nframes);
-          } else if (stm->out_params.format == CUBEB_SAMPLE_FLOAT32NE) {
-            cbjack_deinterleave_playback_refill_float(stm, nullptr, bufs_out, nframes);
-          }
+      // unpaused, play audio
+      if (stm->devs == DUPLEX) {
+        if (stm->out_params.format == CUBEB_SAMPLE_S16NE) {
+          cbjack_interleave_capture(stm, bufs_in, nframes, true);
+          cbjack_deinterleave_playback_refill_s16ne(stm, &in_s16ne, bufs_out, nframes);
+        } else if (stm->out_params.format == CUBEB_SAMPLE_FLOAT32NE) {
+          cbjack_interleave_capture(stm, bufs_in, nframes, false);
+          cbjack_deinterleave_playback_refill_float(stm, &in_float, bufs_out, nframes);
         }
-        // unlock stream mutex
-        pthread_mutex_unlock(&stm->mutex);
-
-      } else {
-        // could not lock mutex
-        // output silence
-        if (stm->devs & OUT_ONLY) {
-          for (unsigned int c = 0; c < stm->out_params.channels; c++) {
-            float* buffer_out = bufs_out[c];
-            for (long f = 0; f < nframes; f++) {
-              buffer_out[f] = 0.f;
-            }
-          }
+      } else if (stm->devs == IN_ONLY) {
+        if (stm->in_params.format == CUBEB_SAMPLE_S16NE) {
+          cbjack_interleave_capture(stm, bufs_in, nframes, true);
+          cbjack_deinterleave_playback_refill_s16ne(stm, &in_s16ne, nullptr, nframes);
+        } else if (stm->in_params.format == CUBEB_SAMPLE_FLOAT32NE) {
+          cbjack_interleave_capture(stm, bufs_in, nframes, false);
+          cbjack_deinterleave_playback_refill_float(stm, &in_float, nullptr, nframes);
         }
-        if (stm->devs & IN_ONLY) {
-          // capture silence
-          for (unsigned int c = 0; c < stm->in_params.channels; c++) {
-            float* buffer_in = bufs_in[c];
-            for (long f = 0; f < nframes; f++) {
-              buffer_in[f] = 0.f;
-            }
-          }
+      } else if (stm->devs == OUT_ONLY) {
+        if (stm->out_params.format == CUBEB_SAMPLE_S16NE) {
+          cbjack_deinterleave_playback_refill_s16ne(stm, nullptr, bufs_out, nframes);
+        } else if (stm->out_params.format == CUBEB_SAMPLE_FLOAT32NE) {
+          cbjack_deinterleave_playback_refill_float(stm, nullptr, bufs_out, nframes);
         }
       }
     }
   }
+
+  ctx->jack_xruns -= t_jack_xruns;
+
   return 0;
 }
 
@@ -591,11 +576,6 @@ jack_init (cubeb ** context, char const * context_name)
 
   ctx->ops = &cbjack_ops;
 
-  ctx->mutex = PTHREAD_MUTEX_INITIALIZER;
-  for (r = 0; r < MAX_STREAMS; r++) {
-    ctx->streams[r].mutex = PTHREAD_MUTEX_INITIALIZER;
-  }
-
   const char * jack_client_name = "cubeb";
   if (context_name)
     jack_client_name = context_name;
@@ -623,7 +603,7 @@ jack_init (cubeb ** context, char const * context_name)
   ctx->jack_sample_rate = api_jack_get_sample_rate(ctx->jack_client);
   ctx->jack_latency = 128 * 1000 / ctx->jack_sample_rate;
 
-  ctx->active = true;
+  ctx->in_use = true;
   *context = ctx;
 
   return CUBEB_OK;
@@ -679,10 +659,12 @@ cbjack_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
 static void
 cbjack_destroy(cubeb * context)
 {
-  context->active = false;
+  context->in_use = false;
 
-  if (context->jack_client != NULL)
+  if (context->jack_client != NULL) {
+    api_jack_deactivate (context->jack_client);
     api_jack_client_close (context->jack_client);
+  }
 
   if (context->libjack)
     dlclose(context->libjack);
@@ -693,10 +675,11 @@ cbjack_destroy(cubeb * context)
 static cubeb_stream *
 context_alloc_stream(cubeb * context, char const * stream_name)
 {
+  cubeb_stream *stm = NULL;
   for (int i = 0; i < MAX_STREAMS; i++) {
-    if (!context->streams[i].in_use) {
-      cubeb_stream * stm = &context->streams[i];
-      stm->in_use = true;
+    stm = &context->streams[i];
+    if (!stm->taken) {
+      stm->taken = true;
       snprintf(stm->stream_name, 255, "%s_%u", stream_name, i);
       return stm;
     }
@@ -738,20 +721,12 @@ cbjack_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_
   *stream = NULL;
 
   // Find a free stream.
-  pthread_mutex_lock(&context->mutex);
   cubeb_stream * stm = context_alloc_stream(context, stream_name);
 
   // No free stream?
   if (stm == NULL) {
-    pthread_mutex_unlock(&context->mutex);
     return CUBEB_ERROR;
   }
-
-  // unlock context mutex
-  pthread_mutex_unlock(&context->mutex);
-
-  // Lock active stream
-  pthread_mutex_lock(&stm->mutex);
 
   stm->ports_ready = false;
   stm->user_ptr = user_ptr;
@@ -804,7 +779,7 @@ cbjack_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_
   context->fragment_size = context->jack_buffer_size;
 
   if (stm->devs == NONE) {
-    pthread_mutex_unlock(&stm->mutex);
+    stm->taken = false;
     return CUBEB_ERROR;
   }
 
@@ -837,8 +812,7 @@ cbjack_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_
   }
 
   if (!stm->resampler) {
-    stm->in_use = false;
-    pthread_mutex_unlock(&stm->mutex);
+    stm->taken = false;
     return CUBEB_ERROR;
   }
 
@@ -870,9 +844,9 @@ cbjack_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_
 
   *stream = stm;
 
-  stm->ports_ready = true;
   stm->pause = true;
-  pthread_mutex_unlock(&stm->mutex);
+  stm->ports_ready = true;
+  stm->in_use = true;
 
   return CUBEB_OK;
 }
@@ -880,9 +854,20 @@ cbjack_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_
 static void
 cbjack_stream_destroy(cubeb_stream * stream)
 {
-  pthread_mutex_lock(&stream->mutex);
-  stream->ports_ready = false;
+  int i;
+  bool old_in_use[MAX_STREAMS];
 
+  // Flag stream to be destroyed
+  stream->ports_ready = false;
+  stream->in_use = false;
+
+  // Temporarily disable ALL ports
+  for (i = 0; i < MAX_STREAMS; i++) {
+    old_in_use[i] = stream->context->streams[i].in_use;
+    stream->context->streams[i].in_use = false;
+  }
+
+  // Tear down this stream's ports
   if (stream->devs == DUPLEX || stream->devs == OUT_ONLY) {
     for (unsigned int c = 0; c < stream->out_params.channels; c++) {
       if (stream->output_ports[c]) {
@@ -901,12 +886,27 @@ cbjack_stream_destroy(cubeb_stream * stream)
     }
   }
 
+  // Temporarily disable jack client - wait for process callback to end (?)
+  api_jack_deactivate (stream->context->jack_client);
+
+  // Tear down this stream's resampler
   if (stream->resampler) {
     cubeb_resampler_destroy(stream->resampler);
     stream->resampler = NULL;
   }
-  stream->in_use = false;
-  pthread_mutex_unlock(&stream->mutex);
+
+  // Reactivate jack client
+  api_jack_activate (stream->context->jack_client);
+
+  // Reset in_use map && take opportunity to reconnect ports from other streams
+  for (i = 0; i < MAX_STREAMS; i++) {
+    if (stream->context->streams[i].in_use = old_in_use[i]) {
+      cbjack_connect_ports (&stream->context->streams[i]);
+    }
+  }
+
+  // Last thing to do
+  stream->taken = false;
 }
 
 static int
