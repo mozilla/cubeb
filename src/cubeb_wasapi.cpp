@@ -1684,7 +1684,7 @@ int setup_wasapi_stream(cubeb_stream * stm)
 #if !defined(DEBUG)
     const int silent_buffer_count = 2;
 #else
-    const int silent_buffer_count = 4;
+    const int silent_buffer_count = 6;
 #endif
     stm->linear_input_buffer->push_silence(stm->input_buffer_frame_count *
                                            stm->input_stream_params.channels *
