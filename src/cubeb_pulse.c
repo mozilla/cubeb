@@ -97,12 +97,18 @@ static int has_pulse_v2 = 0;
 
 static struct cubeb_ops const pulse_ops;
 
+struct cubeb_default_sink_info {
+  pa_channel_map channel_map;
+  uint32_t sample_spec_rate;
+  pa_sink_flags_t flags;
+};
+
 struct cubeb {
   struct cubeb_ops const * ops;
   void * libpulse;
   pa_threaded_mainloop * mainloop;
   pa_context * context;
-  pa_sink_info * default_sink_info;
+  struct cubeb_default_sink_info * default_sink_info;
   char * context_name;
   int error;
   cubeb_device_collection_changed_callback collection_changed_callback;
@@ -158,8 +164,10 @@ sink_info_callback(pa_context * context, const pa_sink_info * info, int eol, voi
   cubeb * ctx = u;
   if (!eol) {
     free(ctx->default_sink_info);
-    ctx->default_sink_info = malloc(sizeof(pa_sink_info));
-    memcpy(ctx->default_sink_info, info, sizeof(pa_sink_info));
+    ctx->default_sink_info = malloc(sizeof(struct cubeb_default_sink_info));
+    memcpy(&ctx->default_sink_info->channel_map, &info->channel_map, sizeof(pa_channel_map));
+    ctx->default_sink_info->sample_spec_rate = info->sample_spec.rate;
+    ctx->default_sink_info->flags = info->flags;
   }
   WRAP(pa_threaded_mainloop_signal)(ctx->mainloop, 0);
 }
@@ -699,7 +707,7 @@ pulse_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
   if (!ctx->default_sink_info)
     return CUBEB_ERROR;
 
-  *rate = ctx->default_sink_info->sample_spec.rate;
+  *rate = ctx->default_sink_info->sample_spec_rate;
 
   return CUBEB_OK;
 }
