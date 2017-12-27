@@ -84,10 +84,15 @@
   X(pa_context_set_subscribe_callback)          \
   X(pa_context_subscribe)                       \
   X(pa_mainloop_api_once)                       \
+  X(pa_get_library_version)                     \
 
 #define MAKE_TYPEDEF(x) static typeof(x) * cubeb_##x;
 LIBPULSE_API_VISIT(MAKE_TYPEDEF);
 #undef MAKE_TYPEDEF
+#endif
+
+#if PA_CHECK_VERSION(2, 0, 0)
+static int has_pulse_v2 = 0;
 #endif
 
 static struct cubeb_ops const pulse_ops;
@@ -620,6 +625,11 @@ pulse_init(cubeb ** context, char const * context_name)
 
   LIBPULSE_API_VISIT(LOAD);
 #undef LOAD
+#endif
+
+#if PA_CHECK_VERSION(2, 0, 0)
+  const char* version = WRAP(pa_get_library_version)();
+  has_pulse_v2 = strtol(version, NULL, 10) >= 2;
 #endif
 
   ctx = calloc(1, sizeof(*ctx));
@@ -1225,7 +1235,7 @@ pulse_get_state_from_sink_port(pa_sink_port_info * info)
 {
   if (info != NULL) {
 #if PA_CHECK_VERSION(2, 0, 0)
-    if (info->available == PA_PORT_AVAILABLE_NO)
+    if (has_pulse_v2 && info->available == PA_PORT_AVAILABLE_NO)
       return CUBEB_DEVICE_STATE_UNPLUGGED;
     else /*if (info->available == PA_PORT_AVAILABLE_YES) + UNKNOWN */
 #endif
@@ -1297,7 +1307,7 @@ pulse_get_state_from_source_port(pa_source_port_info * info)
 {
   if (info != NULL) {
 #if PA_CHECK_VERSION(2, 0, 0)
-    if (info->available == PA_PORT_AVAILABLE_NO)
+    if (has_pulse_v2 && info->available == PA_PORT_AVAILABLE_NO)
       return CUBEB_DEVICE_STATE_UNPLUGGED;
     else /*if (info->available == PA_PORT_AVAILABLE_YES) + UNKNOWN */
 #endif
