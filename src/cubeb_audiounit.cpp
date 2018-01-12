@@ -83,6 +83,8 @@ struct cubeb {
   dispatch_queue_t serial_queue = dispatch_queue_create(DISPATCH_QUEUE_LABEL, DISPATCH_QUEUE_SERIAL);
   // Current used channel layout
   std::atomic<cubeb_channel_layout> layout{ CUBEB_LAYOUT_UNDEFINED };
+  // Flag to be used in device_collection_callback to avoid deadlock.
+  std::atomic<int> creating_removing_aggregate_device{ 0 };
 };
 
 static std::unique_ptr<AudioChannelLayout, decltype(&free)>
@@ -1753,7 +1755,10 @@ audiounit_workaround_for_airpod(cubeb_stream * stm)
 static int
 audiounit_create_aggregate_device(cubeb_stream * stm)
 {
+  // Signal that aggregate device is creating to be used by device_collection_change_callback
+  stm->context->creating_removing_aggregate_device += 1;
   int r = audiounit_create_blank_aggregate_device(&stm->plugin_id, &stm->aggregate_device_id);
+  stm->context->creating_removing_aggregate_device -= 1;
   if (r != CUBEB_OK) {
     LOG("(%p) Failed to create blank aggregate device", stm);
     audiounit_destroy_aggregate_device(stm->plugin_id, &stm->aggregate_device_id);
@@ -2642,7 +2647,10 @@ audiounit_close_stream(cubeb_stream *stm)
   stm->mixer.reset();
 
   if (stm->aggregate_device_id) {
+    // Signal that aggregate device is removing to be used by device_collection_callback
+    stm->context->creating_removing_aggregate_device += 1;
     audiounit_destroy_aggregate_device(stm->plugin_id, &stm->aggregate_device_id);
+    stm->context->creating_removing_aggregate_device -= 1;
     stm->aggregate_device_id = 0;
   }
 }
@@ -3301,8 +3309,13 @@ audiounit_collection_changed_callback(AudioObjectID /* inObjectID */,
                                       void * inClientData)
 {
   cubeb * context = static_cast<cubeb *>(inClientData);
-  auto_lock lock(context->mutex);
 
+  // This is triggered from the change in aggregate device no need to populate
+  if (context->creating_removing_aggregate_device > 0) {
+    return noErr;
+  }
+
+  auto_lock lock(context->mutex);
   if (context->collection_changed_callback == NULL) {
     /* Listener removed while waiting in mutex, abort. */
     return noErr;
