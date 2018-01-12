@@ -1190,7 +1190,7 @@ int wasapi_init(cubeb ** context, char const * context_name)
 
   ctx->ops = &wasapi_ops;
   if (cubeb_strings_init(&ctx->device_ids) != CUBEB_OK) {
-    free(ctx);
+    delete ctx;
     return CUBEB_ERROR;
   }
 
