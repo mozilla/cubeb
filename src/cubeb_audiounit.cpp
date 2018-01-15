@@ -2662,8 +2662,10 @@ audiounit_stream_destroy(cubeb_stream * stm)
     LOG("(%p) Could not uninstall all device change listeners", stm);
   }
 
-  auto_lock context_lock(stm->context->mutex);
-  audiounit_stream_stop_internal(stm);
+  {
+    auto_lock context_lock(stm->context->mutex);
+    audiounit_stream_stop_internal(stm);
+  }
 
   // Execute close in serial queue to avoid collision
   // with reinit when un/plug devices
@@ -2672,6 +2674,7 @@ audiounit_stream_destroy(cubeb_stream * stm)
     audiounit_close_stream(stm);
   });
 
+  auto_lock context_lock(stm->context->mutex);
   assert(stm->context->active_streams >= 1);
   stm->context->active_streams -= 1;
 
@@ -3301,27 +3304,29 @@ audiounit_collection_changed_callback(AudioObjectID /* inObjectID */,
                                       void * inClientData)
 {
   cubeb * context = static_cast<cubeb *>(inClientData);
-  auto_lock lock(context->mutex);
 
-  if (context->collection_changed_callback == NULL) {
-    /* Listener removed while waiting in mutex, abort. */
-    return noErr;
-  }
-
-  /* Differentiate input from output changes. */
-  if (context->collection_changed_devtype == CUBEB_DEVICE_TYPE_INPUT ||
-      context->collection_changed_devtype == CUBEB_DEVICE_TYPE_OUTPUT) {
-    std::vector<AudioObjectID> devices = audiounit_get_devices_of_type(context->collection_changed_devtype);
-    /* When count is the same examine the devid for the case of coalescing. */
-    if (context->devtype_device_array == devices) {
-      /* Device changed for the other scope, ignore. */
-      return noErr;
+  // This can be called from inside an AudioUnit function, dispatch to another queue.
+  dispatch_async(context->serial_queue, ^() {
+    auto_lock lock(context->mutex);
+    if (context->collection_changed_callback == NULL) {
+      /* Listener removed while waiting in mutex, abort. */
+      return;
     }
-    /* Device on desired scope changed. */
-    context->devtype_device_array = devices;
-  }
 
-  context->collection_changed_callback(context, context->collection_changed_user_ptr);
+    /* Differentiate input from output changes. */
+    if (context->collection_changed_devtype == CUBEB_DEVICE_TYPE_INPUT ||
+        context->collection_changed_devtype == CUBEB_DEVICE_TYPE_OUTPUT) {
+      std::vector<AudioObjectID> devices = audiounit_get_devices_of_type(context->collection_changed_devtype);
+      /* When count is the same examine the devid for the case of coalescing. */
+      if (context->devtype_device_array == devices) {
+        /* Device changed for the other scope, ignore. */
+        return;
+      }
+      /* Device on desired scope changed. */
+      context->devtype_device_array = devices;
+    }
+    context->collection_changed_callback(context, context->collection_changed_user_ptr);
+  });
   return noErr;
 }
 
