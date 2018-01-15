@@ -127,6 +127,8 @@ TEST(cubeb, duplex)
 void device_collection_changed_callback(cubeb * context, void * user)
 {
   fprintf(stderr, "collection changed callback\n");
+  ASSERT_TRUE(false) << "Error: device collection changed callback"
+                        " called when opening a stream";
 }
 
 TEST(cubeb, duplex_collection_change)

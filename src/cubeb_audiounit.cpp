@@ -32,8 +32,11 @@
 #include <algorithm>
 #include <atomic>
 #include <vector>
+#include <set>
 #include <sys/time.h>
 #include <string>
+
+using namespace std;
 
 #if MAC_OS_X_VERSION_MIN_REQUIRED < 101000
 typedef UInt32 AudioFormatFlags;
@@ -3321,10 +3324,39 @@ audiounit_collection_changed_callback(AudioObjectID /* inObjectID */,
       if (context->devtype_device_array == devices) {
         /* Device changed for the other scope, ignore. */
         return;
+      } else {
+        /* Also don't trigger the user callback if the new added device is private
+         * aggregate device: compute the set of new devices, and remove those
+         * with the name of our private aggregate devices. */
+        set<AudioObjectID> current_devices(devices.begin(), devices.end());
+        set<AudioObjectID> previous_devices(context->devtype_device_array.begin(),
+                                            context->devtype_device_array.end());
+        set<AudioObjectID> new_devices;
+        set_difference(current_devices.begin(), current_devices.end(),
+                       previous_devices.begin(), previous_devices.end(),
+                       inserter(new_devices, new_devices.begin()));
+
+        for (auto it = new_devices.begin(); it != new_devices.end();) {
+          CFStringRef name = get_device_name(*it);
+          if (CFStringFind(name, CFSTR("CubebAggregateDevice"), 0).location !=
+              kCFNotFound) {
+            it = new_devices.erase(it++);
+          } else {
+            it++;
+          }
+        }
+
+        // If this set of new devices is empty, it means this was triggerd
+        // solely by creating an aggregate device, no need to trigger the user
+        // callback.
+        if (new_devices.empty()) {
+          return;
+        }
       }
       /* Device on desired scope changed. */
       context->devtype_device_array = devices;
     }
+
     context->collection_changed_callback(context, context->collection_changed_user_ptr);
   });
   return noErr;
