@@ -488,6 +488,7 @@ impl Context {
             if let Ok(o) = context.subscribe(mask, success, self as *const _ as *mut _) {
                 self.operation_wait(None, &o);
             } else {
+                self.mainloop.unlock();
                 log!("Context subscribe failed");
                 return cubeb::ERROR;
             }
