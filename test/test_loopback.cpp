@@ -36,8 +36,8 @@ template<> double ConvertSampleFromOutput(float sample) { return double(sample);
 template<> double ConvertSampleFromOutput(short sample) { return double(sample / 32767.0); }
 
 /* Simple cross correlation to help find phase shift. Not a performant impl */
-std::vector<double> cross_correlate(std::vector<double>& f,
-                                    std::vector<double>& g,
+std::vector<double> cross_correlate(std::vector<double> & f,
+                                    std::vector<double> & g,
                                     size_t signal_length)
 {
   /* the length we sweep our window through to find the cross correlation */
@@ -55,8 +55,8 @@ std::vector<double> cross_correlate(std::vector<double>& f,
 }
 
 /* best effort discovery of phase shift between output and (looped) input*/
-size_t find_phase(std::vector<double>& output_frames,
-                  std::vector<double>& input_frames,
+size_t find_phase(std::vector<double> & output_frames,
+                  std::vector<double> & input_frames,
                   size_t signal_length)
 {
   std::vector<double> correlation = cross_correlate(output_frames, input_frames, signal_length);
@@ -71,7 +71,7 @@ size_t find_phase(std::vector<double>& output_frames,
   return phase;
 }
 
-std::vector<double> normalize_frames(std::vector<double>& frames) {
+std::vector<double> normalize_frames(std::vector<double> & frames) {
   double max = abs(*std::max_element(frames.begin(), frames.end(),
                                      [](double a, double b) { return abs(a) < abs(b); }));
   std::vector<double> normalized_frames;
@@ -83,8 +83,8 @@ std::vector<double> normalize_frames(std::vector<double>& frames) {
 }
 
 /* heuristic comparison of aligned output and input signals, gets flaky if TONE_FREQUENCY is too high */
-void compare_signals(std::vector<double>& output_frames,
-                     std::vector<double>& input_frames)
+void compare_signals(std::vector<double> & output_frames,
+                     std::vector<double> & input_frames)
 {
   ASSERT_EQ(output_frames.size(), input_frames.size()) << "#Output frames != #input frames";
   size_t num_frames = output_frames.size();
@@ -152,9 +152,9 @@ struct user_state_loopback {
 template<typename T>
 long data_cb_loop_duplex(cubeb_stream * stream, void * user, const void * inputbuffer, void * outputbuffer, long nframes)
 {
-  struct user_state_loopback *u = (struct user_state_loopback *)user;
-  T *ib = (T *)inputbuffer;
-  T *ob = (T *)outputbuffer;
+  struct user_state_loopback * u = (struct user_state_loopback *) user;
+  T * ib = (T *) inputbuffer;
+  T * ob = (T *) outputbuffer;
 
   if (stream == NULL || inputbuffer == NULL || outputbuffer == NULL) {
     return CUBEB_ERROR;
@@ -183,8 +183,8 @@ long data_cb_loop_duplex(cubeb_stream * stream, void * user, const void * inputb
 template<typename T>
 long data_cb_loop_input_only(cubeb_stream * stream, void * user, const void * inputbuffer, void * outputbuffer, long nframes)
 {
-  struct user_state_loopback *u = (struct user_state_loopback *)user;
-  T *ib = (T *)inputbuffer;
+  struct user_state_loopback * u = (struct user_state_loopback *) user;
+  T * ib = (T *) inputbuffer;
 
   if (stream == NULL || inputbuffer == NULL) {
     return CUBEB_ERROR;
@@ -201,8 +201,8 @@ long data_cb_loop_input_only(cubeb_stream * stream, void * user, const void * in
 template<typename T>
 long data_cb_playback(cubeb_stream * stream, void * user, const void * inputbuffer, void * outputbuffer, long nframes)
 {
-  struct user_state_loopback *u = (struct user_state_loopback *)user;
-  T *ob = (T *)outputbuffer;
+  struct user_state_loopback * u = (struct user_state_loopback *) user;
+  T * ob = (T *) outputbuffer;
 
   if (stream == NULL || outputbuffer == NULL) {
     return CUBEB_ERROR;
@@ -247,8 +247,8 @@ void state_cb_loop(cubeb_stream * stream, void * /*user*/, cubeb_state state)
 
 void run_loopback_duplex_test(bool is_float)
 {
-  cubeb *ctx;
-  cubeb_stream *stream;
+  cubeb * ctx;
+  cubeb_stream * stream;
   cubeb_stream_params input_params;
   cubeb_stream_params output_params;
   int r;
@@ -290,10 +290,10 @@ void run_loopback_duplex_test(bool is_float)
   delay(150);
   cubeb_stream_stop(stream);
 
-  /* lock user data to be extra sure to not race any outstanding callbacks */
+  /* access after stop should not happen, but lock just in case and to appease sanitization tools */
   std::lock_guard<std::mutex> lock(user_data->user_state_mutex);
-  std::vector<double>& output_frames = user_data->output_frames;
-  std::vector<double>& input_frames = user_data->input_frames;
+  std::vector<double> & output_frames = user_data->output_frames;
+  std::vector<double> & input_frames = user_data->input_frames;
   ASSERT_EQ(output_frames.size(), input_frames.size())
     << "#Output frames != #input frames";
 
@@ -318,9 +318,9 @@ TEST(cubeb, loopback_duplex)
 
 void run_loopback_separate_streams_test(bool is_float)
 {
-  cubeb *ctx;
-  cubeb_stream *input_stream;
-  cubeb_stream *output_stream;
+  cubeb * ctx;
+  cubeb_stream * input_stream;
+  cubeb_stream * output_stream;
   cubeb_stream_params input_params;
   cubeb_stream_params output_params;
   int r;
@@ -374,10 +374,10 @@ void run_loopback_separate_streams_test(bool is_float)
   cubeb_stream_stop(output_stream);
   cubeb_stream_stop(input_stream);
 
-  /* lock user data to be extra sure to not race any outstanding callbacks */
+  /* access after stop should not happen, but lock just in case and to appease sanitization tools */
   std::lock_guard<std::mutex> lock(user_data->user_state_mutex);
-  std::vector<double>& output_frames = user_data->output_frames;
-  std::vector<double>& input_frames = user_data->input_frames;
+  std::vector<double> & output_frames = user_data->output_frames;
+  std::vector<double> & input_frames = user_data->input_frames;
   ASSERT_LE(output_frames.size(), input_frames.size())
     << "#Output frames should be less or equal to #input frames";
 
@@ -402,8 +402,8 @@ TEST(cubeb, loopback_separate_streams)
 
 void run_loopback_silence_test(bool is_float)
 {
-  cubeb *ctx;
-  cubeb_stream *input_stream;
+  cubeb * ctx;
+  cubeb_stream * input_stream;
   cubeb_stream_params input_params;
   int r;
   uint32_t latency_frames = 0;
@@ -440,9 +440,9 @@ void run_loopback_silence_test(bool is_float)
   delay(50);
   cubeb_stream_stop(input_stream);
 
-  /* lock user data to be extra sure to not race any outstanding callbacks */
+  /* access after stop should not happen, but lock just in case and to appease sanitization tools */
   std::lock_guard<std::mutex> lock(user_data->user_state_mutex);
-  std::vector<double>& input_frames = user_data->input_frames;
+  std::vector<double> & input_frames = user_data->input_frames;
 
   /* expect to have at least ~50ms of frames */
   ASSERT_GE(input_frames.size(), SAMPLE_FREQUENCY / 20);
@@ -462,10 +462,10 @@ TEST(cubeb, loopback_silence)
 
 void run_loopback_device_selection_test(bool is_float)
 {
-  cubeb *ctx;
+  cubeb * ctx;
   cubeb_device_collection collection;
-  cubeb_stream *input_stream;
-  cubeb_stream *output_stream;
+  cubeb_stream * input_stream;
+  cubeb_stream * output_stream;
   cubeb_stream_params input_params;
   cubeb_stream_params output_params;
   int r;
@@ -541,10 +541,10 @@ void run_loopback_device_selection_test(bool is_float)
   cubeb_stream_stop(output_stream);
   cubeb_stream_stop(input_stream);
 
-  /* lock user data to be extra sure to not race any outstanding callbacks */
+  /* access after stop should not happen, but lock just in case and to appease sanitization tools */
   std::lock_guard<std::mutex> lock(user_data->user_state_mutex);
-  std::vector<double>& output_frames = user_data->output_frames;
-  std::vector<double>& input_frames = user_data->input_frames;
+  std::vector<double> & output_frames = user_data->output_frames;
+  std::vector<double> & input_frames = user_data->input_frames;
   ASSERT_LE(output_frames.size(), input_frames.size())
     << "#Output frames should be less or equal to #input frames";
 
