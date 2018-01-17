@@ -1525,20 +1525,17 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
         return CUBEB_ERROR;
       }
     } else {
-      if (is_loopback) {
-        // If the caller has requested loopback but not specified a device,
-        // attempt to use the default render device to loopback from
-        hr = get_default_endpoint(device, eRender);
-        if (FAILED(hr)) {
+      // If caller has requested loopback but not specified a device, look for
+      // the default render device. Otherwise look for the default device
+      // appropriate to the direction.
+      hr = get_default_endpoint(device, is_loopback ? eRender : direction);
+      if (FAILED(hr)) {
+        if (is_loopback) {
           LOG("Could not get default render endpoint for loopback, error: %lx\n", hr);
-          return CUBEB_ERROR;
-        }
-      } else {
-        hr = get_default_endpoint(device, direction);
-        if (FAILED(hr)) {
+        } else {
           LOG("Could not get default %s endpoint, error: %lx\n", DIRECTION_NAME, hr);
-          return CUBEB_ERROR;
         }
+        return CUBEB_ERROR;
       }
     }
 
