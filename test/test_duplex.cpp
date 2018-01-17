@@ -144,7 +144,7 @@ TEST(cubeb, duplex_collection_change)
   ASSERT_EQ(r, CUBEB_OK) << "Error initializing cubeb library";
 
   r = cubeb_register_device_collection_changed(ctx,
-                                               static_cast<cubeb_device_type>(CUBEB_DEVICE_TYPE_INPUT & CUBEB_DEVICE_TYPE_INPUT),
+                                               CUBEB_DEVICE_TYPE_INPUT & CUBEB_DEVICE_TYPE_INPUT,
                                                device_collection_changed_callback,
                                                nullptr);
   ASSERT_EQ(r, CUBEB_OK) << "Error initializing cubeb stream";

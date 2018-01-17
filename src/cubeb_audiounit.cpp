@@ -3340,7 +3340,7 @@ audiounit_collection_changed_callback(AudioObjectID /* inObjectID */,
           CFStringRef name = get_device_name(*it);
           if (CFStringFind(name, CFSTR("CubebAggregateDevice"), 0).location !=
               kCFNotFound) {
-            it = new_devices.erase(it++);
+            it = new_devices.erase(it);
           } else {
             it++;
           }
