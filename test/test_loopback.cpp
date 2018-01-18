@@ -186,6 +186,12 @@ long data_cb_loop_input_only(cubeb_stream * stream, void * user, const void * in
   struct user_state_loopback * u = (struct user_state_loopback *) user;
   T * ib = (T *) inputbuffer;
 
+  if (outputbuffer != NULL) {
+    // Can't assert as it needs to return, so expect to fail instead
+    EXPECT_EQ(outputbuffer, (void *) NULL) << "outputbuffer should be null in input only callback";
+    return CUBEB_ERROR;
+  }
+
   if (stream == NULL || inputbuffer == NULL) {
     return CUBEB_ERROR;
   }
