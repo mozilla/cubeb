@@ -2360,6 +2360,12 @@ audiounit_setup_stream(cubeb_stream * stm)
 {
   stm->mutex.assert_current_thread_owns();
 
+  if ((stm->input_stream_params.prefs & CUBEB_STREAM_PREF_LOOPBACK) ||
+      (stm->output_stream_params.prefs & CUBEB_STREAM_PREF_LOOPBACK)) {
+    LOG("(%p) Loopback not supported for audiounit.", stm);
+    return CUBEB_ERROR_NOT_SUPPORTED;
+  }
+
   int r = 0;
 
   device_info in_dev_info = stm->input_device;

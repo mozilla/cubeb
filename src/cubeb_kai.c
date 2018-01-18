@@ -171,6 +171,11 @@ kai_stream_init(cubeb * context, cubeb_stream ** stream,
   if (!output_stream_params)
     return CUBEB_ERROR_INVALID_PARAMETER;
 
+  // Loopback is unsupported
+  if (output_stream_params->prefs & CUBEB_STREAM_PREF_LOOPBACK) {
+    return CUBEB_ERROR_NOT_SUPPORTED;
+  }
+
   if (output_stream_params->channels < 1 ||
       output_stream_params->channels > MAX_CHANNELS)
     return CUBEB_ERROR_INVALID_FORMAT;
