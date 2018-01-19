@@ -207,6 +207,10 @@ struct cubeb_stream {
   cubeb_state_callback state_callback = nullptr;
   cubeb_data_callback data_callback = nullptr;
   wasapi_refill_callback refill_callback = nullptr;
+  /* True when a loopback device is requested with no output device. In this
+     case a dummy output device is opened to drive the loopback, but should not
+     be exposed. */
+  bool has_dummy_output = false;
   void * user_ptr = nullptr;
   /* Lifetime considerations:
      - client, render_client, audio_clock and audio_stream_volume are interface
@@ -564,9 +568,9 @@ refill(cubeb_stream * stm, void * input_buffer, long input_frames_count,
 {
   XASSERT(!stm->draining);
   /* If we need to upmix after resampling, resample into the mix buffer to
-     avoid a copy. */
+     avoid a copy. Avoid exposing output if it is a dummy stream. */
   void * dest = nullptr;
-  if (has_output(stm)) {
+  if (has_output(stm) && !stm->has_dummy_output) {
     if (cubeb_should_mix(&stm->output_stream_params, &stm->output_mix_params)) {
       dest = stm->mix_buffer.data();
     } else {
@@ -595,9 +599,10 @@ refill(cubeb_stream * stm, void * input_buffer, long input_frames_count,
 
   /* If this is not true, there will be glitches.
      It is alright to have produced less frames if we are draining, though. */
-  XASSERT(out_frames == output_frames_needed || stm->draining || !has_output(stm));
+  XASSERT(out_frames == output_frames_needed || stm->draining || !has_output(stm) || stm->has_dummy_output);
 
-  if (has_output(stm) && cubeb_should_mix(&stm->output_stream_params, &stm->output_mix_params)) {
+  // We don't bother mixing dummy output as it will be silenced, otherwise mix output if needed
+  if (!stm->has_dummy_output && has_output(stm) && cubeb_should_mix(&stm->output_stream_params, &stm->output_mix_params)) {
     XASSERT(dest == stm->mix_buffer.data());
     unsigned long dest_len = out_frames * stm->output_stream_params.channels;
     XASSERT(dest_len <= stm->mix_buffer.size() / stm->bytes_per_sample);
@@ -764,18 +769,36 @@ refill_callback_duplex(cubeb_stream * stm)
     return false;
   }
 
-  ALOGV("Duplex callback: input frames: %Iu, output frames: %Iu",
-        input_frames, output_frames);
+  if (stm->has_dummy_output) {
+    ALOGV("Duplex callback (dummy output): input frames: %Iu, output frames: %Iu",
+          input_frames, output_frames);
 
-  refill(stm,
-         stm->linear_input_buffer->data(),
-         input_frames,
-         output_buffer,
-         output_frames);
+    // We don't want to expose the dummy output to the callback so don't pass
+    // the output buffer (it will be released later with silence in it)
+    refill(stm,
+           stm->linear_input_buffer->data(),
+           input_frames,
+           nullptr,
+           0);
+  } else {
+    ALOGV("Duplex callback: input frames: %Iu, output frames: %Iu",
+          input_frames, output_frames);
+
+    refill(stm,
+           stm->linear_input_buffer->data(),
+           input_frames,
+           output_buffer,
+           output_frames);
+  }
 
   stm->linear_input_buffer->clear();
 
-  hr = stm->render_client->ReleaseBuffer(output_frames, 0);
+  if (stm->has_dummy_output) {
+    // If output is a dummy output, make sure it's silent
+    hr = stm->render_client->ReleaseBuffer(output_frames, AUDCLNT_BUFFERFLAGS_SILENT);
+  } else {
+    hr = stm->render_client->ReleaseBuffer(output_frames, 0);
+  }
   if (FAILED(hr)) {
     LOG("failed to release buffer: %lx", hr);
     return false;
@@ -1708,6 +1731,7 @@ int setup_wasapi_stream(cubeb_stream * stm)
   // If we don't have an output device but are requesting a loopback device,
   // we attempt to open that same device in output mode in order to drive the
   // loopback via the output events.
+  stm->has_dummy_output = false;
   if (!has_output(stm) && stm->input_stream_params.prefs & CUBEB_STREAM_PREF_LOOPBACK) {
     stm->output_stream_params.rate = stm->input_stream_params.rate;
     stm->output_stream_params.channels = stm->input_stream_params.channels;
@@ -1722,6 +1746,7 @@ int setup_wasapi_stream(cubeb_stream * stm)
       }
       stm->output_device = move(tmp);
     }
+    stm->has_dummy_output = true;
   }
 
   if (has_output(stm)) {
