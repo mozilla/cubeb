@@ -654,6 +654,21 @@ bool get_input_buffer(cubeb_stream * stm)
       return false;
     }
     XASSERT(packet_size == next);
+    // We do not explicitly handle the AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY
+    // flag. There a two primary (non exhaustive) scenarios we anticipate this
+    // flag being set in:
+    //   - The first GetBuffer after Start has this flag undefined. In this
+    //     case the flag may be set but is meaningless and can be ignored.
+    //   - If a glitch is introduced into the input. This should not happen
+    //     for event based inputs, and should be mitigated by using a dummy
+    //     stream to drive input in the case of input only loopback. Without
+    //     a dummy output, input only loopback would glitch on silence. However,
+    //     the dummy input should push silence to the loopback and prevent
+    //     discontinuities. See https://blogs.msdn.microsoft.com/matthew_van_eerde/2008/12/16/sample-wasapi-loopback-capture-record-what-you-hear/
+    // As the first scenario can be ignored, and we anticipate the second
+    // scenario is mitigated, we ignore the flag.
+    // For more info: https://msdn.microsoft.com/en-us/library/windows/desktop/dd370859(v=vs.85).aspx,
+    // https://msdn.microsoft.com/en-us/library/windows/desktop/dd371458(v=vs.85).aspx
     if (flags & AUDCLNT_BUFFERFLAGS_SILENT) {
       LOG("insert silence: ps=%u", packet_size);
       stm->linear_input_buffer->push_silence(packet_size * stm->input_stream_params.channels);
