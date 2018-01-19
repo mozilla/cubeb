@@ -366,8 +366,12 @@ typedef struct {
     @param output_buffer A pointer to a buffer to be filled with audio samples,
                          or nullptr if this is an input-only stream.
     @param nframes The number of frames of the two buffer.
-    @retval Number of frames written to the output buffer. If this number is
-            less than nframes, then the stream will start to drain.
+    @retval If the stream has output, this is the number of frames written to
+            the output buffer. In this case, if this number is less than
+            nframes then the stream will start to drain. If the stream is
+            input only, then returning nframes indicates data has been read.
+            In this case, a value less than nframes will result in the stream
+            being stopped.
     @retval CUBEB_ERROR on error, in which case the data callback will stop
             and the stream will enter a shutdown state. */
 typedef long (* cubeb_data_callback)(cubeb_stream * stream,
