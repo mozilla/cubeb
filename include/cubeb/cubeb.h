@@ -53,16 +53,18 @@ extern "C" {
     output_params.format = CUBEB_SAMPLE_FLOAT32NE;
     output_params.rate = rate;
     output_params.channels = 2;
+    output_params.prefs = CUBEB_STREAM_PREF_NONE;
 
     cubeb_stream_params input_params;
     input_params.format = CUBEB_SAMPLE_FLOAT32NE;
     input_params.rate = rate;
     input_params.channels = 1;
+    input_params.prefs = CUBEB_STREAM_PREF_NONE;
 
     cubeb_stream * stm;
     rv = cubeb_stream_init(app_ctx, &stm, "Example Stream 1",
-                           NULL, input_params,
-                           NULL, output_params,
+                           NULL, &input_params,
+                           NULL, &output_params,
                            latency_frames,
                            data_cb, state_cb,
                            NULL);

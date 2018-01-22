@@ -217,6 +217,7 @@ TEST(cubeb, run_deadlock_test)
   params.rate = 44100;
   params.channels = 2;
   params.layout = CUBEB_LAYOUT_STEREO;
+  params.prefs = CUBEB_STREAM_PREF_NONE;
 
   cubeb_stream * stream = NULL;
   int r = cubeb_stream_init(ctx, &stream, "test deadlock", NULL, NULL, NULL,

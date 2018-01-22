@@ -275,6 +275,7 @@ void run_loopback_duplex_test(bool is_float)
   output_params.rate = SAMPLE_FREQUENCY;
   output_params.channels = 1;
   output_params.layout = CUBEB_LAYOUT_MONO;
+  output_params.prefs = CUBEB_STREAM_PREF_NONE;
 
   std::unique_ptr<user_state_loopback> user_data(new user_state_loopback());
   ASSERT_TRUE(!!user_data) << "Error allocating user data";
