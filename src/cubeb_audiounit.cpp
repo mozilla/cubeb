@@ -1368,6 +1368,7 @@ audiounit_set_channel_layout(AudioUnit unit,
       layout->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_3_1;
       break;
     case CUBEB_LAYOUT_2F2:
+    case CUBEB_LAYOUT_QUAD:
       layout->mChannelLayoutTag = kAudioChannelLayoutTag_ITU_2_2;
       break;
     case CUBEB_LAYOUT_3F2:

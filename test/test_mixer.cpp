@@ -80,8 +80,10 @@ audio_input audio_inputs[CUBEB_LAYOUT_MAX] = {
   { CUBEB_LAYOUT_2F1_LFE,       { L, R, LFE, RC } },
   { CUBEB_LAYOUT_3F1,           { L, R, C, RC } },
   { CUBEB_LAYOUT_3F1_LFE,       { L, R, C, LFE, RC } },
-  { CUBEB_LAYOUT_2F2,           { L, R, LS, RS } },
-  { CUBEB_LAYOUT_2F2_LFE,       { L, R, LFE, LS, RS } },
+  { CUBEB_LAYOUT_2F2,           { L, R, RLS, RRS } },
+  { CUBEB_LAYOUT_2F2_LFE,       { L, R, LFE, RLS, RRS } },
+  { CUBEB_LAYOUT_QUAD,          { L, R, LS, RS } },
+  { CUBEB_LAYOUT_QUAD_LFE,      { L, R, LFE, LS, RS } },
   { CUBEB_LAYOUT_3F2,           { L, R, C, LS, RS } },
   { CUBEB_LAYOUT_3F2_LFE,       { L, R, C, LFE, LS, RS } },
   { CUBEB_LAYOUT_3F3R_LFE,      { L, R, C, LFE, RC, LS, RS } },
@@ -186,7 +188,7 @@ downmix_test(float const * data, cubeb_channel_layout in_layout, cubeb_channel_l
 
     // downmix_3f2
     if ((in_layout == CUBEB_LAYOUT_3F2 || in_layout == CUBEB_LAYOUT_3F2_LFE) &&
-        out_layout >= CUBEB_LAYOUT_MONO && out_layout <= CUBEB_LAYOUT_2F2_LFE) {
+        out_layout >= CUBEB_LAYOUT_MONO && out_layout <= CUBEB_LAYOUT_QUAD_LFE) {
       auto & downmix_results = DOWNMIX_3F2_RESULTS[in_layout - CUBEB_LAYOUT_3F2][out_layout - CUBEB_LAYOUT_MONO];
       fprintf(stderr, "\t[3f2] %d(%s) - Expect: %lf, Get: %lf\n", i, channel_names[ CHANNEL_INDEX_TO_ORDER[out_layout][index] ], downmix_results[index], out[i]);
       ASSERT_EQ(downmix_results[index], out[i]);
