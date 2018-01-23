@@ -183,6 +183,7 @@ struct cubeb_stream {
   AudioObjectID plugin_id = 0;              // used to create aggregate device
   /* Mixer interface */
   std::unique_ptr<cubeb_mixer, decltype(&cubeb_mixer_destroy)> mixer;
+  cubeb_stream_params mixer_params = { CUBEB_SAMPLE_FLOAT32NE, 0, 0, CUBEB_LAYOUT_UNDEFINED };
 };
 
 bool has_input(cubeb_stream * stm)
@@ -410,19 +411,14 @@ audiounit_mix_output_buffer(cubeb_stream * stm,
                             void * output_buffer,
                             unsigned long output_buffer_length)
 {
-  cubeb_stream_params output_mixer_params = {
-    stm->output_stream_params.format,
-    stm->output_stream_params.rate,
-    CUBEB_CHANNEL_LAYOUT_MAPS[stm->context->layout].channels,
-    stm->context->layout
-  };
-
+  assert(stm->output_stream_params.layout != CUBEB_LAYOUT_UNDEFINED);
+  assert(stm->mixer_params.layout != CUBEB_LAYOUT_UNDEFINED);
   // The downmixing(from 5.1) supports in-place conversion, so we can use
   // the same buffer for both input and output of the mixer.
   cubeb_mixer_mix(stm->mixer.get(), output_frames,
                   output_buffer, output_buffer_length,
                   output_buffer, output_buffer_length,
-                  &stm->output_stream_params, &output_mixer_params);
+                  &stm->output_stream_params, &stm->mixer_params);
 }
 
 static OSStatus
@@ -543,7 +539,8 @@ audiounit_output_callback(void * user_ptr,
   }
 
   /* Mixing */
-  if (stm->output_stream_params.layout != CUBEB_LAYOUT_UNDEFINED) {
+  if (stm->output_stream_params.layout != CUBEB_LAYOUT_UNDEFINED
+    && stm->mixer_params.layout != CUBEB_LAYOUT_UNDEFINED) {
     unsigned long output_buffer_length = outBufferList->mBuffers[0].mDataByteSize;
     audiounit_mix_output_buffer(stm, output_frames, output_buffer, output_buffer_length);
   }
@@ -1308,6 +1305,17 @@ audio_stream_desc_init(AudioStreamBasicDescription * ss,
 void
 audiounit_init_mixer(cubeb_stream * stm)
 {
+  // Mixer cannot do anything useful given an undefined layout
+  if (stm->context->layout == CUBEB_LAYOUT_UNDEFINED) {
+    LOG("(%p) Mixing is not possible to an undefined layout", stm);
+    return;
+  }
+  stm->mixer_params = {
+    stm->output_stream_params.format,
+    stm->output_stream_params.rate,
+    CUBEB_CHANNEL_LAYOUT_MAPS[stm->context->layout].channels,
+    stm->context->layout
+  };
   // We only handle downmixing for now.
   // The audio rendering mechanism on OS X will drop the extra channels beyond
   // the channels that audio device can provide, so we need to downmix the
