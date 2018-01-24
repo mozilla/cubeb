@@ -555,6 +555,10 @@ impl<'ctx> Stream<'ctx> {
                    stream_name: &CStr)
                    -> Result<pulse::Stream> {
 
+        if stream_params.prefs == cubeb::StreamPrefs::STREAM_PREF_LOOPBACK {
+            return Err(cubeb::ERROR_NOT_SUPPORTED);
+        }
+
         fn to_pulse_format(format: cubeb::SampleFormat) -> pulse::SampleFormat {
             match format {
                 cubeb::SAMPLE_S16LE => pulse::SampleFormat::Signed16LE,
