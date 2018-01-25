@@ -88,6 +88,8 @@ struct cubeb {
 
 struct cubeb_stream {
   cubeb * context;
+  /* User pointer for data & state callbacks*/
+  void * user_ptr;
   pthread_mutex_t mutex;
   SLObjectItf playerObj;
   SLPlayItf play;
@@ -148,8 +150,6 @@ struct cubeb_stream {
   cubeb_data_callback data_callback;
   /* Store state callback. */
   cubeb_state_callback state_callback;
-  /* User pointer for data & state callbacks*/
-  void * user_ptr;
 
   cubeb_resampler * resampler;
   unsigned int inputrate;

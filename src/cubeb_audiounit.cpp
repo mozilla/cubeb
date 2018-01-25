@@ -130,6 +130,9 @@ struct cubeb_stream {
   explicit cubeb_stream(cubeb * context);
 
   cubeb * context;
+  /* User pointer of data_callback */
+  void * user_ptr = nullptr;
+
   cubeb_data_callback data_callback = nullptr;
   cubeb_state_callback state_callback = nullptr;
   cubeb_device_changed_callback device_changed_callback = nullptr;
@@ -139,8 +142,6 @@ struct cubeb_stream {
   cubeb_stream_params output_stream_params = { CUBEB_SAMPLE_FLOAT32NE, 0, 0, CUBEB_LAYOUT_UNDEFINED, CUBEB_STREAM_PREF_NONE };
   device_info input_device;
   device_info output_device;
-  /* User pointer of data_callback */
-  void * user_ptr = nullptr;
   /* Format descriptions */
   AudioStreamBasicDescription input_desc;
   AudioStreamBasicDescription output_desc;

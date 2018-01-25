@@ -94,10 +94,10 @@ struct cubeb {
 
 struct cubeb_stream {
   cubeb * context;
+  void * user_ptr;
   cubeb_stream_params params;
   cubeb_data_callback data_callback;
   cubeb_state_callback state_callback;
-  void * user_ptr;
   WAVEHDR buffers[NBUFS];
   size_t buffer_size;
   int next_buffer;
