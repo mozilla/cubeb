@@ -3153,6 +3153,7 @@ audiounit_create_device_from_hwdev(cubeb_device_info * ret, AudioObjectID devid,
 
     if (str) {
       ret->friendly_name = audiounit_strref_to_cstr_utf8(str);
+      CFRelease(str);
     } else {
       // Couldn't get a friendly_name, nor a datasource name, return a valid
       // string of length 0.
@@ -3160,7 +3161,6 @@ audiounit_create_device_from_hwdev(cubeb_device_info * ret, AudioObjectID devid,
       fallback_name[0] = '\0';
       ret->friendly_name = fallback_name;
     }
-    CFRelease(str);
   }
 
   size = sizeof(CFStringRef);
