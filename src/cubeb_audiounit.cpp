@@ -3151,7 +3151,15 @@ audiounit_create_device_from_hwdev(cubeb_device_info * ret, AudioObjectID devid,
       }
     }
 
-    ret->friendly_name = audiounit_strref_to_cstr_utf8(str);
+    if (str) {
+      ret->friendly_name = audiounit_strref_to_cstr_utf8(str);
+    } else {
+      // Couldn't get a friendly_name, nor a datasource name, return a valid
+      // string of length 0.
+      char * fallback_name = new char[1];
+      fallback_name[0] = '\0';
+      ret->friendly_name = fallback_name;
+    }
     CFRelease(str);
   }
 
@@ -3192,6 +3200,7 @@ audiounit_create_device_from_hwdev(cubeb_device_info * ret, AudioObjectID devid,
 bool
 is_aggregate_device(cubeb_device_info * device_info)
 {
+  assert(device_info->friendly_name);
   return !strncmp(device_info->friendly_name, PRIVATE_AGGREGATE_DEVICE_NAME,
                   strlen(PRIVATE_AGGREGATE_DEVICE_NAME));
 }
