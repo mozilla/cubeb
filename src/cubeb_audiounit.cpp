@@ -414,7 +414,8 @@ audiounit_mix_output_buffer(cubeb_stream * stm,
     stm->output_stream_params.format,
     stm->output_stream_params.rate,
     CUBEB_CHANNEL_LAYOUT_MAPS[stm->context->layout].channels,
-    stm->context->layout
+    stm->context->layout,
+    CUBEB_STREAM_PREF_NONE
   };
 
   // The downmixing(from 5.1) supports in-place conversion, so we can use
