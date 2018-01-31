@@ -425,8 +425,6 @@ double stream_to_mix_samplerate_ratio(cubeb_stream_params & stream, cubeb_stream
 
 /* Convert the channel layout into the corresponding KSAUDIO_CHANNEL_CONFIG.
    See more: https://msdn.microsoft.com/en-us/library/windows/hardware/ff537083(v=vs.85).aspx */
-#define MASK_DUAL_MONO      (SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT)
-#define MASK_DUAL_MONO_LFE  (MASK_DUAL_MONO | SPEAKER_LOW_FREQUENCY)
 #define MASK_MONO           (KSAUDIO_SPEAKER_MONO)
 #define MASK_MONO_LFE       (MASK_MONO | SPEAKER_LOW_FREQUENCY)
 #define MASK_STEREO         (KSAUDIO_SPEAKER_STEREO)
@@ -456,8 +454,6 @@ channel_layout_to_mask(cubeb_channel_layout layout)
   // Use static to allocate this local variable in data space instead of stack.
   static DWORD map[CUBEB_LAYOUT_MAX] = {
     KSAUDIO_SPEAKER_DIRECTOUT, // CUBEB_LAYOUT_UNDEFINED
-    MASK_DUAL_MONO,            // CUBEB_LAYOUT_DUAL_MONO
-    MASK_DUAL_MONO_LFE,        // CUBEB_LAYOUT_DUAL_MONO_LFE
     MASK_MONO,                 // CUBEB_LAYOUT_MONO
     MASK_MONO_LFE,             // CUBEB_LAYOUT_MONO_LFE
     MASK_STEREO,               // CUBEB_LAYOUT_STEREO
@@ -498,7 +494,6 @@ mask_to_channel_layout(WAVEFORMATEX const * fmt)
   }
 
   switch (mask) {
-    // MASK_DUAL_MONO(_LFE) is same as STEREO(_LFE), so we skip it.
     case MASK_MONO: return CUBEB_LAYOUT_MONO;
     case MASK_MONO_LFE: return CUBEB_LAYOUT_MONO_LFE;
     case MASK_STEREO: return CUBEB_LAYOUT_STEREO;

@@ -68,8 +68,6 @@ typedef struct {
 
 audio_input audio_inputs[CUBEB_LAYOUT_MAX] = {
   { CUBEB_LAYOUT_UNDEFINED,     { } },
-  { CUBEB_LAYOUT_DUAL_MONO,     { L, R } },
-  { CUBEB_LAYOUT_DUAL_MONO_LFE, { L, R, LFE } },
   { CUBEB_LAYOUT_MONO,          { M } },
   { CUBEB_LAYOUT_MONO_LFE,      { M, LFE } },
   { CUBEB_LAYOUT_STEREO,        { L, R } },
