@@ -1444,43 +1444,6 @@ wasapi_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
   return CUBEB_OK;
 }
 
-int
-wasapi_get_preferred_channel_layout(cubeb * context, cubeb_channel_layout * layout)
-{
-  HRESULT hr;
-  auto_com com;
-  if (!com.ok()) {
-    return CUBEB_ERROR;
-  }
-
-  com_ptr<IMMDevice> device;
-  hr = get_default_endpoint(device, eRender);
-  if (FAILED(hr)) {
-    return CUBEB_ERROR;
-  }
-
-  com_ptr<IAudioClient> client;
-  hr = device->Activate(__uuidof(IAudioClient),
-                        CLSCTX_INPROC_SERVER,
-                        NULL, client.receive_vpp());
-  if (FAILED(hr)) {
-    return CUBEB_ERROR;
-  }
-
-  WAVEFORMATEX * tmp = nullptr;
-  hr = client->GetMixFormat(&tmp);
-  if (FAILED(hr)) {
-    return CUBEB_ERROR;
-  }
-  com_heap_ptr<WAVEFORMATEX> mix_format(tmp);
-
-  *layout = mask_to_channel_layout(mix_format.get());
-
-  LOG("Preferred channel layout: %s", CUBEB_CHANNEL_LAYOUT_MAPS[*layout].name);
-
-  return CUBEB_OK;
-}
-
 void wasapi_stream_destroy(cubeb_stream * stm);
 
 static void
@@ -2508,7 +2471,6 @@ cubeb_ops const wasapi_ops = {
   /*.get_max_channel_count =*/ wasapi_get_max_channel_count,
   /*.get_min_latency =*/ wasapi_get_min_latency,
   /*.get_preferred_sample_rate =*/ wasapi_get_preferred_sample_rate,
-  /*.get_preferred_channel_layout =*/ wasapi_get_preferred_channel_layout,
   /*.enumerate_devices =*/ wasapi_enumerate_devices,
   /*.device_collection_destroy =*/ wasapi_device_collection_destroy,
   /*.destroy =*/ wasapi_destroy,

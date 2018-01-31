@@ -533,25 +533,6 @@ cubeb_channel_to_pa_channel(cubeb_channel channel)
   return map[channel];
 }
 
-static cubeb_channel
-pa_channel_to_cubeb_channel(pa_channel_position_t channel)
-{
-  assert(channel != PA_CHANNEL_POSITION_INVALID);
-  switch(channel) {
-    case PA_CHANNEL_POSITION_MONO: return CHANNEL_MONO;
-    case PA_CHANNEL_POSITION_FRONT_LEFT: return CHANNEL_LEFT;
-    case PA_CHANNEL_POSITION_FRONT_RIGHT: return CHANNEL_RIGHT;
-    case PA_CHANNEL_POSITION_FRONT_CENTER: return CHANNEL_CENTER;
-    case PA_CHANNEL_POSITION_SIDE_LEFT: return CHANNEL_LS;
-    case PA_CHANNEL_POSITION_SIDE_RIGHT: return CHANNEL_RS;
-    case PA_CHANNEL_POSITION_REAR_LEFT: return CHANNEL_RLS;
-    case PA_CHANNEL_POSITION_REAR_CENTER: return CHANNEL_RCENTER;
-    case PA_CHANNEL_POSITION_REAR_RIGHT: return CHANNEL_RRS;
-    case PA_CHANNEL_POSITION_LFE: return CHANNEL_LFE;
-    default: return CHANNEL_INVALID;
-  }
-}
-
 static void
 layout_to_channel_map(cubeb_channel_layout layout, pa_channel_map * cm)
 {
@@ -562,17 +543,6 @@ layout_to_channel_map(cubeb_channel_layout layout, pa_channel_map * cm)
   for (uint8_t i = 0 ; i < cm->channels ; ++i) {
     cm->map[i] = cubeb_channel_to_pa_channel(CHANNEL_INDEX_TO_ORDER[layout][i]);
   }
-}
-
-static cubeb_channel_layout
-channel_map_to_layout(pa_channel_map * cm)
-{
-  cubeb_channel_map cubeb_map;
-  cubeb_map.channels = cm->channels;
-  for (uint32_t i = 0 ; i < cm->channels ; ++i) {
-    cubeb_map.map[i] = pa_channel_to_cubeb_channel(cm->map[i]);
-  }
-  return cubeb_channel_map_to_layout(&cubeb_map);
 }
 
 static void pulse_context_destroy(cubeb * ctx);
@@ -710,20 +680,6 @@ pulse_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
     return CUBEB_ERROR;
 
   *rate = ctx->default_sink_info->sample_spec_rate;
-
-  return CUBEB_OK;
-}
-
-static int
-pulse_get_preferred_channel_layout(cubeb * ctx, cubeb_channel_layout * layout)
-{
-  assert(ctx && layout);
-  (void)ctx;
-
-  if (!ctx->default_sink_info)
-    return CUBEB_ERROR;
-
-  *layout = channel_map_to_layout(&ctx->default_sink_info->channel_map);
 
   return CUBEB_OK;
 }
@@ -1588,7 +1544,6 @@ static struct cubeb_ops const pulse_ops = {
   .get_max_channel_count = pulse_get_max_channel_count,
   .get_min_latency = pulse_get_min_latency,
   .get_preferred_sample_rate = pulse_get_preferred_sample_rate,
-  .get_preferred_channel_layout = pulse_get_preferred_channel_layout,
   .enumerate_devices = pulse_enumerate_devices,
   .device_collection_destroy = pulse_device_collection_destroy,
   .destroy = pulse_destroy,

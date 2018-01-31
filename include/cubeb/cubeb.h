@@ -454,15 +454,6 @@ CUBEB_EXPORT int cubeb_get_min_latency(cubeb * context,
     @retval CUBEB_ERROR_NOT_SUPPORTED */
 CUBEB_EXPORT int cubeb_get_preferred_sample_rate(cubeb * context, uint32_t * rate);
 
-/** Get the preferred layout for this backend: this is hardware and
-    platform dependent.
-    @param context A pointer to the cubeb context.
-    @param layout The layout of the current speaker configuration.
-    @retval CUBEB_OK
-    @retval CUBEB_ERROR_INVALID_PARAMETER
-    @retval CUBEB_ERROR_NOT_SUPPORTED */
-CUBEB_EXPORT int cubeb_get_preferred_channel_layout(cubeb * context, cubeb_channel_layout * layout);
-
 /** Destroy an application context. This must be called after all stream have
  *  been destroyed.
     @param context A pointer to the cubeb context.*/
