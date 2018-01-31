@@ -194,8 +194,6 @@ typedef enum {
 
 typedef enum {
   CUBEB_LAYOUT_UNDEFINED, // Indicate the speaker's layout is undefined.
-  CUBEB_LAYOUT_DUAL_MONO,
-  CUBEB_LAYOUT_DUAL_MONO_LFE,
   CUBEB_LAYOUT_MONO,
   CUBEB_LAYOUT_MONO_LFE,
   CUBEB_LAYOUT_STEREO,
