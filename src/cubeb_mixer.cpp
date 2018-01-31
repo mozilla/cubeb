@@ -9,7 +9,6 @@
 #include "cubeb-internal.h"
 #include "cubeb_mixer.h"
 
-// DUAL_MONO(_LFE) is same as STEREO(_LFE).
 #define MASK_MONO         (1 << CHANNEL_MONO)
 #define MASK_MONO_LFE     (MASK_MONO | (1 << CHANNEL_LFE))
 #define MASK_STEREO       ((1 << CHANNEL_LEFT) | (1 << CHANNEL_RIGHT))
@@ -65,8 +64,6 @@ cubeb_channel_layout cubeb_channel_map_to_layout(cubeb_channel_map const * chann
 
 cubeb_layout_map const CUBEB_CHANNEL_LAYOUT_MAPS[CUBEB_LAYOUT_MAX] = {
   { "undefined",      0,  CUBEB_LAYOUT_UNDEFINED },
-  { "dual mono",      2,  CUBEB_LAYOUT_DUAL_MONO },
-  { "dual mono lfe",  3,  CUBEB_LAYOUT_DUAL_MONO_LFE },
   { "mono",           1,  CUBEB_LAYOUT_MONO },
   { "mono lfe",       2,  CUBEB_LAYOUT_MONO_LFE },
   { "stereo",         2,  CUBEB_LAYOUT_STEREO },
@@ -90,8 +87,6 @@ cubeb_layout_map const CUBEB_CHANNEL_LAYOUT_MAPS[CUBEB_LAYOUT_MAX] = {
 static int const CHANNEL_ORDER_TO_INDEX[CUBEB_LAYOUT_MAX][CHANNEL_MAX] = {
 //  M | L | R | C | LS | RS | RLS | RC | RRS | LFE
   { -1, -1, -1, -1,  -1,  -1,   -1,  -1,   -1,  -1 }, // UNDEFINED
-  { -1,  0,  1, -1,  -1,  -1,   -1,  -1,   -1,  -1 }, // DUAL_MONO
-  { -1,  0,  1, -1,  -1,  -1,   -1,  -1,   -1,   2 }, // DUAL_MONO_LFE
   {  0, -1, -1, -1,  -1,  -1,   -1,  -1,   -1,  -1 }, // MONO
   {  0, -1, -1, -1,  -1,  -1,   -1,  -1,   -1,   1 }, // MONO_LFE
   { -1,  0,  1, -1,  -1,  -1,   -1,  -1,   -1,  -1 }, // STEREO

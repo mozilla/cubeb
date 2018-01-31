@@ -1339,7 +1339,6 @@ audiounit_set_channel_layout(AudioUnit unit,
   auto layout = make_sized_audio_channel_layout(size);
 
   switch (stream_params->layout) {
-    case CUBEB_LAYOUT_DUAL_MONO:
     case CUBEB_LAYOUT_STEREO:
       layout->mChannelLayoutTag = kAudioChannelLayoutTag_Stereo;
       break;
