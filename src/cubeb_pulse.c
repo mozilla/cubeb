@@ -715,20 +715,6 @@ pulse_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
 }
 
 static int
-pulse_get_preferred_channel_layout(cubeb * ctx, cubeb_channel_layout * layout)
-{
-  assert(ctx && layout);
-  (void)ctx;
-
-  if (!ctx->default_sink_info)
-    return CUBEB_ERROR;
-
-  *layout = channel_map_to_layout(&ctx->default_sink_info->channel_map);
-
-  return CUBEB_OK;
-}
-
-static int
 pulse_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * latency_frames)
 {
   (void)ctx;
@@ -1588,7 +1574,6 @@ static struct cubeb_ops const pulse_ops = {
   .get_max_channel_count = pulse_get_max_channel_count,
   .get_min_latency = pulse_get_min_latency,
   .get_preferred_sample_rate = pulse_get_preferred_sample_rate,
-  .get_preferred_channel_layout = pulse_get_preferred_channel_layout,
   .enumerate_devices = pulse_enumerate_devices,
   .device_collection_destroy = pulse_device_collection_destroy,
   .destroy = pulse_destroy,
