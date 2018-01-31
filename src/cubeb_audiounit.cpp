@@ -1188,75 +1188,7 @@ audiounit_get_current_channel_layout(AudioUnit output_unit)
   return audiounit_convert_channel_layout(layout.get());
 }
 
-static cubeb_channel_layout
-audiounit_get_preferred_channel_layout()
-{
-  OSStatus rv = noErr;
-  UInt32 size = 0;
-  AudioDeviceID id;
-
-  id = audiounit_get_default_device_id(CUBEB_DEVICE_TYPE_OUTPUT);
-  if (id == kAudioObjectUnknown) {
-    return CUBEB_LAYOUT_UNDEFINED;
-  }
-
-  AudioObjectPropertyAddress adr = { kAudioDevicePropertyPreferredChannelLayout,
-                                     kAudioDevicePropertyScopeOutput,
-                                     kAudioObjectPropertyElementMaster };
-  rv = AudioObjectGetPropertyDataSize(id, &adr, 0, NULL, &size);
-  if (rv != noErr) {
-    return CUBEB_LAYOUT_UNDEFINED;
-  }
-  assert(size > 0);
-
-  auto layout = make_sized_audio_channel_layout(size);
-  rv = AudioObjectGetPropertyData(id, &adr, 0, NULL, &size, layout.get());
-  if (rv != noErr) {
-    return CUBEB_LAYOUT_UNDEFINED;
-  }
-
-  return audiounit_convert_channel_layout(layout.get());
-}
-
 static int audiounit_create_unit(AudioUnit * unit, device_info * device);
-
-static int
-audiounit_get_preferred_channel_layout(cubeb * ctx, cubeb_channel_layout * layout)
-{
-  // The preferred layout is only returned when the connected sound device
-  // (e.g. ASUS Xonar U7), has preferred layout setting.
-  // For default output on Mac, there is no preferred channel layout,
-  // so it might return UNDEFINED.
-  *layout = audiounit_get_preferred_channel_layout();
-
-  // If the preferred channel layout is UNDEFINED, then we try to access the
-  // current applied channel layout.
-  if (*layout == CUBEB_LAYOUT_UNDEFINED) {
-    // If we already have at least one cubeb stream, then the current channel
-    // layout must be updated. We can return it directly.
-    if (ctx->active_streams) {
-      *layout = ctx->layout;
-      return CUBEB_OK;
-    }
-
-    // If there is no existed stream, then we create a default ouput unit and
-    // use it to get the current used channel layout.
-    AudioUnit output_unit = nullptr;
-    device_info default_out_device;
-    default_out_device.id = audiounit_get_default_device_id(CUBEB_DEVICE_TYPE_OUTPUT);
-    default_out_device.flags = (DEV_OUTPUT | DEV_SYSTEM_DEFAULT);
-    if (default_out_device.id != kAudioObjectUnknown) {
-      audiounit_create_unit(&output_unit, &default_out_device);
-      *layout = audiounit_get_current_channel_layout(output_unit);
-    }
-  }
-
-  if (*layout == CUBEB_LAYOUT_UNDEFINED) {
-    return CUBEB_ERROR;
-  }
-
-  return CUBEB_OK;
-}
 
 static OSStatus audiounit_remove_device_listener(cubeb * context);
 
@@ -3480,7 +3412,6 @@ cubeb_ops const audiounit_ops = {
   /*.get_max_channel_count =*/ audiounit_get_max_channel_count,
   /*.get_min_latency =*/ audiounit_get_min_latency,
   /*.get_preferred_sample_rate =*/ audiounit_get_preferred_sample_rate,
-  /*.get_preferred_channel_layout =*/ audiounit_get_preferred_channel_layout,
   /*.enumerate_devices =*/ audiounit_enumerate_devices,
   /*.device_collection_destroy =*/ audiounit_device_collection_destroy,
   /*.destroy =*/ audiounit_destroy,
