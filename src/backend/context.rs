@@ -218,13 +218,6 @@ impl ContextOps for PulseContext {
         }
     }
 
-    fn preferred_channel_layout(&mut self) -> Result<ChannelLayout> {
-        match self.default_sink_info {
-            Some(ref info) => Ok(channel_map_to_layout(&info.channel_map)),
-            None => Err(Error::error()),
-        }
-    }
-
     fn enumerate_devices(
         &mut self,
         devtype: DeviceType,
