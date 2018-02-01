@@ -17,8 +17,7 @@ extern "C" {
 
 typedef enum {
   CHANNEL_INVALID = -1,
-  CHANNEL_MONO = 0,
-  CHANNEL_LEFT,
+  CHANNEL_LEFT = 0,
   CHANNEL_RIGHT,
   CHANNEL_CENTER,
   CHANNEL_LS,
@@ -33,8 +32,8 @@ typedef enum {
 
 static cubeb_channel const CHANNEL_INDEX_TO_ORDER[CUBEB_LAYOUT_MAX][CHANNEL_MAX] = {
   { CHANNEL_INVALID },                                                                                            // UNDEFINED
-  { CHANNEL_MONO },                                                                                               // MONO
-  { CHANNEL_MONO, CHANNEL_LFE },                                                                                  // MONO_LFE
+  { CHANNEL_CENTER },                                                                                             // MONO
+  { CHANNEL_CENTER, CHANNEL_LFE },                                                                                // MONO_LFE
   { CHANNEL_LEFT, CHANNEL_RIGHT },                                                                                // STEREO
   { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_LFE },                                                                   // STEREO_LFE
   { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_CENTER },                                                                // 3F
