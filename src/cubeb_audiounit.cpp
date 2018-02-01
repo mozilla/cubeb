@@ -204,7 +204,7 @@ cubeb_channel
 channel_label_to_cubeb_channel(UInt32 label)
 {
   switch (label) {
-    case kAudioChannelLabel_Mono: return CHANNEL_MONO;
+    case kAudioChannelLabel_Mono: return CHANNEL_CENTER;
     case kAudioChannelLabel_Left: return CHANNEL_LEFT;
     case kAudioChannelLabel_Right: return CHANNEL_RIGHT;
     case kAudioChannelLabel_Center: return CHANNEL_CENTER;
@@ -223,7 +223,6 @@ AudioChannelLabel
 cubeb_channel_to_channel_label(cubeb_channel channel)
 {
   switch (channel) {
-    case CHANNEL_MONO: return kAudioChannelLabel_Mono;
     case CHANNEL_LEFT: return kAudioChannelLabel_Left;
     case CHANNEL_RIGHT: return kAudioChannelLabel_Right;
     case CHANNEL_CENTER: return kAudioChannelLabel_Center;
