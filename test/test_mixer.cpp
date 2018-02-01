@@ -93,7 +93,6 @@ audio_input audio_inputs[CUBEB_LAYOUT_MAX] = {
 };
 
 char const * channel_names[CHANNEL_UNMAPPED + 1] = {
-  "mono",                   // CHANNEL_MONO
   "left",                   // CHANNEL_LEFT
   "right",                  // CHANNEL_RIGHT
   "center",                 // CHANNEL_CENTER

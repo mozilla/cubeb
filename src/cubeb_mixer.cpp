@@ -9,7 +9,7 @@
 #include "cubeb-internal.h"
 #include "cubeb_mixer.h"
 
-#define MASK_MONO         (1 << CHANNEL_MONO)
+#define MASK_MONO         (1 << CHANNEL_CENTER)
 #define MASK_MONO_LFE     (MASK_MONO | (1 << CHANNEL_LFE))
 #define MASK_STEREO       ((1 << CHANNEL_LEFT) | (1 << CHANNEL_RIGHT))
 #define MASK_STEREO_LFE   (MASK_STEREO | (1 << CHANNEL_LFE))

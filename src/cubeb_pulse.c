@@ -518,7 +518,6 @@ cubeb_channel_to_pa_channel(cubeb_channel channel)
   // Use static to allocate this local variable in data space instead of stack.
   static pa_channel_position_t map[CHANNEL_MAX] = {
     // PA_CHANNEL_POSITION_INVALID,      // CHANNEL_INVALID
-    PA_CHANNEL_POSITION_MONO,         // CHANNEL_MONO
     PA_CHANNEL_POSITION_FRONT_LEFT,   // CHANNEL_LEFT
     PA_CHANNEL_POSITION_FRONT_RIGHT,  // CHANNEL_RIGHT
     PA_CHANNEL_POSITION_FRONT_CENTER, // CHANNEL_CENTER
