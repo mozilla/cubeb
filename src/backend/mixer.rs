@@ -3,9 +3,7 @@
 // This program is made available under an ISC-style license.  See the
 // accompanying file LICENSE for details.
 
-use cubeb_backend::ffi::{cubeb_channel, CHANNEL_CENTER, CHANNEL_INVALID, CHANNEL_LEFT, CHANNEL_LFE, CHANNEL_LS,
-                         CHANNEL_MONO, CHANNEL_RCENTER, CHANNEL_RIGHT, CHANNEL_RLS, CHANNEL_RRS, CHANNEL_RS};
-use cubeb_core::ffi::*;
+use cubeb_backend::ffi::*;
 
 static CHANNEL_LAYOUT_UNDEFINED: &'static [cubeb_channel] = &[CHANNEL_INVALID];
 static CHANNEL_LAYOUT_DUAL_MONO: &'static [cubeb_channel] = &[CHANNEL_LEFT, CHANNEL_RIGHT];

@@ -1,12 +1,11 @@
-// Copyright © 2017 Mozilla Foundation
+// Copyright © 2017-2018 Mozilla Foundation
 //
 // This program is made available under an ISC-style license.  See the
 // accompanying file LICENSE for details.
 
 use backend::*;
-use cubeb_backend::{Context, Ops};
-use cubeb_backend::ffi::cubeb_channel;
-use cubeb_core::{ffi, DeviceId, DeviceType, Error, Result, StreamParams, DEVICE_TYPE_INPUT, DEVICE_TYPE_OUTPUT};
+use cubeb_backend::{ffi, log_enabled, ChannelLayout, Context, ContextOps, DeviceCollectionRef, DeviceId, DeviceType,
+                    Error, Ops, Result, Stream, StreamParams, StreamParamsRef};
 use pulse::{self, ProplistExt};
 use pulse_ffi::*;
 use semver;
@@ -17,7 +16,7 @@ use std::mem;
 use std::os::raw::c_void;
 use std::ptr;
 
-fn pa_channel_to_cubeb_channel(channel: pulse::ChannelPosition) -> cubeb_channel {
+fn pa_channel_to_cubeb_channel(channel: pulse::ChannelPosition) -> ffi::cubeb_channel {
     use cubeb_backend::ffi::*;
     use pulse::ChannelPosition;
     assert_ne!(channel, ChannelPosition::Invalid);
@@ -36,7 +35,7 @@ fn pa_channel_to_cubeb_channel(channel: pulse::ChannelPosition) -> cubeb_channel
     }
 }
 
-fn channel_map_to_layout(cm: &pulse::ChannelMap) -> ffi::cubeb_channel_layout {
+fn channel_map_to_layout(cm: &pulse::ChannelMap) -> ChannelLayout {
     use cubeb_backend::ffi::{cubeb_channel_map, cubeb_channel_map_to_layout};
     use pulse::ChannelPosition;
     let mut cubeb_map: cubeb_channel_map = unsafe { mem::zeroed() };
@@ -45,7 +44,7 @@ fn channel_map_to_layout(cm: &pulse::ChannelMap) -> ffi::cubeb_channel_layout {
         cubeb_map.map[i] =
             pa_channel_to_cubeb_channel(ChannelPosition::try_from(cm.map[i]).unwrap_or(ChannelPosition::Invalid));
     }
-    unsafe { cubeb_channel_map_to_layout(&cubeb_map) }
+    ChannelLayout::from(unsafe { cubeb_channel_map_to_layout(&cubeb_map) })
 }
 
 #[derive(Debug)]
@@ -64,7 +63,7 @@ pub struct PulseContext {
     pub context: Option<pulse::Context>,
     pub default_sink_info: Option<DefaultInfo>,
     pub context_name: Option<CString>,
-    pub collection_changed_callback: Option<ffi::cubeb_device_collection_changed_callback>,
+    pub collection_changed_callback: ffi::cubeb_device_collection_changed_callback,
     pub collection_changed_user_ptr: *mut c_void,
     pub error: bool,
     pub version_2_0_0: bool,
@@ -78,7 +77,7 @@ impl PulseContext {
     fn _new(name: Option<CString>) -> Result<Box<Self>> {
         let libpulse = unsafe { open() };
         if libpulse.is_none() {
-            return Err(Error::new());
+            return Err(Error::error());
         }
 
         let ctx = Box::new(PulseContext {
@@ -140,12 +139,12 @@ impl PulseContext {
 
         if ctx.mainloop.start().is_err() {
             ctx.destroy();
-            return Err(Error::new());
+            return Err(Error::error());
         }
 
         if ctx.context_init().is_err() {
             ctx.destroy();
-            return Err(Error::new());
+            return Err(Error::error());
         }
 
         ctx.mainloop.lock();
@@ -173,43 +172,43 @@ impl PulseContext {
     }
 }
 
-impl Context for PulseContext {
-    fn init(context_name: Option<&CStr>) -> Result<*mut ffi::cubeb> {
+impl ContextOps for PulseContext {
+    fn init(context_name: Option<&CStr>) -> Result<Context> {
         let ctx = try!(PulseContext::new(context_name));
-        Ok(Box::into_raw(ctx) as *mut _)
+        Ok(unsafe { Context::from_ptr(Box::into_raw(ctx) as *mut _) })
     }
 
-    fn backend_id(&self) -> &'static CStr {
+    fn backend_id(&mut self) -> &'static CStr {
         unsafe { CStr::from_ptr(b"pulse-rust\0".as_ptr() as *const _) }
     }
 
-    fn max_channel_count(&self) -> Result<u32> {
+    fn max_channel_count(&mut self) -> Result<u32> {
         match self.default_sink_info {
             Some(ref info) => Ok(u32::from(info.channel_map.channels)),
-            None => Err(Error::new()),
+            None => Err(Error::error()),
         }
     }
 
-    fn min_latency(&self, params: &StreamParams) -> Result<u32> {
+    fn min_latency(&mut self, params: StreamParams) -> Result<u32> {
         // According to PulseAudio developers, this is a safe minimum.
         Ok(25 * params.rate() / 1000)
     }
 
-    fn preferred_sample_rate(&self) -> Result<u32> {
+    fn preferred_sample_rate(&mut self) -> Result<u32> {
         match self.default_sink_info {
             Some(ref info) => Ok(info.sample_spec.rate),
-            None => Err(Error::new()),
+            None => Err(Error::error()),
         }
     }
 
-    fn preferred_channel_layout(&self) -> Result<ffi::cubeb_channel_layout> {
+    fn preferred_channel_layout(&mut self) -> Result<ChannelLayout> {
         match self.default_sink_info {
             Some(ref info) => Ok(channel_map_to_layout(&info.channel_map)),
-            None => Err(Error::new()),
+            None => Err(Error::error()),
         }
     }
 
-    fn enumerate_devices(&self, devtype: DeviceType) -> Result<ffi::cubeb_device_collection> {
+    fn enumerate_devices(&mut self, devtype: DeviceType, collection: &DeviceCollectionRef) -> Result<()> {
         fn add_output_device(_: &pulse::Context, i: *const pulse::SinkInfo, eol: i32, user_data: *mut c_void) {
             let list_data = unsafe { &mut *(user_data as *mut PulseDevListData) };
             let ctx = &(*list_data.context);
@@ -345,13 +344,13 @@ impl Context for PulseContext {
                 self.operation_wait(None, &o);
             }
 
-            if devtype.contains(DEVICE_TYPE_OUTPUT) {
+            if devtype.contains(DeviceType::OUTPUT) {
                 if let Ok(o) = context.get_sink_info_list(add_output_device, &mut user_data as *mut _ as *mut _) {
                     self.operation_wait(None, &o);
                 }
             }
 
-            if devtype.contains(DEVICE_TYPE_INPUT) {
+            if devtype.contains(DeviceType::INPUT) {
                 if let Ok(o) = context.get_source_info_list(add_input_device, &mut user_data as *mut _ as *mut _) {
                     self.operation_wait(None, &o);
                 }
@@ -364,21 +363,20 @@ impl Context for PulseContext {
         // PulseDevListData and convert it into C representation.
         let mut tmp = Vec::new();
         mem::swap(&mut user_data.devinfo, &mut tmp);
-        let devices = tmp.into_boxed_slice();
-        let coll = ffi::cubeb_device_collection {
-            count: devices.len(),
-            device: devices.as_ptr(),
-        };
+        let mut devices = tmp.into_boxed_slice();
+        let coll = unsafe { &mut *collection.as_ptr() };
+        coll.device = devices.as_mut_ptr();
+        coll.count = devices.len();
 
         // Giving away the memory owned by devices.  Don't free it!
         mem::forget(devices);
-        Ok(coll)
+        Ok(())
     }
 
-    fn device_collection_destroy(&self, collection: *mut ffi::cubeb_device_collection) {
-        debug_assert!(!collection.is_null());
+    fn device_collection_destroy(&mut self, collection: &mut DeviceCollectionRef) -> Result<()> {
+        debug_assert!(!collection.as_ptr().is_null());
         unsafe {
-            let coll = &mut *collection;
+            let coll = &mut *collection.as_ptr();
             let mut devices = Vec::from_raw_parts(
                 coll.device as *mut ffi::cubeb_device_info,
                 coll.count,
@@ -395,7 +393,10 @@ impl Context for PulseContext {
                     let _ = CString::from_raw(dev.friendly_name as *mut _);
                 }
             }
+            coll.device = ptr::null_mut();
+            coll.count = 0;
         }
+        Ok(())
     }
 
     #[cfg_attr(feature = "cargo-clippy", allow(too_many_arguments))]
@@ -403,21 +404,19 @@ impl Context for PulseContext {
         &mut self,
         stream_name: Option<&CStr>,
         input_device: DeviceId,
-        input_stream_params: Option<&ffi::cubeb_stream_params>,
+        input_stream_params: Option<&StreamParamsRef>,
         output_device: DeviceId,
-        output_stream_params: Option<&ffi::cubeb_stream_params>,
+        output_stream_params: Option<&StreamParamsRef>,
         latency_frames: u32,
         data_callback: ffi::cubeb_data_callback,
         state_callback: ffi::cubeb_state_callback,
         user_ptr: *mut c_void,
-    ) -> Result<*mut ffi::cubeb_stream> {
+    ) -> Result<Stream> {
         if self.error {
-            return Err(Error::new());
+            let _ = try!(self.context_init());
         }
 
-        let _ = try!(self.context_init());
-
-        PulseStream::new(
+        let stm = try!(PulseStream::new(
             self,
             stream_name,
             input_device,
@@ -428,7 +427,8 @@ impl Context for PulseContext {
             data_callback,
             state_callback,
             user_ptr,
-        )
+        ));
+        Ok(unsafe { Stream::from_ptr(Box::into_raw(stm) as *mut _) })
     }
 
     fn register_device_collection_changed(
@@ -437,14 +437,13 @@ impl Context for PulseContext {
         cb: ffi::cubeb_device_collection_changed_callback,
         user_ptr: *mut c_void,
     ) -> Result<()> {
-        fn update_collection(_: &pulse::Context, event: pulse::SubscriptionEvent, _index: u32, user_data: *mut c_void) {
+        fn update_collection(_: &pulse::Context, event: pulse::SubscriptionEvent, index: u32, user_data: *mut c_void) {
             let ctx = unsafe { &mut *(user_data as *mut PulseContext) };
 
             let (f, t) = (event.event_facility(), event.event_type());
             if (f == pulse::SubscriptionEventFacility::Source) | (f == pulse::SubscriptionEventFacility::Sink) {
                 if (t == pulse::SubscriptionEventType::Remove) | (t == pulse::SubscriptionEventType::New) {
-                    // TODO: Enable logging once it's moved from cubeb-api to cubeb-core
-                    /*if cubeb::log_enabled() {
+                    if log_enabled() {
                         let op = if t == pulse::SubscriptionEventType::New {
                             "Adding"
                         } else {
@@ -455,9 +454,14 @@ impl Context for PulseContext {
                         } else {
                             "source "
                         };
-                        log!("{} {} index {}", op, dev, index);
-                    }*/
-                    ctx.collection_changed_callback.unwrap()(ctx as *mut _ as *mut _, ctx.collection_changed_user_ptr);
+                        cubeb_log!("{} {} index {}", op, dev, index);
+                    }
+                    unsafe {
+                        ctx.collection_changed_callback.unwrap()(
+                            ctx as *mut _ as *mut _,
+                            ctx.collection_changed_user_ptr,
+                        );
+                    }
                 }
             }
         }
@@ -468,7 +472,7 @@ impl Context for PulseContext {
             ctx.mainloop.signal();
         }
 
-        self.collection_changed_callback = Some(cb);
+        self.collection_changed_callback = cb;
         self.collection_changed_user_ptr = user_ptr;
 
         let user_data: *mut c_void = self as *const _ as *mut _;
@@ -481,10 +485,10 @@ impl Context for PulseContext {
                 context.clear_subscribe_callback();
             } else {
                 context.set_subscribe_callback(update_collection, user_data);
-                if devtype.contains(DEVICE_TYPE_INPUT) {
+                if devtype.contains(DeviceType::INPUT) {
                     mask |= pulse::SubscriptionMask::SOURCE
                 };
-                if devtype.contains(DEVICE_TYPE_OUTPUT) {
+                if devtype.contains(DeviceType::OUTPUT) {
                     mask = pulse::SubscriptionMask::SINK
                 };
             }
@@ -493,8 +497,8 @@ impl Context for PulseContext {
                 self.operation_wait(None, &o);
             } else {
                 self.mainloop.unlock();
-                //log!("Context subscribe failed");
-                return Err(Error::new());
+                cubeb_log!("Context subscribe failed");
+                return Err(Error::error());
             }
 
             self.mainloop.unlock();
@@ -536,7 +540,7 @@ impl PulseContext {
 
         let context_ptr: *mut c_void = self as *mut _ as *mut _;
         if self.context.is_none() {
-            return Err(Error::new());
+            return Err(Error::error());
         }
 
         self.mainloop.lock();
@@ -548,7 +552,7 @@ impl PulseContext {
         if !self.wait_until_context_ready() {
             self.mainloop.unlock();
             self.context_destroy();
-            return Err(Error::new());
+            return Err(Error::error());
         }
 
         self.mainloop.unlock();
