@@ -2683,11 +2683,9 @@ audiounit_stream_destroy(cubeb_stream * stm)
   dispatch_sync(stm->context->serial_queue, ^() {
     auto_lock lock(stm->mutex);
     audiounit_close_stream(stm);
+    assert(stm->context->active_streams >= 1);
+    stm->context->active_streams -= 1;
   });
-
-  auto_lock context_lock(stm->context->mutex);
-  assert(stm->context->active_streams >= 1);
-  stm->context->active_streams -= 1;
 
   LOG("Cubeb stream (%p) destroyed successful.", stm);
   delete stm;
