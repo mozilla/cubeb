@@ -594,8 +594,11 @@ refill(cubeb_stream * stm, void * input_buffer, long input_frames_count,
     stm->frames_written += out_frames;
   }
 
-  /* Go in draining mode if we got fewer frames than requested. */
-  if (out_frames < output_frames_needed) {
+  /* Go in draining mode if we got fewer frames than requested. If the stream
+     has no output we still expect the callback to return number of frames read
+     from input, otherwise we stop. */
+  if ((out_frames < output_frames_needed) ||
+      (!has_output(stm) && out_frames < input_frames_count)) {
     LOG("start draining.");
     stm->draining = true;
   }
