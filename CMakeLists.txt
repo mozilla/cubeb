@@ -238,6 +238,7 @@ if(BUILD_TESTS)
   cubeb_add_test(audio)
   cubeb_add_test(record)
   cubeb_add_test(devices)
+  cubeb_add_test(callback_ret)
 
   add_executable(test_resampler test/test_resampler.cpp src/cubeb_resampler.cpp $<TARGET_OBJECTS:speex>)
   target_include_directories(test_resampler PRIVATE ${gtest_SOURCE_DIR}/include)
