@@ -1987,6 +1987,7 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
 
   *stream = stm.release();
 
+  LOG("Stream init succesfull (%p)", *stream);
   return CUBEB_OK;
 }
 
@@ -2016,6 +2017,7 @@ void close_wasapi_stream(cubeb_stream * stm)
 void wasapi_stream_destroy(cubeb_stream * stm)
 {
   XASSERT(stm);
+  LOG("Stream destroy (%p)", stm);
 
   // Only free stm->emergency_bailout if we could join the thread.
   // If we could not join the thread, stm->emergency_bailout is true
