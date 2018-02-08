@@ -1016,11 +1016,21 @@ wasapi_stream_render_loop(LPVOID stream)
       }
       XASSERT(stm->output_client || stm->input_client);
       if (stm->output_client) {
-        stm->output_client->Start();
+        hr = stm->output_client->Start();
+        if (FAILED(hr)) {
+          LOG("Error starting output after reconfigure, error: %lx", hr);
+          is_playing = false;
+          continue;
+        }
         LOG("Output started after reconfigure.");
       }
       if (stm->input_client) {
-        stm->input_client->Start();
+        hr = stm->input_client->Start();
+        if (FAILED(hr)) {
+          LOG("Error starting input after reconfiguring, error: %lx", hr);
+          is_playing = false;
+          continue;
+        }
         LOG("Input started after reconfigure.");
       }
       break;
