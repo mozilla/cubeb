@@ -382,6 +382,12 @@ audiounit_input_callback(void * user_ptr,
                                           &total_input_frames,
                                           NULL,
                                           0);
+    if (outframes < total_input_frames) {
+      OSStatus r = AudioOutputUnitStop(stm->input_unit);
+      assert(r == 0);
+      stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
+      return noErr;
+    }
     assert(outframes >= 0);
 
     // Reset input buffer
