@@ -639,11 +639,10 @@ bool get_input_buffer(cubeb_stream * stm)
   for (hr = stm->capture_client->GetNextPacketSize(&next);
        next > 0;
        hr = stm->capture_client->GetNextPacketSize(&next)) {
-
     if (hr == AUDCLNT_E_DEVICE_INVALIDATED) {
-      // Application can recover from that error. More info
+      // Application can recover from this error. More info
       // https://msdn.microsoft.com/en-us/library/windows/desktop/dd316605(v=vs.85).aspx
-      LOG("Device invalidated error, reset deafult device");
+      LOG("Device invalidated error, reset default device");
       wasapi_stream_reset_default_device(stm);
       return true;
     }
@@ -723,11 +722,10 @@ bool get_output_buffer(cubeb_stream * stm, void *& buffer, size_t & frame_count)
   XASSERT(has_output(stm));
 
   hr = stm->output_client->GetCurrentPadding(&padding_out);
-
   if (hr == AUDCLNT_E_DEVICE_INVALIDATED) {
-      // Application can recover from that error. More info
+      // Application can recover from this error. More info
       // https://msdn.microsoft.com/en-us/library/windows/desktop/dd316605(v=vs.85).aspx
-      LOG("Device invalidated error, reset deafult device");
+      LOG("Device invalidated error, reset default device");
       wasapi_stream_reset_default_device(stm);
       return true;
   }
