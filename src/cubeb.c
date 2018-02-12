@@ -309,6 +309,11 @@ cubeb_stream_init(cubeb * context, cubeb_stream ** stream, char const * stream_n
     return r;
   }
 
+  if ((output_stream_params && output_stream_params->prefs) & CUBEB_STREAM_PREF_EXCLUSIVE || (input_stream_params && input_stream_params->prefs & CUBEB_STREAM_PREF_EXCLUSIVE)) {
+    if (strcmp(cubeb_get_backend_id(context), "wasapi") != 0)
+      return CUBEB_ERROR_NOT_SUPPORTED;
+  }
+
   r = context->ops->stream_init(context, stream, stream_name,
                                 input_device,
                                 input_stream_params,

@@ -220,11 +220,16 @@ enum {
 
 /** Miscellaneous stream preferences. */
 typedef enum {
-  CUBEB_STREAM_PREF_NONE     = 0x00, /**< No stream preferences are requested. */
-  CUBEB_STREAM_PREF_LOOPBACK = 0x01 /**< Request a loopback stream. Should be
-                                         specified on the input params and an
-                                         output device to loopback from should
-                                         be passed in place of an input device. */
+    CUBEB_STREAM_PREF_NONE     = 0x00, /**< No stream preferences are requested. */
+    CUBEB_STREAM_PREF_LOOPBACK = 0x01, /**< Request a loopback stream. Should be
+                                       specified on the input params and an
+                                       output device to loopback from should
+                                       be passed in place of an input device. */
+    CUBEB_STREAM_PREF_EXCLUSIVE = 0x02 /**< (Windows / WASAPI only) Request that
+                                       this stream is run in exclusive mode
+                                       which results in lower latency but
+                                       doesn't allow other applications to
+                                       use the same device */
 } cubeb_stream_prefs;
 
 /** Stream format initialization parameters. */

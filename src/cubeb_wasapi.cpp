@@ -524,9 +524,20 @@ refill(cubeb_stream * stm, void * input_buffer, long input_frames_count,
 
 int wasapi_stream_reset_default_device(cubeb_stream * stm);
 
+/* Helper for making get_input_buffer work in exclusive mode */
+HRESULT get_next_packet_size(cubeb_stream * stm, PUINT32 next)
+{
+    if (stm->input_stream_params.prefs & CUBEB_STREAM_PREF_EXCLUSIVE) {
+        *next = stm->input_buffer_frame_count;
+        return S_OK;
+    } else {
+        return stm->capture_client->GetNextPacketSize(next);
+    }
+}
+
 /* This helper grabs all the frames available from a capture client, put them in
  * linear_input_buffer. linear_input_buffer should be cleared before the
- * callback exits. This helper does not work with exclusive mode streams. */
+ * callback exits. */
 bool get_input_buffer(cubeb_stream * stm)
 {
   XASSERT(has_input(stm));
@@ -543,9 +554,9 @@ bool get_input_buffer(cubeb_stream * stm)
   // single packet each time. However, if we're pulling from the stream we may
   // need to grab multiple packets worth of frames that have accumulated (so
   // need a loop).
-  for (hr = stm->capture_client->GetNextPacketSize(&next);
+  for (hr = get_next_packet_size(stm, &next);
        next > 0;
-       hr = stm->capture_client->GetNextPacketSize(&next)) {
+       hr = get_next_packet_size(stm, &next)) {
     if (hr == AUDCLNT_E_DEVICE_INVALIDATED) {
       // Application can recover from this error. More info
       // https://msdn.microsoft.com/en-us/library/windows/desktop/dd316605(v=vs.85).aspx
@@ -619,7 +630,11 @@ bool get_input_buffer(cubeb_stream * stm)
       LOG("FAILED to release intput buffer");
       return false;
     }
-    offset += input_stream_samples;
+
+	offset += input_stream_samples;
+
+    if (stm->input_stream_params.prefs & CUBEB_STREAM_PREF_EXCLUSIVE)
+      break;
   }
 
   XASSERT(stm->linear_input_buffer->length() >= offset);
@@ -1297,9 +1312,13 @@ wasapi_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * laten
     return CUBEB_ERROR;
   }
 
-  /* The second parameter is for exclusive mode, that we don't use. */
   REFERENCE_TIME default_period;
-  hr = client->GetDevicePeriod(&default_period, NULL);
+
+  if (params.prefs & CUBEB_STREAM_PREF_EXCLUSIVE)
+      hr = client->GetDevicePeriod(NULL, &default_period);
+  else
+      hr = client->GetDevicePeriod(&default_period, NULL);
+
   if (FAILED(hr)) {
     LOG("Could not get device period: %lx", hr);
     return CUBEB_ERROR;
@@ -1391,7 +1410,7 @@ handle_channel_layout(cubeb_stream * stm,  EDataFlow direction, com_heap_ptr<WAV
 
   /* Check if wasapi will accept our channel layout request. */
   WAVEFORMATEX * closest;
-  HRESULT hr = audio_client->IsFormatSupported(AUDCLNT_SHAREMODE_SHARED,
+  HRESULT hr = audio_client->IsFormatSupported(stream_params->prefs & CUBEB_STREAM_PREF_EXCLUSIVE ? AUDCLNT_SHAREMODE_EXCLUSIVE : AUDCLNT_SHAREMODE_SHARED,
                                                mix_format.get(),
                                                &closest);
   if (hr == S_FALSE) {
@@ -1518,11 +1537,27 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
   mix_params->channels = mix_format->nChannels;
   mix_params->layout = mask_to_channel_layout(mix_format.get());
 
-  LOG("Setup requested=[f=%d r=%u c=%u l=%u] mix=[f=%d r=%u c=%u l=%u]",
-      stream_params->format, stream_params->rate, stream_params->channels,
-      stream_params->layout,
-      mix_params->format, mix_params->rate, mix_params->channels,
-      mix_params->layout);
+  if (mix_params->layout == CUBEB_LAYOUT_UNDEFINED) {
+    LOG("Stream using undefined layout! Any mixing may be unpredictable!\n");
+  } else if (mix_format->nChannels != mix_params->channels) {
+    // The CUBEB_CHANNEL_LAYOUT_MAPS[mix_params->layout].channels may be
+    // different from the mix_params->channels. 6 channel ouput with stereo
+    // layout is acceptable in Windows. If this happens, it should not downmix
+    // audio according to layout.
+    LOG("Channel count is different from the layout standard!\n");
+  }
+
+
+  if (stream_params->prefs & CUBEB_STREAM_PREF_EXCLUSIVE)
+      LOG("Setup requested=[f=%d r=%u c=%u] mix=[f=%d r=%u c=%u]",
+          stream_params->format, stream_params->rate, stream_params->channels,
+          mix_params->format, mix_params->rate, mix_params->channels);
+  else
+	  LOG("Setup requested=[f=%d r=%u c=%u l=%u] mix=[f=%d r=%u c=%u l=%u]",
+          stream_params->format, stream_params->rate, stream_params->channels,
+          stream_params->layout,
+          mix_params->format, mix_params->rate, mix_params->channels,
+          mix_params->layout);
 
   DWORD flags = AUDCLNT_STREAMFLAGS_NOPERSIST;
 
@@ -1534,12 +1569,51 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
     flags |= AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
   }
 
-  hr = audio_client->Initialize(AUDCLNT_SHAREMODE_SHARED,
+  hr = audio_client->Initialize(stream_params->prefs & CUBEB_STREAM_PREF_EXCLUSIVE ? AUDCLNT_SHAREMODE_EXCLUSIVE : AUDCLNT_SHAREMODE_SHARED,
                                 flags,
                                 frames_to_hns(stm, stm->latency),
-                                0,
+                                stream_params->prefs & CUBEB_STREAM_PREF_EXCLUSIVE ? frames_to_hns(stm, stm->latency) : 0,
                                 mix_format.get(),
                                 NULL);
+
+  // Try to realign the buffer size
+  if (hr == AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED)
+  {
+    LOG("Buffer size misaligned, trying to realign");
+
+	audio_client.reset();
+
+	hr = device->Activate(__uuidof(IAudioClient),
+		CLSCTX_INPROC_SERVER,
+		NULL, audio_client.receive_vpp());
+
+	if (FAILED(hr)) {
+		LOG("Unable to reactivate audio client for %s: %lx", DIRECTION_NAME, hr);
+		return CUBEB_ERROR;
+	}
+
+	REFERENCE_TIME realigned_time = frames_to_hns(stm, stm->latency) * *buffer_frame_count / mix_format->nSamplesPerSec + 0.5;
+
+
+	hr = audio_client->Initialize(stream_params->prefs & CUBEB_STREAM_PREF_EXCLUSIVE ? AUDCLNT_SHAREMODE_EXCLUSIVE : AUDCLNT_SHAREMODE_SHARED,
+		flags,
+		realigned_time,
+		stream_params->prefs & CUBEB_STREAM_PREF_EXCLUSIVE ? realigned_time : 0,
+		mix_format.get(),
+		NULL);
+
+	if (FAILED(hr)) {
+		LOG("Unable to initialize realigned audio client for %s: %lx.", DIRECTION_NAME, hr);
+		return CUBEB_ERROR;
+	}
+  }
+
+  if (hr == AUDCLNT_E_UNSUPPORTED_FORMAT)
+  {
+	  LOG("The requested format is not supported by the current device.");
+	  return CUBEB_ERROR_INVALID_FORMAT;
+  }
+
   if (FAILED(hr)) {
     LOG("Unable to initialize audio client for %s: %lx.", DIRECTION_NAME, hr);
     return CUBEB_ERROR;
@@ -2104,6 +2178,10 @@ int wasapi_stream_set_volume(cubeb_stream * stm, float volume)
   if (!has_output(stm)) {
     return CUBEB_ERROR;
   }
+
+  // Exclusive mode doesn't support setting the volume
+  if (stm->output_stream_params.prefs & CUBEB_STREAM_PREF_EXCLUSIVE)
+	return CUBEB_ERROR_NOT_SUPPORTED;
 
   if (stream_set_volume(stm, volume) != CUBEB_OK) {
     return CUBEB_ERROR;

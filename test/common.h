@@ -13,6 +13,7 @@
 #endif
 #include <objbase.h>
 #include <windows.h>
+#include <objbase.h>
 #else
 #include <unistd.h>
 #endif
@@ -93,6 +94,11 @@ void print_log(const char * msg, ...)
  *  override. */
 int common_init(cubeb ** ctx, char const * ctx_name)
 {
+#ifdef _WIN32
+  // Exclusive mode needs this
+  CoInitialize(NULL);
+#endif
+
   int r;
   char const * backend;
   char const * ctx_backend;
