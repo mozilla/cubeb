@@ -189,7 +189,11 @@ class wasapi_endpoint_notification_client;
 typedef bool (*wasapi_refill_callback)(cubeb_stream * stm);
 
 struct cubeb_stream {
+  /* Note: Must match cubeb_stream layout in cubeb.c. */
   cubeb * context = nullptr;
+  void * user_ptr = nullptr;
+  /**/
+
   /* Mixer pameters. We need to convert the input stream to this
      samplerate/channel layout, as WASAPI does not resample nor upmix
      itself. */
@@ -211,7 +215,6 @@ struct cubeb_stream {
      case a dummy output device is opened to drive the loopback, but should not
      be exposed. */
   bool has_dummy_output = false;
-  void * user_ptr = nullptr;
   /* Lifetime considerations:
      - client, render_client, audio_clock and audio_stream_volume are interface
        pointer to the IAudioClient.
