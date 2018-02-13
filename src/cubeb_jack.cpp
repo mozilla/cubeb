@@ -139,8 +139,10 @@ static struct cubeb_ops const cbjack_ops = {
 };
 
 struct cubeb_stream {
+  /* Note: Must match cubeb_stream layout in cubeb.c. */
   cubeb * context;
   void * user_ptr;
+  /**/
 
   /**< Mutex for each stream */
   pthread_mutex_t mutex;

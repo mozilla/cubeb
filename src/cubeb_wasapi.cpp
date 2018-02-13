@@ -189,8 +189,11 @@ class wasapi_endpoint_notification_client;
 typedef bool (*wasapi_refill_callback)(cubeb_stream * stm);
 
 struct cubeb_stream {
+  /* Note: Must match cubeb_stream layout in cubeb.c. */
   cubeb * context = nullptr;
   void * user_ptr = nullptr;
+  /**/
+
   /* Mixer pameters. We need to convert the input stream to this
      samplerate/channel layout, as WASAPI does not resample nor upmix
      itself. */

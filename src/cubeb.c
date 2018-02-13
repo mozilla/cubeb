@@ -19,6 +19,10 @@ struct cubeb {
 };
 
 struct cubeb_stream {
+  /*
+   * Note: All implementations of cubeb_stream must keep the following
+   * layout.
+   */
   struct cubeb * context;
   void * user_ptr;
 };

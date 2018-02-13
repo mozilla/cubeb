@@ -87,9 +87,10 @@ struct cubeb {
 #define AUDIO_STREAM_TYPE_MUSIC 3
 
 struct cubeb_stream {
+  /* Note: Must match cubeb_stream layout in cubeb.c. */
   cubeb * context;
-  /* User pointer for data & state callbacks*/
   void * user_ptr;
+  /**/
   pthread_mutex_t mutex;
   SLObjectItf playerObj;
   SLPlayItf play;

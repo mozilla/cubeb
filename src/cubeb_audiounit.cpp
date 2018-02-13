@@ -129,9 +129,10 @@ struct device_info {
 struct cubeb_stream {
   explicit cubeb_stream(cubeb * context);
 
+  /* Note: Must match cubeb_stream layout in cubeb.c. */
   cubeb * context;
-  /* User pointer of data_callback */
   void * user_ptr = nullptr;
+  /**/
 
   cubeb_data_callback data_callback = nullptr;
   cubeb_state_callback state_callback = nullptr;

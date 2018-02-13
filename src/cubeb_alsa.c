@@ -76,8 +76,10 @@ enum stream_state {
 };
 
 struct cubeb_stream {
+  /* Note: Must match cubeb_stream layout in cubeb.c. */
   cubeb * context;
   void * user_ptr;
+  /**/
   pthread_mutex_t mutex;
   snd_pcm_t * pcm;
   cubeb_data_callback data_callback;

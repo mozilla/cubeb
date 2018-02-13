@@ -29,8 +29,10 @@ struct cubeb {
 };
 
 struct cubeb_stream {
+  /* Note: Must match cubeb_stream layout in cubeb.c. */
   cubeb * context;
   void * arg;                     /* user arg to {data,state}_cb */
+  /**/
   pthread_t th;                   /* to run real-time audio i/o */
   pthread_mutex_t mtx;            /* protects hdl and pos */
   struct sio_hdl *hdl;            /* link us to sndio */
