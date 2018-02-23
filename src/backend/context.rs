@@ -4,8 +4,9 @@
 // accompanying file LICENSE for details.
 
 use backend::*;
-use cubeb_backend::{ffi, log_enabled, ChannelLayout, Context, ContextOps, DeviceCollectionRef, DeviceId, DeviceType,
-                    Error, Ops, Result, Stream, StreamParams, StreamParamsRef};
+use cubeb_backend::{ffi, log_enabled, ChannelLayout, Context, ContextOps, DeviceCollectionRef,
+                    DeviceId, DeviceType, Error, Ops, Result, Stream, StreamParams,
+                    StreamParamsRef};
 use pulse::{self, ProplistExt};
 use pulse_ffi::*;
 use semver;
@@ -41,8 +42,9 @@ fn channel_map_to_layout(cm: &pulse::ChannelMap) -> ChannelLayout {
     let mut cubeb_map: cubeb_channel_map = unsafe { mem::zeroed() };
     cubeb_map.channels = u32::from(cm.channels);
     for i in 0usize..cm.channels as usize {
-        cubeb_map.map[i] =
-            pa_channel_to_cubeb_channel(ChannelPosition::try_from(cm.map[i]).unwrap_or(ChannelPosition::Invalid));
+        cubeb_map.map[i] = pa_channel_to_cubeb_channel(
+            ChannelPosition::try_from(cm.map[i]).unwrap_or(ChannelPosition::Invalid),
+        );
     }
     ChannelLayout::from(unsafe { cubeb_channel_map_to_layout(&cubeb_map) })
 }
@@ -117,7 +119,12 @@ impl PulseContext {
 
     fn new(name: Option<&CStr>) -> Result<Box<Self>> {
         fn server_info_cb(context: &pulse::Context, info: &pulse::ServerInfo, u: *mut c_void) {
-            fn sink_info_cb(_: &pulse::Context, i: *const pulse::SinkInfo, eol: i32, u: *mut c_void) {
+            fn sink_info_cb(
+                _: &pulse::Context,
+                i: *const pulse::SinkInfo,
+                eol: i32,
+                u: *mut c_void,
+            ) {
                 let ctx = unsafe { &mut *(u as *mut PulseContext) };
                 if eol == 0 {
                     let info = unsafe { &*i };
@@ -131,7 +138,11 @@ impl PulseContext {
                 ctx.mainloop.signal();
             }
 
-            let _ = context.get_sink_info_by_name(try_cstr_from(info.default_sink_name), sink_info_cb, u);
+            let _ = context.get_sink_info_by_name(
+                try_cstr_from(info.default_sink_name),
+                sink_info_cb,
+                u,
+            );
         }
 
         let name = name.map(|s| s.to_owned());
@@ -208,8 +219,17 @@ impl ContextOps for PulseContext {
         }
     }
 
-    fn enumerate_devices(&mut self, devtype: DeviceType, collection: &DeviceCollectionRef) -> Result<()> {
-        fn add_output_device(_: &pulse::Context, i: *const pulse::SinkInfo, eol: i32, user_data: *mut c_void) {
+    fn enumerate_devices(
+        &mut self,
+        devtype: DeviceType,
+        collection: &DeviceCollectionRef,
+    ) -> Result<()> {
+        fn add_output_device(
+            _: &pulse::Context,
+            i: *const pulse::SinkInfo,
+            eol: i32,
+            user_data: *mut c_void,
+        ) {
             let list_data = unsafe { &mut *(user_data as *mut PulseDevListData) };
             let ctx = &(*list_data.context);
 
@@ -265,7 +285,12 @@ impl ContextOps for PulseContext {
             list_data.devinfo.push(devinfo);
         }
 
-        fn add_input_device(_: &pulse::Context, i: *const pulse::SourceInfo, eol: i32, user_data: *mut c_void) {
+        fn add_input_device(
+            _: &pulse::Context,
+            i: *const pulse::SourceInfo,
+            eol: i32,
+            user_data: *mut c_void,
+        ) {
             let list_data = unsafe { &mut *(user_data as *mut PulseDevListData) };
             let ctx = &(*list_data.context);
 
@@ -322,7 +347,11 @@ impl ContextOps for PulseContext {
             list_data.devinfo.push(devinfo);
         }
 
-        fn default_device_names(_: &pulse::Context, info: &pulse::ServerInfo, user_data: *mut c_void) {
+        fn default_device_names(
+            _: &pulse::Context,
+            info: &pulse::ServerInfo,
+            user_data: *mut c_void,
+        ) {
             let list_data = unsafe { &mut *(user_data as *mut PulseDevListData) };
 
             list_data.default_sink_name = super::try_cstr_from(info.default_sink_name)
@@ -340,18 +369,24 @@ impl ContextOps for PulseContext {
         if let Some(ref context) = self.context {
             self.mainloop.lock();
 
-            if let Ok(o) = context.get_server_info(default_device_names, &mut user_data as *mut _ as *mut _) {
+            if let Ok(o) =
+                context.get_server_info(default_device_names, &mut user_data as *mut _ as *mut _)
+            {
                 self.operation_wait(None, &o);
             }
 
             if devtype.contains(DeviceType::OUTPUT) {
-                if let Ok(o) = context.get_sink_info_list(add_output_device, &mut user_data as *mut _ as *mut _) {
+                if let Ok(o) = context
+                    .get_sink_info_list(add_output_device, &mut user_data as *mut _ as *mut _)
+                {
                     self.operation_wait(None, &o);
                 }
             }
 
             if devtype.contains(DeviceType::INPUT) {
-                if let Ok(o) = context.get_source_info_list(add_input_device, &mut user_data as *mut _ as *mut _) {
+                if let Ok(o) = context
+                    .get_source_info_list(add_input_device, &mut user_data as *mut _ as *mut _)
+                {
                     self.operation_wait(None, &o);
                 }
             }
@@ -437,12 +472,21 @@ impl ContextOps for PulseContext {
         cb: ffi::cubeb_device_collection_changed_callback,
         user_ptr: *mut c_void,
     ) -> Result<()> {
-        fn update_collection(_: &pulse::Context, event: pulse::SubscriptionEvent, index: u32, user_data: *mut c_void) {
+        fn update_collection(
+            _: &pulse::Context,
+            event: pulse::SubscriptionEvent,
+            index: u32,
+            user_data: *mut c_void,
+        ) {
             let ctx = unsafe { &mut *(user_data as *mut PulseContext) };
 
             let (f, t) = (event.event_facility(), event.event_type());
-            if (f == pulse::SubscriptionEventFacility::Source) | (f == pulse::SubscriptionEventFacility::Sink) {
-                if (t == pulse::SubscriptionEventType::Remove) | (t == pulse::SubscriptionEventType::New) {
+            if (f == pulse::SubscriptionEventFacility::Source)
+                | (f == pulse::SubscriptionEventFacility::Sink)
+            {
+                if (t == pulse::SubscriptionEventType::Remove)
+                    | (t == pulse::SubscriptionEventType::New)
+                {
                     if log_enabled() {
                         let op = if t == pulse::SubscriptionEventType::New {
                             "Adding"
@@ -559,8 +603,10 @@ impl PulseContext {
 
         let version_str = unsafe { CStr::from_ptr(pulse::library_version()) };
         if let Ok(version) = semver::Version::parse(&version_str.to_string_lossy()) {
-            self.version_0_9_8 = version >= semver::Version::parse("0.9.8").expect("Failed to parse version");
-            self.version_2_0_0 = version >= semver::Version::parse("2.0.0").expect("Failed to parse version");
+            self.version_0_9_8 =
+                version >= semver::Version::parse("0.9.8").expect("Failed to parse version");
+            self.version_2_0_0 =
+                version >= semver::Version::parse("2.0.0").expect("Failed to parse version");
         }
 
         self.error = false;

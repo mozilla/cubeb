@@ -7,16 +7,22 @@ use cubeb_backend::ffi::*;
 
 static CHANNEL_LAYOUT_UNDEFINED: &'static [cubeb_channel] = &[CHANNEL_INVALID];
 static CHANNEL_LAYOUT_DUAL_MONO: &'static [cubeb_channel] = &[CHANNEL_LEFT, CHANNEL_RIGHT];
-static CHANNEL_LAYOUT_DUAL_MONO_LFE: &'static [cubeb_channel] = &[CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_LFE];
+static CHANNEL_LAYOUT_DUAL_MONO_LFE: &'static [cubeb_channel] =
+    &[CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_LFE];
 static CHANNEL_LAYOUT_MONO: &'static [cubeb_channel] = &[CHANNEL_MONO];
 static CHANNEL_LAYOUT_MONO_LFE: &'static [cubeb_channel] = &[CHANNEL_MONO, CHANNEL_LFE];
 static CHANNEL_LAYOUT_STEREO: &'static [cubeb_channel] = &[CHANNEL_LEFT, CHANNEL_RIGHT];
-static CHANNEL_LAYOUT_STEREO_LFE: &'static [cubeb_channel] = &[CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_LFE];
+static CHANNEL_LAYOUT_STEREO_LFE: &'static [cubeb_channel] =
+    &[CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_LFE];
 static CHANNEL_LAYOUT_3F: &'static [cubeb_channel] = &[CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_CENTER];
-static CHANNEL_LAYOUT_3FLFE: &'static [cubeb_channel] = &[CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_CENTER, CHANNEL_LFE];
-static CHANNEL_LAYOUT_2F1: &'static [cubeb_channel] = &[CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_RCENTER];
-static CHANNEL_LAYOUT_2F1LFE: &'static [cubeb_channel] = &[CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_LFE, CHANNEL_RCENTER];
-static CHANNEL_LAYOUT_3F1: &'static [cubeb_channel] = &[CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_CENTER, CHANNEL_RCENTER];
+static CHANNEL_LAYOUT_3FLFE: &'static [cubeb_channel] =
+    &[CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_CENTER, CHANNEL_LFE];
+static CHANNEL_LAYOUT_2F1: &'static [cubeb_channel] =
+    &[CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_RCENTER];
+static CHANNEL_LAYOUT_2F1LFE: &'static [cubeb_channel] =
+    &[CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_LFE, CHANNEL_RCENTER];
+static CHANNEL_LAYOUT_3F1: &'static [cubeb_channel] =
+    &[CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_CENTER, CHANNEL_RCENTER];
 static CHANNEL_LAYOUT_3F1LFE: &'static [cubeb_channel] = &[
     CHANNEL_LEFT,
     CHANNEL_RIGHT,
@@ -24,7 +30,8 @@ static CHANNEL_LAYOUT_3F1LFE: &'static [cubeb_channel] = &[
     CHANNEL_LFE,
     CHANNEL_RCENTER,
 ];
-static CHANNEL_LAYOUT_2F2: &'static [cubeb_channel] = &[CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_LS, CHANNEL_RS];
+static CHANNEL_LAYOUT_2F2: &'static [cubeb_channel] =
+    &[CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_LS, CHANNEL_RS];
 static CHANNEL_LAYOUT_2F2LFE: &'static [cubeb_channel] = &[
     CHANNEL_LEFT,
     CHANNEL_RIGHT,

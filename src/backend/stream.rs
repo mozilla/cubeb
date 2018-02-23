@@ -5,14 +5,13 @@
 
 use backend::*;
 use backend::cork_state::CorkState;
-use cubeb_backend::{ffi, log_enabled, ChannelLayout, DeviceId, DeviceRef, Error, Result, SampleFormat,
-                    StreamOps, StreamParamsRef, StreamPrefs};
+use cubeb_backend::{ffi, log_enabled, ChannelLayout, DeviceId, DeviceRef, Error, Result,
+                    SampleFormat, StreamOps, StreamParamsRef, StreamPrefs};
 use pulse::{self, CVolumeExt, ChannelMapExt, SampleSpecExt, StreamLatency, USecExt};
 use pulse_ffi::*;
 use std::{mem, ptr};
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_long, c_void};
-
 
 const PULSE_NO_GAIN: f32 = -1.0;
 
@@ -102,7 +101,11 @@ impl<'ctx> PulseStream<'ctx> {
         }
 
         fn read_data(s: &pulse::Stream, nbytes: usize, u: *mut c_void) {
-            fn read_from_input(s: &pulse::Stream, buffer: *mut *const c_void, size: *mut usize) -> i32 {
+            fn read_from_input(
+                s: &pulse::Stream,
+                buffer: *mut *const c_void,
+                size: *mut usize,
+            ) -> i32 {
                 let readable_size: i32 = s.readable_size().and_then(|s| Ok(s as i32)).unwrap_or(-1);
                 if readable_size > 0 && unsafe { s.peek(buffer, size).is_err() } {
                     return -1;
@@ -202,12 +205,14 @@ impl<'ctx> PulseStream<'ctx> {
                         s.set_state_callback(check_error, stm.as_mut() as *mut _ as *mut _);
                         s.set_write_callback(write_data, stm.as_mut() as *mut _ as *mut _);
 
-                        let battr = set_buffering_attribute(latency_frames, &stm.output_sample_spec);
+                        let battr =
+                            set_buffering_attribute(latency_frames, &stm.output_sample_spec);
                         let device_name = super::try_cstr_from(output_device as *const _);
                         let _ = s.connect_playback(
                             device_name,
                             &battr,
-                            pulse::StreamFlags::AUTO_TIMING_UPDATE | pulse::StreamFlags::INTERPOLATE_TIMING
+                            pulse::StreamFlags::AUTO_TIMING_UPDATE
+                                | pulse::StreamFlags::INTERPOLATE_TIMING
                                 | pulse::StreamFlags::START_CORKED
                                 | pulse::StreamFlags::ADJUST_LATENCY,
                             None,
@@ -215,12 +220,12 @@ impl<'ctx> PulseStream<'ctx> {
                         );
 
                         stm.output_stream = Some(s);
-                    },
+                    }
                     Err(e) => {
                         stm.context.mainloop.unlock();
                         stm.destroy();
                         return Err(e);
-                    },
+                    }
                 }
             }
 
@@ -238,18 +243,19 @@ impl<'ctx> PulseStream<'ctx> {
                         let _ = s.connect_record(
                             device_name,
                             &battr,
-                            pulse::StreamFlags::AUTO_TIMING_UPDATE | pulse::StreamFlags::INTERPOLATE_TIMING
+                            pulse::StreamFlags::AUTO_TIMING_UPDATE
+                                | pulse::StreamFlags::INTERPOLATE_TIMING
                                 | pulse::StreamFlags::START_CORKED
                                 | pulse::StreamFlags::ADJUST_LATENCY,
                         );
 
                         stm.input_stream = Some(s);
-                    },
+                    }
                     Err(e) => {
                         stm.context.mainloop.unlock();
                         stm.destroy();
                         return Err(e);
-                    },
+                    }
                 }
             }
 
@@ -399,7 +405,7 @@ impl<'ctx> StreamOps for PulseStream<'ctx> {
             Ok(r_usec) => {
                 let bytes = r_usec.to_bytes(&self.output_sample_spec);
                 Ok((bytes / self.output_sample_spec.frame_size()) as u64)
-            },
+            }
             Err(_) => Err(Error::error()),
         };
 
@@ -415,12 +421,13 @@ impl<'ctx> StreamOps for PulseStream<'ctx> {
             None => Err(Error::error()),
             Some(ref stm) => match stm.get_latency() {
                 Ok(StreamLatency::Positive(r_usec)) => {
-                    let latency = (r_usec * pa_usec_t::from(self.output_sample_spec.rate) / PA_USEC_PER_SEC) as u32;
+                    let latency = (r_usec * pa_usec_t::from(self.output_sample_spec.rate)
+                        / PA_USEC_PER_SEC) as u32;
                     Ok(latency)
-                },
+                }
                 Ok(_) => {
                     panic!("Can not handle negative latency values.");
-                },
+                }
                 Err(_) => Err(Error::error()),
             },
         }
@@ -455,7 +462,12 @@ impl<'ctx> StreamOps for PulseStream<'ctx> {
                         let index = stm.get_index();
 
                         let context_ptr = self.context as *const _ as *mut _;
-                        if let Ok(o) = context.set_sink_input_volume(index, &cvol, context_success, context_ptr) {
+                        if let Ok(o) = context.set_sink_input_volume(
+                            index,
+                            &cvol,
+                            context_success,
+                            context_ptr,
+                        ) {
                             self.context.operation_wait(stm, &o);
                         }
                     }
@@ -465,7 +477,7 @@ impl<'ctx> StreamOps for PulseStream<'ctx> {
                 } else {
                     Err(Error::error())
                 }
-            },
+            }
         }
     }
 
@@ -476,7 +488,12 @@ impl<'ctx> StreamOps for PulseStream<'ctx> {
             pub mainloop: &'a pulse::ThreadedMainloop,
         }
 
-        fn get_input_volume(_: &pulse::Context, info: *const pulse::SinkInputInfo, eol: i32, u: *mut c_void) {
+        fn get_input_volume(
+            _: &pulse::Context,
+            info: *const pulse::SinkInputInfo,
+            eol: i32,
+            u: *mut c_void,
+        ) {
             let r = unsafe { &mut *(u as *mut SinkInputInfoResult) };
             if eol == 0 {
                 let info = unsafe { *info };
@@ -507,14 +524,18 @@ impl<'ctx> StreamOps for PulseStream<'ctx> {
                 mainloop: &self.context.mainloop,
             };
 
-            if let Ok(o) = context.get_sink_input_info(index, get_input_volume, &mut r as *mut _ as *mut _) {
+            if let Ok(o) =
+                context.get_sink_input_info(index, get_input_volume, &mut r as *mut _ as *mut _)
+            {
                 self.context.operation_wait(stm, &o);
             }
 
             r.cvol.set_balance(map, panning);
 
             let context_ptr = self.context as *const _ as *mut _;
-            if let Ok(o) = context.set_sink_input_volume(index, &r.cvol, context_success, context_ptr) {
+            if let Ok(o) =
+                context.set_sink_input_volume(index, &r.cvol, context_success, context_ptr)
+            {
                 self.context.operation_wait(stm, &o);
             }
 
@@ -535,7 +556,7 @@ impl<'ctx> StreamOps for PulseStream<'ctx> {
                     Ok(name) => name.to_owned().into_raw(),
                     Err(_) => {
                         return Err(Error::error());
-                    },
+                    }
                 }
             }
 
@@ -544,7 +565,7 @@ impl<'ctx> StreamOps for PulseStream<'ctx> {
                     Ok(name) => name.to_owned().into_raw(),
                     Err(_) => {
                         return Err(Error::error());
-                    },
+                    }
                 }
             }
 
@@ -565,7 +586,10 @@ impl<'ctx> StreamOps for PulseStream<'ctx> {
         }
     }
 
-    fn register_device_changed_callback(&mut self, _: ffi::cubeb_device_changed_callback) -> Result<()> {
+    fn register_device_changed_callback(
+        &mut self,
+        _: ffi::cubeb_device_changed_callback,
+    ) -> Result<()> {
         Err(Error::error())
     }
 }
@@ -677,7 +701,10 @@ impl<'ctx> PulseStream<'ctx> {
     }
 
     fn wait_until_ready(&self) -> bool {
-        fn wait_until_io_stream_ready(stm: &pulse::Stream, mainloop: &pulse::ThreadedMainloop) -> bool {
+        fn wait_until_io_stream_ready(
+            stm: &pulse::Stream,
+            mainloop: &pulse::ThreadedMainloop,
+        ) -> bool {
             if mainloop.is_null() {
                 return false;
             }
@@ -713,7 +740,12 @@ impl<'ctx> PulseStream<'ctx> {
 
     #[cfg_attr(feature = "cargo-clippy", allow(cyclomatic_complexity))]
     fn trigger_user_callback(&mut self, input_data: *const c_void, nbytes: usize) {
-        fn drained_cb(a: &pulse::MainloopApi, e: *mut pa_time_event, _tv: &pulse::TimeVal, u: *mut c_void) {
+        fn drained_cb(
+            a: &pulse::MainloopApi,
+            e: *mut pa_time_event,
+            _tv: &pulse::TimeVal,
+            u: *mut c_void,
+        ) {
             let stm = unsafe { &mut *(u as *mut PulseStream) };
             debug_assert_eq!(stm.drain_timer, e);
             stm.state_change_callback(ffi::CUBEB_STATE_DRAINED);
@@ -733,7 +765,7 @@ impl<'ctx> PulseStream<'ctx> {
                 match stm.begin_write(towrite) {
                     Err(e) => {
                         panic!("Failed to write data: {}", e);
-                    },
+                    }
                     Ok((buffer, size)) => {
                         debug_assert!(size > 0);
                         debug_assert_eq!(size % frame_size, 0);
@@ -743,7 +775,8 @@ impl<'ctx> PulseStream<'ctx> {
                             size,
                             read_offset
                         );
-                        let read_ptr = unsafe { (input_data as *const u8).offset(read_offset as isize) };
+                        let read_ptr =
+                            unsafe { (input_data as *const u8).offset(read_offset as isize) };
                         let got = unsafe {
                             self.data_callback.unwrap()(
                                 self as *const _ as *mut _,
@@ -766,7 +799,8 @@ impl<'ctx> PulseStream<'ctx> {
                         }
 
                         if self.volume != PULSE_NO_GAIN {
-                            let samples = (self.output_sample_spec.channels as usize * size / frame_size) as isize;
+                            let samples = (self.output_sample_spec.channels as usize * size
+                                / frame_size) as isize;
 
                             if self.output_sample_spec.format == PA_SAMPLE_S16BE
                                 || self.output_sample_spec.format == PA_SAMPLE_S16LE
@@ -796,12 +830,15 @@ impl<'ctx> PulseStream<'ctx> {
                                 Ok(StreamLatency::Positive(l)) => l,
                                 Ok(_) => {
                                     panic!("Can not handle negative latency values.");
-                                },
+                                }
                                 Err(e) => {
-                                    debug_assert_eq!(e, pulse::ErrorCode::from_error_code(PA_ERR_NODATA));
+                                    debug_assert_eq!(
+                                        e,
+                                        pulse::ErrorCode::from_error_code(PA_ERR_NODATA)
+                                    );
                                     /* this needs a better guess. */
                                     100 * PA_USEC_PER_MSEC
-                                },
+                                }
                             };
 
                             /* pa_stream_drain is useless, see PA bug# 866. this is a workaround. */
@@ -809,15 +846,18 @@ impl<'ctx> PulseStream<'ctx> {
                             debug_assert!(self.drain_timer.is_null());
                             let stream_ptr = self as *const _ as *mut _;
                             if let Some(ref context) = self.context.context {
-                                self.drain_timer =
-                                    context.rttime_new(pulse::rtclock_now() + 2 * latency, drained_cb, stream_ptr);
+                                self.drain_timer = context.rttime_new(
+                                    pulse::rtclock_now() + 2 * latency,
+                                    drained_cb,
+                                    stream_ptr,
+                                );
                             }
                             self.shutdown = true;
                             return;
                         }
 
                         towrite -= size;
-                    },
+                    }
                 }
             }
             debug_assert_eq!(towrite, 0);

@@ -13,9 +13,7 @@ pub struct Intern {
 
 impl Intern {
     pub fn new() -> Intern {
-        Intern {
-            vec: Vec::new(),
-        }
+        Intern { vec: Vec::new() }
     }
 
     pub fn add(&mut self, string: &CStr) -> *const c_char {
