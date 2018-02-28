@@ -7,6 +7,7 @@ project(cubeb
 
 option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
 option(BUILD_TESTS "Build tests" ON)
+option(ENABLE_SANITIZERS "Enable sanitizers" ON)
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING
@@ -20,11 +21,13 @@ set(CMAKE_C_STANDARD 99)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-if(NOT COMMAND add_sanitizers)
-  list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/sanitizers-cmake/cmake")
-  find_package(Sanitizers)
+if(ENABLE_SANITIZERS)
   if(NOT COMMAND add_sanitizers)
-    message(FATAL_ERROR "Could not find sanitizers-cmake: run\n\tgit submodule update --init --recursive\nin base git checkout")
+    list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/sanitizers-cmake/cmake")
+    find_package(Sanitizers)
+    if(NOT COMMAND add_sanitizers)
+      message(FATAL_ERROR "Could not find sanitizers-cmake: run\n\tgit submodule update --init --recursive\nin base git checkout")
+    endif()
   endif()
 endif()
 
@@ -69,7 +72,9 @@ target_compile_definitions(cubeb PRIVATE FLOATING_POINT)
 target_compile_definitions(cubeb PRIVATE EXPORT=)
 target_compile_definitions(cubeb PRIVATE RANDOM_PREFIX=speex)
 
-add_sanitizers(cubeb)
+if(ENABLE_SANITIZERS)
+  add_sanitizers(cubeb)
+endif()
 
 include(GenerateExportHeader)
 generate_export_header(cubeb EXPORT_FILE_NAME ${CMAKE_BINARY_DIR}/exports/cubeb_export.h)
