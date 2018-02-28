@@ -16,7 +16,6 @@ using std::vector;
 #define STREAM_FREQUENCY 48000
 #define STREAM_FORMAT CUBEB_SAMPLE_FLOAT32LE
 
-float const M = 1.0f;     // Mono
 float const L = 2.0f;     // Left
 float const R = 3.0f;     // Right
 float const C = 4.0f;     // Center
@@ -72,8 +71,8 @@ typedef struct {
 
 audio_input audio_inputs[CUBEB_LAYOUT_MAX] = {
   { CUBEB_LAYOUT_UNDEFINED,     { } },
-  { CUBEB_LAYOUT_MONO,          { M } },
-  { CUBEB_LAYOUT_MONO_LFE,      { M, LFE } },
+  { CUBEB_LAYOUT_MONO,          { C } },
+  { CUBEB_LAYOUT_MONO_LFE,      { C, LFE } },
   { CUBEB_LAYOUT_STEREO,        { L, R } },
   { CUBEB_LAYOUT_STEREO_LFE,    { L, R, LFE } },
   { CUBEB_LAYOUT_3F,            { L, R, C } },
