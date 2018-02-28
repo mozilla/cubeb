@@ -30,29 +30,7 @@ typedef enum {
   CHANNEL_MAX = 256 // Max number of supported channels.
 } cubeb_channel;
 
-static cubeb_channel const CHANNEL_INDEX_TO_ORDER[CUBEB_LAYOUT_MAX][CHANNEL_MAX] = {
-  { CHANNEL_INVALID },                                                                                            // UNDEFINED
-  { CHANNEL_CENTER },                                                                                             // MONO
-  { CHANNEL_CENTER, CHANNEL_LFE },                                                                                // MONO_LFE
-  { CHANNEL_LEFT, CHANNEL_RIGHT },                                                                                // STEREO
-  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_LFE },                                                                   // STEREO_LFE
-  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_CENTER },                                                                // 3F
-  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_CENTER, CHANNEL_LFE },                                                   // 3F_LFE
-  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_RCENTER },                                                               // 2F1
-  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_LFE, CHANNEL_RCENTER },                                                  // 2F1_LFE
-  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_CENTER, CHANNEL_RCENTER },                                               // 3F1
-  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_CENTER, CHANNEL_LFE, CHANNEL_RCENTER },                                  // 3F1_LFE
-  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_RLS, CHANNEL_RRS },                                                      // 2F2
-  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_LFE, CHANNEL_RLS, CHANNEL_RRS },                                         // 2F2_LFE
-  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_LS, CHANNEL_RS },                                                        // QUAD
-  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_LFE, CHANNEL_LS, CHANNEL_RS },                                           // QUAD_LFE
-  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_CENTER, CHANNEL_RLS, CHANNEL_RRS },                                      // 3F2
-  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_CENTER, CHANNEL_LFE, CHANNEL_RLS, CHANNEL_RRS },                         // 3F2_LFE
-  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_CENTER, CHANNEL_LFE, CHANNEL_RCENTER, CHANNEL_RLS, CHANNEL_RRS },        // 3F3R_LFE
-  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_CENTER, CHANNEL_LFE, CHANNEL_RLS, CHANNEL_RRS, CHANNEL_LS, CHANNEL_RS }  // 3F4_LFE
-  // When more channels are present, the stream is considered unmapped to a
-  // particular speaker set.
-};
+extern cubeb_channel const CHANNEL_INDEX_TO_ORDER[CUBEB_LAYOUT_MAX][CHANNEL_MAX];
 
 typedef struct {
   unsigned int channels;
