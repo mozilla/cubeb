@@ -1147,6 +1147,12 @@ audiounit_convert_channel_layout(AudioChannelLayout * layout)
     cm.map[i] = channel_label_to_cubeb_channel(layout->mChannelDescriptions[i].mChannelLabel);
   }
 
+  if (layout->mNumberChannelDescriptions == 1) {
+    return CUBEB_LAYOUT_MONO;
+  } else if (layout->mNumberChannelDescriptions == 2) {
+    return CUBEB_LAYOUT_STEREO;
+  }
+
   return cubeb_channel_map_to_layout(&cm);
 }
 
