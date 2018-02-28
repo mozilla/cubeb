@@ -158,8 +158,6 @@ typedef enum {
 } cubeb_log_level;
 
 /** SMPTE channel layout (also known as wave order)
- * DUAL-MONO      L   R
- * DUAL-MONO-LFE  L   R   LFE
  * MONO           M
  * MONO-LFE       M   LFE
  * STEREO         L   R
@@ -194,8 +192,6 @@ typedef enum {
 
 typedef enum {
   CUBEB_LAYOUT_UNDEFINED, // Indicate the speaker's layout is undefined.
-  CUBEB_LAYOUT_DUAL_MONO,
-  CUBEB_LAYOUT_DUAL_MONO_LFE,
   CUBEB_LAYOUT_MONO,
   CUBEB_LAYOUT_MONO_LFE,
   CUBEB_LAYOUT_STEREO,
@@ -208,6 +204,8 @@ typedef enum {
   CUBEB_LAYOUT_3F1_LFE,
   CUBEB_LAYOUT_2F2,
   CUBEB_LAYOUT_2F2_LFE,
+  CUBEB_LAYOUT_QUAD,
+  CUBEB_LAYOUT_QUAD_LFE,
   CUBEB_LAYOUT_3F2,
   CUBEB_LAYOUT_3F2_LFE,
   CUBEB_LAYOUT_3F3R_LFE,
@@ -453,15 +451,6 @@ CUBEB_EXPORT int cubeb_get_min_latency(cubeb * context,
     @retval CUBEB_ERROR_INVALID_PARAMETER
     @retval CUBEB_ERROR_NOT_SUPPORTED */
 CUBEB_EXPORT int cubeb_get_preferred_sample_rate(cubeb * context, uint32_t * rate);
-
-/** Get the preferred layout for this backend: this is hardware and
-    platform dependent.
-    @param context A pointer to the cubeb context.
-    @param layout The layout of the current speaker configuration.
-    @retval CUBEB_OK
-    @retval CUBEB_ERROR_INVALID_PARAMETER
-    @retval CUBEB_ERROR_NOT_SUPPORTED */
-CUBEB_EXPORT int cubeb_get_preferred_channel_layout(cubeb * context, cubeb_channel_layout * layout);
 
 /** Destroy an application context. This must be called after all stream have
  *  been destroyed.

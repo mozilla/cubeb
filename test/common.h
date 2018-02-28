@@ -49,8 +49,6 @@ typedef struct {
 
 layout_info const layout_infos[CUBEB_LAYOUT_MAX] = {
   { "undefined",      0,  CUBEB_LAYOUT_UNDEFINED },
-  { "dual mono",      2,  CUBEB_LAYOUT_DUAL_MONO },
-  { "dual mono lfe",  3,  CUBEB_LAYOUT_DUAL_MONO_LFE },
   { "mono",           1,  CUBEB_LAYOUT_MONO },
   { "mono lfe",       2,  CUBEB_LAYOUT_MONO_LFE },
   { "stereo",         2,  CUBEB_LAYOUT_STEREO },
@@ -63,6 +61,8 @@ layout_info const layout_infos[CUBEB_LAYOUT_MAX] = {
   { "3f1 lfe",        5,  CUBEB_LAYOUT_3F1_LFE },
   { "2f2",            4,  CUBEB_LAYOUT_2F2 },
   { "2f2 lfe",        5,  CUBEB_LAYOUT_2F2_LFE },
+  { "quad",           4,  CUBEB_LAYOUT_QUAD },
+  { "quad lfe",       5,  CUBEB_LAYOUT_QUAD_LFE },
   { "3f2",            5,  CUBEB_LAYOUT_3F2 },
   { "3f2 lfe",        6,  CUBEB_LAYOUT_3F2_LFE },
   { "3f3r lfe",       7,  CUBEB_LAYOUT_3F3R_LFE },

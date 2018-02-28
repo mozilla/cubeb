@@ -425,8 +425,6 @@ double stream_to_mix_samplerate_ratio(cubeb_stream_params & stream, cubeb_stream
 
 /* Convert the channel layout into the corresponding KSAUDIO_CHANNEL_CONFIG.
    See more: https://msdn.microsoft.com/en-us/library/windows/hardware/ff537083(v=vs.85).aspx */
-#define MASK_DUAL_MONO      (SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT)
-#define MASK_DUAL_MONO_LFE  (MASK_DUAL_MONO | SPEAKER_LOW_FREQUENCY)
 #define MASK_MONO           (KSAUDIO_SPEAKER_MONO)
 #define MASK_MONO_LFE       (MASK_MONO | SPEAKER_LOW_FREQUENCY)
 #define MASK_STEREO         (KSAUDIO_SPEAKER_STEREO)
@@ -439,7 +437,9 @@ double stream_to_mix_samplerate_ratio(cubeb_stream_params & stream, cubeb_stream
 #define MASK_3F1_LFE        (MASK_3F1 | SPEAKER_LOW_FREQUENCY)
 #define MASK_2F2            (MASK_STEREO | SPEAKER_SIDE_LEFT | SPEAKER_SIDE_RIGHT)
 #define MASK_2F2_LFE        (MASK_2F2 | SPEAKER_LOW_FREQUENCY)
-#define MASK_3F2            (MASK_3F | SPEAKER_SIDE_LEFT | SPEAKER_SIDE_RIGHT)
+#define MASK_QUAD           (KSAUDIO_SPEAKER_QUAD)
+#define MASK_QUAD_LFE       (MASK_QUAD | SPEAKER_LOW_FREQUENCY)
+#define MASK_3F2            (KSAUDIO_SPEAKER_5POINT1_SURROUND & ~SPEAKER_LOW_FREQUENCY)
 #define MASK_3F2_LFE        (KSAUDIO_SPEAKER_5POINT1_SURROUND)
 #define MASK_3F3R_LFE       (MASK_3F2_LFE | SPEAKER_BACK_CENTER)
 #define MASK_3F4_LFE        (KSAUDIO_SPEAKER_7POINT1_SURROUND)
@@ -454,8 +454,6 @@ channel_layout_to_mask(cubeb_channel_layout layout)
   // Use static to allocate this local variable in data space instead of stack.
   static DWORD map[CUBEB_LAYOUT_MAX] = {
     KSAUDIO_SPEAKER_DIRECTOUT, // CUBEB_LAYOUT_UNDEFINED
-    MASK_DUAL_MONO,            // CUBEB_LAYOUT_DUAL_MONO
-    MASK_DUAL_MONO_LFE,        // CUBEB_LAYOUT_DUAL_MONO_LFE
     MASK_MONO,                 // CUBEB_LAYOUT_MONO
     MASK_MONO_LFE,             // CUBEB_LAYOUT_MONO_LFE
     MASK_STEREO,               // CUBEB_LAYOUT_STEREO
@@ -468,6 +466,8 @@ channel_layout_to_mask(cubeb_channel_layout layout)
     MASK_3F1_LFE,              // CUBEB_LAYOUT_3F1_LFE
     MASK_2F2,                  // CUBEB_LAYOUT_2F2
     MASK_2F2_LFE,              // CUBEB_LAYOUT_2F2_LFE
+    MASK_QUAD,                 // CUBEB_LAYOUT_QUAD
+    MASK_QUAD_LFE,             // CUBEB_LAYOUT_QUAD_LFE
     MASK_3F2,                  // CUBEB_LAYOUT_3F2
     MASK_3F2_LFE,              // CUBEB_LAYOUT_3F2_LFE
     MASK_3F3R_LFE,             // CUBEB_LAYOUT_3F3R_LFE
@@ -494,7 +494,6 @@ mask_to_channel_layout(WAVEFORMATEX const * fmt)
   }
 
   switch (mask) {
-    // MASK_DUAL_MONO(_LFE) is same as STEREO(_LFE), so we skip it.
     case MASK_MONO: return CUBEB_LAYOUT_MONO;
     case MASK_MONO_LFE: return CUBEB_LAYOUT_MONO_LFE;
     case MASK_STEREO: return CUBEB_LAYOUT_STEREO;
@@ -506,21 +505,11 @@ mask_to_channel_layout(WAVEFORMATEX const * fmt)
     case MASK_3F1: return CUBEB_LAYOUT_3F1;
     case MASK_3F1_LFE: return CUBEB_LAYOUT_3F1_LFE;
     case MASK_2F2: return CUBEB_LAYOUT_2F2;
-    // Special case similar to MASK_2F2 but with rear left and right
-    // speakers instead of side left and right. This mapping is a band-aid as
-    // cubeb does not current have an enum to differentiate this and MASK_2F2,
-    // but is preferred to returning an undefined layout.
-    // See: https://github.com/kinetiknz/cubeb/issues/178 and https://bugzilla.mozilla.org/show_bug.cgi?id=1325023
-    case KSAUDIO_SPEAKER_QUAD: return CUBEB_LAYOUT_2F2;
     case MASK_2F2_LFE: return CUBEB_LAYOUT_2F2_LFE;
+    case MASK_QUAD: return CUBEB_LAYOUT_QUAD;
+    case MASK_QUAD_LFE: return CUBEB_LAYOUT_QUAD_LFE;
     case MASK_3F2: return CUBEB_LAYOUT_3F2;
     case MASK_3F2_LFE: return CUBEB_LAYOUT_3F2_LFE;
-    // Special case similar to MASK_3F2_LFE but with rear left and right
-    // speakers instead of side left and right. his mapping is a band-aid as
-    // cubeb does not current have an enum to differentiate this and MASK_3F2_LFE,
-    // but is preferred to returning an undefined layout.
-    // See: https://github.com/kinetiknz/cubeb/issues/178 and https://bugzilla.mozilla.org/show_bug.cgi?id=1325023
-    case KSAUDIO_SPEAKER_5POINT1: return CUBEB_LAYOUT_3F2_LFE;
     case MASK_3F3R_LFE: return CUBEB_LAYOUT_3F3R_LFE;
     case MASK_3F4_LFE: return CUBEB_LAYOUT_3F4_LFE;
     default: return CUBEB_LAYOUT_UNDEFINED;
@@ -1451,43 +1440,6 @@ wasapi_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
   *rate = mix_format->nSamplesPerSec;
 
   LOG("Preferred sample rate for output: %u", *rate);
-
-  return CUBEB_OK;
-}
-
-int
-wasapi_get_preferred_channel_layout(cubeb * context, cubeb_channel_layout * layout)
-{
-  HRESULT hr;
-  auto_com com;
-  if (!com.ok()) {
-    return CUBEB_ERROR;
-  }
-
-  com_ptr<IMMDevice> device;
-  hr = get_default_endpoint(device, eRender);
-  if (FAILED(hr)) {
-    return CUBEB_ERROR;
-  }
-
-  com_ptr<IAudioClient> client;
-  hr = device->Activate(__uuidof(IAudioClient),
-                        CLSCTX_INPROC_SERVER,
-                        NULL, client.receive_vpp());
-  if (FAILED(hr)) {
-    return CUBEB_ERROR;
-  }
-
-  WAVEFORMATEX * tmp = nullptr;
-  hr = client->GetMixFormat(&tmp);
-  if (FAILED(hr)) {
-    return CUBEB_ERROR;
-  }
-  com_heap_ptr<WAVEFORMATEX> mix_format(tmp);
-
-  *layout = mask_to_channel_layout(mix_format.get());
-
-  LOG("Preferred channel layout: %s", CUBEB_CHANNEL_LAYOUT_MAPS[*layout].name);
 
   return CUBEB_OK;
 }
@@ -2519,7 +2471,6 @@ cubeb_ops const wasapi_ops = {
   /*.get_max_channel_count =*/ wasapi_get_max_channel_count,
   /*.get_min_latency =*/ wasapi_get_min_latency,
   /*.get_preferred_sample_rate =*/ wasapi_get_preferred_sample_rate,
-  /*.get_preferred_channel_layout =*/ wasapi_get_preferred_channel_layout,
   /*.enumerate_devices =*/ wasapi_enumerate_devices,
   /*.device_collection_destroy =*/ wasapi_device_collection_destroy,
   /*.destroy =*/ wasapi_destroy,
