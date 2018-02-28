@@ -28,36 +28,40 @@ float const RRS = 9.0f;   // Rear Right Surround
 float const LFE = 10.0f;  // Low Frequency Effects
 
 float const INV_SQRT_2 = 0.707106f; // 1/sqrt(2)
-static float const DOWNMIX_3F2_RESULTS[2][12][5] = {
+static float const DOWNMIX_3F2_RESULTS[2][CUBEB_LAYOUT_QUAD_LFE - CUBEB_LAYOUT_MONO + 1][5] = {
   // 3F2
   {
-    { INV_SQRT_2*(L+R) + C + 0.5f*(LS+RS) },                          // Mono
-    { INV_SQRT_2*(L+R) + C + 0.5f*(LS+RS), 0 },                       // Mono-LFE
-    { L + INV_SQRT_2*(C+LS), R + INV_SQRT_2*(C+RS) },                 // Stereo
-    { L + INV_SQRT_2*(C+LS), R + INV_SQRT_2*(C+RS), 0 },              // Stereo-LFE
-    { L + INV_SQRT_2*LS, R + INV_SQRT_2*RS, C },                      // 3F
-    { L + INV_SQRT_2*LS, R + INV_SQRT_2*RS, C, 0 },                   // 3F-LFE
-    { L + C*INV_SQRT_2, R + C*INV_SQRT_2, INV_SQRT_2*(LS+RS) },       // 2F1
-    { L + C*INV_SQRT_2, R + C*INV_SQRT_2, 0, INV_SQRT_2*(LS+RS) },    // 2F1-LFE
-    { L, R, C, INV_SQRT_2*(LS+RS) },                                  // 3F1
-    { L, R, C, 0, INV_SQRT_2*(LS+RS) },                               // 3F1-LFE
-    { L + INV_SQRT_2*C, R + INV_SQRT_2*C, LS, RS },                   // 2F2
-    { L + INV_SQRT_2*C, R + INV_SQRT_2*C, 0, LS, RS }                 // 2F2-LFE
+    { INV_SQRT_2*(L+R) + C + 0.5f*(RLS+RRS) },                        // Mono
+    { INV_SQRT_2*(L+R) + C + 0.5f*(RLS+RRS), 0 },                     // Mono-LFE
+    { L + INV_SQRT_2*(C+RLS), R + INV_SQRT_2*(C+RRS) },               // Stereo
+    { L + INV_SQRT_2*(C+RLS), R + INV_SQRT_2*(C+RRS), 0 },            // Stereo-LFE
+    { L + INV_SQRT_2*RLS, R + INV_SQRT_2*RRS, C },                    // 3F
+    { L + INV_SQRT_2*RLS, R + INV_SQRT_2*RRS, C, 0 },                 // 3F-LFE
+    { L + C*INV_SQRT_2, R + C*INV_SQRT_2, INV_SQRT_2*(RLS+RRS) },     // 2F1
+    { L + C*INV_SQRT_2, R + C*INV_SQRT_2, 0, INV_SQRT_2*(RLS+RRS) },  // 2F1-LFE
+    { L, R, C, INV_SQRT_2*(RLS+RRS) },                                // 3F1
+    { L, R, C, 0, INV_SQRT_2*(RLS+RRS) },                             // 3F1-LFE
+    { L + INV_SQRT_2*C, R + INV_SQRT_2*C, RLS, RRS },                 // 2F2
+    { L + INV_SQRT_2*C, R + INV_SQRT_2*C, 0, RLS, RRS },              // 2F2-LFE
+    { L + INV_SQRT_2*C, R + INV_SQRT_2*C, RLS, RRS },                 // QUAD
+    { L + INV_SQRT_2*C, R + INV_SQRT_2*C, 0, RLS, RRS }               // QUAD-LFE
   },
   // 3F2-LFE
   {
-    { INV_SQRT_2*(L+R) + C + 0.5f*(LS+RS) },                          // Mono
-    { INV_SQRT_2*(L+R) + C + 0.5f*(LS+RS), LFE },                     // Mono-LFE
-    { L + INV_SQRT_2*(C+LS), R + INV_SQRT_2*(C+RS) },                 // Stereo
-    { L + INV_SQRT_2*(C+LS), R + INV_SQRT_2*(C+RS), LFE },            // Stereo-LFE
-    { L + INV_SQRT_2*LS, R + INV_SQRT_2*RS, C },                      // 3F
-    { L + INV_SQRT_2*LS, R + INV_SQRT_2*RS, C, LFE },                 // 3F-LFE
-    { L + C*INV_SQRT_2, R + C*INV_SQRT_2, INV_SQRT_2*(LS+RS) },       // 2F1
-    { L + C*INV_SQRT_2, R + C*INV_SQRT_2, LFE, INV_SQRT_2*(LS+RS) },  // 2F1-LFE
-    { L, R, C, INV_SQRT_2*(LS+RS) },                                  // 3F1
-    { L, R, C, LFE, INV_SQRT_2*(LS+RS) },                             // 3F1-LFE
-    { L + INV_SQRT_2*C, R + INV_SQRT_2*C, LS, RS },                   // 2F2
-    { L + INV_SQRT_2*C, R + INV_SQRT_2*C, LFE, LS, RS }               // 2F2-LFE
+    { INV_SQRT_2*(L+R) + C + 0.5f*(RLS+RRS) },                        // Mono
+    { INV_SQRT_2*(L+R) + C + 0.5f*(RLS+RRS), LFE },                   // Mono-LFE
+    { L + INV_SQRT_2*(C+RLS), R + INV_SQRT_2*(C+RRS) },               // Stereo
+    { L + INV_SQRT_2*(C+RLS), R + INV_SQRT_2*(C+RRS), LFE },          // Stereo-LFE
+    { L + INV_SQRT_2*RLS, R + INV_SQRT_2*RRS, C },                    // 3F
+    { L + INV_SQRT_2*RLS, R + INV_SQRT_2*RRS, C, LFE },               // 3F-LFE
+    { L + C*INV_SQRT_2, R + C*INV_SQRT_2, INV_SQRT_2*(RLS+RRS) },     // 2F1
+    { L + C*INV_SQRT_2, R + C*INV_SQRT_2, LFE, INV_SQRT_2*(RLS+RRS) },// 2F1-LFE
+    { L, R, C, INV_SQRT_2*(RLS+RRS) },                                // 3F1
+    { L, R, C, LFE, INV_SQRT_2*(RLS+RRS) },                           // 3F1-LFE
+    { L + INV_SQRT_2*C, R + INV_SQRT_2*C, RLS, RRS },                 // 2F2
+    { L + INV_SQRT_2*C, R + INV_SQRT_2*C, LFE, RLS, RRS },            // 2F2-LFE
+    { L + INV_SQRT_2*C, R + INV_SQRT_2*C, RLS, RRS },                 // QUAD
+    { L + INV_SQRT_2*C, R + INV_SQRT_2*C, LFE, RLS, RRS }             // QUAD-LFE
   }
 };
 
@@ -84,9 +88,9 @@ audio_input audio_inputs[CUBEB_LAYOUT_MAX] = {
   { CUBEB_LAYOUT_2F2_LFE,       { L, R, LFE, RLS, RRS } },
   { CUBEB_LAYOUT_QUAD,          { L, R, LS, RS } },
   { CUBEB_LAYOUT_QUAD_LFE,      { L, R, LFE, LS, RS } },
-  { CUBEB_LAYOUT_3F2,           { L, R, C, LS, RS } },
-  { CUBEB_LAYOUT_3F2_LFE,       { L, R, C, LFE, LS, RS } },
-  { CUBEB_LAYOUT_3F3R_LFE,      { L, R, C, LFE, RC, LS, RS } },
+  { CUBEB_LAYOUT_3F2,           { L, R, C, RLS, RRS } },
+  { CUBEB_LAYOUT_3F2_LFE,       { L, R, C, LFE, RLS, RRS } },
+  { CUBEB_LAYOUT_3F3R_LFE,      { L, R, C, LFE, RC, RLS, RRS } },
   { CUBEB_LAYOUT_3F4_LFE,       { L, R, C, LFE, RLS, RRS, LS, RS } }
 };
 

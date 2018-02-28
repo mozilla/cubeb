@@ -45,11 +45,13 @@ static cubeb_channel const CHANNEL_INDEX_TO_ORDER[CUBEB_LAYOUT_MAX][CHANNEL_MAX]
   { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_LFE, CHANNEL_RCENTER },                                                  // 2F1_LFE
   { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_CENTER, CHANNEL_RCENTER },                                               // 3F1
   { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_CENTER, CHANNEL_LFE, CHANNEL_RCENTER },                                  // 3F1_LFE
-  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_LS, CHANNEL_RS },                                                        // 2F2
-  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_LFE, CHANNEL_LS, CHANNEL_RS },                                           // 2F2_LFE
-  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_CENTER, CHANNEL_LS, CHANNEL_RS },                                        // 3F2
-  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_CENTER, CHANNEL_LFE, CHANNEL_LS, CHANNEL_RS },                           // 3F2_LFE
-  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_CENTER, CHANNEL_LFE, CHANNEL_RCENTER, CHANNEL_LS, CHANNEL_RS },          // 3F3R_LFE
+  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_RLS, CHANNEL_RRS },                                                      // 2F2
+  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_LFE, CHANNEL_RLS, CHANNEL_RRS },                                         // 2F2_LFE
+  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_LS, CHANNEL_RS },                                                        // QUAD
+  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_LFE, CHANNEL_LS, CHANNEL_RS },                                           // QUAD_LFE
+  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_CENTER, CHANNEL_RLS, CHANNEL_RRS },                                      // 3F2
+  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_CENTER, CHANNEL_LFE, CHANNEL_RLS, CHANNEL_RRS },                         // 3F2_LFE
+  { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_CENTER, CHANNEL_LFE, CHANNEL_RCENTER, CHANNEL_RLS, CHANNEL_RRS },        // 3F3R_LFE
   { CHANNEL_LEFT, CHANNEL_RIGHT, CHANNEL_CENTER, CHANNEL_LFE, CHANNEL_RLS, CHANNEL_RRS, CHANNEL_LS, CHANNEL_RS }  // 3F4_LFE
   // When more channels are present, the stream is considered unmapped to a
   // particular speaker set.
