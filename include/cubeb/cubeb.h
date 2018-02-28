@@ -158,8 +158,6 @@ typedef enum {
 } cubeb_log_level;
 
 /** SMPTE channel layout (also known as wave order)
- * DUAL-MONO      L   R
- * DUAL-MONO-LFE  L   R   LFE
  * MONO           M
  * MONO-LFE       M   LFE
  * STEREO         L   R
