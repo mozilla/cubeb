@@ -177,7 +177,15 @@ sink_info_callback(pa_context * context, const pa_sink_info * info, int eol, voi
 static void
 server_info_callback(pa_context * context, const pa_server_info * info, void * u)
 {
+  cubeb * ctx = u;
   pa_operation * o;
+
+  if (!info) {
+    // If info is NULL, the pa_context_get_server_info command timed out.
+    WRAP(pa_threaded_mainloop_signal)(ctx->mainloop, 0);
+    return;
+  }
+
   o = WRAP(pa_context_get_sink_info_by_name)(context, info->default_sink_name, sink_info_callback, u);
   if (o) {
     WRAP(pa_operation_unref)(o);
