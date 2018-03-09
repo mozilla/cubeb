@@ -263,17 +263,6 @@ if(BUILD_TESTS)
   cubeb_add_test(latency test_latency)
   cubeb_add_test(ring_array)
 
-  add_executable(test_mixer test/test_mixer.cpp src/cubeb_mixer.cpp)
-  if(USE_AUDIOUNIT)
-    target_compile_definitions(test_mixer PRIVATE USE_AUDIOUNIT)
-  endif()
-  target_include_directories(test_mixer PRIVATE ${gtest_SOURCE_DIR}/include)
-  target_include_directories(test_mixer PRIVATE src)
-  target_link_libraries(test_mixer PRIVATE cubeb gtest_main)
-  add_test(mixer test_mixer)
-  add_sanitizers(test_mixer)
-  install(TARGETS test_mixer DESTINATION ${CMAKE_INSTALL_PREFIX})
-
   cubeb_add_test(utils)
   cubeb_add_test(ring_buffer)
 
