@@ -16,7 +16,9 @@ extern "C" {
 
 typedef struct cubeb_mixer cubeb_mixer;
 cubeb_mixer * cubeb_mixer_create(cubeb_sample_format format,
+                                 uint32_t in_channels,
                                  cubeb_channel_layout in_layout,
+                                 uint32_t out_channels,
                                  cubeb_channel_layout out_layout);
 void cubeb_mixer_destroy(cubeb_mixer * mixer);
 int cubeb_mixer_mix(cubeb_mixer * mixer,

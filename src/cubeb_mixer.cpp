@@ -82,14 +82,21 @@ unsigned int cubeb_channel_layout_nb_channels(cubeb_channel_layout x)
 
 struct MixerContext {
   MixerContext(cubeb_sample_format f,
+               uint32_t in_channels,
                cubeb_channel_layout in,
+               uint32_t out_channels,
                cubeb_channel_layout out)
     : _format(f)
     , _in_ch_layout(in)
     , _out_ch_layout(out)
-    , _in_ch_count(cubeb_channel_layout_nb_channels(in))
-    , _out_ch_count(cubeb_channel_layout_nb_channels(out))
+    , _in_ch_count(in_channels)
+    , _out_ch_count(out_channels)
   {
+    if (in_channels != cubeb_channel_layout_nb_channels(in) ||
+        out_channels != cubeb_channel_layout_nb_channels(out)) {
+      // Mismatch between channels and layout, aborting.
+      return;
+    }
     _valid = init() >= 0;
   }
 
@@ -713,10 +720,35 @@ static int rematrix(const MixerContext * s, void * out, void * in, uint32_t fram
 struct cubeb_mixer
 {
   cubeb_mixer(cubeb_sample_format format,
+              uint32_t in_channels,
               cubeb_channel_layout in_layout,
+              uint32_t out_channels,
               cubeb_channel_layout out_layout)
-    : _context(format, in_layout, out_layout)
+    : _context(format, in_channels, in_layout, out_channels, out_layout)
   {
+  }
+
+  template<typename T>
+  void copy_and_trunc(unsigned long frames,
+                      T* input_buffer,
+                      T* output_buffer) const
+  {
+    if (_context._in_ch_count <= _context._out_ch_count) {
+      // Not enough channels to copy, fill the gaps with silence.
+      for (uint32_t i = 0; i < frames; i++) {
+        PodCopy(output_buffer, input_buffer, _context._in_ch_count);
+        output_buffer += _context._in_ch_count;
+        input_buffer += _context._in_ch_count;
+        PodZero(output_buffer, _context._out_ch_count - _context._in_ch_count);
+        output_buffer += _context._out_ch_count - _context._in_ch_count;
+      }
+    } else {
+      for (uint32_t i = 0; i < frames; i++) {
+        PodCopy(output_buffer, input_buffer, _context._out_ch_count);
+        output_buffer += _context._out_ch_count;
+        input_buffer += _context._in_ch_count;
+      }
+    }
   }
 
   int mix(unsigned long frames,
@@ -725,10 +757,7 @@ struct cubeb_mixer
           void * output_buffer,
           unsigned long output_buffer_size) const
   {
-    if (!valid()) {
-      return -1;
-    }
-    if (frames <= 0) {
+    if (frames <= 0 || _context._out_ch_count == 0) {
       return 0;
     }
 
@@ -743,9 +772,26 @@ struct cubeb_mixer
         size_read_needed * _context._out_ch_count) {
       return -1;
     }
+
+    if (!valid()) {
+      // The channel layouts were invalid or unsupported, instead we will simply
+      // either drop the extra channels, or fill with silence the missing ones
+      if (_context._format == CUBEB_SAMPLE_FLOAT32NE) {
+        copy_and_trunc(frames,
+                       reinterpret_cast<float*>(input_buffer),
+                       reinterpret_cast<float*>(output_buffer));
+      } else {
+        assert(_context._format == CUBEB_SAMPLE_S16NE);
+        copy_and_trunc(frames,
+                       reinterpret_cast<int16_t*>(input_buffer),
+                       reinterpret_cast<int16_t*>(output_buffer));
+      }
+    }
+
     return rematrix(&_context, output_buffer, input_buffer, frames);
   }
 
+  // Return false if any of the input or ouput layout were invalid.
   bool valid() const { return _context._valid; }
 
   virtual ~cubeb_mixer(){};
@@ -754,14 +800,13 @@ struct cubeb_mixer
 };
 
 cubeb_mixer* cubeb_mixer_create(cubeb_sample_format format,
+                                uint32_t in_channels,
                                 cubeb_channel_layout in_layout,
+                                uint32_t out_channels,
                                 cubeb_channel_layout out_layout)
 {
-  if (!MixerContext::sane_layout(in_layout) ||
-      !MixerContext::sane_layout(out_layout)) {
-    return nullptr;
-  }
-  return new cubeb_mixer(format, in_layout, out_layout);
+  return new cubeb_mixer(
+    format, in_channels, in_layout, out_channels, out_layout);
 }
 
 void cubeb_mixer_destroy(cubeb_mixer * mixer)
