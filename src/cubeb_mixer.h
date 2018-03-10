@@ -23,7 +23,7 @@ cubeb_mixer * cubeb_mixer_create(cubeb_sample_format format,
 void cubeb_mixer_destroy(cubeb_mixer * mixer);
 int cubeb_mixer_mix(cubeb_mixer * mixer,
                     unsigned long frames,
-                    void * input_buffer,
+                    const void * input_buffer,
                     unsigned long input_buffer_size,
                     void * output_buffer,
                     unsigned long output_buffer_size);

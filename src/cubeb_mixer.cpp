@@ -590,7 +590,7 @@ int MixerContext::init()
   return 0;
 }
 
-static int rematrix(const MixerContext * s, void * out, void * in, uint32_t frames)
+static int rematrix(const MixerContext * s, void * out, const void * in, uint32_t frames)
 {
   for (uint32_t out_i = 0; out_i < s->_out_ch_count; out_i++) {
     switch (s->_matrix_ch[out_i][0]) {
@@ -612,7 +612,7 @@ static int rematrix(const MixerContext * s, void * out, void * in, uint32_t fram
         int in_i = s->_matrix_ch[out_i][1];
         if (s->_format == CUBEB_SAMPLE_FLOAT32NE) {
           float* outf = static_cast<float*>(out) + out_i;
-          float* inf = static_cast<float*>(in) + in_i;
+          const float* inf = static_cast<const float*>(in) + in_i;
           copy(outf,
                s->_out_ch_count,
                inf,
@@ -622,7 +622,7 @@ static int rematrix(const MixerContext * s, void * out, void * in, uint32_t fram
         } else {
           assert(s->_format == CUBEB_SAMPLE_S16NE);
           int16_t* outi = static_cast<int16_t*>(out) + out_i;
-          int16_t* ini = static_cast<int16_t*>(in) + in_i;
+          const int16_t* ini = static_cast<const int16_t*>(in) + in_i;
           if (s->_clipping) {
             copy<int16_t, int, true>(outi,
                                      s->_out_ch_count,
@@ -643,8 +643,8 @@ static int rematrix(const MixerContext * s, void * out, void * in, uint32_t fram
       case 2:
         if (s->_format == CUBEB_SAMPLE_FLOAT32NE) {
           float* outf = static_cast<float*>(out) + out_i;
-          float* inf1 = static_cast<float*>(in) + s->_matrix_ch[out_i][1];
-          float* inf2 = static_cast<float*>(in) + s->_matrix_ch[out_i][2];
+          const float* inf1 = static_cast<const float*>(in) + s->_matrix_ch[out_i][1];
+          const float* inf2 = static_cast<const float*>(in) + s->_matrix_ch[out_i][2];
           sum2(outf,
                s->_out_ch_count,
                inf1,
@@ -656,8 +656,8 @@ static int rematrix(const MixerContext * s, void * out, void * in, uint32_t fram
         } else {
           assert(s->_format == CUBEB_SAMPLE_S16NE);
           int16_t* outi = static_cast<int16_t*>(out) + out_i;
-          int16_t* ini1 = static_cast<int16_t*>(in) + s->_matrix_ch[out_i][1];
-          int16_t* ini2 = static_cast<int16_t*>(in) + s->_matrix_ch[out_i][2];
+          const int16_t* ini1 = static_cast<const int16_t*>(in) + s->_matrix_ch[out_i][1];
+          const int16_t* ini2 = static_cast<const int16_t*>(in) + s->_matrix_ch[out_i][2];
           if (s->_clipping) {
             sum2<int16_t, int, true>(
               outi,
@@ -684,7 +684,7 @@ static int rematrix(const MixerContext * s, void * out, void * in, uint32_t fram
       default:
         if (s->_format == CUBEB_SAMPLE_FLOAT32NE) {
           float* outf = static_cast<float*>(out) + out_i;
-          float* inf = static_cast<float*>(in);
+          const float* inf = static_cast<const float*>(in);
           for (uint32_t i = 0; i < frames; i++) {
             float v = 0;
             for (uint32_t j = 0; j < s->_matrix_ch[out_i][0]; j++) {
@@ -697,7 +697,7 @@ static int rematrix(const MixerContext * s, void * out, void * in, uint32_t fram
         } else {
           assert(s->_format == CUBEB_SAMPLE_S16NE);
           int16_t* outi = static_cast<int16_t*>(out) + out_i;
-          int16_t* ini = static_cast<int16_t*>(in);
+          const int16_t* ini = static_cast<const int16_t*>(in);
           for (uint32_t i = 0; i < frames; i++) {
             int v = 0;
             for (uint32_t j = 0; j < s->_matrix_ch[out_i][0]; j++) {
@@ -730,8 +730,8 @@ struct cubeb_mixer
 
   template<typename T>
   void copy_and_trunc(unsigned long frames,
-                      T* input_buffer,
-                      T* output_buffer) const
+                      const T * input_buffer,
+                      T * output_buffer) const
   {
     if (_context._in_ch_count <= _context._out_ch_count) {
       // Not enough channels to copy, fill the gaps with silence.
@@ -752,7 +752,7 @@ struct cubeb_mixer
   }
 
   int mix(unsigned long frames,
-          void * input_buffer,
+          const void * input_buffer,
           unsigned long input_buffer_size,
           void * output_buffer,
           unsigned long output_buffer_size) const
@@ -778,13 +778,13 @@ struct cubeb_mixer
       // either drop the extra channels, or fill with silence the missing ones
       if (_context._format == CUBEB_SAMPLE_FLOAT32NE) {
         copy_and_trunc(frames,
-                       reinterpret_cast<float*>(input_buffer),
-                       reinterpret_cast<float*>(output_buffer));
+                       static_cast<const float*>(input_buffer),
+                       static_cast<float*>(output_buffer));
       } else {
         assert(_context._format == CUBEB_SAMPLE_S16NE);
         copy_and_trunc(frames,
-                       reinterpret_cast<int16_t*>(input_buffer),
-                       reinterpret_cast<int16_t*>(output_buffer));
+                       static_cast<const int16_t*>(input_buffer),
+                       static_cast<int16_t*>(output_buffer));
       }
     }
 
@@ -816,9 +816,9 @@ void cubeb_mixer_destroy(cubeb_mixer * mixer)
 
 int cubeb_mixer_mix(cubeb_mixer * mixer,
                     unsigned long frames,
-                    void* input_buffer,
+                    const void * input_buffer,
                     unsigned long input_buffer_size,
-                    void* output_buffer,
+                    void * output_buffer,
                     unsigned long output_buffer_size)
 {
   return mixer->mix(
