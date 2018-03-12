@@ -1279,7 +1279,7 @@ pulse_sink_info_cb(pa_context * context, const pa_sink_info * info,
 
   device_id = info->name;
   if (intern_device_id(list_data->context, &device_id) != CUBEB_OK) {
-    assert(false);
+    assert(NULL);
     return;
   }
 
@@ -1348,7 +1348,7 @@ pulse_source_info_cb(pa_context * context, const pa_source_info * info,
 
   device_id = info->name;
   if (intern_device_id(list_data->context, &device_id) != CUBEB_OK) {
-    assert(false);
+    assert(NULL);
     return;
   }
 
