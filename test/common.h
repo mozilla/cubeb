@@ -11,6 +11,7 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#include <objbase.h>
 #include <windows.h>
 #else
 #include <unistd.h>
@@ -108,5 +109,25 @@ int common_init(cubeb ** ctx, char const * ctx_name)
 
   return r;
 }
+
+#if defined( _WIN32)
+class TestEnvironment : public ::testing::Environment {
+public:
+  void SetUp() override {
+    hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+  }
+
+  void TearDown() override {
+    if (SUCCEEDED(hr)) {
+      CoUninitialize();
+    }
+  }
+
+private:
+  HRESULT hr;
+};
+
+::testing::Environment* const foo_env = ::testing::AddGlobalTestEnvironment(new TestEnvironment);
+#endif
 
 #endif /* TEST_COMMON */
