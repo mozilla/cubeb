@@ -135,32 +135,6 @@ private:
   T * ptr = nullptr;
 };
 
-struct auto_com {
-  auto_com() {
-    result = CoInitializeEx(NULL, COINIT_MULTITHREADED);
-  }
-  ~auto_com() {
-    if (result == RPC_E_CHANGED_MODE) {
-      // This is not an error, COM was not initialized by this function, so it is
-      // not necessary to uninit it.
-      LOG("COM was already initialized in STA.");
-    } else if (result == S_FALSE) {
-      // This is not an error. We are allowed to call CoInitializeEx more than
-      // once, as long as it is matches by an CoUninitialize call.
-      // We do that in the dtor which is guaranteed to be called.
-      LOG("COM was already initialized in MTA");
-    }
-    if (SUCCEEDED(result)) {
-      CoUninitialize();
-    }
-  }
-  bool ok() {
-    return result == RPC_E_CHANGED_MODE || SUCCEEDED(result);
-  }
-private:
-  HRESULT result;
-};
-
 extern cubeb_ops const wasapi_ops;
 
 int wasapi_stream_stop(cubeb_stream * stm);
@@ -869,12 +843,15 @@ wasapi_stream_render_loop(LPVOID stream)
   HANDLE mmcss_handle = NULL;
   HRESULT hr = 0;
   DWORD mmcss_task_index = 0;
-  auto_com com;
-  if (!com.ok()) {
-    LOG("COM initialization failed on render_loop thread.");
-    stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
-    return 0;
-  }
+  struct auto_com {
+    auto_com() {
+      HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+      XASSERT(SUCCEEDED(hr));
+    }
+    ~auto_com() {
+      CoUninitialize();
+    }
+  } com;
 
   /* We could consider using "Pro Audio" here for WebAudio and
      maybe WebRTC. */
@@ -1017,6 +994,7 @@ HRESULT register_notification_client(cubeb_stream * stm)
                                 IID_PPV_ARGS(stm->device_enumerator.receive()));
   if (FAILED(hr)) {
     LOG("Could not get device enumerator: %lx", hr);
+    XASSERT(hr != CO_E_NOTINITIALIZED);
     return hr;
   }
 
@@ -1063,6 +1041,7 @@ HRESULT get_endpoint(com_ptr<IMMDevice> & device, LPCWSTR devid)
                                 IID_PPV_ARGS(enumerator.receive()));
   if (FAILED(hr)) {
     LOG("Could not get device enumerator: %lx", hr);
+    XASSERT(hr != CO_E_NOTINITIALIZED);
     return hr;
   }
 
@@ -1083,6 +1062,7 @@ HRESULT get_default_endpoint(com_ptr<IMMDevice> & device, EDataFlow direction)
                                 IID_PPV_ARGS(enumerator.receive()));
   if (FAILED(hr)) {
     LOG("Could not get device enumerator: %lx", hr);
+    XASSERT(hr != CO_E_NOTINITIALIZED);
     return hr;
   }
   hr = enumerator->GetDefaultAudioEndpoint(direction, eConsole, device.receive());
@@ -1167,17 +1147,11 @@ stream_set_volume(cubeb_stream * stm, float volume)
 extern "C" {
 int wasapi_init(cubeb ** context, char const * context_name)
 {
-  HRESULT hr;
-  auto_com com;
-  if (!com.ok()) {
-    return CUBEB_ERROR;
-  }
-
   /* We don't use the device yet, but need to make sure we can initialize one
      so that this backend is not incorrectly enabled on platforms that don't
      support WASAPI. */
   com_ptr<IMMDevice> device;
-  hr = get_default_endpoint(device, eRender);
+  HRESULT hr = get_default_endpoint(device, eRender);
   if (FAILED(hr)) {
     LOG("Could not get device: %lx", hr);
     return CUBEB_ERROR;
@@ -1272,16 +1246,10 @@ char const * wasapi_get_backend_id(cubeb * context)
 int
 wasapi_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
 {
-  HRESULT hr;
-  auto_com com;
-  if (!com.ok()) {
-    return CUBEB_ERROR;
-  }
-
   XASSERT(ctx && max_channels);
 
   com_ptr<IMMDevice> device;
-  hr = get_default_endpoint(device, eRender);
+  HRESULT hr = get_default_endpoint(device, eRender);
   if (FAILED(hr)) {
     return CUBEB_ERROR;
   }
@@ -1309,19 +1277,12 @@ wasapi_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
 int
 wasapi_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * latency_frames)
 {
-  HRESULT hr;
-  REFERENCE_TIME default_period;
-  auto_com com;
-  if (!com.ok()) {
-    return CUBEB_ERROR;
-  }
-
   if (params.format != CUBEB_SAMPLE_FLOAT32NE && params.format != CUBEB_SAMPLE_S16NE) {
     return CUBEB_ERROR_INVALID_FORMAT;
   }
 
   com_ptr<IMMDevice> device;
-  hr = get_default_endpoint(device, eRender);
+  HRESULT hr = get_default_endpoint(device, eRender);
   if (FAILED(hr)) {
     LOG("Could not get default endpoint: %lx", hr);
     return CUBEB_ERROR;
@@ -1337,6 +1298,7 @@ wasapi_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * laten
   }
 
   /* The second parameter is for exclusive mode, that we don't use. */
+  REFERENCE_TIME default_period;
   hr = client->GetDevicePeriod(&default_period, NULL);
   if (FAILED(hr)) {
     LOG("Could not get device period: %lx", hr);
@@ -1359,14 +1321,8 @@ wasapi_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * laten
 int
 wasapi_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
 {
-  HRESULT hr;
-  auto_com com;
-  if (!com.ok()) {
-    return CUBEB_ERROR;
-  }
-
   com_ptr<IMMDevice> device;
-  hr = get_default_endpoint(device, eRender);
+  HRESULT hr = get_default_endpoint(device, eRender);
   if (FAILED(hr)) {
     return CUBEB_ERROR;
   }
@@ -1619,16 +1575,9 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
 
 int setup_wasapi_stream(cubeb_stream * stm)
 {
-  HRESULT hr;
   int rv;
 
   stm->stream_reset_lock.assert_current_thread_owns();
-
-  auto_com com;
-  if (!com.ok()) {
-    LOG("Failure to initialize COM.");
-    return CUBEB_ERROR;
-  }
 
   XASSERT((!stm->output_client || !stm->input_client) && "WASAPI stream already setup, close it first.");
 
@@ -1702,8 +1651,8 @@ int setup_wasapi_stream(cubeb_stream * stm)
       return rv;
     }
 
-    hr = stm->output_client->GetService(__uuidof(IAudioStreamVolume),
-                                        stm->audio_stream_volume.receive_vpp());
+    HRESULT hr = stm->output_client->GetService(__uuidof(IAudioStreamVolume),
+                                                stm->audio_stream_volume.receive_vpp());
     if (FAILED(hr)) {
       LOG("Could not get the IAudioStreamVolume: %lx", hr);
       return CUBEB_ERROR;
@@ -1817,12 +1766,7 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
                    unsigned int latency_frames, cubeb_data_callback data_callback,
                    cubeb_state_callback state_callback, void * user_ptr)
 {
-  HRESULT hr;
   int rv;
-  auto_com com;
-  if (!com.ok()) {
-    return CUBEB_ERROR;
-  }
 
   XASSERT(context && stream && (input_stream_params || output_stream_params));
 
@@ -1893,7 +1837,7 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
     return rv;
   }
 
-  hr = register_notification_client(stm.get());
+  HRESULT hr = register_notification_client(stm.get());
   if (FAILED(hr)) {
     /* this is not fatal, we can still play audio, but we won't be able
        to keep using the default audio endpoint if it changes. */
@@ -2356,20 +2300,17 @@ static int
 wasapi_enumerate_devices(cubeb * context, cubeb_device_type type,
                          cubeb_device_collection * out)
 {
-  auto_com com;
   com_ptr<IMMDeviceEnumerator> enumerator;
   com_ptr<IMMDeviceCollection> collection;
   HRESULT hr;
   UINT cc, i;
   EDataFlow flow;
 
-  if (!com.ok())
-    return CUBEB_ERROR;
-
   hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), NULL,
-      CLSCTX_INPROC_SERVER, IID_PPV_ARGS(enumerator.receive()));
+                        CLSCTX_INPROC_SERVER, IID_PPV_ARGS(enumerator.receive()));
   if (FAILED(hr)) {
     LOG("Could not get device enumerator: %lx", hr);
+    XASSERT(hr != CO_E_NOTINITIALIZED);
     return CUBEB_ERROR;
   }
 

@@ -408,6 +408,10 @@ typedef void (* cubeb_log_callback)(char const * fmt, ...);
 
 /** Initialize an application context.  This will perform any library or
     application scoped initialization.
+
+    Note: On Windows platforms, COM must be initialized in MTA mode on
+    any thread that will call the cubeb API.
+
     @param context A out param where an opaque pointer to the application
                    context will be returned.
     @param context_name A name for the context. Depending on the platform this
