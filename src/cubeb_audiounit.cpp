@@ -87,6 +87,7 @@ struct cubeb {
   dispatch_queue_t serial_queue = dispatch_queue_create(DISPATCH_QUEUE_LABEL, DISPATCH_QUEUE_SERIAL);
   // Current used channel layout
   atomic<cubeb_channel_layout> layout{ CUBEB_LAYOUT_UNDEFINED };
+  uint32_t channels = 0;
 };
 
 static unique_ptr<AudioChannelLayout, decltype(&free)>
@@ -1330,16 +1331,18 @@ audio_stream_desc_init(AudioStreamBasicDescription * ss,
   return CUBEB_OK;
 }
 
-bool
+void
 audiounit_init_mixer(cubeb_stream * stm)
 {
   // We can't rely on macOS' AudioUnit to properly downmix (or upmix) the audio
   // data, it silently drop the channels so we need to remix the
   // audio data by ourselves to keep all the information.
   stm->mixer.reset(cubeb_mixer_create(stm->output_stream_params.format,
+                                      stm->output_stream_params.channels,
                                       stm->output_stream_params.layout,
+                                      stm->context->channels,
                                       stm->context->layout));
-  return static_cast<bool>(stm->mixer);
+  assert(stm->mixer);
 }
 
 static int
@@ -2299,28 +2302,22 @@ audiounit_configure_output(cubeb_stream * stm)
   }
   stm->output_hw_rate = output_hw_desc.mSampleRate;
   LOG("(%p) Output device sampling rate: %.2f", stm, output_hw_desc.mSampleRate);
+  stm->context->channels = output_hw_desc.mChannelsPerFrame;
 
-  if (stm->output_stream_params.layout != CUBEB_LAYOUT_UNDEFINED) {
-    audiounit_layout_init(stm, OUTPUT);
-    if (stm->context->layout != CUBEB_LAYOUT_UNDEFINED &&
-        stm->context->layout != stm->output_stream_params.layout) {
-      LOG("Incompatible channel layouts detected, setting up remixer");
-      if (audiounit_init_mixer(stm)) {
-        // We will be remixing the data before it reaches the output device.
-        // We need to adjust the number of channels and other
-        // AudioStreamDescription details.
-        stm->output_desc.mChannelsPerFrame =
-          cubeb_channel_layout_nb_channels(stm->context->layout);
-        stm->output_desc.mBytesPerFrame =
-          (stm->output_desc.mBitsPerChannel / 8) *
-          stm->output_desc.mChannelsPerFrame;
-        stm->output_desc.mBytesPerPacket =
-          stm->output_desc.mBytesPerFrame * stm->output_desc.mFramesPerPacket;
-      }
-    }
-    if (!stm->mixer) {
-      LOG("Failed to setup remixer for layout %u", stm->output_stream_params.layout);
-    }
+  // Set the input layout to match the output device layout.
+  audiounit_layout_init(stm, OUTPUT);
+  if (stm->context->channels != stm->output_stream_params.channels ||
+      stm->context->layout != stm->output_stream_params.layout) {
+    LOG("Incompatible channel layouts detected, setting up remixer");
+    audiounit_init_mixer(stm);
+    // We will be remixing the data before it reaches the output device.
+    // We need to adjust the number of channels and other
+    // AudioStreamDescription details.
+    stm->output_desc.mChannelsPerFrame = stm->context->channels;
+    stm->output_desc.mBytesPerFrame = (stm->output_desc.mBitsPerChannel / 8) *
+                                      stm->output_desc.mChannelsPerFrame;
+    stm->output_desc.mBytesPerPacket =
+      stm->output_desc.mBytesPerFrame * stm->output_desc.mFramesPerPacket;
   } else {
     stm->mixer = nullptr;
   }

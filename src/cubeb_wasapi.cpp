@@ -1753,14 +1753,14 @@ int setup_wasapi_stream(cubeb_stream * stm)
       LOG("Stream using undefined layout! Any mixing may be unpredictable!\n");
     }
     stm->mixer.reset(cubeb_mixer_create(stm->output_stream_params.format,
+                                        stm->output_stream_params.channels,
                                         stm->output_stream_params.layout,
+                                        stm->output_mix_params.channels,
                                         stm->output_mix_params.layout));
-
+    assert(stm->mixer);
     // Input is up/down mixed when depacketized in get_input_buffer.
-    if (stm->mixer) {
-      stm->mix_buffer.resize(
-        frames_to_bytes_before_mix(stm, stm->output_buffer_frame_count));
-    }
+    stm->mix_buffer.resize(
+      frames_to_bytes_before_mix(stm, stm->output_buffer_frame_count));
   }
 
   return CUBEB_OK;
@@ -1803,9 +1803,6 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
   if (output_stream_params) {
     stm->output_stream_params = *output_stream_params;
     stm->output_device = utf8_to_wstr(reinterpret_cast<char const *>(output_device));
-    // Make sure the layout matches the channel count.
-    XASSERT(stm->output_stream_params.layout == CUBEB_LAYOUT_UNDEFINED ||
-            stm->output_stream_params.channels == cubeb_channel_layout_nb_channels(stm->output_stream_params.layout));
   }
 
   switch (output_stream_params ? output_stream_params->format : input_stream_params->format) {
