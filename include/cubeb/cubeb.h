@@ -157,63 +157,66 @@ typedef enum {
   CUBEB_LOG_VERBOSE = 2, /**< Verbose logging of callbacks, can have performance implications. */
 } cubeb_log_level;
 
-/** SMPTE channel layout (also known as wave order)
- * DUAL-MONO      L   R
- * DUAL-MONO-LFE  L   R   LFE
- * MONO           M
- * MONO-LFE       M   LFE
- * STEREO         L   R
- * STEREO-LFE     L   R   LFE
- * 3F             L   R   C
- * 3F-LFE         L   R   C    LFE
- * 2F1            L   R   RC
- * 2F1-LFE        L   R   LFE  RC
- * 3F1            L   R   C    RC
- * 3F1-LFE        L   R   C    LFE  RC
- * 2F2            L   R   LS   RS
- * 2F2-LFE        L   R   LFE  LS   RS
- * 3F2            L   R   C    LS   RS
- * 3F2-LFE        L   R   C    LFE  LS   RS
- * 3F3R-LFE       L   R   C    LFE  RC   LS   RS
- * 3F4-LFE        L   R   C    LFE  RLS  RRS  LS   RS
- *
- * The abbreviation of channel name is defined in following table:
- * Abbr  Channel name
- * ---------------------------
- * M     Mono
- * L     Left
- * R     Right
- * C     Center
- * LS    Left Surround
- * RS    Right Surround
- * RLS   Rear Left Surround
- * RC    Rear Center
- * RRS   Rear Right Surround
- * LFE   Low Frequency Effects
- */
-
 typedef enum {
-  CUBEB_LAYOUT_UNDEFINED, // Indicate the speaker's layout is undefined.
-  CUBEB_LAYOUT_MONO,
-  CUBEB_LAYOUT_MONO_LFE,
-  CUBEB_LAYOUT_STEREO,
-  CUBEB_LAYOUT_STEREO_LFE,
-  CUBEB_LAYOUT_3F,
-  CUBEB_LAYOUT_3F_LFE,
-  CUBEB_LAYOUT_2F1,
-  CUBEB_LAYOUT_2F1_LFE,
-  CUBEB_LAYOUT_3F1,
-  CUBEB_LAYOUT_3F1_LFE,
-  CUBEB_LAYOUT_2F2,
-  CUBEB_LAYOUT_2F2_LFE,
-  CUBEB_LAYOUT_QUAD,
-  CUBEB_LAYOUT_QUAD_LFE,
-  CUBEB_LAYOUT_3F2,
-  CUBEB_LAYOUT_3F2_LFE,
-  CUBEB_LAYOUT_3F3R_LFE,
-  CUBEB_LAYOUT_3F4_LFE,
-  CUBEB_LAYOUT_MAX
-} cubeb_channel_layout;
+  CHANNEL_UNKNOWN = 0,
+  CHANNEL_FRONT_LEFT = 1 << 0,
+  CHANNEL_FRONT_RIGHT = 1 << 1,
+  CHANNEL_FRONT_CENTER = 1 << 2,
+  CHANNEL_LOW_FREQUENCY = 1 << 3,
+  CHANNEL_BACK_LEFT = 1 << 4,
+  CHANNEL_BACK_RIGHT = 1 << 5,
+  CHANNEL_FRONT_LEFT_OF_CENTER = 1 << 6,
+  CHANNEL_FRONT_RIGHT_OF_CENTER = 1 << 7,
+  CHANNEL_BACK_CENTER = 1 << 8,
+  CHANNEL_SIDE_LEFT = 1 << 9,
+  CHANNEL_SIDE_RIGHT = 1 << 10,
+  CHANNEL_TOP_CENTER = 1 << 11,
+  CHANNEL_TOP_FRONT_LEFT = 1 << 12,
+  CHANNEL_TOP_FRONT_CENTER = 1 << 13,
+  CHANNEL_TOP_FRONT_RIGHT = 1 << 14,
+  CHANNEL_TOP_BACK_LEFT = 1 << 15,
+  CHANNEL_TOP_BACK_CENTER = 1 << 16,
+  CHANNEL_TOP_BACK_RIGHT = 1 << 17
+} cubeb_channel;
+
+typedef uint32_t cubeb_channel_layout;
+// Some common layout definitions.
+enum {
+  CUBEB_LAYOUT_UNDEFINED = 0, // Indicate the speaker's layout is undefined.
+  CUBEB_LAYOUT_MONO = CHANNEL_FRONT_CENTER,
+  CUBEB_LAYOUT_MONO_LFE = CUBEB_LAYOUT_MONO | CHANNEL_LOW_FREQUENCY,
+  CUBEB_LAYOUT_STEREO = CHANNEL_FRONT_LEFT | CHANNEL_FRONT_RIGHT,
+  CUBEB_LAYOUT_STEREO_LFE = CUBEB_LAYOUT_STEREO | CHANNEL_LOW_FREQUENCY,
+  CUBEB_LAYOUT_3F =
+    CHANNEL_FRONT_LEFT | CHANNEL_FRONT_RIGHT | CHANNEL_FRONT_CENTER,
+  CUBEB_LAYOUT_3F_LFE = CUBEB_LAYOUT_3F | CHANNEL_LOW_FREQUENCY,
+  CUBEB_LAYOUT_2F1 =
+    CHANNEL_FRONT_LEFT | CHANNEL_FRONT_RIGHT | CHANNEL_BACK_CENTER,
+  CUBEB_LAYOUT_2F1_LFE = CUBEB_LAYOUT_2F1 | CHANNEL_LOW_FREQUENCY,
+  CUBEB_LAYOUT_3F1 = CHANNEL_FRONT_LEFT | CHANNEL_FRONT_RIGHT |
+                     CHANNEL_FRONT_CENTER | CHANNEL_BACK_CENTER,
+  CUBEB_LAYOUT_3F1_LFE = CUBEB_LAYOUT_3F1 | CHANNEL_LOW_FREQUENCY,
+  CUBEB_LAYOUT_2F2 = CHANNEL_FRONT_LEFT | CHANNEL_FRONT_RIGHT |
+                     CHANNEL_SIDE_LEFT | CHANNEL_SIDE_RIGHT,
+  CUBEB_LAYOUT_2F2_LFE = CUBEB_LAYOUT_2F2 | CHANNEL_LOW_FREQUENCY,
+  CUBEB_LAYOUT_QUAD = CHANNEL_FRONT_LEFT | CHANNEL_FRONT_RIGHT |
+                      CHANNEL_BACK_LEFT | CHANNEL_BACK_RIGHT,
+  CUBEB_LAYOUT_QUAD_LFE = CUBEB_LAYOUT_QUAD | CHANNEL_LOW_FREQUENCY,
+  CUBEB_LAYOUT_3F2 = CHANNEL_FRONT_LEFT | CHANNEL_FRONT_RIGHT |
+                     CHANNEL_FRONT_CENTER | CHANNEL_SIDE_LEFT |
+                     CHANNEL_SIDE_RIGHT,
+  CUBEB_LAYOUT_3F2_LFE = CUBEB_LAYOUT_3F2 | CHANNEL_LOW_FREQUENCY,
+  CUBEB_LAYOUT_3F2_BACK = CUBEB_LAYOUT_QUAD | 1 << CHANNEL_FRONT_CENTER,
+  CUBEB_LAYOUT_3F2_LFE_BACK = CUBEB_LAYOUT_3F2_BACK | CHANNEL_LOW_FREQUENCY,
+  CUBEB_LAYOUT_3F3R_LFE = CHANNEL_FRONT_LEFT | CHANNEL_FRONT_RIGHT |
+                          CHANNEL_FRONT_CENTER | CHANNEL_LOW_FREQUENCY |
+                          CHANNEL_BACK_CENTER | CHANNEL_SIDE_LEFT |
+                          CHANNEL_SIDE_RIGHT,
+  CUBEB_LAYOUT_3F4_LFE = CHANNEL_FRONT_LEFT | CHANNEL_FRONT_RIGHT |
+                         CHANNEL_FRONT_CENTER | CHANNEL_LOW_FREQUENCY |
+                         CHANNEL_BACK_LEFT | CHANNEL_BACK_RIGHT |
+                         CHANNEL_SIDE_LEFT | CHANNEL_SIDE_RIGHT,
+};
 
 /** Miscellaneous stream preferences. */
 typedef enum {
