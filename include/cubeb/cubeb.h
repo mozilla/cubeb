@@ -233,7 +233,7 @@ typedef struct {
                                      #cubeb_sample_format. */
   uint32_t rate;                /**< Requested sample rate.  Valid range is [1000, 192000]. */
   uint32_t channels;            /**< Requested channel count.  Valid range is [1, 8]. */
-  cubeb_channel_layout layout;  /**< Requested channel layout. This must be consistent with the provided channels. */
+  cubeb_channel_layout layout;  /**< Requested channel layout. This must be consistent with the provided channels. CUBEB_LAYOUT_UNDEFINED if unknown */
   cubeb_stream_prefs prefs;     /**< Requested preferences. */
 } cubeb_stream_params;
 
