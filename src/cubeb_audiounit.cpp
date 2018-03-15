@@ -604,7 +604,6 @@ audiounit_output_callback(void * user_ptr,
     return noErr;
   }
 
-  size_t outbpf = stm->output_desc.mBytesPerFrame;
   stm->draining = (UInt32) outframes < output_frames;
   stm->frames_played = stm->frames_queued;
   stm->frames_queued += outframes;
@@ -615,6 +614,7 @@ audiounit_output_callback(void * user_ptr,
 
   /* Post process output samples. */
   if (stm->draining) {
+    size_t outbpf = cubeb_sample_size(stm->output_stream_params.format);
     /* Clear missing frames (silence) */
     memset((uint8_t*)output_buffer + outframes * outbpf, 0, (output_frames - outframes) * outbpf);
   }
