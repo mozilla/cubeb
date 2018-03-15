@@ -85,8 +85,18 @@ struct MixerContext {
                uint32_t out_channels,
                cubeb_channel_layout out)
     : _format(f)
-    , _in_ch_layout(in)
-    , _out_ch_layout(out)
+    , _in_ch_layout(in == CUBEB_LAYOUT_UNDEFINED
+                      ? (in_channels == 1
+                           ? CUBEB_LAYOUT_MONO
+                           : (in_channels == 2 ? CUBEB_LAYOUT_STEREO
+                                               : CUBEB_LAYOUT_UNDEFINED))
+                      : in)
+    , _out_ch_layout(
+        (out == CUBEB_LAYOUT_UNDEFINED
+           ? (out_channels == 1 ? CUBEB_LAYOUT_MONO
+                                : (out_channels == 2 ? CUBEB_LAYOUT_STEREO
+                                                     : CUBEB_LAYOUT_UNDEFINED))
+           : out))
     , _in_ch_count(in_channels)
     , _out_ch_count(out_channels)
   {
