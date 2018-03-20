@@ -1370,12 +1370,15 @@ audiounit_set_channel_layout(AudioUnit unit,
   au_layout->mChannelLayoutTag = kAudioChannelLayoutTag_UseChannelDescriptions;
   au_layout->mNumberChannelDescriptions = channels;
   cubeb_channel_layout channelMap = layout;
-  for (UInt32 i = 0 ; channelMap != 0; ++i) {
+  int i = 0;
+  while (channelMap != 0) {
+    XASSERT(i < channels);
     uint32_t channel = (channelMap & 1) << i;
     if (channel != 0) {
       au_layout->mChannelDescriptions[i].mChannelLabel =
         cubeb_channel_to_channel_label(static_cast<cubeb_channel>(channel));
       au_layout->mChannelDescriptions[i].mChannelFlags = kAudioChannelFlags_AllOff;
+      i += 1;
     }
     channelMap = channelMap >> 1;
   }
