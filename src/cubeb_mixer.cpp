@@ -544,7 +544,7 @@ struct cubeb_mixer
   }
 
   int mix(size_t frames,
-          void * input_buffer,
+          const void * input_buffer,
           size_t input_buffer_size,
           void * output_buffer,
           size_t output_buffer_size) const
@@ -575,7 +575,7 @@ struct cubeb_mixer
       } else {
         assert(_context._format == CUBEB_SAMPLE_S16NE);
         copy_and_trunc(frames,
-                       static_cast<int16_t*>(input_buffer),
+                       static_cast<const int16_t*>(input_buffer),
                        reinterpret_cast<int16_t*>(output_buffer));
       }
       return 0;
@@ -651,9 +651,9 @@ void cubeb_mixer_destroy(cubeb_mixer * mixer)
 
 int cubeb_mixer_mix(cubeb_mixer * mixer,
                     size_t frames,
-                    void* input_buffer,
+                    const void * input_buffer,
                     size_t input_buffer_size,
-                    void* output_buffer,
+                    void * output_buffer,
                     size_t output_buffer_size)
 {
   return mixer->mix(
