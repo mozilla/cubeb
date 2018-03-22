@@ -596,12 +596,16 @@ impl PulseContext {
         }
 
         self.mainloop.lock();
-        if let Some(ref context) = self.context {
+        let connected = if let Some(ref context) = self.context {
             context.set_state_callback(error_state, context_ptr);
-            let _ = context.connect(None, pulse::ContextFlags::empty(), ptr::null());
-        }
+            context
+                .connect(None, pulse::ContextFlags::empty(), ptr::null())
+                .is_ok()
+        } else {
+            false
+        };
 
-        if !self.wait_until_context_ready() {
+        if !connected || !self.wait_until_context_ready() {
             self.mainloop.unlock();
             self.context_destroy();
             return Err(Error::error());
