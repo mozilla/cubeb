@@ -64,6 +64,18 @@
 #define C_45DB  0.594603558
 #define C_60DB  0.5
 
+static cubeb_channel_layout
+cubeb_channel_layout_check(cubeb_channel_layout l, uint32_t c)
+{
+    if (l == CUBEB_LAYOUT_UNDEFINED) {
+      switch (c) {
+        case 1: return CUBEB_LAYOUT_MONO;
+        case 2: return CUBEB_LAYOUT_STEREO;
+      }
+    }
+    return l;
+}
+
 unsigned int cubeb_channel_layout_nb_channels(cubeb_channel_layout x)
 {
 #if __GNUC__ || __clang__
@@ -85,18 +97,8 @@ struct MixerContext {
                uint32_t out_channels,
                cubeb_channel_layout out)
     : _format(f)
-    , _in_ch_layout(in == CUBEB_LAYOUT_UNDEFINED
-                      ? (in_channels == 1
-                           ? CUBEB_LAYOUT_MONO
-                           : (in_channels == 2 ? CUBEB_LAYOUT_STEREO
-                                               : CUBEB_LAYOUT_UNDEFINED))
-                      : in)
-    , _out_ch_layout(
-        (out == CUBEB_LAYOUT_UNDEFINED
-           ? (out_channels == 1 ? CUBEB_LAYOUT_MONO
-                                : (out_channels == 2 ? CUBEB_LAYOUT_STEREO
-                                                     : CUBEB_LAYOUT_UNDEFINED))
-           : out))
+    , _in_ch_layout(cubeb_channel_layout_check(in, in_channels))
+    , _out_ch_layout(cubeb_channel_layout_check(out, out_channels))
     , _in_ch_count(in_channels)
     , _out_ch_count(out_channels)
   {
