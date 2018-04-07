@@ -1222,7 +1222,9 @@ bool stop_and_join_render_thread(cubeb_stream * stm)
     CloseHandle(stm->thread);
     stm->thread = NULL;
 
-    CloseHandle(stm->shutdown_event);
+	if (stm->shutdown_event != INVALID_HANDLE_VALUE) {
+      CloseHandle(stm->shutdown_event);
+	}
     stm->shutdown_event = 0;
   }
 
