@@ -72,6 +72,41 @@ static void oss_destroy(cubeb *ctx)
   free(ctx);
 }
 
+static int oss_start(int * fd)
+{
+  int i;
+
+  for (i = 0; i < 3 && errno == EBUSY; ++i) {
+    if (((*fd = open("/dev/dsp", O_WRONLY)) != -1) ||
+        ((*fd = open("/dev/sound", O_WRONLY)) != -1))
+	return CUBEB_OK;
+    sleep(1);
+  }
+
+  if (*fd < 0) {
+    perror("[oss] ERROR: Cannot open default sound device");
+    return CUBEB_ERROR;
+  }
+
+  return CUBEB_OK;
+}
+
+static int check_value(const unsigned long call, const int value)
+{
+  int fd, tmp = value;
+
+  if (oss_start(&fd) == CUBEB_OK) {
+    if (ioctl(fd, call, &tmp) < 0) {
+      tmp = value;
+    }
+
+    close(fd);
+  }
+
+  return tmp;
+}
+
+
 static char const * oss_get_backend_id(cubeb * context)
 {
   static char oss_name[] = "oss";
@@ -80,7 +115,10 @@ static char const * oss_get_backend_id(cubeb * context)
 
 static int oss_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
 {
-  *max_channels = 2; /* Let's support only stereo for now */
+  *max_channels = check_value(SNDCTL_DSP_CHANNELS, 8);
+
+  (void)ctx;
+
   return CUBEB_OK;
 }
 
@@ -95,9 +133,8 @@ static int oss_get_min_latency(cubeb * context, cubeb_stream_params params,
 
 static int oss_get_preferred_sample_rate(cubeb *context, uint32_t * rate)
 {
-  /* 48000 seems a prefered choice for most audio devices
-   * and a good choice for OSS */
-  *rate = 48000;
+  *rate = check_value(SNDCTL_DSP_SPEED, 48000);
+
   return CUBEB_OK;
 }
 
