@@ -54,6 +54,9 @@ int sndio_init(cubeb ** context, char const * context_name);
 #if defined(USE_OPENSL)
 int opensl_init(cubeb ** context, char const * context_name);
 #endif
+#if defined(USE_OSS)
+int oss_init(cubeb ** context, char const * context_name);
+#endif
 #if defined(USE_AUDIOTRACK)
 int audiotrack_init(cubeb ** context, char const * context_name);
 #endif
@@ -151,6 +154,10 @@ cubeb_init(cubeb ** context, char const * context_name, char const * backend_nam
     } else if (!strcmp(backend_name, "opensl")) {
 #if defined(USE_OPENSL)
       init_oneshot = opensl_init;
+#endif
+    } else if (!strcmp(backend_name, "oss")) {
+#if defined(USE_OSS)
+      init_oneshot = oss_init;
 #endif
     } else if (!strcmp(backend_name, "audiotrack")) {
 #if defined(USE_AUDIOTRACK)
