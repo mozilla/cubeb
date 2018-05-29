@@ -2578,7 +2578,6 @@ audiounit_stream_init(cubeb * context,
 {
   unique_ptr<cubeb_stream, decltype(&audiounit_stream_destroy)> stm(new cubeb_stream(context),
                                                                     audiounit_stream_destroy);
-  context->active_streams += 1;
   int r;
 
   assert(context);
@@ -2618,6 +2617,7 @@ audiounit_stream_init(cubeb * context,
     // yet, but it allows to assert that the lock has been taken in
     // `audiounit_setup_stream`.
     auto_lock lock(stm->mutex);
+    stm->context->active_streams += 1;
     r = audiounit_setup_stream(stm.get());
   }
 
