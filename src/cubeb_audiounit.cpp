@@ -2585,6 +2585,8 @@ cubeb_stream::cubeb_stream(cubeb * context)
   PodZero(&output_desc, 1);
 }
 
+static void audiounit_stream_init_failed_cleanup(cubeb_stream * stm);
+
 static int
 audiounit_stream_init(cubeb * context,
                       cubeb_stream ** stream,
@@ -2602,14 +2604,10 @@ audiounit_stream_init(cubeb * context,
   auto_lock context_lock(context->mutex);
   audiounit_increment_active_streams(context);
   unique_ptr<cubeb_stream, decltype(&audiounit_stream_destroy)> stm(new cubeb_stream(context),
-                                                                    audiounit_stream_destroy);
+                                                                    audiounit_stream_init_failed_cleanup);
   int r;
   *stream = NULL;
   assert(latency_frames > 0);
-  if ((input_device && !input_stream_params) ||
-      (output_device && !output_stream_params)) {
-    return CUBEB_ERROR_INVALID_PARAMETER;
-  }
 
   /* These could be different in the future if we have both
    * full-duplex stream and different devices for input vs output. */
@@ -2617,6 +2615,11 @@ audiounit_stream_init(cubeb * context,
   stm->state_callback = state_callback;
   stm->user_ptr = user_ptr;
   stm->latency_frames = latency_frames;
+
+  if ((input_device && !input_stream_params) ||
+      (output_device && !output_stream_params)) {
+    return CUBEB_ERROR_INVALID_PARAMETER;
+  }
   if (input_stream_params) {
     stm->input_stream_params = *input_stream_params;
     r = audiounit_set_device_info(stm.get(), reinterpret_cast<uintptr_t>(input_device), INPUT);
@@ -2684,6 +2687,27 @@ audiounit_close_stream(cubeb_stream *stm)
     audiounit_destroy_aggregate_device(stm->plugin_id, &stm->aggregate_device_id);
     stm->aggregate_device_id = 0;
   }
+}
+
+static void
+audiounit_stream_init_failed_cleanup(cubeb_stream * stm)
+{
+  stm->context->mutex.assert_current_thread_owns();
+
+  int r = audiounit_uninstall_system_changed_callback(stm);
+  if (r != CUBEB_OK) {
+    LOG("(%p) Could not uninstall the device changed callback", stm);
+  }
+
+  r = audiounit_uninstall_device_changed_callback(stm);
+  if (r != CUBEB_OK) {
+    LOG("(%p) Could not uninstall all device change listeners", stm);
+  }
+
+  auto_lock lock(stm->mutex);
+  audiounit_close_stream(stm);
+  assert(audiounit_active_streams(stm->context) >= 1);
+  audiounit_decrement_active_streams(stm->context);
 }
 
 static void
