@@ -2585,7 +2585,7 @@ cubeb_stream::cubeb_stream(cubeb * context)
   PodZero(&output_desc, 1);
 }
 
-static void audiounit_stream_init_failed_cleanup(cubeb_stream * stm);
+static void audiounit_stream_destroy_internal(cubeb_stream * stm);
 
 static int
 audiounit_stream_init(cubeb * context,
@@ -2604,7 +2604,7 @@ audiounit_stream_init(cubeb * context,
   auto_lock context_lock(context->mutex);
   audiounit_increment_active_streams(context);
   unique_ptr<cubeb_stream, decltype(&audiounit_stream_destroy)> stm(new cubeb_stream(context),
-                                                                    audiounit_stream_init_failed_cleanup);
+                                                                    audiounit_stream_destroy_internal);
   int r;
   *stream = NULL;
   assert(latency_frames > 0);
@@ -2690,7 +2690,7 @@ audiounit_close_stream(cubeb_stream *stm)
 }
 
 static void
-audiounit_stream_init_failed_cleanup(cubeb_stream * stm)
+audiounit_stream_destroy_internal(cubeb_stream *stm)
 {
   stm->context->mutex.assert_current_thread_owns();
 
@@ -2698,7 +2698,6 @@ audiounit_stream_init_failed_cleanup(cubeb_stream * stm)
   if (r != CUBEB_OK) {
     LOG("(%p) Could not uninstall the device changed callback", stm);
   }
-
   r = audiounit_uninstall_device_changed_callback(stm);
   if (r != CUBEB_OK) {
     LOG("(%p) Could not uninstall all device change listeners", stm);
@@ -2713,31 +2712,17 @@ audiounit_stream_init_failed_cleanup(cubeb_stream * stm)
 static void
 audiounit_stream_destroy(cubeb_stream * stm)
 {
-  stm->shutdown = true;
-
-  int r = audiounit_uninstall_system_changed_callback(stm);
-  if (r != CUBEB_OK) {
-    LOG("(%p) Could not uninstall the device changed callback", stm);
-  }
-
-  r = audiounit_uninstall_device_changed_callback(stm);
-  if (r != CUBEB_OK) {
-    LOG("(%p) Could not uninstall all device change listeners", stm);
-  }
-
-  {
+  if (!stm->shutdown.load()){
     auto_lock context_lock(stm->context->mutex);
     audiounit_stream_stop_internal(stm);
+    stm->shutdown = true;
   }
 
   // Execute close in serial queue to avoid collision
   // with reinit when un/plug devices
   dispatch_sync(stm->context->serial_queue, ^() {
-    auto_lock lock(stm->mutex);
-    audiounit_close_stream(stm);
     auto_lock context_lock(stm->context->mutex);
-    assert(audiounit_active_streams(stm->context) >= 1);
-    audiounit_decrement_active_streams(stm->context);
+    audiounit_stream_destroy_internal(stm);
   });
 
   LOG("Cubeb stream (%p) destroyed successful.", stm);
