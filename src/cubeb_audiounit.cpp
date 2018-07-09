@@ -1240,6 +1240,38 @@ audiounit_convert_channel_layout(AudioChannelLayout * layout)
 }
 
 static cubeb_channel_layout
+audiounit_get_preferred_channel_layout(AudioUnit output_unit)
+{
+  OSStatus rv = noErr;
+  UInt32 size = 0;
+  rv = AudioUnitGetPropertyInfo(output_unit,
+                                kAudioDevicePropertyPreferredChannelLayout,
+                                kAudioUnitScope_Output,
+                                AU_OUT_BUS,
+                                &size,
+                                nullptr);
+  if (rv != noErr) {
+    LOG("AudioUnitGetPropertyInfo/kAudioDevicePropertyPreferredChannelLayout rv=%d", rv);
+    return CUBEB_LAYOUT_UNDEFINED;
+  }
+  assert(size > 0);
+
+  auto layout = make_sized_audio_channel_layout(size);
+  rv = AudioUnitGetProperty(output_unit,
+                            kAudioDevicePropertyPreferredChannelLayout,
+                            kAudioUnitScope_Output,
+                            AU_OUT_BUS,
+                            layout.get(),
+                            &size);
+  if (rv != noErr) {
+    LOG("AudioUnitGetProperty/kAudioDevicePropertyPreferredChannelLayout rv=%d", rv);
+    return CUBEB_LAYOUT_UNDEFINED;
+  }
+
+  return audiounit_convert_channel_layout(layout.get());
+}
+
+static cubeb_channel_layout
 audiounit_get_current_channel_layout(AudioUnit output_unit)
 {
   OSStatus rv = noErr;
@@ -1252,7 +1284,8 @@ audiounit_get_current_channel_layout(AudioUnit output_unit)
                                 nullptr);
   if (rv != noErr) {
     LOG("AudioUnitGetPropertyInfo/kAudioUnitProperty_AudioChannelLayout rv=%d", rv);
-    return CUBEB_LAYOUT_UNDEFINED;
+    // This property isn't known before macOS 10.12, attempt another method.
+    return audiounit_get_preferred_channel_layout(output_unit);
   }
   assert(size > 0);
 
