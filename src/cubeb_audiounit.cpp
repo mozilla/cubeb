@@ -291,7 +291,7 @@ cubeb_channel_to_channel_label(cubeb_channel channel)
     case CHANNEL_TOP_BACK_RIGHT:
       return kAudioChannelLabel_TopBackRight;
     default:
-      return CHANNEL_UNKNOWN;
+      return kAudioChannelLabel_Unknown;
   }
 }
 
@@ -1232,8 +1232,12 @@ audiounit_convert_channel_layout(AudioChannelLayout * layout)
 
   cubeb_channel_layout cl = 0;
   for (UInt32 i = 0; i < layout->mNumberChannelDescriptions; ++i) {
-    cl |= channel_label_to_cubeb_channel(
+    cubeb_channel cc = channel_label_to_cubeb_channel(
       layout->mChannelDescriptions[i].mChannelLabel);
+    if (cc == CHANNEL_UNKNOWN) {
+      return CUBEB_LAYOUT_UNDEFINED;
+    }
+    cl |= cc;
   }
 
   return cl;
