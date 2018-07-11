@@ -3308,11 +3308,10 @@ audiounit_device_collection_destroy(cubeb * /* context */,
 static vector<AudioObjectID>
 audiounit_get_devices_of_type(cubeb_device_type devtype)
 {
-  AudioObjectPropertyAddress adr = { kAudioHardwarePropertyDevices,
-                                     kAudioObjectPropertyScopeGlobal,
-                                     kAudioObjectPropertyElementMaster };
   UInt32 size = 0;
-  OSStatus ret = AudioObjectGetPropertyDataSize(kAudioObjectSystemObject, &adr, 0, NULL, &size);
+  OSStatus ret = AudioObjectGetPropertyDataSize(kAudioObjectSystemObject,
+                                                &DEVICES_PROPERTY_ADDRESS, 0,
+                                                NULL, &size);
   if (ret != noErr) {
     return vector<AudioObjectID>();
   }
@@ -3320,7 +3319,9 @@ audiounit_get_devices_of_type(cubeb_device_type devtype)
   uint32_t count = (uint32_t)(size / sizeof(AudioObjectID));
 
   vector<AudioObjectID> devices(count);
-  ret = AudioObjectGetPropertyData(kAudioObjectSystemObject, &adr, 0, NULL, &size, devices.data());
+  ret = AudioObjectGetPropertyData(kAudioObjectSystemObject,
+                                   &DEVICES_PROPERTY_ADDRESS, 0, NULL, &size,
+                                   devices.data());
   if (ret != noErr) {
     return vector<AudioObjectID>();
   }
