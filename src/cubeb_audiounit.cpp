@@ -64,6 +64,12 @@ const char * PRIVATE_AGGREGATE_DEVICE_NAME = "CubebAggregateDevice";
 const uint32_t SAFE_MIN_LATENCY_FRAMES = 256;
 const uint32_t SAFE_MAX_LATENCY_FRAMES = 512;
 
+const AudioObjectPropertyAddress DEVICES_PROPERTY_ADDRESS = {
+  kAudioHardwarePropertyDevices,
+  kAudioObjectPropertyScopeGlobal,
+  kAudioObjectPropertyElementMaster
+};
+
 void audiounit_stream_stop_internal(cubeb_stream * stm);
 void audiounit_stream_start_internal(cubeb_stream * stm);
 static void audiounit_close_stream(cubeb_stream *stm);
@@ -3414,13 +3420,8 @@ audiounit_add_device_listener(cubeb * context,
    * Current implementation requires unregister before register a new cb. */
   assert(context->collection_changed_callback == NULL);
 
-  AudioObjectPropertyAddress devAddr;
-  devAddr.mSelector = kAudioHardwarePropertyDevices;
-  devAddr.mScope = kAudioObjectPropertyScopeGlobal;
-  devAddr.mElement = kAudioObjectPropertyElementMaster;
-
   OSStatus ret = AudioObjectAddPropertyListener(kAudioObjectSystemObject,
-                                                &devAddr,
+                                                &DEVICES_PROPERTY_ADDRESS,
                                                 audiounit_collection_changed_callback,
                                                 context);
   if (ret == noErr) {
@@ -3443,14 +3444,9 @@ audiounit_add_device_listener(cubeb * context,
 static OSStatus
 audiounit_remove_device_listener(cubeb * context)
 {
-  AudioObjectPropertyAddress devAddr;
-  devAddr.mSelector = kAudioHardwarePropertyDevices;
-  devAddr.mScope = kAudioObjectPropertyScopeGlobal;
-  devAddr.mElement = kAudioObjectPropertyElementMaster;
-
   /* Note: unregister a non registered cb is not a problem, not checking. */
   OSStatus ret = AudioObjectRemovePropertyListener(kAudioObjectSystemObject,
-                                                   &devAddr,
+                                                   &DEVICES_PROPERTY_ADDRESS,
                                                    audiounit_collection_changed_callback,
                                                    context);
   if (ret == noErr) {
