@@ -2889,21 +2889,30 @@ int audiounit_stream_set_panning(cubeb_stream * stm, float panning)
   return CUBEB_OK;
 }
 
-int audiounit_stream_get_current_device(cubeb_stream * stm,
-                                        cubeb_device ** const device)
+void allocate_and_convert_uint32_into_string(char ** str, UInt32 data)
 {
-#if TARGET_OS_IPHONE
-  //TODO
-  return CUBEB_ERROR_NOT_SUPPORTED;
-#else
-  OSStatus r;
-  UInt32 size;
-  UInt32 data;
-  char strdata[4];
-  AudioDeviceID output_device_id;
-  AudioDeviceID input_device_id;
+  /* Simply create an empty string if no data. */
+  size_t size = data == 0 ? 0 : sizeof(data);
+  *str = new char[size + 1];
+  assert(*str);
+  // Reverse 0xWXYZ into 0xZYXW.
+  for (size_t i = 0; i < size; ++i) {
+    char * p = (char *) &data;
+    (*str)[i] = p[size - 1 - i];
+  }
+  (*str)[size] = '\0';
+}
 
-  AudioObjectPropertyAddress datasource_address = {
+int audiounit_get_default_device_data(cubeb_device_type type,
+                                      UInt32 * data,
+                                      cubeb_stream * stm /* for log */)
+{
+  AudioDeviceID id = audiounit_get_default_device_id(type);
+  if (id == kAudioObjectUnknown) {
+    return CUBEB_ERROR;
+  }
+
+  AudioObjectPropertyAddress datasource_address_output = {
     kAudioDevicePropertyDataSource,
     kAudioDevicePropertyScopeOutput,
     kAudioObjectPropertyElementMaster
@@ -2915,69 +2924,65 @@ int audiounit_stream_get_current_device(cubeb_stream * stm,
     kAudioObjectPropertyElementMaster
   };
 
-  *device = NULL;
-
-  output_device_id = audiounit_get_default_device_id(CUBEB_DEVICE_TYPE_OUTPUT);
-  if (output_device_id == kAudioObjectUnknown) {
-    return CUBEB_ERROR;
+  UInt32 size = sizeof(*data);
+  /* This fails with some USB headsets (e.g., Plantronic .Audio 628). */
+  OSStatus r = AudioObjectGetPropertyData(id,
+                                          type == CUBEB_DEVICE_TYPE_INPUT ?
+                                            &datasource_address_input :
+                                            &datasource_address_output,
+                                          0, NULL, &size, data);
+  if (r != noErr) {
+    LOG("(%p) Error when getting %s device!", stm,
+        type == CUBEB_DEVICE_TYPE_INPUT ? "input" : "output");
+    *data = 0;
   }
 
+  return CUBEB_OK;
+}
+
+int audiounit_get_default_device_name(cubeb_stream * stm,
+                                      cubeb_device * const device,
+                                      cubeb_device_type type)
+{
+  assert(stm);
+  assert(device);
+
+  UInt32 data;
+  int r = audiounit_get_default_device_data(type, &data, stm);
+  if (r != CUBEB_OK) {
+    return r;
+  }
+  char ** name = type == CUBEB_DEVICE_TYPE_INPUT ?
+    &(device->input_name) : &(device->output_name);
+  allocate_and_convert_uint32_into_string(name, data);
+  return CUBEB_OK;
+}
+
+
+int audiounit_stream_get_current_device(cubeb_stream * stm,
+                                        cubeb_device ** const device)
+{
+#if TARGET_OS_IPHONE
+  //TODO
+  return CUBEB_ERROR_NOT_SUPPORTED;
+#else
   *device = new cubeb_device;
   if (!*device) {
     return CUBEB_ERROR;
   }
   PodZero(*device, 1);
 
-  size = sizeof(UInt32);
-  /* This fails with some USB headset, so simply return an empty string. */
-  r = AudioObjectGetPropertyData(output_device_id,
-                                 &datasource_address,
-                                 0, NULL, &size, &data);
-  if (r != noErr) {
-    size = 0;
-    data = 0;
+  int r = audiounit_get_default_device_name(stm, *device,
+                                            CUBEB_DEVICE_TYPE_OUTPUT);
+  if (r != CUBEB_OK) {
+    return r;
   }
 
-  (*device)->output_name = new char[size + 1];
-  if (!(*device)->output_name) {
-    return CUBEB_ERROR;
+  r = audiounit_get_default_device_name(stm, *device,
+                                        CUBEB_DEVICE_TYPE_INPUT);
+  if (r != CUBEB_OK) {
+    return r;
   }
-
-  // Turn the four chars packed into a uint32 into a string
-  strdata[0] = (char)(data >> 24);
-  strdata[1] = (char)(data >> 16);
-  strdata[2] = (char)(data >> 8);
-  strdata[3] = (char)(data);
-
-  memcpy((*device)->output_name, strdata, size);
-  (*device)->output_name[size] = '\0';
-
-  input_device_id = audiounit_get_default_device_id(CUBEB_DEVICE_TYPE_INPUT);
-  if (input_device_id == kAudioObjectUnknown) {
-    return CUBEB_ERROR;
-  }
-
-  size = sizeof(UInt32);
-  r = AudioObjectGetPropertyData(input_device_id, &datasource_address_input, 0, NULL, &size, &data);
-  if (r != noErr) {
-    LOG("(%p) Error when getting device !", stm);
-    size = 0;
-    data = 0;
-  }
-
-  (*device)->input_name = new char[size + 1];
-  if (!(*device)->input_name) {
-    return CUBEB_ERROR;
-  }
-
-  // Turn the four chars packed into a uint32 into a string
-  strdata[0] = (char)(data >> 24);
-  strdata[1] = (char)(data >> 16);
-  strdata[2] = (char)(data >> 8);
-  strdata[3] = (char)(data);
-
-  memcpy((*device)->input_name, strdata, size);
-  (*device)->input_name[size] = '\0';
 
   return CUBEB_OK;
 #endif
