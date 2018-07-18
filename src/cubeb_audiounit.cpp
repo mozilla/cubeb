@@ -2907,8 +2907,8 @@ unique_ptr<char[]> convert_uint32_into_string(UInt32 data)
   return str;
 }
 
-int audiounit_get_default_device_data(cubeb_device_type type,
-                                      UInt32 * data)
+int audiounit_get_default_device_datasource(cubeb_device_type type,
+                                            UInt32 * data)
 {
   AudioDeviceID id = audiounit_get_default_device_id(type);
   if (id == kAudioObjectUnknown) {
@@ -2949,7 +2949,7 @@ int audiounit_get_default_device_name(cubeb_stream * stm,
   assert(device);
 
   UInt32 data;
-  int r = audiounit_get_default_device_data(type, &data);
+  int r = audiounit_get_default_device_datasource(type, &data);
   if (r != CUBEB_OK) {
     return r;
   }
