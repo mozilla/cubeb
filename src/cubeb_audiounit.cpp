@@ -2889,18 +2889,18 @@ int audiounit_stream_set_panning(cubeb_stream * stm, float panning)
   return CUBEB_OK;
 }
 
-void allocate_and_convert_uint32_into_string(char ** str, UInt32 data)
+unique_ptr<char[]> convert_uint32_into_string(UInt32 data)
 {
   /* Simply create an empty string if no data. */
   size_t size = data == 0 ? 0 : sizeof(data);
-  *str = new char[size + 1];
-  assert(*str);
+  auto str = unique_ptr<char[]> { new char[size + 1] };
   // Reverse 0xWXYZ into 0xZYXW.
   for (size_t i = 0; i < size; ++i) {
     char * p = (char *) &data;
-    (*str)[i] = p[size - 1 - i];
+    str[i] = p[size - 1 - i];
   }
-  (*str)[size] = '\0';
+  str[size] = '\0';
+  return str;
 }
 
 int audiounit_get_default_device_data(cubeb_device_type type,
@@ -2953,8 +2953,8 @@ int audiounit_get_default_device_name(cubeb_stream * stm,
     return r;
   }
   char ** name = type == CUBEB_DEVICE_TYPE_INPUT ?
-    &(device->input_name) : &(device->output_name);
-  allocate_and_convert_uint32_into_string(name, data);
+    &device->input_name : &device->output_name;
+  *name = convert_uint32_into_string(data).release();
   return CUBEB_OK;
 }
 
