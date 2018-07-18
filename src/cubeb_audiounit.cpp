@@ -2891,15 +2891,19 @@ int audiounit_stream_set_panning(cubeb_stream * stm, float panning)
 
 unique_ptr<char[]> convert_uint32_into_string(UInt32 data)
 {
-  /* Simply create an empty string if no data. */
-  size_t size = data == 0 ? 0 : sizeof(data);
-  auto str = unique_ptr<char[]> { new char[size + 1] };
-  // Reverse 0xWXYZ into 0xZYXW.
-  for (size_t i = 0; i < size; ++i) {
-    char * p = (char *) &data;
-    str[i] = p[size - 1 - i];
-  }
+  // Simply create an empty string if no data.
+  size_t size = data == 0 ? 0 : 4; // 4 bytes for uint32.
+  auto str = unique_ptr<char[]> { new char[size + 1] }; // + 1 for '\0'.
   str[size] = '\0';
+  if (size < 4) {
+    return str;
+  }
+
+  // Reverse 0xWXYZ into 0xZYXW.
+  str[0] = (char)(data >> 24);
+  str[1] = (char)(data >> 16);
+  str[2] = (char)(data >> 8);
+  str[3] = (char)(data);
   return str;
 }
 
