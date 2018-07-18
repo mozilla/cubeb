@@ -2908,8 +2908,7 @@ unique_ptr<char[]> convert_uint32_into_string(UInt32 data)
 }
 
 int audiounit_get_default_device_data(cubeb_device_type type,
-                                      UInt32 * data,
-                                      cubeb_stream * stm /* for log */)
+                                      UInt32 * data)
 {
   AudioDeviceID id = audiounit_get_default_device_id(type);
   if (id == kAudioObjectUnknown) {
@@ -2936,8 +2935,6 @@ int audiounit_get_default_device_data(cubeb_device_type type,
                                             &datasource_address_output,
                                           0, NULL, &size, data);
   if (r != noErr) {
-    LOG("(%p) Error when getting %s device!", stm,
-        type == CUBEB_DEVICE_TYPE_INPUT ? "input" : "output");
     *data = 0;
   }
 
@@ -2952,13 +2949,17 @@ int audiounit_get_default_device_name(cubeb_stream * stm,
   assert(device);
 
   UInt32 data;
-  int r = audiounit_get_default_device_data(type, &data, stm);
+  int r = audiounit_get_default_device_data(type, &data);
   if (r != CUBEB_OK) {
     return r;
   }
   char ** name = type == CUBEB_DEVICE_TYPE_INPUT ?
     &device->input_name : &device->output_name;
   *name = convert_uint32_into_string(data).release();
+  if (!strlen(*name)) { // empty string.
+    LOG("(%p) name of %s device is empty!", stm,
+        type == CUBEB_DEVICE_TYPE_INPUT ? "input" : "output");
+  }
   return CUBEB_OK;
 }
 
