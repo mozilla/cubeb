@@ -951,7 +951,7 @@ audiounit_property_listener_callback(AudioObjectID id, UInt32 address_count,
 }
 
 OSStatus
-audiounit_add_listener(property_listener * listener)
+audiounit_add_listener(const property_listener * listener)
 {
   assert(listener);
   return AudioObjectAddPropertyListener(listener->device_id,
@@ -961,7 +961,7 @@ audiounit_add_listener(property_listener * listener)
 }
 
 OSStatus
-audiounit_remove_listener(property_listener * listener)
+audiounit_remove_listener(const property_listener * listener)
 {
   assert(listener);
   return AudioObjectRemovePropertyListener(listener->device_id,
