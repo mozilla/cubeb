@@ -2949,24 +2949,12 @@ int audiounit_get_default_device_datasource(cubeb_device_type type,
     return CUBEB_ERROR;
   }
 
-  AudioObjectPropertyAddress datasource_address_output = {
-    kAudioDevicePropertyDataSource,
-    kAudioDevicePropertyScopeOutput,
-    kAudioObjectPropertyElementMaster
-  };
-
-  AudioObjectPropertyAddress datasource_address_input = {
-    kAudioDevicePropertyDataSource,
-    kAudioDevicePropertyScopeInput,
-    kAudioObjectPropertyElementMaster
-  };
-
   UInt32 size = sizeof(*data);
   /* This fails with some USB headsets (e.g., Plantronic .Audio 628). */
   OSStatus r = AudioObjectGetPropertyData(id,
                                           type == CUBEB_DEVICE_TYPE_INPUT ?
-                                            &datasource_address_input :
-                                            &datasource_address_output,
+                                            &INPUT_DATA_SOURCE_PROPERTY_ADDRESS :
+                                            &OUTPUT_DATA_SOURCE_PROPERTY_ADDRESS,
                                           0, NULL, &size, data);
   if (r != noErr) {
     *data = 0;
