@@ -1062,7 +1062,7 @@ audiounit_uninstall_device_changed_callback(cubeb_stream * stm)
   // Failing to uninstall listeners is not a fatal error.
   int r = CUBEB_OK;
 
-  if (stm->output_unit && stm->output_source_listener) {
+  if (stm->output_source_listener) {
     rv = audiounit_remove_listener(stm->output_source_listener.get());
     if (rv != noErr) {
       LOG("AudioObjectRemovePropertyListener/output/kAudioDevicePropertyDataSource rv=%d, device id=%d", rv, stm->output_device.id);
@@ -1070,23 +1070,22 @@ audiounit_uninstall_device_changed_callback(cubeb_stream * stm)
     }
   }
 
-  if (stm->input_unit) {
-    if (stm->input_source_listener) {
-      rv = audiounit_remove_listener(stm->input_source_listener.get());
-      if (rv != noErr) {
-        LOG("AudioObjectRemovePropertyListener/input/kAudioDevicePropertyDataSource rv=%d, device id=%d", rv, stm->input_device.id);
-        r = CUBEB_ERROR;
-      }
-    }
-
-    if (stm->input_alive_listener) {
-      rv = audiounit_remove_listener(stm->input_alive_listener.get());
-      if (rv != noErr) {
-        LOG("AudioObjectRemovePropertyListener/input/kAudioDevicePropertyDeviceIsAlive rv=%d, device id=%d", rv, stm->input_device.id);
-        r = CUBEB_ERROR;
-      }
+  if (stm->input_source_listener) {
+    rv = audiounit_remove_listener(stm->input_source_listener.get());
+    if (rv != noErr) {
+      LOG("AudioObjectRemovePropertyListener/input/kAudioDevicePropertyDataSource rv=%d, device id=%d", rv, stm->input_device.id);
+      r = CUBEB_ERROR;
     }
   }
+
+  if (stm->input_alive_listener) {
+    rv = audiounit_remove_listener(stm->input_alive_listener.get());
+    if (rv != noErr) {
+      LOG("AudioObjectRemovePropertyListener/input/kAudioDevicePropertyDeviceIsAlive rv=%d, device id=%d", rv, stm->input_device.id);
+      r = CUBEB_ERROR;
+    }
+  }
+
   return r;
 }
 
@@ -1095,14 +1094,14 @@ audiounit_uninstall_system_changed_callback(cubeb_stream * stm)
 {
   OSStatus r;
 
-  if (has_output(stm) && stm->default_output_listener) {
+  if (stm->default_output_listener) {
     r = audiounit_remove_listener(stm->default_output_listener.get());
     if (r != noErr) {
       return CUBEB_ERROR;
     }
   }
 
-  if (has_input(stm) && stm->default_input_listener) {
+  if (stm->default_input_listener) {
     r = audiounit_remove_listener(stm->default_input_listener.get());
     if (r != noErr) {
       return CUBEB_ERROR;
