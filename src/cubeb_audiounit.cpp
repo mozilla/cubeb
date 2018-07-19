@@ -1120,20 +1120,19 @@ audiounit_get_acceptable_latency_range(AudioValueRange * latency_range)
 static AudioObjectID
 audiounit_get_default_device_id(cubeb_device_type type)
 {
-  AudioObjectPropertyAddress adr = { 0, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMaster };
-  AudioDeviceID devid;
-  UInt32 size;
-
+  const AudioObjectPropertyAddress * adr;
   if (type == CUBEB_DEVICE_TYPE_OUTPUT) {
-    adr.mSelector = kAudioHardwarePropertyDefaultOutputDevice;
+    adr = &DEFAULT_OUTPUT_DEVICE_PROPERTY_ADDRESS;
   } else if (type == CUBEB_DEVICE_TYPE_INPUT) {
-    adr.mSelector = kAudioHardwarePropertyDefaultInputDevice;
+    adr = &DEFAULT_INPUT_DEVICE_PROPERTY_ADDRESS;
   } else {
     return kAudioObjectUnknown;
   }
 
-  size = sizeof(AudioDeviceID);
-  if (AudioObjectGetPropertyData(kAudioObjectSystemObject, &adr, 0, NULL, &size, &devid) != noErr) {
+  AudioDeviceID devid;
+  UInt32 size = sizeof(AudioDeviceID);
+  if (AudioObjectGetPropertyData(kAudioObjectSystemObject,
+                                 adr, 0, NULL, &size, &devid) != noErr) {
     return kAudioObjectUnknown;
   }
 
