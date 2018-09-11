@@ -100,6 +100,16 @@ const AudioObjectPropertyAddress OUTPUT_DATA_SOURCE_PROPERTY_ADDRESS = {
   kAudioObjectPropertyElementMaster
 };
 
+typedef uint32_t device_flags_value;
+
+enum device_flags {
+  DEV_UNKNOWN           = 0x00, /* Unknown */
+  DEV_INPUT             = 0x01, /* Record device like mic */
+  DEV_OUTPUT            = 0x02, /* Playback device like speakers */
+  DEV_SYSTEM_DEFAULT    = 0x04, /* System default device */
+  DEV_SELECTED_DEFAULT  = 0x08, /* User selected to use the system default device */
+};
+
 void audiounit_stream_stop_internal(cubeb_stream * stm);
 void audiounit_stream_start_internal(cubeb_stream * stm);
 static void audiounit_close_stream(cubeb_stream *stm);
@@ -107,6 +117,13 @@ static int audiounit_setup_stream(cubeb_stream *stm);
 static vector<AudioObjectID>
 audiounit_get_devices_of_type(cubeb_device_type devtype);
 static UInt32 audiounit_get_device_presentation_latency(AudioObjectID devid, AudioObjectPropertyScope scope);
+
+#if !TARGET_OS_IPHONE
+static AudioObjectID audiounit_get_default_device_id(cubeb_device_type type);
+static int audiounit_uninstall_device_changed_callback(cubeb_stream * stm);
+static int audiounit_uninstall_system_changed_callback(cubeb_stream * stm);
+static void audiounit_reinit_stream_async(cubeb_stream * stm, device_flags_value flags);
+#endif
 
 extern cubeb_ops const audiounit_ops;
 
@@ -151,16 +168,6 @@ to_string(io_side side)
     return "output";
   }
 }
-
-typedef uint32_t device_flags_value;
-
-enum device_flags {
-  DEV_UNKNOWN           = 0x00, /* Unknown */
-  DEV_INPUT             = 0x01, /* Record device like mic */
-  DEV_OUTPUT            = 0x02, /* Playback device like speakers */
-  DEV_SYSTEM_DEFAULT    = 0x04, /* System default device */
-  DEV_SELECTED_DEFAULT  = 0x08, /* User selected to use the system default device */
-};
 
 struct device_info {
   AudioDeviceID id = kAudioObjectUnknown;
@@ -441,6 +448,9 @@ audiounit_render_input(cubeb_stream * stm,
 
   if (r != noErr) {
     LOG("AudioUnitRender rv=%d", r);
+    if (r == kAudioUnitErr_CannotDoInCurrentContext) {
+      audiounit_reinit_stream_async(stm, DEV_INPUT | DEV_OUTPUT);
+    }
     return r;
   }
 
@@ -719,8 +729,6 @@ audiounit_get_backend_id(cubeb * /* ctx */)
 
 static int audiounit_stream_get_volume(cubeb_stream * stm, float * volume);
 static int audiounit_stream_set_volume(cubeb_stream * stm, float volume);
-static int audiounit_uninstall_device_changed_callback(cubeb_stream * stm);
-static AudioObjectID audiounit_get_default_device_id(cubeb_device_type type);
 
 static int
 audiounit_set_device_info(cubeb_stream * stm, AudioDeviceID id, io_side side)
@@ -832,6 +840,23 @@ audiounit_reinit_stream(cubeb_stream * stm, device_flags_value flags)
   return CUBEB_OK;
 }
 
+static void
+audiounit_reinit_stream_async(cubeb_stream * stm, device_flags_value flags)
+{
+  // Use a new thread, through the queue, to avoid deadlock when calling
+  // Get/SetProperties method from inside notify callback
+  dispatch_async(stm->context->serial_queue, ^() {
+    if (audiounit_reinit_stream(stm, flags) != CUBEB_OK) {
+      if (audiounit_uninstall_system_changed_callback(stm) != CUBEB_OK) {
+        LOG("(%p) Could not uninstall system changed callback", stm);
+      }
+      stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
+      LOG("(%p) Could not reopen the stream after switching.", stm);
+    }
+    stm->switching_device = false;
+  });
+}
+
 static char const *
 event_addr_to_string(AudioObjectPropertySelector selector)
 {
@@ -848,8 +873,6 @@ event_addr_to_string(AudioObjectPropertySelector selector)
       return "Unknown";
   }
 }
-
-static int audiounit_uninstall_system_changed_callback(cubeb_stream * stm);
 
 static OSStatus
 audiounit_property_listener_callback(AudioObjectID id, UInt32 address_count,
@@ -921,18 +944,7 @@ audiounit_property_listener_callback(AudioObjectID id, UInt32 address_count,
     }
   }
 
-  // Use a new thread, through the queue, to avoid deadlock when calling
-  // Get/SetProperties method from inside notify callback
-  dispatch_async(stm->context->serial_queue, ^() {
-    if (audiounit_reinit_stream(stm, switch_side) != CUBEB_OK) {
-      if (audiounit_uninstall_system_changed_callback(stm) != CUBEB_OK) {
-        LOG("(%p) Could not uninstall system changed callback", stm);
-      }
-      stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
-      LOG("(%p) Could not reopen the stream after switching.", stm);
-    }
-    stm->switching_device = false;
-  });
+  audiounit_reinit_stream_async(stm, switch_side);
 
   return noErr;
 }
