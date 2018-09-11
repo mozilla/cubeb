@@ -521,24 +521,6 @@ audiounit_input_callback(void * user_ptr,
   return noErr;
 }
 
-static uint32_t
-minimum_resampling_input_frames(cubeb_stream *stm)
-{
-  return ceilf(stm->input_hw_rate / stm->output_hw_rate * stm->input_buffer_frames);
-}
-
-static bool
-is_extra_input_needed(cubeb_stream * stm)
-{
-  /* If the output callback came first and this is a duplex stream, we need to
-    * fill in some additional silence in the resampler.
-    * Otherwise, if we had more than expected callbacks in a row, or we're currently
-    * switching, we add some silence as well to compensate for the fact that
-    * we're lacking some input data. */
-  return stm->frames_read == 0 ||
-         stm->available_input_frames.load() < minimum_resampling_input_frames(stm);
-}
-
 static void
 audiounit_mix_output_buffer(cubeb_stream * stm,
                             size_t output_frames,
@@ -622,16 +604,18 @@ audiounit_output_callback(void * user_ptr,
 
   /* If Full duplex get also input buffer */
   if (stm->input_unit != NULL) {
-    if (is_extra_input_needed(stm)) {
-      uint32_t min_input_frames = minimum_resampling_input_frames(stm);
+    // In duplex mode, input rate is always output rate.
+    assert(stm->input_hw_rate == stm->output_hw_rate);
+    if (stm->available_input_frames.load() < output_frames) {
+      long missing_frames = output_frames - stm->available_input_frames.load();
       {
         auto_lock l(stm->input_linear_buffer_lock);
-        stm->input_linear_buffer->push_silence(min_input_frames * stm->input_desc.mChannelsPerFrame);
+        stm->input_linear_buffer->push_silence(missing_frames * stm->input_desc.mChannelsPerFrame);
       }
-      stm->available_input_frames += min_input_frames;
+      stm->available_input_frames += missing_frames;
 
-      ALOG("(%p) %s pushed %u frames of input silence.", stm, stm->frames_read == 0 ? "Input hasn't started," :
-           stm->switching_device ? "Device switching," : "Drop out,", min_input_frames);
+      ALOG("(%p) %s pushed %ld frames of input silence.", stm, stm->frames_read == 0 ? "Input hasn't started," :
+           stm->switching_device ? "Device switching," : "Drop out,", missing_frames);
     }
     input_buffer = stm->input_linear_buffer->data();
     // Number of input frames in the buffer. It will change to actually used frames
@@ -642,6 +626,9 @@ audiounit_output_callback(void * user_ptr,
   }
 
   /* Call user callback through resampler. */
+  assert(!input_buffer ||
+         (stm->input_stream_params.rate == stm->output_stream_params.rate &&
+          input_frames >= output_frames));
   long outframes = cubeb_resampler_fill(stm->resampler.get(),
                                         input_buffer,
                                         input_buffer ? &input_frames : NULL,
