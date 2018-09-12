@@ -221,16 +221,14 @@ struct cubeb_stream {
    * calculated from I/O hw rate. */
   int expected_output_callbacks_in_a_row = 0;
   owned_critical_section mutex;
-  /* Hold the input samples in every
-   * input callback iteration */
+  // Hold the input samples in every input callback iteration.
+  // Only accessed on input/output callback thread and during initial configure.
   unique_ptr<auto_array_wrapper> input_linear_buffer;
-  owned_critical_section input_linear_buffer_lock;
   // After the resampling some input data remains stored inside
   // the resampler. This number is used in order to calculate
   // the number of extra silence frames in input.
-  atomic<uint32_t> available_input_frames{ 0 };
-  /* Frames on input buffer */
-  atomic<uint32_t> input_buffer_frames{ 0 };
+  // Only accessed on input/output callback thread and during initial configure.
+  uint32_t available_input_frames = 0;
   /* Frame counters */
   atomic<uint64_t> frames_played{ 0 };
   uint64_t frames_queued = 0;
@@ -455,24 +453,21 @@ audiounit_render_input(cubeb_stream * stm,
   }
 
   /* Copy input data in linear buffer. */
-  {
-    auto_lock l(stm->input_linear_buffer_lock);
-    stm->input_linear_buffer->push(input_buffer_list.mBuffers[0].mData,
-                                   input_frames * stm->input_desc.mChannelsPerFrame);
-  }
+  stm->input_linear_buffer->push(input_buffer_list.mBuffers[0].mData,
+                                 input_frames * stm->input_desc.mChannelsPerFrame);
 
   /* Advance input frame counter. */
   assert(input_frames > 0);
   stm->frames_read += input_frames;
   stm->available_input_frames += input_frames;
 
-  ALOGV("(%p) input: buffers %u, size %u, channels %u, rendered frames %d, total frames %d.",
-       stm,
-       (unsigned int) input_buffer_list.mNumberBuffers,
-       (unsigned int) input_buffer_list.mBuffers[0].mDataByteSize,
-       (unsigned int) input_buffer_list.mBuffers[0].mNumberChannels,
-       (unsigned int) input_frames,
-        stm->available_input_frames.load());
+  ALOGV("(%p) input: buffers %u, size %u, channels %u, rendered frames %d, total frames %u.",
+        stm,
+        (unsigned int) input_buffer_list.mNumberBuffers,
+        (unsigned int) input_buffer_list.mBuffers[0].mDataByteSize,
+        (unsigned int) input_buffer_list.mBuffers[0].mNumberChannels,
+        (unsigned int) input_frames,
+        stm->available_input_frames);
 
   return noErr;
 }
@@ -507,26 +502,22 @@ audiounit_input_callback(void * user_ptr,
 
   /* Input only. Call the user callback through resampler.
      Resampler will deliver input buffer in the correct rate. */
-  {
-    auto_lock l(stm->input_linear_buffer_lock);
-    assert(input_frames <= stm->input_linear_buffer->length() / stm->input_desc.mChannelsPerFrame);
-    long total_input_frames = stm->input_linear_buffer->length() / stm->input_desc.mChannelsPerFrame;
-    long outframes = cubeb_resampler_fill(stm->resampler.get(),
-                                          stm->input_linear_buffer->data(),
-                                          &total_input_frames,
-                                          NULL,
-                                          0);
-    if (outframes < total_input_frames) {
-      OSStatus r = AudioOutputUnitStop(stm->input_unit);
-      assert(r == 0);
-      stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
-      return noErr;
-    }
-    assert(outframes >= 0);
-
-    // Reset input buffer
-    stm->input_linear_buffer->clear();
+  assert(input_frames <= stm->input_linear_buffer->length() / stm->input_desc.mChannelsPerFrame);
+  long total_input_frames = stm->input_linear_buffer->length() / stm->input_desc.mChannelsPerFrame;
+  long outframes = cubeb_resampler_fill(stm->resampler.get(),
+                                        stm->input_linear_buffer->data(),
+                                        &total_input_frames,
+                                        NULL,
+                                        0);
+  if (outframes < total_input_frames) {
+    OSStatus r = AudioOutputUnitStop(stm->input_unit);
+    assert(r == 0);
+    stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
+    return noErr;
   }
+
+  // Reset input buffer
+  stm->input_linear_buffer->clear();
 
   return noErr;
 }
@@ -568,13 +559,13 @@ audiounit_output_callback(void * user_ptr,
 
   cubeb_stream * stm = static_cast<cubeb_stream *>(user_ptr);
 
-  ALOGV("(%p) output: buffers %u, size %u, channels %u, frames %u, total input frames %d.",
+  ALOGV("(%p) output: buffers %u, size %u, channels %u, frames %u, total input frames %u.",
         stm,
         (unsigned int) outBufferList->mNumberBuffers,
         (unsigned int) outBufferList->mBuffers[0].mDataByteSize,
         (unsigned int) outBufferList->mBuffers[0].mNumberChannels,
         (unsigned int) output_frames,
-        stm->available_input_frames.load());
+        stm->available_input_frames);
 
   long input_frames = 0, input_frames_before_fill = 0;
   void * output_buffer = NULL, * input_buffer = NULL;
@@ -616,12 +607,9 @@ audiounit_output_callback(void * user_ptr,
   if (stm->input_unit != NULL) {
     // In duplex mode, input rate is always output rate.
     assert(stm->input_hw_rate == stm->output_hw_rate);
-    if (stm->available_input_frames.load() < output_frames) {
-      long missing_frames = output_frames - stm->available_input_frames.load();
-      {
-        auto_lock l(stm->input_linear_buffer_lock);
-        stm->input_linear_buffer->push_silence(missing_frames * stm->input_desc.mChannelsPerFrame);
-      }
+    if (stm->available_input_frames < output_frames) {
+      long missing_frames = output_frames - stm->available_input_frames;
+      stm->input_linear_buffer->push_silence(missing_frames * stm->input_desc.mChannelsPerFrame);
       stm->available_input_frames += missing_frames;
 
       ALOG("(%p) %s pushed %ld frames of input silence.", stm, stm->frames_read == 0 ? "Input hasn't started," :
@@ -648,9 +636,7 @@ audiounit_output_callback(void * user_ptr,
   if (input_buffer) {
     // Decrease counter by the number of frames used by resampler
     stm->available_input_frames -= input_frames;
-    assert(stm->available_input_frames.load() >= 0);
     // Pop from the buffer the frames pushed to the resampler.
-    auto_lock l(stm->input_linear_buffer_lock);
     stm->input_linear_buffer->pop(input_frames_before_fill * stm->input_desc.mChannelsPerFrame);
   }
 
@@ -2061,7 +2047,7 @@ audiounit_create_unit(AudioUnit * unit, device_info * device)
 static int
 audiounit_init_input_linear_buffer(cubeb_stream * stream, uint32_t capacity)
 {
-  uint32_t size = capacity * stream->input_buffer_frames * stream->input_desc.mChannelsPerFrame;
+  uint32_t size = capacity * stream->latency_frames * stream->input_desc.mChannelsPerFrame;
   if (stream->input_desc.mFormatFlags & kAudioFormatFlagIsSignedInteger) {
     stream->input_linear_buffer.reset(new auto_array_wrapper_impl<short>(size));
   } else {
@@ -2318,8 +2304,7 @@ audiounit_configure_input(cubeb_stream * stm)
   }
 
   // Use latency to set buffer size
-  stm->input_buffer_frames = stm->latency_frames;
-  r = audiounit_set_buffer_size(stm, stm->input_buffer_frames, INPUT);
+  r = audiounit_set_buffer_size(stm, stm->latency_frames, INPUT);
   if (r != CUBEB_OK) {
     LOG("(%p) Error in change input buffer size.", stm);
     return CUBEB_ERROR;
@@ -2346,7 +2331,7 @@ audiounit_configure_input(cubeb_stream * stm)
                            kAudioUnitProperty_MaximumFramesPerSlice,
                            kAudioUnitScope_Global,
                            AU_IN_BUS,
-                           &stm->input_buffer_frames,
+                           &stm->latency_frames,
                            sizeof(UInt32));
   if (r != noErr) {
     LOG("AudioUnitSetProperty/input/kAudioUnitProperty_MaximumFramesPerSlice rv=%d", r);
