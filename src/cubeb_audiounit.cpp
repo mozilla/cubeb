@@ -789,19 +789,24 @@ audiounit_reinit_stream(cubeb_stream * stm, device_flags_value flags)
 
     audiounit_close_stream(stm);
 
-    /* Reinit occurs in 2 cases. When the device is not alive any more and when the
-     * default system device change. In both cases cubeb switch on the new default
-     * device. This is considered the most expected behavior for the user. */
+    /* Reinit occurs in one of the following case:
+     * - When the device is not alive any more
+     * - When the default system device change.
+     * - The bluetooth device changed from A2DP to/from HFP/HSP profile
+     * We first attempt to re-use the same device id, should that fail we will
+     * default to the (potentially new) default device. */
+    AudioDeviceID input_device = flags & DEV_INPUT ? stm->input_device.id : 0;
     if (flags & DEV_INPUT) {
-      r = audiounit_set_device_info(stm, 0, INPUT);
+      r = audiounit_set_device_info(stm, input_device, INPUT);
       if (r != CUBEB_OK) {
         LOG("(%p) Set input device info failed. This can happen when last media device is unplugged", stm);
         return CUBEB_ERROR;
       }
     }
-    /* Always use the default output on reinit. This is not correct in every case
-     * but it is sufficient for Firefox and prevent reinit from reporting failures.
-     * It will change soon when reinit mechanism will be updated. */
+
+    /* Always use the default output on reinit. This is not correct in every
+     * case but it is sufficient for Firefox and prevent reinit from reporting
+     * failures. It will change soon when reinit mechanism will be updated. */
     r = audiounit_set_device_info(stm, 0, OUTPUT);
     if (r != CUBEB_OK) {
       LOG("(%p) Set output device info failed. This can happen when last media device is unplugged", stm);
@@ -810,7 +815,15 @@ audiounit_reinit_stream(cubeb_stream * stm, device_flags_value flags)
 
     if (audiounit_setup_stream(stm) != CUBEB_OK) {
       LOG("(%p) Stream reinit failed.", stm);
-      return CUBEB_ERROR;
+      if (flags & DEV_INPUT && input_device != 0) {
+        // Attempt to re-use the same device-id failed, so attempt again with
+        // default input device.
+        if (audiounit_set_device_info(stm, 0, INPUT) != CUBEB_OK ||
+            audiounit_setup_stream(stm) != CUBEB_OK) {
+          LOG("(%p) Second stream reinit failed.", stm);
+          return CUBEB_ERROR;
+        }
+      }
     }
 
     if (vol_rv == CUBEB_OK) {
