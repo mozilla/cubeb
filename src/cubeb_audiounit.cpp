@@ -518,6 +518,7 @@ audiounit_input_callback(void * user_ptr,
 
   // Reset input buffer
   stm->input_linear_buffer->clear();
+  stm->available_input_frames = 0;
 
   return noErr;
 }
@@ -2056,6 +2057,7 @@ audiounit_init_input_linear_buffer(cubeb_stream * stream, uint32_t capacity)
     stream->input_linear_buffer.reset(new auto_array_wrapper_impl<float>(size));
   }
   assert(stream->input_linear_buffer->length() == 0);
+  stream->available_input_frames = 0;
 
   return CUBEB_OK;
 }
