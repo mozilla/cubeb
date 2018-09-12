@@ -621,6 +621,7 @@ audiounit_output_callback(void * user_ptr,
     input_frames = stm->input_linear_buffer->length() / stm->input_desc.mChannelsPerFrame;
     // Number of input frames pushed inside resampler.
     input_frames_before_fill = input_frames;
+    assert(input_frames == stm->available_input_frames);
   }
 
   /* Call user callback through resampler. */
@@ -634,10 +635,11 @@ audiounit_output_callback(void * user_ptr,
                                         output_frames);
 
   if (input_buffer) {
+    // Pop from the buffer the frames used by the the resampler.
+    stm->input_linear_buffer->pop(input_frames * stm->input_desc.mChannelsPerFrame);
     // Decrease counter by the number of frames used by resampler
+    assert(stm->available_input_frames >= input_frames);
     stm->available_input_frames -= input_frames;
-    // Pop from the buffer the frames pushed to the resampler.
-    stm->input_linear_buffer->pop(input_frames_before_fill * stm->input_desc.mChannelsPerFrame);
   }
 
   if (outframes < 0 || outframes > output_frames) {
