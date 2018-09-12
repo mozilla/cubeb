@@ -1067,6 +1067,7 @@ audiounit_uninstall_device_changed_callback(cubeb_stream * stm)
       LOG("AudioObjectRemovePropertyListener/output/kAudioDevicePropertyDataSource rv=%d, device id=%d", rv, stm->output_device.id);
       r = CUBEB_ERROR;
     }
+    stm->output_source_listener.reset();
   }
 
   if (stm->input_source_listener) {
@@ -1075,6 +1076,7 @@ audiounit_uninstall_device_changed_callback(cubeb_stream * stm)
       LOG("AudioObjectRemovePropertyListener/input/kAudioDevicePropertyDataSource rv=%d, device id=%d", rv, stm->input_device.id);
       r = CUBEB_ERROR;
     }
+    stm->input_source_listener.reset();
   }
 
   if (stm->input_alive_listener) {
@@ -1083,6 +1085,7 @@ audiounit_uninstall_device_changed_callback(cubeb_stream * stm)
       LOG("AudioObjectRemovePropertyListener/input/kAudioDevicePropertyDeviceIsAlive rv=%d, device id=%d", rv, stm->input_device.id);
       r = CUBEB_ERROR;
     }
+    stm->input_alive_listener.reset();
   }
 
   return r;
@@ -1098,6 +1101,7 @@ audiounit_uninstall_system_changed_callback(cubeb_stream * stm)
     if (r != noErr) {
       return CUBEB_ERROR;
     }
+    stm->default_output_listener.reset();
   }
 
   if (stm->default_input_listener) {
@@ -1105,6 +1109,7 @@ audiounit_uninstall_system_changed_callback(cubeb_stream * stm)
     if (r != noErr) {
       return CUBEB_ERROR;
     }
+    stm->default_input_listener.reset();
   }
   return CUBEB_OK;
 }
