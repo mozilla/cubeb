@@ -235,6 +235,7 @@ struct cubeb_stream {
   atomic<int64_t> frames_read{ 0 };
   atomic<bool> shutdown{ true };
   atomic<bool> draining{ false };
+  atomic<bool> destroy_pending{ false };
   /* Latency requested by the user. */
   uint32_t latency_frames = 0;
   atomic<uint32_t> current_latency_frames{ 0 };
@@ -848,6 +849,10 @@ audiounit_reinit_stream_async(cubeb_stream * stm, device_flags_value flags)
   // Use a new thread, through the queue, to avoid deadlock when calling
   // Get/SetProperties method from inside notify callback
   dispatch_async(stm->context->serial_queue, ^() {
+    if (stm->destroy_pending) {
+      ALOG("(%p) stream pending destroy, cancelling reinit task", stm);
+      return;
+    }
     if (audiounit_reinit_stream(stm, flags) != CUBEB_OK) {
       if (audiounit_uninstall_system_changed_callback(stm) != CUBEB_OK) {
         LOG("(%p) Could not uninstall system changed callback", stm);
@@ -2823,6 +2828,7 @@ audiounit_stream_destroy(cubeb_stream * stm)
     stm->shutdown = true;
   }
 
+  stm->destroy_pending = true;
   // Execute close in serial queue to avoid collision
   // with reinit when un/plug devices
   dispatch_sync(stm->context->serial_queue, ^() {
