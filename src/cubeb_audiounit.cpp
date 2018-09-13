@@ -239,6 +239,7 @@ struct cubeb_stream {
   atomic<int64_t> frames_written{ 0 };
   atomic<bool> shutdown{ true };
   atomic<bool> draining{ false };
+  atomic<bool> reinit_pending { false };
   atomic<bool> destroy_pending{ false };
   /* Latency requested by the user. */
   uint32_t latency_frames = 0;
@@ -862,6 +863,12 @@ audiounit_reinit_stream(cubeb_stream * stm, device_flags_value flags)
 static void
 audiounit_reinit_stream_async(cubeb_stream * stm, device_flags_value flags)
 {
+  if (std::atomic_exchange(&stm->reinit_pending, true)) {
+    // A reinit task is already pending, nothing more to do.
+    ALOG("(%p) re-init stream task already pending, cancelling request ", stm);
+    return;
+  }
+
   // Use a new thread, through the queue, to avoid deadlock when calling
   // Get/SetProperties method from inside notify callback
   dispatch_async(stm->context->serial_queue, ^() {
@@ -869,6 +876,7 @@ audiounit_reinit_stream_async(cubeb_stream * stm, device_flags_value flags)
       ALOG("(%p) stream pending destroy, cancelling reinit task", stm);
       return;
     }
+
     if (audiounit_reinit_stream(stm, flags) != CUBEB_OK) {
       if (audiounit_uninstall_system_changed_callback(stm) != CUBEB_OK) {
         LOG("(%p) Could not uninstall system changed callback", stm);
@@ -877,6 +885,7 @@ audiounit_reinit_stream_async(cubeb_stream * stm, device_flags_value flags)
       LOG("(%p) Could not reopen the stream after switching.", stm);
     }
     stm->switching_device = false;
+    stm->reinit_pending = false;
   });
 }
 
