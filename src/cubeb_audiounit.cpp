@@ -232,7 +232,11 @@ struct cubeb_stream {
   /* Frame counters */
   atomic<uint64_t> frames_played{ 0 };
   uint64_t frames_queued = 0;
+  // How many frames got read from the input since the stream started (includes
+  // padded silence)
   atomic<int64_t> frames_read{ 0 };
+  // How many frames got written to the output device since the stream started
+  atomic<int64_t> frames_written{ 0 };
   atomic<bool> shutdown{ true };
   atomic<bool> draining{ false };
   atomic<bool> destroy_pending{ false };
@@ -550,7 +554,7 @@ audiounit_mix_output_buffer(cubeb_stream * stm,
 
 // Return how many input frames (sampled at input_hw_rate) are needed to provide
 // output_frames (sampled at output_stream_params.rate)
-static uint32_t
+static int64_t
 minimum_resampling_input_frames(cubeb_stream * stm, uint32_t output_frames)
 {
   if (stm->input_hw_rate == stm->output_stream_params.rate) {
@@ -618,6 +622,8 @@ audiounit_output_callback(void * user_ptr,
     output_buffer = outBufferList->mBuffers[0].mData;
   }
 
+  stm->frames_written += output_frames;
+
   /* If Full duplex get also input buffer */
   if (stm->input_unit != NULL) {
     /* If the output callback came first and this is a duplex stream, we need to
@@ -626,11 +632,12 @@ audiounit_output_callback(void * user_ptr,
      * currently switching, we add some silence as well to compensate for the
      * fact that we're lacking some input data. */
     uint32_t input_frames_needed =
-      minimum_resampling_input_frames(stm, output_frames);
-    if (stm->available_input_frames < input_frames_needed) {
-      long missing_frames = input_frames_needed - stm->available_input_frames;
+      minimum_resampling_input_frames(stm, stm->frames_written);
+    long missing_frames = input_frames_needed - stm->frames_read;
+    if (missing_frames > 0) {
       stm->input_linear_buffer->push_silence(missing_frames * stm->input_desc.mChannelsPerFrame);
       stm->available_input_frames += missing_frames;
+      stm->frames_read = input_frames_needed;
 
       ALOG("(%p) %s pushed %ld frames of input silence.", stm, stm->frames_read == 0 ? "Input hasn't started," :
            stm->switching_device ? "Device switching," : "Drop out,", missing_frames);
@@ -843,10 +850,6 @@ audiounit_reinit_stream(cubeb_stream * stm, device_flags_value flags)
     if (vol_rv == CUBEB_OK) {
       audiounit_stream_set_volume(stm, volume);
     }
-
-    // Reset input frames to force new stream pre-buffer
-    // silence if needed, check `is_extra_input_needed()`
-    stm->frames_read = 0;
 
     // If the stream was running, start it again.
     if (!stm->shutdown) {
@@ -2396,6 +2399,8 @@ audiounit_configure_input(cubeb_stream * stm)
     return CUBEB_ERROR;
   }
 
+  stm->frames_read = 0;
+
   LOG("(%p) Input audiounit init successfully.", stm);
 
   return CUBEB_OK;
@@ -2498,6 +2503,8 @@ audiounit_configure_output(cubeb_stream * stm)
     LOG("AudioUnitSetProperty/output/kAudioUnitProperty_SetRenderCallback rv=%d", r);
     return CUBEB_ERROR;
   }
+
+  stm->frames_written = 0;
 
   LOG("(%p) Output audiounit init successfully.", stm);
   return CUBEB_OK;
