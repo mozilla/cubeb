@@ -452,15 +452,19 @@ audiounit_render_input(cubeb_stream * stm,
 
   if (r != noErr) {
     LOG("AudioUnitRender rv=%d", r);
-    if (r == kAudioUnitErr_CannotDoInCurrentContext) {
-      audiounit_reinit_stream_async(stm, DEV_INPUT | DEV_OUTPUT);
+    if (r != kAudioUnitErr_CannotDoInCurrentContext) {
+      return r;
     }
-    return r;
+    audiounit_reinit_stream_async(stm, DEV_INPUT | DEV_OUTPUT);
+    // For now state that no error occurred and feed silence, stream will be
+    // resumed once reinit has completed.
+    ALOGV("(%p) input: reinit pending feeding silence instead", stm);
+    stm->input_linear_buffer->push_silence(input_frames * stm->input_desc.mChannelsPerFrame);
+  } else {
+    /* Copy input data in linear buffer. */
+    stm->input_linear_buffer->push(input_buffer_list.mBuffers[0].mData,
+                                   input_frames * stm->input_desc.mChannelsPerFrame);
   }
-
-  /* Copy input data in linear buffer. */
-  stm->input_linear_buffer->push(input_buffer_list.mBuffers[0].mData,
-                                 input_frames * stm->input_desc.mChannelsPerFrame);
 
   /* Advance input frame counter. */
   assert(input_frames > 0);
