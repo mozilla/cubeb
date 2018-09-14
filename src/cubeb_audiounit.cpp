@@ -450,7 +450,12 @@ audiounit_render_input(cubeb_stream * stm,
     if (r != kAudioUnitErr_CannotDoInCurrentContext) {
       return r;
     }
-    audiounit_reinit_stream_async(stm, DEV_INPUT | DEV_OUTPUT);
+    if (stm->output_unit) {
+      // kAudioUnitErr_CannotDoInCurrentContext is returned when using a BT
+      // headset and the profile is changed from A2DP to HFP/HSP. The previous
+      // output device is no longer valid and must be reset.
+      audiounit_reinit_stream_async(stm, DEV_INPUT | OUTPUT);
+    }
     // For now state that no error occurred and feed silence, stream will be
     // resumed once reinit has completed.
     ALOGV("(%p) input: reinit pending feeding silence instead", stm);
