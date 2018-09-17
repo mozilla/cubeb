@@ -153,7 +153,7 @@ make_sized_audio_channel_layout(size_t sz)
     return unique_ptr<AudioChannelLayout, decltype(&free)>(acl, free);
 }
 
-enum io_side {
+enum class io_side {
   INPUT,
   OUTPUT,
 };
@@ -162,9 +162,9 @@ static char const *
 to_string(io_side side)
 {
   switch (side) {
-  case INPUT:
+  case io_side::INPUT:
     return "input";
-  case OUTPUT:
+  case io_side::OUTPUT:
     return "output";
   }
 }
@@ -746,19 +746,19 @@ audiounit_set_device_info(cubeb_stream * stm, AudioDeviceID id, io_side side)
   device_info * info = nullptr;
   cubeb_device_type type = CUBEB_DEVICE_TYPE_UNKNOWN;
 
-  if (side == INPUT) {
+  if (side == io_side::INPUT) {
     info = &stm->input_device;
     type = CUBEB_DEVICE_TYPE_INPUT;
-  } else if (side == OUTPUT) {
+  } else if (side == io_side::OUTPUT) {
     info = &stm->output_device;
     type = CUBEB_DEVICE_TYPE_OUTPUT;
   }
   memset(info, 0, sizeof(device_info));
   info->id = id;
 
-  if (side == INPUT) {
+  if (side == io_side::INPUT) {
     info->flags |= DEV_INPUT;
-  } else if (side == OUTPUT) {
+  } else if (side == io_side::OUTPUT) {
     info->flags |= DEV_OUTPUT;
   }
 
@@ -816,7 +816,7 @@ audiounit_reinit_stream(cubeb_stream * stm, device_flags_value flags)
      * default to the (potentially new) default device. */
     AudioDeviceID input_device = flags & DEV_INPUT ? stm->input_device.id : 0;
     if (flags & DEV_INPUT) {
-      r = audiounit_set_device_info(stm, input_device, INPUT);
+      r = audiounit_set_device_info(stm, input_device, io_side::INPUT);
       if (r != CUBEB_OK) {
         LOG("(%p) Set input device info failed. This can happen when last media device is unplugged", stm);
         return CUBEB_ERROR;
@@ -826,7 +826,7 @@ audiounit_reinit_stream(cubeb_stream * stm, device_flags_value flags)
     /* Always use the default output on reinit. This is not correct in every
      * case but it is sufficient for Firefox and prevent reinit from reporting
      * failures. It will change soon when reinit mechanism will be updated. */
-    r = audiounit_set_device_info(stm, 0, OUTPUT);
+    r = audiounit_set_device_info(stm, 0, io_side::OUTPUT);
     if (r != CUBEB_OK) {
       LOG("(%p) Set output device info failed. This can happen when last media device is unplugged", stm);
       return CUBEB_ERROR;
@@ -837,7 +837,7 @@ audiounit_reinit_stream(cubeb_stream * stm, device_flags_value flags)
       if (flags & DEV_INPUT && input_device != 0) {
         // Attempt to re-use the same device-id failed, so attempt again with
         // default input device.
-        if (audiounit_set_device_info(stm, 0, INPUT) != CUBEB_OK ||
+        if (audiounit_set_device_info(stm, 0, io_side::INPUT) != CUBEB_OK ||
             audiounit_setup_stream(stm) != CUBEB_OK) {
           LOG("(%p) Second stream reinit failed.", stm);
           return CUBEB_ERROR;
@@ -1491,7 +1491,7 @@ audiounit_set_channel_layout(AudioUnit unit,
                              io_side side,
                              cubeb_channel_layout layout)
 {
-  if (side != OUTPUT) {
+  if (side != io_side::OUTPUT) {
     return CUBEB_ERROR;
   }
 
@@ -1543,13 +1543,13 @@ void
 audiounit_layout_init(cubeb_stream * stm, io_side side)
 {
   // We currently don't support the input layout setting.
-  if (side == INPUT) {
+  if (side == io_side::INPUT) {
     return;
   }
 
   stm->context->layout = audiounit_get_current_channel_layout(stm->output_unit);
 
-  audiounit_set_channel_layout(stm->output_unit, OUTPUT, stm->context->layout);
+  audiounit_set_channel_layout(stm->output_unit, io_side::OUTPUT, stm->context->layout);
 }
 
 static vector<AudioObjectID>
@@ -2015,8 +2015,8 @@ audiounit_enable_unit_scope(AudioUnit * unit, io_side side, enable_state state)
   OSStatus rv;
   UInt32 enable = state;
   rv = AudioUnitSetProperty(*unit, kAudioOutputUnitProperty_EnableIO,
-                            (side == INPUT) ? kAudioUnitScope_Input : kAudioUnitScope_Output,
-                            (side == INPUT) ? AU_IN_BUS : AU_OUT_BUS,
+                            (side == io_side::INPUT) ? kAudioUnitScope_Input : kAudioUnitScope_Output,
+                            (side == io_side::INPUT) ? AU_IN_BUS : AU_OUT_BUS,
                             &enable,
                             sizeof(UInt32));
   if (rv != noErr) {
@@ -2048,23 +2048,23 @@ audiounit_create_unit(AudioUnit * unit, device_info * device)
 
 
   if (device->flags & DEV_INPUT) {
-    r = audiounit_enable_unit_scope(unit, INPUT, ENABLE);
+    r = audiounit_enable_unit_scope(unit, io_side::INPUT, ENABLE);
     if (r != CUBEB_OK) {
       LOG("Failed to enable audiounit input scope ");
       return r;
     }
-    r = audiounit_enable_unit_scope(unit, OUTPUT, DISABLE);
+    r = audiounit_enable_unit_scope(unit, io_side::OUTPUT, DISABLE);
     if (r != CUBEB_OK) {
       LOG("Failed to disable audiounit output scope ");
       return r;
     }
   } else if (device->flags & DEV_OUTPUT) {
-    r = audiounit_enable_unit_scope(unit, OUTPUT, ENABLE);
+    r = audiounit_enable_unit_scope(unit, io_side::OUTPUT, ENABLE);
     if (r != CUBEB_OK) {
       LOG("Failed to enable audiounit output scope ");
       return r;
     }
-    r = audiounit_enable_unit_scope(unit, INPUT, DISABLE);
+    r = audiounit_enable_unit_scope(unit, io_side::INPUT, DISABLE);
     if (r != CUBEB_OK) {
       LOG("Failed to disable audiounit input scope ");
       return r;
@@ -2225,7 +2225,7 @@ audiounit_set_buffer_size(cubeb_stream * stm, uint32_t new_size_frames, io_side 
   AudioUnitScope au_scope = kAudioUnitScope_Input;
   AudioUnitElement au_element = AU_OUT_BUS;
 
-  if (side == INPUT) {
+  if (side == io_side::INPUT) {
     au = stm->input_unit;
     au_scope = kAudioUnitScope_Output;
     au_element = AU_IN_BUS;
@@ -2346,7 +2346,7 @@ audiounit_configure_input(cubeb_stream * stm)
   }
 
   // Use latency to set buffer size
-  r = audiounit_set_buffer_size(stm, stm->latency_frames, INPUT);
+  r = audiounit_set_buffer_size(stm, stm->latency_frames, io_side::INPUT);
   if (r != CUBEB_OK) {
     LOG("(%p) Error in change input buffer size.", stm);
     return CUBEB_ERROR;
@@ -2450,7 +2450,7 @@ audiounit_configure_output(cubeb_stream * stm)
   stm->context->channels = output_hw_desc.mChannelsPerFrame;
 
   // Set the input layout to match the output device layout.
-  audiounit_layout_init(stm, OUTPUT);
+  audiounit_layout_init(stm, io_side::OUTPUT);
   if (stm->context->channels != stm->output_stream_params.channels ||
       stm->context->layout != stm->output_stream_params.layout) {
     LOG("Incompatible channel layouts detected, setting up remixer");
@@ -2478,7 +2478,7 @@ audiounit_configure_output(cubeb_stream * stm)
     return CUBEB_ERROR;
   }
 
-  r = audiounit_set_buffer_size(stm, stm->latency_frames, OUTPUT);
+  r = audiounit_set_buffer_size(stm, stm->latency_frames, io_side::OUTPUT);
   if (r != CUBEB_OK) {
     LOG("(%p) Error in change output buffer size.", stm);
     return CUBEB_ERROR;
@@ -2757,7 +2757,7 @@ audiounit_stream_init(cubeb * context,
   }
   if (input_stream_params) {
     stm->input_stream_params = *input_stream_params;
-    r = audiounit_set_device_info(stm.get(), reinterpret_cast<uintptr_t>(input_device), INPUT);
+    r = audiounit_set_device_info(stm.get(), reinterpret_cast<uintptr_t>(input_device), io_side::INPUT);
     if (r != CUBEB_OK) {
       LOG("(%p) Fail to set device info for input.", stm.get());
       return r;
@@ -2765,7 +2765,7 @@ audiounit_stream_init(cubeb * context,
   }
   if (output_stream_params) {
     stm->output_stream_params = *output_stream_params;
-    r = audiounit_set_device_info(stm.get(), reinterpret_cast<uintptr_t>(output_device), OUTPUT);
+    r = audiounit_set_device_info(stm.get(), reinterpret_cast<uintptr_t>(output_device), io_side::OUTPUT);
     if (r != CUBEB_OK) {
       LOG("(%p) Fail to set device info for output.", stm.get());
       return r;
