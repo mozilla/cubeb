@@ -587,7 +587,7 @@ audiounit_output_callback(void * user_ptr,
         (unsigned int) outBufferList->mBuffers[0].mDataByteSize,
         (unsigned int) outBufferList->mBuffers[0].mNumberChannels,
         (unsigned int) output_frames,
-        stm->input_linear_buffer->length() / stm->input_desc.mChannelsPerFrame);
+        has_input(stm) ? stm->input_linear_buffer->length() / stm->input_desc.mChannelsPerFrame : 0);
 
   long input_frames = 0;
   void * output_buffer = NULL, * input_buffer = NULL;
