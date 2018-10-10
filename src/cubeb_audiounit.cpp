@@ -3455,19 +3455,17 @@ audiounit_collection_changed_callback(AudioObjectID /* inObjectID */,
       return;
     }
 
-    /* Differentiate input from output changes. */
-    if ((context->collection_changed_devtype & CUBEB_DEVICE_TYPE_INPUT) ||
-        (context->collection_changed_devtype & CUBEB_DEVICE_TYPE_OUTPUT)) {
-      vector<AudioObjectID> devices = audiounit_get_devices_of_type(context->collection_changed_devtype);
-      /* When count is the same examine the devid for the case of coalescing. */
-      if (context->devtype_device_array == devices) {
-        /* Device changed for the other scope, ignore. */
-        return;
-      }
-      /* Device on desired scope changed. */
-      context->devtype_device_array = devices;
-    }
+    assert(context->collection_changed_devtype &
+           (CUBEB_DEVICE_TYPE_INPUT | CUBEB_DEVICE_TYPE_OUTPUT));
 
+    vector<AudioObjectID> devices = audiounit_get_devices_of_type(context->collection_changed_devtype);
+    /* The elements in the vector are sorted. */
+    if (context->devtype_device_array == devices) {
+      /* Device changed for the other scope, ignore. */
+      return;
+    }
+    /* Device on desired scope has changed. */
+    context->devtype_device_array = devices;
     context->collection_changed_callback(context, context->collection_changed_user_ptr);
   });
   return noErr;
@@ -3492,11 +3490,9 @@ audiounit_add_device_listener(cubeb * context,
     assert(context->devtype_device_array.empty());
     /* Listener works for input and output.
      * When requested one of them we need to differentiate. */
-    if (devtype & CUBEB_DEVICE_TYPE_INPUT ||
-        devtype & CUBEB_DEVICE_TYPE_OUTPUT) {
-      /* Used to differentiate input from output device changes. */
-      context->devtype_device_array = audiounit_get_devices_of_type(devtype);
-    }
+    assert(devtype &
+           (CUBEB_DEVICE_TYPE_INPUT | CUBEB_DEVICE_TYPE_OUTPUT));
+    context->devtype_device_array = audiounit_get_devices_of_type(devtype);
     context->collection_changed_devtype = devtype;
     context->collection_changed_callback = collection_changed_callback;
     context->collection_changed_user_ptr = user_ptr;
