@@ -94,7 +94,7 @@ int supports_channel_count(string backend_id, int nchannels)
     (backend_id != "opensl" && backend_id != "audiotrack");
 }
 
-int run_test(int num_channels, int sampling_rate, int is_float)
+int run_test(int num_channels, int sampling_rate, int is_float, bool exclusive=false)
 {
   int r = CUBEB_OK;
 
@@ -123,13 +123,18 @@ int run_test(int num_channels, int sampling_rate, int is_float)
   params.rate = sampling_rate;
   params.channels = num_channels;
   params.layout = CUBEB_LAYOUT_UNDEFINED;
-  params.prefs = CUBEB_STREAM_PREF_NONE;
+  params.prefs = exclusive ? CUBEB_STREAM_PREF_EXCLUSIVE : CUBEB_STREAM_PREF_NONE;
 
   synth_state synth(params.channels, params.rate);
 
   cubeb_stream *stream = NULL;
   r = cubeb_stream_init(ctx, &stream, "test tone", NULL, NULL, NULL, &params,
       4096, is_float ? &data_cb<float> : &data_cb<short>, state_cb_audio, &synth);
+  if (r == CUBEB_ERROR_INVALID_FORMAT)
+  {
+	fprintf(stderr, "Format not supported. Not treating as a failure.\n");
+	return CUBEB_OK;
+  }
   if (r != CUBEB_OK) {
     fprintf(stderr, "Error initializing cubeb stream: %d\n", r);
     return r;
@@ -172,7 +177,7 @@ int run_panning_volume_test(int is_float)
   params.rate = 44100;
   params.channels = 2;
   params.layout = CUBEB_LAYOUT_STEREO;
-  params.prefs = CUBEB_STREAM_PREF_NONE;
+  params.prefs = CUBEB_STREAM_PREF_EXCLUSIVE;
 
   synth_state synth(params.channels, params.rate);
 
@@ -180,6 +185,11 @@ int run_panning_volume_test(int is_float)
   r = cubeb_stream_init(ctx, &stream, "test tone", NULL, NULL, NULL, &params,
       4096, is_float ? &data_cb<float> : &data_cb<short>,
       state_cb_audio, &synth);
+  if (r == CUBEB_ERROR_INVALID_FORMAT)
+  {
+    fprintf(stderr, "Format not supported. Not treating as a failure.\n");
+    return CUBEB_OK;
+  }
   if (r != CUBEB_OK) {
     fprintf(stderr, "Error initializing cubeb stream: %d\n", r);
     return r;
@@ -248,6 +258,11 @@ TEST(cubeb, run_channel_rate_test)
       fprintf(stderr, "--------------------------\n");
       ASSERT_EQ(run_test(channels, freq, 0), CUBEB_OK);
       ASSERT_EQ(run_test(channels, freq, 1), CUBEB_OK);
+#ifdef _WIN32
+	  // Run exclusive mdoe tests on Windows
+	  ASSERT_EQ(run_test(channels, freq, 0, true), CUBEB_OK);
+	  ASSERT_EQ(run_test(channels, freq, 1, true), CUBEB_OK);
+#endif
     }
   }
 }
