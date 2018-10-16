@@ -3455,8 +3455,8 @@ audiounit_collection_changed_callback(AudioObjectID /* inObjectID */,
   // This can be called from inside an AudioUnit function, dispatch to another queue.
   dispatch_async(context->serial_queue, ^() {
     auto_lock lock(context->mutex);
-    if (!context->input_collection_changed_callback
-      && !context->output_collection_changed_callback) {
+    if (!context->input_collection_changed_callback &&
+      !context->output_collection_changed_callback) {
       /* Listener removed while waiting in mutex, abort. */
       return;
     }
@@ -3493,8 +3493,8 @@ audiounit_add_device_listener(cubeb * context,
   assert((devtype & CUBEB_DEVICE_TYPE_INPUT) && !context->input_collection_changed_callback
          || (devtype & CUBEB_DEVICE_TYPE_OUTPUT) && !context->output_collection_changed_callback);
 
-  if (!context->input_collection_changed_callback
-      && !context->output_collection_changed_callback) {
+  if (!context->input_collection_changed_callback &&
+      !context->output_collection_changed_callback) {
     OSStatus ret = AudioObjectAddPropertyListener(kAudioObjectSystemObject,
                                                   &DEVICES_PROPERTY_ADDRESS,
                                                   audiounit_collection_changed_callback,
