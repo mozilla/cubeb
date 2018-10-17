@@ -1846,8 +1846,8 @@ audiounit_workaround_for_airpod(cubeb_stream * stm)
   std::string input_name_str(input_device_info.friendly_name);
   std::string output_name_str(output_device_info.friendly_name);
 
-  if( input_name_str.find("AirPods") != std::string::npos
-    && output_name_str.find("AirPods") != std::string::npos ) {
+  if(input_name_str.find("AirPods") != std::string::npos &&
+     output_name_str.find("AirPods") != std::string::npos) {
     uint32_t input_min_rate = 0;
     uint32_t input_max_rate = 0;
     uint32_t input_nominal_rate = 0;
@@ -1985,8 +1985,8 @@ audiounit_new_unit_instance(AudioUnit * unit, device_info * device)
   // so we retain automatic output device switching when the default
   // changes.  Once we have complete support for device notifications
   // and switching, we can use the AUHAL for everything.
-  if ((device->flags & DEV_SYSTEM_DEFAULT)
-      && (device->flags & DEV_OUTPUT)) {
+  if ((device->flags & DEV_SYSTEM_DEFAULT) &&
+      (device->flags & DEV_OUTPUT)) {
     desc.componentSubType = kAudioUnitSubType_DefaultOutput;
   } else {
     desc.componentSubType = kAudioUnitSubType_HALOutput;
@@ -2046,8 +2046,8 @@ audiounit_create_unit(AudioUnit * unit, device_info * device)
   }
   assert(*unit);
 
-  if ((device->flags & DEV_SYSTEM_DEFAULT)
-      && (device->flags & DEV_OUTPUT)) {
+  if ((device->flags & DEV_SYSTEM_DEFAULT) &&
+      (device->flags & DEV_OUTPUT)) {
     return CUBEB_OK;
   }
 
@@ -3490,8 +3490,8 @@ audiounit_add_device_listener(cubeb * context,
   assert(devtype & (CUBEB_DEVICE_TYPE_INPUT | CUBEB_DEVICE_TYPE_OUTPUT));
   /* Note: second register without unregister first causes 'nope' error.
    * Current implementation requires unregister before register a new cb. */
-  assert((devtype & CUBEB_DEVICE_TYPE_INPUT) && !context->input_collection_changed_callback
-         || (devtype & CUBEB_DEVICE_TYPE_OUTPUT) && !context->output_collection_changed_callback);
+  assert((devtype & CUBEB_DEVICE_TYPE_INPUT) && !context->input_collection_changed_callback ||
+         (devtype & CUBEB_DEVICE_TYPE_OUTPUT) && !context->output_collection_changed_callback);
 
   if (!context->input_collection_changed_callback &&
       !context->output_collection_changed_callback) {
@@ -3536,8 +3536,8 @@ audiounit_remove_device_listener(cubeb * context, cubeb_device_type devtype)
     context->output_device_array.clear();
   }
 
-  if (context->input_collection_changed_callback
-    || context->output_collection_changed_callback) {
+  if (context->input_collection_changed_callback ||
+      context->output_collection_changed_callback) {
     return noErr;
   }
   /* Note: unregister a non registered cb is not a problem, not checking. */
