@@ -7,6 +7,7 @@ project(cubeb
 
 option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
 option(BUILD_TESTS "Build tests" ON)
+option(BUILD_RUST_LIBS "Build rust backends" OFF)
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING
@@ -36,6 +37,12 @@ if(BUILD_TESTS)
     add_definitions(-DGTEST_HAS_TR1_TUPLE=0)
     set(gtest_force_shared_crt ON CACHE BOOL "")
     add_subdirectory(googletest)
+  endif()
+endif()
+
+if (BUILD_RUST_LIBS)
+  if(EXISTS "${PROJECT_SOURCE_DIR}/src/cubeb-pulse-rs")
+    set(USE_PULSE_RUST 1)
   endif()
 endif()
 
@@ -220,6 +227,24 @@ if(USE_KAI)
     src/cubeb_kai.c)
   target_compile_definitions(cubeb PRIVATE USE_KAI)
   target_link_libraries(cubeb PRIVATE kai)
+endif()
+
+if(USE_PULSE_RUST)
+  include(ExternalProject)
+  set_directory_properties(PROPERTIES EP_PREFIX ${CMAKE_BINARY_DIR}/rust)
+  ExternalProject_Add(
+    cubeb_pulse_rs
+    DOWNLOAD_COMMAND ""
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND cargo build COMMAND cargo build --release
+    BINARY_DIR "${CMAKE_SOURCE_DIR}/src/cubeb-pulse-rs"
+    INSTALL_COMMAND ""
+    LOG_BUILD ON)
+  add_dependencies(cubeb cubeb_pulse_rs)
+  target_compile_definitions(cubeb PRIVATE USE_PULSE_RUST)
+  target_link_libraries(cubeb PRIVATE
+    debug "${CMAKE_SOURCE_DIR}/src/cubeb-pulse-rs/target/debug/libcubeb_pulse.a"
+    optimized "${CMAKE_SOURCE_DIR}/src/cubeb-pulse-rs/target/release/libcubeb_pulse.a")
 endif()
 
 find_package(Doxygen)
