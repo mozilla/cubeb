@@ -274,9 +274,41 @@ TEST(cubeb, register_device_collection_change_for_unknown_type)
 
   r = cubeb_register_device_collection_changed(ctx,
                                                static_cast<cubeb_device_type>(CUBEB_DEVICE_TYPE_UNKNOWN),
+                                               nullptr,
+                                               nullptr);
+  ASSERT_EQ(r, CUBEB_ERROR_INVALID_PARAMETER) << "Error returning wrong error type";
+
+  r = cubeb_register_device_collection_changed(ctx,
+                                               static_cast<cubeb_device_type>(CUBEB_DEVICE_TYPE_UNKNOWN),
                                                device_collection_changed_callback,
                                                nullptr);
   ASSERT_EQ(r, CUBEB_ERROR_INVALID_PARAMETER) << "Error returning wrong error type";
+}
+
+TEST(cubeb, unregister_without_registering)
+{
+  cubeb *ctx;
+  int r = CUBEB_OK;
+
+  r = common_init(&ctx, "Cubeb duplex example with collection change");
+  ASSERT_EQ(r, CUBEB_OK) << "Error initializing cubeb library";
+
+  std::unique_ptr<cubeb, decltype(&cubeb_destroy)>
+    cleanup_cubeb_at_exit(ctx, cubeb_destroy);
+
+  int scopes[3] = {
+    CUBEB_DEVICE_TYPE_INPUT,
+    CUBEB_DEVICE_TYPE_OUTPUT,
+    CUBEB_DEVICE_TYPE_INPUT | CUBEB_DEVICE_TYPE_OUTPUT
+  };
+
+  for (size_t i = 0 ; i < ARRAY_LENGTH(scopes) ; ++i) {
+    r = cubeb_register_device_collection_changed(ctx,
+                                                 static_cast<cubeb_device_type>(scopes[i]),
+                                                 nullptr,
+                                                 nullptr);
+    ASSERT_EQ(r, CUBEB_OK) << "Error unregistering device collection changed";
+  }
 }
 
 TEST(cubeb, device_collection_change)
