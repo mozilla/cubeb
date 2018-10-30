@@ -253,3 +253,28 @@ TEST(cubeb, stream_get_current_device)
   r = cubeb_stream_device_destroy(stream, device);
   ASSERT_EQ(r, CUBEB_OK) << "Error destroying current devices";
 }
+
+void device_collection_changed_callback(cubeb * context, void * user)
+{
+  fprintf(stderr, "device collection changed callback\n");
+  ASSERT_TRUE(false) << "Error: device collection changed callback"
+                        " called when opening a stream";
+}
+
+TEST(cubeb, register_device_collection_change_for_unknown_type)
+{
+  cubeb *ctx;
+  int r = CUBEB_OK;
+
+  r = common_init(&ctx, "Cubeb duplex example with collection change");
+  ASSERT_EQ(r, CUBEB_OK) << "Error initializing cubeb library";
+
+  std::unique_ptr<cubeb, decltype(&cubeb_destroy)>
+    cleanup_cubeb_at_exit(ctx, cubeb_destroy);
+
+  r = cubeb_register_device_collection_changed(ctx,
+                                               static_cast<cubeb_device_type>(CUBEB_DEVICE_TYPE_UNKNOWN),
+                                               device_collection_changed_callback,
+                                               nullptr);
+  ASSERT_EQ(r, CUBEB_ERROR_INVALID_PARAMETER) << "Error returning wrong error type";
+}
