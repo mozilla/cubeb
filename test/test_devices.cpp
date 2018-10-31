@@ -258,7 +258,7 @@ void device_collection_changed_callback(cubeb * context, void * user)
 {
   fprintf(stderr, "device collection changed callback\n");
   ASSERT_TRUE(false) << "Error: device collection changed callback"
-                        " called when opening a stream";
+                        " called without changing devices";
 }
 
 TEST(cubeb, register_device_collection_change_for_unknown_type)
