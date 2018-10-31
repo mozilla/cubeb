@@ -4,7 +4,3 @@
 [submodule "cmake/sanitizers-cmake"]
 	path = cmake/sanitizers-cmake
 	url = https://github.com/arsenm/sanitizers-cmake
-[submodule "src/cubeb-coreaudio-rs"]
-	path = src/cubeb-coreaudio-rs
-	url = https://github.com/ChunMinChang/cubeb-coreaudio-rs.git
-	branch = build-config-in-cubeb
