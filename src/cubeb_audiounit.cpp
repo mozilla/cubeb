@@ -741,34 +741,22 @@ static int audiounit_stream_get_volume(cubeb_stream * stm, float * volume);
 static int audiounit_stream_set_volume(cubeb_stream * stm, float volume);
 
 static int
-audiounit_set_device_info(cubeb_stream * stm, AudioDeviceID id, io_side side)
+audiounit_set_device_info(cubeb_stream * stm, AudioDeviceID id, cubeb_device_type type)
 {
   assert(stm);
-  assert(side == io_side::INPUT || side == io_side::OUTPUT);
+  assert(type == CUBEB_DEVICE_TYPE_INPUT || type == CUBEB_DEVICE_TYPE_OUTPUT);
 
-  device_info * info = nullptr;
-  cubeb_device_type type = CUBEB_DEVICE_TYPE_UNKNOWN;
+  device_info * info = (type == CUBEB_DEVICE_TYPE_INPUT)
+    ? &stm->input_device
+    : &stm->output_device;
 
-  if (side == io_side::INPUT) {
-    info = &stm->input_device;
-    type = CUBEB_DEVICE_TYPE_INPUT;
-  } else {
-    info = &stm->output_device;
-    type = CUBEB_DEVICE_TYPE_OUTPUT;
-  }
   memset(info, 0, sizeof(device_info));
   info->id = id;
-
-  if (side == io_side::INPUT) {
-    info->flags |= DEV_INPUT;
-  } else {
-    info->flags |= DEV_OUTPUT;
-  }
+  info->flags |= (type == CUBEB_DEVICE_TYPE_INPUT) ? DEV_INPUT : DEV_OUTPUT;
 
   AudioDeviceID default_device_id = audiounit_get_default_device_id(type);
-  if (default_device_id == kAudioObjectUnknown) {
-    return CUBEB_ERROR;
-  }
+  assert(default_device_id != kAudioObjectUnknown);
+
   if (id == kAudioObjectUnknown) {
     info->id = default_device_id;
     info->flags |= DEV_SELECTED_DEFAULT;
@@ -780,7 +768,7 @@ audiounit_set_device_info(cubeb_stream * stm, AudioDeviceID id, io_side side)
 
   assert(info->id);
   assert(info->flags & DEV_INPUT && !(info->flags & DEV_OUTPUT) ||
-           !(info->flags & DEV_INPUT) && info->flags & DEV_OUTPUT);
+         !(info->flags & DEV_INPUT) && info->flags & DEV_OUTPUT);
 
   return CUBEB_OK;
 }
@@ -819,7 +807,7 @@ audiounit_reinit_stream(cubeb_stream * stm, device_flags_value flags)
      * default to the (potentially new) default device. */
     AudioDeviceID input_device = flags & DEV_INPUT ? stm->input_device.id : 0;
     if (flags & DEV_INPUT) {
-      r = audiounit_set_device_info(stm, input_device, io_side::INPUT);
+      r = audiounit_set_device_info(stm, input_device, CUBEB_DEVICE_TYPE_INPUT);
       if (r != CUBEB_OK) {
         LOG("(%p) Set input device info failed. This can happen when last media device is unplugged", stm);
         return CUBEB_ERROR;
@@ -829,7 +817,7 @@ audiounit_reinit_stream(cubeb_stream * stm, device_flags_value flags)
     /* Always use the default output on reinit. This is not correct in every
      * case but it is sufficient for Firefox and prevent reinit from reporting
      * failures. It will change soon when reinit mechanism will be updated. */
-    r = audiounit_set_device_info(stm, 0, io_side::OUTPUT);
+    r = audiounit_set_device_info(stm, 0, CUBEB_DEVICE_TYPE_OUTPUT);
     if (r != CUBEB_OK) {
       LOG("(%p) Set output device info failed. This can happen when last media device is unplugged", stm);
       return CUBEB_ERROR;
@@ -841,7 +829,7 @@ audiounit_reinit_stream(cubeb_stream * stm, device_flags_value flags)
         // Attempt to re-use the same device-id failed, so attempt again with
         // default input device.
         audiounit_close_stream(stm);
-        if (audiounit_set_device_info(stm, 0, io_side::INPUT) != CUBEB_OK ||
+        if (audiounit_set_device_info(stm, 0, CUBEB_DEVICE_TYPE_INPUT) != CUBEB_OK ||
             audiounit_setup_stream(stm) != CUBEB_OK) {
           LOG("(%p) Second stream reinit failed.", stm);
           return CUBEB_ERROR;
@@ -2764,7 +2752,7 @@ audiounit_stream_init(cubeb * context,
   }
   if (input_stream_params) {
     stm->input_stream_params = *input_stream_params;
-    r = audiounit_set_device_info(stm.get(), reinterpret_cast<uintptr_t>(input_device), io_side::INPUT);
+    r = audiounit_set_device_info(stm.get(), reinterpret_cast<uintptr_t>(input_device), CUBEB_DEVICE_TYPE_INPUT);
     if (r != CUBEB_OK) {
       LOG("(%p) Fail to set device info for input.", stm.get());
       return r;
@@ -2772,7 +2760,7 @@ audiounit_stream_init(cubeb * context,
   }
   if (output_stream_params) {
     stm->output_stream_params = *output_stream_params;
-    r = audiounit_set_device_info(stm.get(), reinterpret_cast<uintptr_t>(output_device), io_side::OUTPUT);
+    r = audiounit_set_device_info(stm.get(), reinterpret_cast<uintptr_t>(output_device), CUBEB_DEVICE_TYPE_OUTPUT);
     if (r != CUBEB_OK) {
       LOG("(%p) Fail to set device info for output.", stm.get());
       return r;
