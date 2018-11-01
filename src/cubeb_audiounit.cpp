@@ -744,6 +744,7 @@ static int
 audiounit_set_device_info(cubeb_stream * stm, AudioDeviceID id, io_side side)
 {
   assert(stm);
+  assert(side == io_side::INPUT || side == io_side::OUTPUT);
 
   device_info * info = nullptr;
   cubeb_device_type type = CUBEB_DEVICE_TYPE_UNKNOWN;
@@ -751,7 +752,7 @@ audiounit_set_device_info(cubeb_stream * stm, AudioDeviceID id, io_side side)
   if (side == io_side::INPUT) {
     info = &stm->input_device;
     type = CUBEB_DEVICE_TYPE_INPUT;
-  } else if (side == io_side::OUTPUT) {
+  } else {
     info = &stm->output_device;
     type = CUBEB_DEVICE_TYPE_OUTPUT;
   }
@@ -760,7 +761,7 @@ audiounit_set_device_info(cubeb_stream * stm, AudioDeviceID id, io_side side)
 
   if (side == io_side::INPUT) {
     info->flags |= DEV_INPUT;
-  } else if (side == io_side::OUTPUT) {
+  } else {
     info->flags |= DEV_OUTPUT;
   }
 
