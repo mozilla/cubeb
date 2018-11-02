@@ -3489,6 +3489,7 @@ audiounit_add_device_listener(cubeb * context,
 {
   context->mutex.assert_current_thread_owns();
   assert(devtype & (CUBEB_DEVICE_TYPE_INPUT | CUBEB_DEVICE_TYPE_OUTPUT));
+  assert(collection_changed_callback);
   /* Note: second register without unregister first causes 'nope' error.
    * Current implementation requires unregister before register a new cb. */
   assert((devtype & CUBEB_DEVICE_TYPE_INPUT) && !context->input_collection_changed_callback ||
