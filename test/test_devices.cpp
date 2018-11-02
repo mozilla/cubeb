@@ -338,7 +338,7 @@ TEST(cubeb, device_collection_change)
                                                  nullptr);
     ASSERT_EQ(r, CUBEB_OK) << "Error registering device collection changed";
 
-    // Unregister all the callbacks regardless of the scope.
+    // Unregister all the callbacks regardless of the scopes.
     r = cubeb_register_device_collection_changed(ctx,
                                                  static_cast<cubeb_device_type>(CUBEB_DEVICE_TYPE_INPUT |
                                                                                 CUBEB_DEVICE_TYPE_OUTPUT),
@@ -435,7 +435,8 @@ TEST(cubeb, register_device_collection_changed_twice)
       cubeb_register_device_collection_changed(ctx,
                                                scope,
                                                device_collection_changed_callback,
-                                               nullptr), ""
+                                               nullptr),
+      ""
     );
   }
 }
