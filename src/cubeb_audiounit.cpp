@@ -755,7 +755,9 @@ audiounit_set_device_info(cubeb_stream * stm, AudioDeviceID id, cubeb_device_typ
   info->flags |= (type == CUBEB_DEVICE_TYPE_INPUT) ? DEV_INPUT : DEV_OUTPUT;
 
   AudioDeviceID default_device_id = audiounit_get_default_device_id(type);
-  assert(default_device_id != kAudioObjectUnknown);
+  if (default_device_id == kAudioObjectUnknown) {
+    return CUBEB_ERROR;
+  }
 
   if (id == kAudioObjectUnknown) {
     info->id = default_device_id;
