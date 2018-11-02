@@ -362,6 +362,48 @@ TEST(cubeb, device_collection_change)
   }
 }
 
+TEST(cubeb, unregister_device_collection_changed_twice)
+{
+  cubeb *ctx;
+  int r = CUBEB_OK;
+
+  r = common_init(&ctx, "Cubeb duplex example with collection change");
+  ASSERT_EQ(r, CUBEB_OK) << "Error initializing cubeb library";
+
+  std::unique_ptr<cubeb, decltype(&cubeb_destroy)>
+    cleanup_cubeb_at_exit(ctx, cubeb_destroy);
+
+  cubeb_device_type scopes[3] = {
+    CUBEB_DEVICE_TYPE_INPUT,
+    CUBEB_DEVICE_TYPE_OUTPUT,
+    static_cast<cubeb_device_type>(CUBEB_DEVICE_TYPE_INPUT |
+                                   CUBEB_DEVICE_TYPE_OUTPUT)
+  };
+
+  for (cubeb_device_type scope: scopes) {
+    // Register a callback within the defined scoped.
+    r = cubeb_register_device_collection_changed(ctx,
+                                                 scope,
+                                                 device_collection_changed_callback,
+                                                 nullptr);
+    ASSERT_EQ(r, CUBEB_OK) << "Error registering device collection changed";
+
+    // Unregister the callback within the defined scope.
+    r = cubeb_register_device_collection_changed(ctx,
+                                                 scope,
+                                                 nullptr,
+                                                 nullptr);
+    ASSERT_EQ(r, CUBEB_OK) << "Error unregistering device collection changed";
+
+    // Unregister the callback within the defined scope again.
+    r = cubeb_register_device_collection_changed(ctx,
+                                                 scope,
+                                                 nullptr,
+                                                 nullptr);
+    ASSERT_EQ(r, CUBEB_OK) << "Error unregistering device collection changed again";
+  }
+}
+
 TEST(cubeb, register_device_collection_changed_twice)
 {
   cubeb *ctx;
