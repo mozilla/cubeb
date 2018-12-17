@@ -416,7 +416,7 @@ TEST(cubeb, basic_stream_operations)
   ASSERT_EQ(r, CUBEB_OK);
   ASSERT_NE(stream, nullptr);
 
-  /* position and volume before stream has started */
+  /* position before stream has started */
   r = cubeb_stream_get_position(stream, &position);
   ASSERT_EQ(r, CUBEB_OK);
   ASSERT_EQ(position, 0u);
@@ -424,14 +424,14 @@ TEST(cubeb, basic_stream_operations)
   r = cubeb_stream_start(stream);
   ASSERT_EQ(r, CUBEB_OK);
 
-  /* position and volume after while stream running */
+  /* position after while stream running */
   r = cubeb_stream_get_position(stream, &position);
   ASSERT_EQ(r, CUBEB_OK);
 
   r = cubeb_stream_stop(stream);
   ASSERT_EQ(r, CUBEB_OK);
 
-  /* position and volume after stream has stopped */
+  /* position after stream has stopped */
   r = cubeb_stream_get_position(stream, &position);
   ASSERT_EQ(r, CUBEB_OK);
 
