@@ -1542,11 +1542,15 @@ pulse_register_device_collection_changed(cubeb * context,
 {
   assert(devtype & (CUBEB_DEVICE_TYPE_INPUT | CUBEB_DEVICE_TYPE_OUTPUT));
 
+  // Current implementation requires unregistering the existing callback before
+  // registering a new one within the same scope.
   if (devtype & CUBEB_DEVICE_TYPE_INPUT) {
+    assert(!collection_changed_callback || !context->input_collection_changed_callback);
     context->input_collection_changed_callback = collection_changed_callback;
     context->input_collection_changed_user_ptr = user_ptr;
   }
   if (devtype & CUBEB_DEVICE_TYPE_OUTPUT) {
+    assert(!collection_changed_callback || !context->output_collection_changed_callback);
     context->output_collection_changed_callback = collection_changed_callback;
     context->output_collection_changed_user_ptr = user_ptr;
   }
