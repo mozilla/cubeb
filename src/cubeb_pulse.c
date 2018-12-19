@@ -1540,6 +1540,8 @@ pulse_register_device_collection_changed(cubeb * context,
                                          cubeb_device_collection_changed_callback collection_changed_callback,
                                          void * user_ptr)
 {
+  assert(devtype & (CUBEB_DEVICE_TYPE_INPUT | CUBEB_DEVICE_TYPE_OUTPUT));
+
   if (devtype & CUBEB_DEVICE_TYPE_INPUT) {
     context->input_collection_changed_callback = collection_changed_callback;
     context->input_collection_changed_user_ptr = user_ptr;
