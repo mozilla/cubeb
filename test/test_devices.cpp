@@ -404,7 +404,7 @@ TEST(cubeb, unregister_device_collection_changed_twice)
   }
 }
 
-TEST(cubeb, register_device_collection_changed_twice)
+TEST(cubeb, register_device_collection_changed_twice_input)
 {
   cubeb *ctx;
   int r = CUBEB_OK;
@@ -415,28 +415,78 @@ TEST(cubeb, register_device_collection_changed_twice)
   std::unique_ptr<cubeb, decltype(&cubeb_destroy)>
     cleanup_cubeb_at_exit(ctx, cubeb_destroy);
 
-  cubeb_device_type scopes[3] = {
-    CUBEB_DEVICE_TYPE_INPUT,
-    CUBEB_DEVICE_TYPE_OUTPUT,
-    static_cast<cubeb_device_type>(CUBEB_DEVICE_TYPE_INPUT |
-                                   CUBEB_DEVICE_TYPE_OUTPUT)
-  };
-
-  for (cubeb_device_type scope: scopes) {
-    // Register a callback within the defined scoped.
-    r = cubeb_register_device_collection_changed(ctx,
-                                                 scope,
-                                                 device_collection_changed_callback,
-                                                 nullptr);
-    ASSERT_EQ(r, CUBEB_OK) << "Error registering device collection changed";
-
-    // Get an assertion fails when registering a callback within same scope twice.
-    ASSERT_DEATH(
-      cubeb_register_device_collection_changed(ctx,
-                                               scope,
+  // Register a callback within the defined scoped.
+  r = cubeb_register_device_collection_changed(ctx,
+                                               CUBEB_DEVICE_TYPE_INPUT,
                                                device_collection_changed_callback,
-                                               nullptr),
-      ""
-    );
-  }
+                                               nullptr);
+  ASSERT_EQ(r, CUBEB_OK) << "Error registering device collection changed";
+
+  // Get an assertion fails when registering a callback within same scope twice.
+  ASSERT_DEATH(
+    cubeb_register_device_collection_changed(ctx,
+                                             CUBEB_DEVICE_TYPE_INPUT,
+                                             device_collection_changed_callback,
+                                             nullptr),
+    ""
+  );
+}
+
+TEST(cubeb, register_device_collection_changed_twice_output)
+{
+  cubeb *ctx;
+  int r = CUBEB_OK;
+
+  r = common_init(&ctx, "Cubeb duplex example with collection change");
+  ASSERT_EQ(r, CUBEB_OK) << "Error initializing cubeb library";
+
+  std::unique_ptr<cubeb, decltype(&cubeb_destroy)>
+    cleanup_cubeb_at_exit(ctx, cubeb_destroy);
+
+  // Register a callback within the defined scoped.
+  r = cubeb_register_device_collection_changed(ctx,
+                                               CUBEB_DEVICE_TYPE_OUTPUT,
+                                               device_collection_changed_callback,
+                                               nullptr);
+  ASSERT_EQ(r, CUBEB_OK) << "Error registering device collection changed";
+
+  // Get an assertion fails when registering a callback within same scope twice.
+  ASSERT_DEATH(
+    cubeb_register_device_collection_changed(ctx,
+                                             CUBEB_DEVICE_TYPE_OUTPUT,
+                                             device_collection_changed_callback,
+                                             nullptr),
+    ""
+  );
+}
+
+TEST(cubeb, register_device_collection_changed_twice_inout)
+{
+  cubeb *ctx;
+  int r = CUBEB_OK;
+
+  r = common_init(&ctx, "Cubeb duplex example with collection change");
+  ASSERT_EQ(r, CUBEB_OK) << "Error initializing cubeb library";
+
+  std::unique_ptr<cubeb, decltype(&cubeb_destroy)>
+    cleanup_cubeb_at_exit(ctx, cubeb_destroy);
+
+  cubeb_device_type type = static_cast<cubeb_device_type>(
+    CUBEB_DEVICE_TYPE_INPUT | CUBEB_DEVICE_TYPE_OUTPUT);
+
+  // Register a callback within the defined scoped.
+  r = cubeb_register_device_collection_changed(ctx,
+                                               type,
+                                               device_collection_changed_callback,
+                                               nullptr);
+  ASSERT_EQ(r, CUBEB_OK) << "Error registering device collection changed";
+
+  // Get an assertion fails when registering a callback within same scope twice.
+  ASSERT_DEATH(
+    cubeb_register_device_collection_changed(ctx,
+                                             type,
+                                             device_collection_changed_callback,
+                                             nullptr),
+    ""
+  );
 }
