@@ -431,7 +431,7 @@ TEST(cubeb, register_device_collection_changed_twice)
     ASSERT_EQ(r, CUBEB_OK) << "Error registering device collection changed";
 
     // Get an assertion fails when registering a callback within same scope twice.
-    ASSERT_DEBUG_DEATH(
+    ASSERT_DEATH(
       cubeb_register_device_collection_changed(ctx,
                                                scope,
                                                device_collection_changed_callback,
