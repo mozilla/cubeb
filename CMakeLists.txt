@@ -242,6 +242,8 @@ if(USE_PULSE_RUST)
     LOG_BUILD ON)
   add_dependencies(cubeb cubeb_pulse_rs)
   target_compile_definitions(cubeb PRIVATE USE_PULSE_RUST)
+  # Add `pulse`at the end of target_link_libraries if pulse-dlopen feature is
+  # not turned on. Otherwise, the libpulse APIs cannot be linked.
   target_link_libraries(cubeb PRIVATE
     debug "${CMAKE_SOURCE_DIR}/src/cubeb-pulse-rs/target/debug/libcubeb_pulse.a"
     optimized "${CMAKE_SOURCE_DIR}/src/cubeb-pulse-rs/target/release/libcubeb_pulse.a")
