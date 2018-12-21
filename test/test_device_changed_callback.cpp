@@ -65,8 +65,12 @@ void test_registering_second_callbacks(cubeb_stream * stream)
   }
   ASSERT_EQ(r, CUBEB_OK) << "Error registering device changed callback";
 
-  r = cubeb_stream_register_device_changed_callback(stream, device_changed_callback);
-  ASSERT_EQ(r, CUBEB_ERROR) << "Not getting an error when registering same callback twice";
+  // Get an assertion fails when registering a callback
+  // without unregistering the original one.
+  ASSERT_DEATH(
+    cubeb_stream_register_device_changed_callback(stream, device_changed_callback),
+    ""
+  );
 }
 
 TEST(cubeb, device_changed_callbacks)

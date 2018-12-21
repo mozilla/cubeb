@@ -3101,7 +3101,7 @@ int audiounit_stream_register_device_changed_callback(cubeb_stream * stream,
   auto_lock dev_cb_lock(stream->device_changed_callback_lock);
   /* Note: second register without unregister first causes 'nope' error.
    * Current implementation requires unregister before register a new cb. */
-  assert(!stream->device_changed_callback);
+  assert(!device_changed_callback || !stream->device_changed_callback);
   stream->device_changed_callback = device_changed_callback;
   return CUBEB_OK;
 }
