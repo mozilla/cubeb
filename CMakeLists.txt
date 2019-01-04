@@ -300,4 +300,5 @@ if(BUILD_TESTS)
 
   cubeb_add_test(utils)
   cubeb_add_test(ring_buffer)
+  cubeb_add_test(device_changed_callback)
 endif()
