@@ -979,7 +979,7 @@ pulse_stream_destroy(cubeb_stream * stm)
   }
   WRAP(pa_threaded_mainloop_unlock)(stm->context->mainloop);
 
-  LOG("Cubeb stream (%p) destroyed successful.", stm);
+  LOG("Cubeb stream (%p) destroyed successfully.", stm);
   free(stm);
 }
 
