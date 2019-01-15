@@ -102,7 +102,7 @@ extern "C" {
 
       for (i = 0; i < nframes; ++i) {
         for (c = 0; c < 2; ++c) {
-          buf[i][c] = in[i];
+          out[i][c] = in[i];
         }
       }
       return nframes;
