@@ -831,7 +831,7 @@ create_pa_stream(cubeb_stream * stm,
   if (stream_params->layout == CUBEB_LAYOUT_UNDEFINED) {
     pa_channel_map cm;
     if (stream_params->channels <= 8 &&
-       !pa_channel_map_init_auto(&cm, stream_params->channels, PA_CHANNEL_MAP_DEFAULT)) {
+       !WRAP(pa_channel_map_init_auto)(&cm, stream_params->channels, PA_CHANNEL_MAP_DEFAULT)) {
       LOG("Layout undefined and PulseAudio's default layout has not been configured, guess one.");
       layout_to_channel_map(pulse_default_layout_for_channels(stream_params->channels), &cm);
       *pa_stm = WRAP(pa_stream_new)(stm->context->context, stream_name, &ss, &cm);
