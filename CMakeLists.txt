@@ -8,6 +8,7 @@ project(cubeb
 option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
 option(BUILD_TESTS "Build tests" ON)
 option(BUILD_RUST_LIBS "Build rust backends" OFF)
+option(BUILD_TOOLS "Build tools" ON)
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING
@@ -301,4 +302,12 @@ if(BUILD_TESTS)
   cubeb_add_test(utils)
   cubeb_add_test(ring_buffer)
   cubeb_add_test(device_changed_callback)
+endif()
+
+if(BUILD_TOOLS)
+  add_executable(cubeb-test tools/cubeb-test.cpp)
+  target_include_directories(cubeb-test PRIVATE src)
+  target_link_libraries(cubeb-test PRIVATE cubeb)
+  add_sanitizers(cubeb-test)
+  install(TARGETS cubeb-test DESTINATION ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
 endif()
