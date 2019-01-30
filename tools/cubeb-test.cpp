@@ -5,6 +5,13 @@
 #include <cstdarg>
 #include <cstring>
 #include <iostream>
+#ifdef _WIN32
+#include <objbase.h> // Used by CoInitialize()
+#endif
+
+#ifndef M_PI
+#define M_PI 3.14159263
+#endif
 
 // Default values if none specified
 #define DEFAULT_RATE 44100
@@ -218,6 +225,10 @@ enum play_mode {
 };
 
 int main(int argc, char* argv[]) {
+#ifdef _WIN32
+  CoInitialize(nullptr);
+#endif
+
   play_mode pm = DUPLEX;
   if (argc > 1) {
     if ('r' == argv[1][0]) {
