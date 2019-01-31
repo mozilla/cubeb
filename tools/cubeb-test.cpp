@@ -41,15 +41,14 @@ void print_log(const char* msg, ...) {
 
 class cubeb_client final {
 public:
-  /* Access from client thread. */
   cubeb_client() {}
   ~cubeb_client() {}
 
-  bool init();
+  bool init(char const * backend_name = nullptr);
   bool init_stream();
-  bool start_stream();
-  bool stop_stream();
-  bool destroy_stream();
+  bool start_stream() const;
+  bool stop_stream() const;
+  bool destroy_stream() const;
   bool destroy();
   bool activate_log(bool active);
 
@@ -74,16 +73,20 @@ private:
   cubeb_devid output_device = nullptr;
   cubeb_devid input_device = nullptr;
 
-  /* Accessed from client and audio thread. */
+  /* Accessed only from client and audio thread. */
   std::atomic<uint32_t> _rate = {0};
   std::atomic<uint32_t> _channels = {0};
 
-  /* Access from audio thread. */
+  /* Accessed only from audio thread. */
   uint32_t _total_frames = 0;
 };
 
-bool cubeb_client::init() {
-  cubeb_init(&context, "Cubeb Test Application", nullptr);
+bool cubeb_client::init(char const * backend_name) {
+  int rv = cubeb_init(&context, "Cubeb Test Application", nullptr);
+  if (rv != CUBEB_OK) {
+    fprintf(stderr, "Could not init cubeb\n");
+    return false;
+  }
   return true;
 }
 
@@ -124,7 +127,7 @@ bool cubeb_client::init_stream() {
   return true;
 }
 
-bool cubeb_client::start_stream() {
+bool cubeb_client::start_stream() const {
   int rv = cubeb_stream_start(stream);
   if (rv != CUBEB_OK) {
     fprintf(stderr, "Could not start the stream\n");
@@ -133,7 +136,7 @@ bool cubeb_client::start_stream() {
   return true;
 }
 
-bool cubeb_client::stop_stream() {
+bool cubeb_client::stop_stream() const {
   int rv = cubeb_stream_stop(stream);
   if (rv != CUBEB_OK) {
     fprintf(stderr, "Could not stop the stream\n");
@@ -142,7 +145,7 @@ bool cubeb_client::stop_stream() {
   return true;
 }
 
-bool cubeb_client::destroy_stream() {
+bool cubeb_client::destroy_stream() const {
   cubeb_stream_destroy(stream);
   return true;
 }
@@ -167,7 +170,7 @@ bool cubeb_client::activate_log(bool active) {
   return true;
 }
 
-static void fill_with_sin_tone(float* buf, uint32_t num_of_frames,
+static void fill_with_sine_tone(float* buf, uint32_t num_of_frames,
                                uint32_t num_of_channels, uint32_t frame_rate,
                                uint32_t position) {
   for (uint32_t i = 0; i < num_of_frames; ++i) {
@@ -188,7 +191,7 @@ long cubeb_client::user_data_cb(cubeb_stream* stm, void* user,
     float* out = static_cast<float*>(output_buffer);
     memcpy(out, in, sizeof(float) * nframes * _channels);
   } else if (output_buffer && !input_buffer) {
-    fill_with_sin_tone(static_cast<float*>(output_buffer), nframes, _channels,
+    fill_with_sine_tone(static_cast<float*>(output_buffer), nframes, _channels,
                        _rate, _total_frames);
   }
 
@@ -223,6 +226,24 @@ enum play_mode {
   DUPLEX,
   COLLECTION_CHANGE,
 };
+
+bool choose_action(const cubeb_client& cl, play_mode pm, char c) {
+  while (c == 10 || c == 32) {
+    // Consume "enter and "space"
+    c = getchar();
+  }
+
+  if (c == 's') {
+    if (pm == PLAYBACK || pm == RECORD || pm == DUPLEX) {
+      cl.stop_stream();
+      cl.destroy_stream();
+    }
+    return false;
+  }
+
+  fprintf(stderr, "Error: %c is not a valid entry\n", c);
+  return true;
+}
 
 int main(int argc, char* argv[]) {
 #ifdef _WIN32
@@ -279,14 +300,9 @@ int main(int argc, char* argv[]) {
   }
 
   // User input
-  while (getchar() != 's') {
-    continue;
-  }
-
-  if (pm == PLAYBACK || pm == RECORD || pm == DUPLEX) {
-    cl.stop_stream();
-    cl.destroy_stream();
-  }
+  do {
+    fprintf(stderr, "press `s` to stop the stream (if any) and abort\n");
+  } while (choose_action(cl, pm, getchar()));
 
   cl.destroy();
 
