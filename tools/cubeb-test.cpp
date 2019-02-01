@@ -57,8 +57,8 @@ public:
 
   void user_state_cb(cubeb_stream* stm, void* user, cubeb_state state);
 
-  bool register_device_collection_changed(cubeb_device_type devtype);
-  void device_collection_changed_callback(cubeb* context, void* user);
+  bool register_device_collection_changed(cubeb_device_type devtype) const;
+  bool unregister_device_collection_changed(cubeb_device_type devtype) const;
 
   cubeb_stream_params output_params = {};
   cubeb_stream_params input_params = {};
@@ -103,10 +103,16 @@ static void user_state_cb_s(cubeb_stream* stm, void* user, cubeb_state state) {
   return static_cast<cubeb_client*>(user)->user_state_cb(stm, user, state);
 }
 
-void device_collection_changed_callback_s(cubeb* context, void* user) {
-  assert(user);
-  return static_cast<cubeb_client*>(user)->device_collection_changed_callback(
-      context, user);
+void input_device_changed_callback_s(cubeb* context, void* user) {
+  fprintf(stderr, "input_device_changed_callback_s\n");
+}
+
+void output_device_changed_callback_s(cubeb* context, void* user) {
+  fprintf(stderr, "output_device_changed_callback_s\n");
+}
+
+void io_device_changed_callback_s(cubeb* context, void* user) {
+  fprintf(stderr, "io_device_changed_callback\n");
 }
 
 bool cubeb_client::init_stream() {
@@ -205,19 +211,34 @@ void cubeb_client::user_state_cb(cubeb_stream* stm, void* user,
 }
 
 bool cubeb_client::register_device_collection_changed(
-    cubeb_device_type devtype) {
+    cubeb_device_type devtype) const {
+  cubeb_device_collection_changed_callback callback = nullptr;
+  if (devtype == static_cast<cubeb_device_type>(CUBEB_DEVICE_TYPE_INPUT |
+                                                CUBEB_DEVICE_TYPE_OUTPUT)) {
+    callback = io_device_changed_callback_s;
+  } else if (devtype & CUBEB_DEVICE_TYPE_OUTPUT) {
+    callback = output_device_changed_callback_s;
+  } else if (devtype & CUBEB_DEVICE_TYPE_INPUT) {
+    callback = input_device_changed_callback_s;
+  }
   int r = 0;
   r = cubeb_register_device_collection_changed(
-      context, devtype, device_collection_changed_callback_s, this);
+      context, devtype, callback, nullptr);
   if (r != CUBEB_OK) {
     return false;
   }
   return true;
 }
 
-void cubeb_client::device_collection_changed_callback(cubeb* context,
-                                                      void* user) {
-  fprintf(stderr, "device_collection_changed_callback\n");
+bool cubeb_client::unregister_device_collection_changed(
+    cubeb_device_type devtype) const {
+  int r = 0;
+  r = cubeb_register_device_collection_changed(
+      context, devtype, nullptr, nullptr);
+  if (r != CUBEB_OK) {
+    return false;
+  }
+  return true;
 }
 
 enum play_mode {
@@ -227,22 +248,97 @@ enum play_mode {
   COLLECTION_CHANGE,
 };
 
-bool choose_action(const cubeb_client& cl, play_mode pm, char c) {
+struct operation_data {
+  play_mode pm;
+  uint32_t rate;
+  cubeb_device_type collection_device_type;
+};
+
+void print_help() {
+  const char * msg =
+    "p: start a initialized stream\n"
+    "s: stop a started stream\n"
+    "i: change device type to input\n"
+    "o: change device type to output\n"
+    "a: change device type to input and output\n"
+    "k: change device type to unknown\n"
+    "r: register device collection changed callback for the currect device type\n"
+    "u: unregister device collection changed callback for the currect device type\n"
+    "q: quit\n"
+    "h: print this message\n";
+  fprintf(stderr, "%s\n", msg);
+}
+
+bool choose_action(const cubeb_client& cl, operation_data * op, char c) {
   while (c == 10 || c == 32) {
     // Consume "enter and "space"
     c = getchar();
   }
 
-  if (c == 's') {
-    if (pm == PLAYBACK || pm == RECORD || pm == DUPLEX) {
-      cl.stop_stream();
-      cl.destroy_stream();
+  if (c == 'q') {
+    if (op->pm == PLAYBACK || op->pm == RECORD || op->pm == DUPLEX) {
+      bool res = cl.stop_stream();
+      if (!res) {
+        fprintf(stderr, "stop_stream failed\n");
+      }
+      res = cl.destroy_stream();
+      if (!res) {
+        fprintf(stderr, "destroy_stream failed\n");
+      }
+    } else if (op->pm == COLLECTION_CHANGE) {
+      bool res = cl.unregister_device_collection_changed(op->collection_device_type);
+      if (!res) {
+        fprintf(stderr, "unregister_device_collection_changed failed\n");
+      }
     }
-    return false;
+    return false; // exit the loop
+  } else if (c == 'h') {
+    print_help();
+  } else if (c == 'p') {
+    bool res = cl.start_stream();
+    if (res) {
+      fprintf(stderr, "start_stream succeed\n");
+    } else {
+      fprintf(stderr, "start_stream failed\n");
+    }
+  } else if (c == 's') {
+    bool res = cl.stop_stream();
+    if (res) {
+      fprintf(stderr, "stop_stream succeed\n");
+    } else {
+      fprintf(stderr, "stop_stream failed\n");
+    }
+  } else if (c == 'i') {
+    op->collection_device_type = CUBEB_DEVICE_TYPE_INPUT;
+    fprintf(stderr, "collection device type changed to INPUT\n");
+  } else if (c == 'o') {
+    op->collection_device_type = CUBEB_DEVICE_TYPE_OUTPUT;
+    fprintf(stderr, "collection device type changed to OUTPUT\n");
+  } else if (c == 'a') {
+    op->collection_device_type = static_cast<cubeb_device_type>(CUBEB_DEVICE_TYPE_INPUT | CUBEB_DEVICE_TYPE_OUTPUT);
+    fprintf(stderr, "collection device type changed to INPUT | OUTPUT\n");
+  } else if (c == 'k') {
+    op->collection_device_type = CUBEB_DEVICE_TYPE_UNKNOWN;
+    fprintf(stderr, "collection device type changed to UNKNOWN\n");
+  } else if (c == 'r') {
+    bool res = cl.register_device_collection_changed(op->collection_device_type);
+    if (res) {
+      fprintf(stderr, "register_device_collection_changed succeed\n");
+    } else {
+      fprintf(stderr, "register_device_collection_changed failed\n");
+    }
+  } else if (c == 'u') {
+    bool res = cl.unregister_device_collection_changed(op->collection_device_type);
+    if (res) {
+      fprintf(stderr, "unregister_device_collection_changed succeed\n");
+    } else {
+      fprintf(stderr, "unregister_device_collection_changed failed\n");
+    }
+  } else {
+    fprintf(stderr, "Error: %c is not a valid entry\n", c);
   }
 
-  fprintf(stderr, "Error: %c is not a valid entry\n", c);
-  return true;
+  return true; // Loop up
 }
 
 int main(int argc, char* argv[]) {
@@ -250,21 +346,22 @@ int main(int argc, char* argv[]) {
   CoInitialize(nullptr);
 #endif
 
-  play_mode pm = DUPLEX;
+  operation_data op;
+  op.pm = PLAYBACK;
   if (argc > 1) {
     if ('r' == argv[1][0]) {
-      pm = RECORD;
+      op.pm = RECORD;
     } else if ('p' == argv[1][0]) {
-      pm = PLAYBACK;
+      op.pm = PLAYBACK;
     } else if ('d' == argv[1][0]) {
-      pm = DUPLEX;
+      op.pm = DUPLEX;
     } else if ('c' == argv[1][0]) {
-      pm = COLLECTION_CHANGE;
+      op.pm = COLLECTION_CHANGE;
     }
   }
-  uint32_t rate = DEFAULT_RATE;
+  op.rate = DEFAULT_RATE;
   if (argc > 2) {
-    rate = strtoul(argv[2], NULL, 0);
+    op.rate = strtoul(argv[2], NULL, 0);
   }
 
   bool res = false;
@@ -272,37 +369,45 @@ int main(int argc, char* argv[]) {
   cl.activate_log(true);
   cl.init();
 
-  if (pm == COLLECTION_CHANGE) {
-    res = cl.register_device_collection_changed(static_cast<cubeb_device_type>(
-        CUBEB_DEVICE_TYPE_INPUT & CUBEB_DEVICE_TYPE_INPUT));
+  op.collection_device_type = CUBEB_DEVICE_TYPE_UNKNOWN;
+  fprintf(stderr, "collection device type is UNKNOWN\n");
+  if (op.pm == COLLECTION_CHANGE) {
+    op.collection_device_type = CUBEB_DEVICE_TYPE_OUTPUT;
+    fprintf(stderr, "collection device type changed to OUTPUT\n");
+    res = cl.register_device_collection_changed(op.collection_device_type);
     if (res) {
-      fprintf(stderr,
-              "register_device_collection_changed for input+output devices "
-              "success\n");
+      fprintf(stderr, "register_device_collection_changed succeed\n");
     } else {
       fprintf(stderr, "register_device_collection_changed failed\n");
     }
   } else {
-    if (pm == PLAYBACK || pm == DUPLEX) {
-      cl.output_params = {CUBEB_SAMPLE_FLOAT32NE, rate, DEFAULT_CHANNELS,
+    if (op.pm == PLAYBACK || op.pm == DUPLEX) {
+      cl.output_params = {CUBEB_SAMPLE_FLOAT32NE, op.rate, DEFAULT_CHANNELS,
                           CUBEB_LAYOUT_UNDEFINED, CUBEB_STREAM_PREF_NONE};
     }
-    if (pm == RECORD || pm == DUPLEX) {
-      cl.input_params = {CUBEB_SAMPLE_FLOAT32NE, rate, DEFAULT_CHANNELS,
+    if (op.pm == RECORD || op.pm == DUPLEX) {
+      cl.input_params = {CUBEB_SAMPLE_FLOAT32NE, op.rate, DEFAULT_CHANNELS,
                          CUBEB_LAYOUT_UNDEFINED, CUBEB_STREAM_PREF_NONE};
     }
     res = cl.init_stream();
     if (!res) {
-      return 1;
+      fprintf(stderr, "stream_init failed\n");
+      return -1;
     }
+    fprintf(stderr, "stream_init succeed\n");
 
-    cl.start_stream();
+    res = cl.start_stream();
+    if (res) {
+      fprintf(stderr, "stream_start succeed\n");
+    } else {
+      fprintf(stderr, "stream_init failed\n");
+    }
   }
 
   // User input
   do {
-    fprintf(stderr, "press `s` to stop the stream (if any) and abort\n");
-  } while (choose_action(cl, pm, getchar()));
+    fprintf(stderr, "press `q` to abort or `h` for help\n");
+  } while (choose_action(cl, &op, getchar()));
 
   cl.destroy();
 
