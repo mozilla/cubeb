@@ -146,9 +146,15 @@ static std::unique_ptr<wchar_t const []> utf8_to_wstr(char const * str);
 
 }
 
+class wasapi_collection_notification_client;
+
 struct cubeb {
   cubeb_ops const * ops = &wasapi_ops;
   cubeb_strings * device_ids;
+  /* Device enumerator to get notifications when the
+     device collection change. */
+  com_ptr<IMMDeviceEnumerator> device_collection_enumerator;
+  com_ptr<wasapi_collection_notification_client> collection_notification_client;
 };
 
 class wasapi_endpoint_notification_client;
@@ -268,6 +274,166 @@ struct cubeb_stream {
   /* True when we've destroyed the stream. This pointer is leaked on stream
    * destruction if we could not join the thread. */
   std::atomic<std::atomic<bool>*> emergency_bailout;
+};
+
+class wasapi_collection_notification_client : public IMMNotificationClient
+{
+public:
+  /* The implementation of MSCOM was copied from MSDN. */
+  ULONG STDMETHODCALLTYPE
+  AddRef()
+  {
+    return InterlockedIncrement(&ref_count);
+  }
+
+  ULONG STDMETHODCALLTYPE
+  Release()
+  {
+    ULONG ulRef = InterlockedDecrement(&ref_count);
+    if (0 == ulRef) {
+      delete this;
+    }
+    return ulRef;
+  }
+
+  HRESULT STDMETHODCALLTYPE
+  QueryInterface(REFIID riid, VOID **ppvInterface)
+  {
+    if (__uuidof(IUnknown) == riid) {
+      AddRef();
+      *ppvInterface = (IUnknown*)this;
+    } else if (__uuidof(IMMNotificationClient) == riid) {
+      AddRef();
+      *ppvInterface = (IMMNotificationClient*)this;
+    } else {
+      *ppvInterface = NULL;
+      return E_NOINTERFACE;
+    }
+    return S_OK;
+  }
+
+  wasapi_collection_notification_client(cubeb * context, IMMDeviceEnumerator * dev_enum)
+    : ref_count(1)
+    , cubeb_context(context)
+    , enumerator(dev_enum)
+  {
+    XASSERT(cubeb_context);
+    XASSERT(enumerator);
+  }
+
+  virtual ~wasapi_collection_notification_client()
+  { }
+
+  HRESULT STDMETHODCALLTYPE
+  OnDefaultDeviceChanged(EDataFlow flow, ERole role, LPCWSTR device_id)
+  {
+    LOG("Audio device default changed, id = %S.", device_id);
+    return S_OK;
+  }
+
+  /* The remaining methods are not implemented, they simply log when called (if
+     log is enabled), for debugging. */
+  HRESULT STDMETHODCALLTYPE OnDeviceAdded(LPCWSTR device_id)
+  {
+    LOG("Audio device added.");
+    return S_OK;
+  };
+
+  HRESULT STDMETHODCALLTYPE OnDeviceRemoved(LPCWSTR device_id)
+  {
+    LOG("Audio device removed.");
+    return S_OK;
+  }
+
+  HRESULT STDMETHODCALLTYPE
+  OnDeviceStateChanged(LPCWSTR device_id, DWORD new_state)
+  {
+    XASSERT(output_collection_changed_callback || input_collection_changed_callback);
+    LOG("Audio device state changed, id = %S, state = %lu.", device_id, new_state);
+    if (new_state == DEVICE_STATE_ACTIVE ||
+        new_state == DEVICE_STATE_NOTPRESENT ||
+        new_state == DEVICE_STATE_UNPLUGGED) {
+      EDataFlow flow;
+      HRESULT hr = GetDataFlow(device_id, &flow);
+      if (FAILED(hr)) {
+        return hr;
+      }
+      auto_lock lock(callback_lock);
+      if (flow == eCapture && input_collection_changed_callback) {
+        input_collection_changed_callback(cubeb_context,
+          input_collection_changed_user_ptr);
+      }
+      if (flow == eRender && output_collection_changed_callback) {
+        output_collection_changed_callback(cubeb_context,
+          output_collection_changed_user_ptr);
+      }
+    }
+    return S_OK;
+  }
+
+  HRESULT STDMETHODCALLTYPE
+  OnPropertyValueChanged(LPCWSTR device_id, const PROPERTYKEY key)
+  {
+    //Audio device property value changed.
+    return S_OK;
+  }
+
+  void set_input_callback(cubeb_device_collection_changed_callback callback,
+                          void * user_ptr)
+  {
+    auto_lock lock(callback_lock);
+    XASSERT(!!input_collection_changed_callback != !!callback);
+    input_collection_changed_callback = callback;
+    input_collection_changed_user_ptr = user_ptr;
+  }
+  void set_output_callback(cubeb_device_collection_changed_callback callback,
+                           void * user_ptr)
+  {
+    auto_lock lock(callback_lock);
+    XASSERT(!!output_collection_changed_callback != !!callback);
+    output_collection_changed_callback = callback;
+    output_collection_changed_user_ptr = user_ptr;
+  }
+  bool has_input_or_output()
+  {
+    auto_lock lock(callback_lock);
+    return output_collection_changed_callback ||
+             input_collection_changed_callback;
+  }
+private:
+  HRESULT GetDataFlow(LPCWSTR device_id, EDataFlow * flow)
+  {
+    com_ptr<IMMDevice> device;
+    com_ptr<IMMEndpoint> endpoint;
+
+    HRESULT hr = enumerator->GetDevice(device_id, device.receive());
+    if (FAILED(hr)) {
+      LOG("Could not get device: %lx", hr);
+      return hr;
+    }
+
+    hr = device->QueryInterface(IID_PPV_ARGS(endpoint.receive()));
+    if (FAILED(hr)) {
+      LOG("Could not get endpoint: %lx", hr);
+      return hr;
+    }
+
+    return endpoint->GetDataFlow(flow);
+  }
+
+  /* refcount for this instance, necessary to implement MSCOM semantics. */
+  LONG ref_count;
+  IMMDeviceEnumerator * enumerator = nullptr;
+
+  cubeb * cubeb_context = nullptr;
+  /* Collection changed for input (captute) devices. */
+  cubeb_device_collection_changed_callback input_collection_changed_callback = nullptr;
+  void * input_collection_changed_user_ptr = nullptr;
+  /* Collection change for output (render) devices. */
+  cubeb_device_collection_changed_callback output_collection_changed_callback = nullptr;
+  void * output_collection_changed_user_ptr = nullptr;
+  /* Protect callbacks between client thread and notification thread. */
+  owned_critical_section callback_lock;
 };
 
 class wasapi_endpoint_notification_client : public IMMNotificationClient
@@ -1050,6 +1216,49 @@ HRESULT get_endpoint(com_ptr<IMMDevice> & device, LPCWSTR devid)
   }
 
   return S_OK;
+}
+
+HRESULT register_collection_notification_client(cubeb * context)
+{
+  if (context->device_collection_enumerator.get()) {
+    return S_OK;
+  }
+
+  HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator),
+                                NULL, CLSCTX_INPROC_SERVER,
+                                IID_PPV_ARGS(context->device_collection_enumerator.receive()));
+  if (FAILED(hr)) {
+    LOG("Could not get device enumerator: %lx", hr);
+    return hr;
+  }
+
+  context->collection_notification_client.reset(new wasapi_collection_notification_client(context,
+                                                context->device_collection_enumerator.get()));
+
+  hr = context->device_collection_enumerator->RegisterEndpointNotificationCallback(
+                                                context->collection_notification_client.get());
+  if (FAILED(hr)) {
+    LOG("Could not register endpoint notification callback: %lx", hr);
+  }
+
+  return hr;
+}
+
+HRESULT unregister_collection_notification_client(cubeb * context)
+{
+  if (context->collection_notification_client->has_input_or_output()) {
+    return S_OK;
+  }
+
+  HRESULT hr = context->device_collection_enumerator->
+    UnregisterEndpointNotificationCallback(context->collection_notification_client.get());
+  if (FAILED(hr)) {
+    return hr;
+  }
+
+  context->device_collection_enumerator = nullptr;
+  context->collection_notification_client = nullptr;
+  return hr;
 }
 
 HRESULT get_default_endpoint(com_ptr<IMMDevice> & device, EDataFlow direction)
@@ -2368,6 +2577,51 @@ wasapi_device_collection_destroy(cubeb * /*ctx*/, cubeb_device_collection * coll
   return CUBEB_OK;
 }
 
+static int
+wasapi_register_device_collection_changed(cubeb * context,
+                                          cubeb_device_type devtype,
+                                          cubeb_device_collection_changed_callback collection_changed_callback,
+                                          void * user_ptr)
+{
+  if (devtype == CUBEB_DEVICE_TYPE_UNKNOWN) {
+    return CUBEB_ERROR_INVALID_PARAMETER;
+  }
+
+
+  HRESULT hr;
+  if (collection_changed_callback) {
+    hr = register_collection_notification_client(context);
+    if (FAILED(hr)) {
+      return CUBEB_ERROR;
+    }
+
+    if (devtype & CUBEB_DEVICE_TYPE_INPUT) {
+      context->collection_notification_client->set_input_callback(
+        collection_changed_callback, user_ptr);
+    }
+    if (devtype & CUBEB_DEVICE_TYPE_OUTPUT) {
+      context->collection_notification_client->set_output_callback(
+        collection_changed_callback, user_ptr);
+    }
+  } else {
+    if (devtype & CUBEB_DEVICE_TYPE_INPUT) {
+      context->collection_notification_client->set_input_callback(
+        nullptr, nullptr);
+    }
+    if (devtype & CUBEB_DEVICE_TYPE_OUTPUT) {
+      context->collection_notification_client->set_output_callback(
+        nullptr, nullptr);
+    }
+
+    hr = unregister_collection_notification_client(context);
+    if (FAILED(hr)) {
+      return CUBEB_ERROR;
+    }
+  }
+
+  return CUBEB_OK;
+}
+
 cubeb_ops const wasapi_ops = {
   /*.init =*/ wasapi_init,
   /*.get_backend_id =*/ wasapi_get_backend_id,
@@ -2389,6 +2643,6 @@ cubeb_ops const wasapi_ops = {
   /*.stream_get_current_device =*/ NULL,
   /*.stream_device_destroy =*/ NULL,
   /*.stream_register_device_changed_callback =*/ NULL,
-  /*.register_device_collection_changed =*/ NULL
+  /*.register_device_collection_changed =*/ wasapi_register_device_collection_changed,
 };
 } // namespace anonymous
