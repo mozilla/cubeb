@@ -221,9 +221,8 @@ bool cubeb_client::register_device_collection_changed(
   } else if (devtype & CUBEB_DEVICE_TYPE_INPUT) {
     callback = input_device_changed_callback_s;
   }
-  int r = 0;
-  r = cubeb_register_device_collection_changed(
-      context, devtype, callback, nullptr);
+  int r = cubeb_register_device_collection_changed(
+            context, devtype, callback, nullptr);
   if (r != CUBEB_OK) {
     return false;
   }
@@ -232,9 +231,8 @@ bool cubeb_client::register_device_collection_changed(
 
 bool cubeb_client::unregister_device_collection_changed(
     cubeb_device_type devtype) const {
-  int r = 0;
-  r = cubeb_register_device_collection_changed(
-      context, devtype, nullptr, nullptr);
+  int r = cubeb_register_device_collection_changed(
+            context, devtype, nullptr, nullptr);
   if (r != CUBEB_OK) {
     return false;
   }
@@ -262,8 +260,8 @@ void print_help() {
     "o: change device type to output\n"
     "a: change device type to input and output\n"
     "k: change device type to unknown\n"
-    "r: register device collection changed callback for the currect device type\n"
-    "u: unregister device collection changed callback for the currect device type\n"
+    "r: register device collection changed callback for the current device type\n"
+    "u: unregister device collection changed callback for the current device type\n"
     "q: quit\n"
     "h: print this message\n";
   fprintf(stderr, "%s\n", msg);
