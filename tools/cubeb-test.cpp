@@ -50,7 +50,7 @@ public:
   bool stop_stream() const;
   bool destroy_stream() const;
   bool destroy();
-  bool activate_log(bool active);
+  bool activate_log(cubeb_log_level log_level) const;
 
   long user_data_cb(cubeb_stream* stm, void* user, const void* input_buffer,
                     void* output_buffer, long nframes);
@@ -161,11 +161,9 @@ bool cubeb_client::destroy() {
   return true;
 }
 
-bool cubeb_client::activate_log(bool active) {
-  cubeb_log_level log_level = CUBEB_LOG_DISABLED;
+bool cubeb_client::activate_log(cubeb_log_level log_level) const {
   cubeb_log_callback log_callback = nullptr;
-  if (active) {
-    log_level = CUBEB_LOG_NORMAL;
+  if (log_level != CUBEB_LOG_DISABLED) {
     log_callback = print_log;
   }
 
@@ -254,6 +252,9 @@ struct operation_data {
 
 void print_help() {
   const char * msg =
+    "0: change log level to disabled\n"
+    "1: change log level to normal\n"
+    "2: change log level to verbose\n"
     "p: start a initialized stream\n"
     "s: stop a started stream\n"
     "i: change device type to input\n"
@@ -292,6 +293,17 @@ bool choose_action(const cubeb_client& cl, operation_data * op, char c) {
     return false; // exit the loop
   } else if (c == 'h') {
     print_help();
+  } else if (c == '0') {
+    cl.activate_log(CUBEB_LOG_DISABLED);
+    fprintf(stderr, "Log level changed to DISABLED\n");
+  } else if (c == '1') {
+    cl.activate_log(CUBEB_LOG_DISABLED);
+    cl.activate_log(CUBEB_LOG_NORMAL);
+    fprintf(stderr, "Log level changed to NORMAL\n");
+  } else if (c == '2') {
+    cl.activate_log(CUBEB_LOG_DISABLED);
+    cl.activate_log(CUBEB_LOG_VERBOSE);
+    fprintf(stderr, "Log level changed to VERBOSE\n");
   } else if (c == 'p') {
     bool res = cl.start_stream();
     if (res) {
@@ -364,7 +376,8 @@ int main(int argc, char* argv[]) {
 
   bool res = false;
   cubeb_client cl;
-  cl.activate_log(true);
+  cl.activate_log(CUBEB_LOG_DISABLED);
+  fprintf(stderr, "Log level is DISABLED\n");
   cl.init();
 
   op.collection_device_type = CUBEB_DEVICE_TYPE_UNKNOWN;
