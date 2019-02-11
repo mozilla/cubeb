@@ -147,6 +147,7 @@ static std::unique_ptr<wchar_t const []> utf8_to_wstr(char const * str);
 }
 
 class wasapi_collection_notification_client;
+class monitor_device_notifications;
 
 struct cubeb {
   cubeb_ops const * ops = &wasapi_ops;
@@ -161,6 +162,7 @@ struct cubeb {
   /* Collection changed for output (render) devices. */
   cubeb_device_collection_changed_callback output_collection_changed_callback = nullptr;
   void * output_collection_changed_user_ptr = nullptr;
+  std::unique_ptr<monitor_device_notifications> monitor_notifications;
 };
 
 class wasapi_endpoint_notification_client;
@@ -282,6 +284,107 @@ struct cubeb_stream {
   std::atomic<std::atomic<bool>*> emergency_bailout;
 };
 
+class monitor_device_notifications {
+public:
+  monitor_device_notifications(cubeb * context)
+  : cubeb_context(context)
+  {
+    create_thread();
+  }
+  ~monitor_device_notifications()
+  {
+    SetEvent(shutdown);
+    WaitForSingleObject(thread, 2000);
+    CloseHandle(thread);
+
+    CloseHandle(input_changed);
+    CloseHandle(output_changed);
+    CloseHandle(shutdown);
+  }
+  bool notify(EDataFlow flow)
+  {
+    if (flow == eCapture && cubeb_context->input_collection_changed_callback) {
+      return SetEvent(input_changed);
+    }
+    if (flow == eRender && cubeb_context->output_collection_changed_callback) {
+      return SetEvent(output_changed);
+    }
+    return true;
+  }
+private:
+  static DWORD WINAPI
+  thread_proc(LPVOID args)
+  {
+    monitor_device_notifications * that =
+      static_cast<monitor_device_notifications*>(args);
+    return that->notification_thread_loop();
+  }
+
+  int
+  notification_thread_loop()
+  {
+    HANDLE wait_array[3] = {
+      input_changed,
+      output_changed,
+      shutdown,
+    };
+
+    while (true) {
+      Sleep(200);
+
+      DWORD wait_result = WaitForMultipleObjects(ARRAY_LENGTH(wait_array),
+                                                 wait_array,
+                                                 FALSE,
+                                                 INFINITE);
+      if (wait_result == WAIT_OBJECT_0) { //input changed
+        cubeb_context->input_collection_changed_callback(cubeb_context,
+          cubeb_context->input_collection_changed_user_ptr);
+      } else if (wait_result == WAIT_OBJECT_0 + 1) { // output changed
+        cubeb_context->output_collection_changed_callback(cubeb_context,
+          cubeb_context->output_collection_changed_user_ptr);
+      } else if (wait_result == WAIT_OBJECT_0 + 2) { // shutdown
+        break;
+      } else {
+        LOG("Unexpected result %lu", wait_result);
+      }
+    } // loop
+
+    return 0;
+  }
+
+  int create_thread()
+  {
+    output_changed = CreateEvent(nullptr, 0, 0, nullptr);
+    if (!output_changed) {
+      return CUBEB_ERROR;
+    }
+
+    input_changed = CreateEvent(nullptr, 0, 0, nullptr);
+    if (!input_changed) {
+      return CUBEB_ERROR;
+    }
+
+    shutdown = CreateEvent(nullptr, 0, 0, nullptr);
+    if (!shutdown) {
+      return CUBEB_ERROR;
+    }
+
+    thread = CreateThread(nullptr, 0, thread_proc, this, 0, nullptr);
+    if (!thread) {
+      return CUBEB_ERROR;
+    }
+
+    return CUBEB_OK;
+  }
+
+  HANDLE thread;
+  HANDLE output_changed;
+  HANDLE input_changed;
+  HANDLE shutdown;
+
+  cubeb * cubeb_context = nullptr;
+};
+
 class wasapi_collection_notification_client : public IMMNotificationClient
 {
 public:
@@ -365,14 +468,7 @@ public:
       if (FAILED(hr)) {
         return hr;
       }
-      if (flow == eCapture && cubeb_context->input_collection_changed_callback) {
-        cubeb_context->input_collection_changed_callback(cubeb_context,
-          cubeb_context->input_collection_changed_user_ptr);
-      }
-      if (flow == eRender && cubeb_context->output_collection_changed_callback) {
-        cubeb_context->output_collection_changed_callback(cubeb_context,
-          cubeb_context->output_collection_changed_user_ptr);
-      }
+      cubeb_context->monitor_notifications->notify(flow);
     }
     return S_OK;
   }
@@ -1216,6 +1312,8 @@ HRESULT register_collection_notification_client(cubeb * context)
     context->device_collection_enumerator.reset();
   }
 
+  context->monitor_notifications = std::make_unique<monitor_device_notifications>(context);
+
   return hr;
 }
 
@@ -1229,6 +1327,8 @@ HRESULT unregister_collection_notification_client(cubeb * context)
 
   context->collection_notification_client = nullptr;
   context->device_collection_enumerator = nullptr;
+
+  context->monitor_notifications.reset();
   return hr;
 }
 
@@ -2590,6 +2690,11 @@ wasapi_register_device_collection_changed(cubeb * context,
       return CUBEB_ERROR;
     }
   } else {
+    if (!context->device_collection_enumerator.get()) {
+      // Already unregistered, ignore it.
+      return CUBEB_OK;
+    }
+
     hr = unregister_collection_notification_client(context);
     if (FAILED(hr)) {
       return CUBEB_ERROR;
