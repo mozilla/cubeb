@@ -291,38 +291,56 @@ public:
   {
     create_thread();
   }
+
   ~monitor_device_notifications()
   {
     SetEvent(shutdown);
-    WaitForSingleObject(thread, 2000);
+    WaitForSingleObject(thread, 5000);
     CloseHandle(thread);
 
     CloseHandle(input_changed);
     CloseHandle(output_changed);
     CloseHandle(shutdown);
   }
-  bool notify(EDataFlow flow)
+
+  void notify(EDataFlow flow)
   {
     if (flow == eCapture && cubeb_context->input_collection_changed_callback) {
-      return SetEvent(input_changed);
+      bool res = SetEvent(input_changed);
+      if (!res) {
+        LOG("Failed to set input changed event");
+      }
+      return;
     }
     if (flow == eRender && cubeb_context->output_collection_changed_callback) {
-      return SetEvent(output_changed);
+      bool res = SetEvent(output_changed);
+      if (!res) {
+        LOG("Failed to set output changed event");
+      }
     }
-    return true;
   }
 private:
-  static DWORD WINAPI
+  static unsigned int __stdcall
   thread_proc(LPVOID args)
   {
-    monitor_device_notifications * that =
-      static_cast<monitor_device_notifications*>(args);
-    return that->notification_thread_loop();
+    XASSERT(args);
+    static_cast<monitor_device_notifications*>(args)
+      ->notification_thread_loop();
+    return 0;
   }
 
-  int
-  notification_thread_loop()
+  void notification_thread_loop()
   {
+    struct auto_com {
+      auto_com() {
+        HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        XASSERT(SUCCEEDED(hr));
+      }
+      ~auto_com() {
+        CoUninitialize();
+      }
+    } com;
+
     HANDLE wait_array[3] = {
       input_changed,
       output_changed,
@@ -336,7 +354,7 @@ private:
                                                  wait_array,
                                                  FALSE,
                                                  INFINITE);
-      if (wait_result == WAIT_OBJECT_0) { //input changed
+      if (wait_result == WAIT_OBJECT_0) { // input changed
         cubeb_context->input_collection_changed_callback(cubeb_context,
           cubeb_context->input_collection_changed_user_ptr);
       } else if (wait_result == WAIT_OBJECT_0 + 1) { // output changed
@@ -348,39 +366,44 @@ private:
         LOG("Unexpected result %lu", wait_result);
       }
     } // loop
-
-    return 0;
   }
 
-  int create_thread()
+  void create_thread()
   {
     output_changed = CreateEvent(nullptr, 0, 0, nullptr);
     if (!output_changed) {
-      return CUBEB_ERROR;
+      LOG("Failed to create output changed event.");
+      return;
     }
 
     input_changed = CreateEvent(nullptr, 0, 0, nullptr);
     if (!input_changed) {
-      return CUBEB_ERROR;
+      LOG("Failed to create input changed event.");
+      return;
     }
 
     shutdown = CreateEvent(nullptr, 0, 0, nullptr);
     if (!shutdown) {
-      return CUBEB_ERROR;
+      LOG("Failed to create shutdown event.");
+      return;
     }
 
-    thread = CreateThread(nullptr, 0, thread_proc, this, 0, nullptr);
+    thread = (HANDLE) _beginthreadex(nullptr,
+                                     256 * 1024,
+                                     thread_proc,
+                                     this,
+                                     STACK_SIZE_PARAM_IS_A_RESERVATION,
+                                     nullptr);
     if (!thread) {
-      return CUBEB_ERROR;
+      LOG("Failed to create thread.");
+      return;
     }
-
-    return CUBEB_OK;
   }
 
-  HANDLE thread;
-  HANDLE output_changed;
-  HANDLE input_changed;
-  HANDLE shutdown;
+  HANDLE thread = INVALID_HANDLE_VALUE;
+  HANDLE output_changed = INVALID_HANDLE_VALUE;
+  HANDLE input_changed = INVALID_HANDLE_VALUE;
+  HANDLE shutdown = INVALID_HANDLE_VALUE;
 
   cubeb * cubeb_context = nullptr;
 };
@@ -421,13 +444,11 @@ public:
     return S_OK;
   }
 
-  wasapi_collection_notification_client(cubeb * context, IMMDeviceEnumerator * dev_enum)
+  wasapi_collection_notification_client(cubeb * context)
     : ref_count(1)
     , cubeb_context(context)
-    , enumerator(dev_enum)
   {
     XASSERT(cubeb_context);
-    XASSERT(enumerator);
   }
 
   virtual ~wasapi_collection_notification_client()
@@ -436,7 +457,7 @@ public:
   HRESULT STDMETHODCALLTYPE
   OnDefaultDeviceChanged(EDataFlow flow, ERole role, LPCWSTR device_id)
   {
-    //LOG("Audio device default changed, id = %S.", device_id);
+    LOG("collection: Audio device default changed, id = %S.", device_id);
     return S_OK;
   }
 
@@ -444,13 +465,13 @@ public:
      log is enabled), for debugging. */
   HRESULT STDMETHODCALLTYPE OnDeviceAdded(LPCWSTR device_id)
   {
-    LOG("Audio device added.");
+    LOG("collection: Audio device added.");
     return S_OK;
   };
 
   HRESULT STDMETHODCALLTYPE OnDeviceRemoved(LPCWSTR device_id)
   {
-    LOG("Audio device removed.");
+    LOG("collection: Audio device removed.");
     return S_OK;
   }
 
@@ -459,7 +480,7 @@ public:
   {
     XASSERT(cubeb_context->output_collection_changed_callback ||
             cubeb_context->input_collection_changed_callback);
-    LOG("Audio device state changed, id = %S, state = %lu.", device_id, new_state);
+    LOG("collection: Audio device state changed, id = %S, state = %lu.", device_id, new_state);
     if (new_state == DEVICE_STATE_ACTIVE ||
         new_state == DEVICE_STATE_NOTPRESENT ||
         new_state == DEVICE_STATE_UNPLUGGED) {
@@ -486,15 +507,16 @@ private:
     com_ptr<IMMDevice> device;
     com_ptr<IMMEndpoint> endpoint;
 
-    HRESULT hr = enumerator->GetDevice(device_id, device.receive());
+    HRESULT hr = cubeb_context->device_collection_enumerator
+                   ->GetDevice(device_id, device.receive());
     if (FAILED(hr)) {
-      LOG("Could not get device: %lx", hr);
+      LOG("collection: Could not get device: %lx", hr);
       return hr;
     }
 
     hr = device->QueryInterface(IID_PPV_ARGS(endpoint.receive()));
     if (FAILED(hr)) {
-      LOG("Could not get endpoint: %lx", hr);
+      LOG("collection: Could not get endpoint: %lx", hr);
       return hr;
     }
 
@@ -503,7 +525,6 @@ private:
 
   /* refcount for this instance, necessary to implement MSCOM semantics. */
   LONG ref_count;
-  IMMDeviceEnumerator * enumerator = nullptr;
 
   cubeb * cubeb_context = nullptr;
 };
@@ -555,7 +576,7 @@ public:
   HRESULT STDMETHODCALLTYPE
   OnDefaultDeviceChanged(EDataFlow flow, ERole role, LPCWSTR device_id)
   {
-    LOG("Audio device default changed.");
+    LOG("endpoint: Audio device default changed.");
 
     /* we only support a single stream type for now. */
     if (flow != eRender && role != eConsole) {
@@ -564,7 +585,7 @@ public:
 
     BOOL ok = SetEvent(reconfigure_event);
     if (!ok) {
-      LOG("SetEvent on reconfigure_event failed: %lx", GetLastError());
+      LOG("endpoint: SetEvent on reconfigure_event failed: %lx", GetLastError());
     }
 
     return S_OK;
@@ -574,20 +595,20 @@ public:
      log is enabled), for debugging. */
   HRESULT STDMETHODCALLTYPE OnDeviceAdded(LPCWSTR device_id)
   {
-    LOG("Audio device added.");
+    LOG("endpoint: Audio device added.");
     return S_OK;
   };
 
   HRESULT STDMETHODCALLTYPE OnDeviceRemoved(LPCWSTR device_id)
   {
-    LOG("Audio device removed.");
+    LOG("endpoint: Audio device removed.");
     return S_OK;
   }
 
   HRESULT STDMETHODCALLTYPE
   OnDeviceStateChanged(LPCWSTR device_id, DWORD new_state)
   {
-    //LOG("Audio device state changed.");
+    LOG("endpoint: Audio device state changed.");
     return S_OK;
   }
 
@@ -1297,12 +1318,10 @@ HRESULT register_collection_notification_client(cubeb * context)
                                 IID_PPV_ARGS(context->device_collection_enumerator.receive()));
   if (FAILED(hr)) {
     LOG("Could not get device enumerator: %lx", hr);
-    context->device_collection_enumerator.reset();
     return hr;
   }
 
-  context->collection_notification_client.reset(new wasapi_collection_notification_client(context,
-                                                context->device_collection_enumerator.get()));
+  context->collection_notification_client.reset(new wasapi_collection_notification_client(context));
 
   hr = context->device_collection_enumerator->RegisterEndpointNotificationCallback(
                                                 context->collection_notification_client.get());
@@ -1312,7 +1331,7 @@ HRESULT register_collection_notification_client(cubeb * context)
     context->device_collection_enumerator.reset();
   }
 
-  context->monitor_notifications = std::make_unique<monitor_device_notifications>(context);
+  context->monitor_notifications.reset(new monitor_device_notifications(context));
 
   return hr;
 }
@@ -2658,19 +2677,18 @@ wasapi_register_device_collection_changed(cubeb * context,
     return CUBEB_ERROR_INVALID_PARAMETER;
   }
 
-  HRESULT hr;
   if (collection_changed_callback) {
     // Make sure it has been unregistered first.
-    XASSERT((devtype & CUBEB_DEVICE_TYPE_INPUT) &&
-              !context->input_collection_changed_callback ||
-            (devtype & CUBEB_DEVICE_TYPE_OUTPUT) &&
-              !context->output_collection_changed_callback);
+    XASSERT(((devtype & CUBEB_DEVICE_TYPE_INPUT) &&
+             !context->input_collection_changed_callback) ||
+            ((devtype & CUBEB_DEVICE_TYPE_OUTPUT) &&
+             !context->output_collection_changed_callback));
 
     // Stop the notification client. Notifications arrive on
     // a separate thread. We stop them here to avoid
     // synchronization issues during the update.
     if (context->device_collection_enumerator.get()) {
-      hr = unregister_collection_notification_client(context);
+      HRESULT hr = unregister_collection_notification_client(context);
       if (FAILED(hr)) {
         return CUBEB_ERROR;
       }
@@ -2685,7 +2703,7 @@ wasapi_register_device_collection_changed(cubeb * context,
       context->output_collection_changed_user_ptr = user_ptr;
     }
 
-    hr = register_collection_notification_client(context);
+    HRESULT hr = register_collection_notification_client(context);
     if (FAILED(hr)) {
       return CUBEB_ERROR;
     }
@@ -2695,7 +2713,7 @@ wasapi_register_device_collection_changed(cubeb * context,
       return CUBEB_OK;
     }
 
-    hr = unregister_collection_notification_client(context);
+    HRESULT hr = unregister_collection_notification_client(context);
     if (FAILED(hr)) {
       return CUBEB_ERROR;
     }
