@@ -848,8 +848,10 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
   lDataSource.pFormat = NULL;
 
   const SLInterfaceID lSoundRecorderIIDs[] = { stm->context->SL_IID_RECORD,
-                                               stm->context->SL_IID_ANDROIDSIMPLEBUFFERQUEUE };
-  const SLboolean lSoundRecorderReqs[] = { SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE };
+                                               stm->context->SL_IID_ANDROIDSIMPLEBUFFERQUEUE,
+                                               stm->context->SL_IID_ANDROIDCONFIGURATION };
+
+  const SLboolean lSoundRecorderReqs[] = { SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE};
   // create the audio recorder abstract object
   SLresult res = (*stm->context->eng)->CreateAudioRecorder(stm->context->eng,
                                                            &stm->recorderObj,
@@ -882,6 +884,35 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
       LOG("Failed to create recorder. Error code: %lu", res);
       return CUBEB_ERROR;
     }
+  }
+
+  SLAndroidConfigurationItf recorderConfig;
+  res = (*stm->recorderObj)
+            ->GetInterface(stm->recorderObj,
+                           stm->context->SL_IID_ANDROIDCONFIGURATION,
+                           &recorderConfig);
+
+  if (res != SL_RESULT_SUCCESS) {
+    LOG("Failed to get the android configuration interface for recorder. Error "
+        "code: %lu",
+        res);
+    return CUBEB_ERROR;
+  }
+
+  // Voice recognition is the lowest latency, according to the docs. Camcorder
+  // uses a microphone that is in the same direction as the camera.
+  SLint32 streamType = stm->voice ? SL_ANDROID_RECORDING_PRESET_VOICE_RECOGNITION
+                                  : SL_ANDROID_RECORDING_PRESET_CAMCORDER;
+
+  res = (*recorderConfig)
+            ->SetConfiguration(recorderConfig, SL_ANDROID_KEY_RECORDING_PRESET,
+                               &streamType, sizeof(SLint32));
+
+  if (res != SL_RESULT_SUCCESS) {
+    LOG("Failed to set the android configuration to VOICE for the recorder. "
+        "Error code: %lu",
+        res);
+    return CUBEB_ERROR;
   }
 
   // realize the audio recorder
