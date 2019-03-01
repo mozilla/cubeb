@@ -63,6 +63,11 @@
 
 #define DEFAULT_SAMPLE_RATE 48000
 #define DEFAULT_NUM_OF_FRAMES 480
+// If the latency requested is above this threshold, this stream is considered
+// intended for playback (vs. real-time). Tell Android it should favor saving
+// power over performance or latency.
+// This is around 100ms at 44100 or 48000
+#define POWERSAVE_LATENCY_FRAMES_THRESHOLD 4000
 
 static struct cubeb_ops const opensl_ops;
 
@@ -1118,6 +1123,20 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
     return CUBEB_ERROR;
   }
 
+  SLuint32 performanceMode = SL_ANDROID_PERFORMANCE_LATENCY;
+  if (stm->latency_frames > POWERSAVE_LATENCY_FRAMES_THRESHOLD) {
+    performanceMode = SL_ANDROID_PERFORMANCE_POWER_SAVING;
+  }
+
+  res = (*playerConfig)->SetConfiguration(playerConfig,
+                                          SL_ANDROID_KEY_PERFORMANCE_MODE,
+                                          &performanceMode,
+                                          sizeof(performanceMode));
+  if (res != SL_RESULT_SUCCESS) {
+    LOG("Failed to set Android performance mode to %d Error code: %lu",
+        performanceMode, res);
+    return CUBEB_ERROR;
+  }
 
   res = (*stm->playerObj)->Realize(stm->playerObj, SL_BOOLEAN_FALSE);
   if (res != SL_RESULT_SUCCESS) {
