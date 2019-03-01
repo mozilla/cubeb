@@ -1094,6 +1094,31 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
     assert(stm->queuebuf[i]);
   }
 
+  SLAndroidConfigurationItf playerConfig;
+  res = (*stm->playerObj)
+            ->GetInterface(stm->playerObj,
+                           stm->context->SL_IID_ANDROIDCONFIGURATION,
+                           &playerConfig);
+  if (res != SL_RESULT_SUCCESS) {
+    LOG("Failed to get Android configuration interface. Error code: %lu", res);
+    return CUBEB_ERROR;
+  }
+
+  SLint32 streamType = SL_ANDROID_STREAM_MEDIA;
+  if (stm->voice) {
+    streamType = SL_ANDROID_STREAM_VOICE;
+  }
+  res = (*playerConfig)->SetConfiguration(playerConfig,
+                                          SL_ANDROID_KEY_STREAM_TYPE,
+                                          &streamType,
+                                          sizeof(streamType));
+  if (res != SL_RESULT_SUCCESS) {
+    LOG("Failed to set Android configuration to %d Error code: %lu",
+        streamType, res);
+    return CUBEB_ERROR;
+  }
+
+
   res = (*stm->playerObj)->Realize(stm->playerObj, SL_BOOLEAN_FALSE);
   if (res != SL_RESULT_SUCCESS) {
     LOG("Failed to realize player object. Error code: %lu", res);
