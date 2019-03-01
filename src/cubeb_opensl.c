@@ -847,7 +847,6 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
   lDataSource.pLocator = &lDataLocatorIn;
   lDataSource.pFormat = NULL;
 
-  const SLuint32 lSoundRecorderIIDCount = 2;
   const SLInterfaceID lSoundRecorderIIDs[] = { stm->context->SL_IID_RECORD,
                                                stm->context->SL_IID_ANDROIDSIMPLEBUFFERQUEUE };
   const SLboolean lSoundRecorderReqs[] = { SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE };
@@ -856,7 +855,7 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
                                                            &stm->recorderObj,
                                                            &lDataSource,
                                                            &lDataSink,
-                                                           lSoundRecorderIIDCount,
+                                                           NELEMS(lSoundRecorderIIDs),
                                                            lSoundRecorderIIDs,
                                                            lSoundRecorderReqs);
   // Sample rate not supported. Try again with default sample rate!
@@ -875,7 +874,7 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
                                                     &stm->recorderObj,
                                                     &lDataSource,
                                                     &lDataSink,
-                                                    lSoundRecorderIIDCount,
+                                                    NELEMS(lSoundRecorderIIDs),
                                                     lSoundRecorderIIDs,
                                                     lSoundRecorderReqs);
 
