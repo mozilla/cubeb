@@ -159,6 +159,7 @@ struct cubeb_stream {
   int64_t lastPosition;
   int64_t lastPositionTimeStamp;
   int64_t lastCompensativePosition;
+  int voice;
 };
 
 /* Forward declaration. */
@@ -1148,6 +1149,14 @@ opensl_validate_stream_param(cubeb_stream_params * stream_params)
   return CUBEB_OK;
 }
 
+int has_pref_set(cubeb_stream_params* input_params,
+                 cubeb_stream_params* output_params,
+                 cubeb_stream_prefs pref)
+{
+  return (input_params && input_params->prefs & pref) ||
+         (output_params && output_params->prefs & pref);
+}
+
 static int
 opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name,
                    cubeb_devid input_device,
@@ -1189,6 +1198,10 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
   stm->input_enabled = (input_stream_params) ? 1 : 0;
   stm->output_enabled = (output_stream_params) ? 1 : 0;
   stm->shutdown = 1;
+  stm->voice = has_pref_set(input_stream_params, output_stream_params, CUBEB_STREAM_PREF_VOICE);
+
+  LOG("cubeb stream prefs: voice: %s", stm->voice ? "true" : "false");
+
 
 #ifdef DEBUG
   pthread_mutexattr_t attr;
