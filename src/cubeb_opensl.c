@@ -84,7 +84,7 @@ struct cubeb {
 };
 
 #define NELEMS(A) (sizeof(A) / sizeof A[0])
-#define NBUFS 4
+#define NBUFS 2
 
 struct cubeb_stream {
   /* Note: Must match cubeb_stream layout in cubeb.c. */
