@@ -1312,8 +1312,8 @@ static cubeb_channel_layout
 audiounit_convert_channel_layout(AudioChannelLayout * layout)
 {
   // When having one or two channel, force mono or stereo. Some devices (namely,
-  //  Bose QC35, mark 1 and 2), expose a single channel mapped to the right for
-  //  some reason.
+  // Bose QC35, mark 1 and 2), expose a single channel mapped to the right for
+  // some reason.
   if (layout->mNumberChannelDescriptions == 1) {
     return CUBEB_LAYOUT_MONO;
   } else if (layout->mNumberChannelDescriptions == 2) {
