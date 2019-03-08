@@ -1683,6 +1683,9 @@ audiounit_create_blank_aggregate_device(AudioObjectID * plugin_id, AudioDeviceID
   return CUBEB_OK;
 }
 
+// The returned CFStringRef object needs to be released (via CFRelease)
+// if it's not NULL, since the reference count of the returned CFStringRef
+// object is increased.
 static CFStringRef
 get_device_name(AudioDeviceID id)
 {
@@ -1715,6 +1718,7 @@ audiounit_set_aggregate_sub_device_list(AudioDeviceID aggregate_device_id,
       return CUBEB_ERROR;
     }
     CFArrayAppendValue(aggregate_sub_devices_array, ref);
+    CFRelease(ref);
   }
   for (UInt32 i = 0; i < input_sub_devices.size(); i++) {
     CFStringRef ref = get_device_name(input_sub_devices[i]);
@@ -1723,6 +1727,7 @@ audiounit_set_aggregate_sub_device_list(AudioDeviceID aggregate_device_id,
       return CUBEB_ERROR;
     }
     CFArrayAppendValue(aggregate_sub_devices_array, ref);
+    CFRelease(ref);
   }
 
   AudioObjectPropertyAddress aggregate_sub_device_list = { kAudioAggregateDevicePropertyFullSubDeviceList,
@@ -1764,6 +1769,9 @@ audiounit_set_master_aggregate_device(const AudioDeviceID aggregate_device_id)
                                            NULL,
                                            size,
                                            &master_sub_device);
+  if (master_sub_device) {
+    CFRelease(master_sub_device);
+  }
   if (rv != noErr) {
     LOG("AudioObjectSetPropertyData/kAudioAggregateDevicePropertyMasterSubDevice, rv=%d", rv);
     return CUBEB_ERROR;
@@ -3429,6 +3437,9 @@ audiounit_get_devices_of_type(cubeb_device_type devtype)
       it = devices.erase(it);
     } else {
       it++;
+    }
+    if (name) {
+      CFRelease(name);
     }
   }
 
