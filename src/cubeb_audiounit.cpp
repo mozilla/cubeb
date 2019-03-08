@@ -139,7 +139,7 @@ struct cubeb {
   // Store list of devices to detect changes
   vector<AudioObjectID> input_device_array;
   vector<AudioObjectID> output_device_array;
-  // The queue is asynchronously deallocated once all references to it are released
+  // The queue should be released when it’s no longer needed.
   dispatch_queue_t serial_queue = dispatch_queue_create(DISPATCH_QUEUE_LABEL, DISPATCH_QUEUE_SERIAL);
   // Current used channel layout
   atomic<cubeb_channel_layout> layout{ CUBEB_LAYOUT_UNDEFINED };
@@ -1431,6 +1431,8 @@ audiounit_destroy(cubeb * ctx)
       audiounit_remove_device_listener(ctx, CUBEB_DEVICE_TYPE_OUTPUT);
     }
   }
+
+  dispatch_release(ctx->serial_queue);
 
   delete ctx;
 }
