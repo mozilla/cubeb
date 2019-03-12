@@ -160,7 +160,9 @@ struct cubeb_stream {
   cubeb_resampler * resampler;
   unsigned int user_output_rate;
   unsigned int output_configured_rate;
-  unsigned int latency_frames;
+  unsigned int buffer_size_frames;
+  // Audio output latency used in cubeb_stream_get_position().
+  unsigned int output_latency_ms;
   int64_t lastPosition;
   int64_t lastPositionTimeStamp;
   int64_t lastCompensativePosition;
@@ -973,7 +975,7 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
 
   // Calculate length of input buffer according to requested latency
   stm->input_frame_size = params->channels * sizeof(int16_t);
-  stm->input_buffer_length = (stm->input_frame_size * stm->latency_frames);
+  stm->input_buffer_length = (stm->input_frame_size * stm->buffer_size_frames);
 
   // Calculate the capacity of input array
   stm->input_array_capacity = NBUFS;
@@ -1084,7 +1086,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
 
   stm->output_configured_rate = preferred_sampling_rate;
   stm->bytespersec = stm->output_configured_rate * stm->framesize;
-  stm->queuebuf_len = stm->framesize * stm->latency_frames;
+  stm->queuebuf_len = stm->framesize * stm->buffer_size_frames;
 
   // Calculate the capacity of input array
   stm->queuebuf_capacity = NBUFS;
@@ -1124,7 +1126,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
   }
 
   SLuint32 performanceMode = SL_ANDROID_PERFORMANCE_LATENCY;
-  if (stm->latency_frames > POWERSAVE_LATENCY_FRAMES_THRESHOLD) {
+  if (stm->buffer_size_frames > POWERSAVE_LATENCY_FRAMES_THRESHOLD) {
     performanceMode = SL_ANDROID_PERFORMANCE_POWER_SAVING;
   }
 
@@ -1143,6 +1145,36 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
     LOG("Failed to realize player object. Error code: %lu", res);
     return CUBEB_ERROR;
   }
+
+  // There are two ways of getting the audio output latency:
+  // - a configuration value, only available on some devices (notably devices
+  // running FireOS)
+  // - A Java method, that we call using JNI.
+  //
+  // The first method is prefered, if available, because it can account for more
+  // latency causes, and is more precise.
+
+  // Latency has to be queried after the realization of the interface, when
+  // using SL_IID_ANDROIDCONFIGURATION.
+  SLuint32 audioLatency = 0;
+  SLuint32 paramSize = sizeof(SLuint32);
+  // The reported latency is in milliseconds.
+  res = (*playerConfig)->GetConfiguration(playerConfig,
+                                          (const SLchar *)"androidGetAudioLatency",
+                                          &paramSize,
+                                          &audioLatency);
+  if (res == SL_RESULT_SUCCESS) {
+    LOG("Got playback latency using android configuration extension");
+    stm->output_latency_ms = audioLatency;
+  } else if (cubeb_output_latency_method_is_loaded(stm->context->p_output_latency_function)) {
+    LOG("Got playback latency using JNI");
+    stm->output_latency_ms = cubeb_get_output_latency(stm->context->p_output_latency_function);
+  } else {
+    LOG("No alternate latency querying method loaded, A/V sync will be off.");
+    stm->output_latency_ms = 0;
+  }
+
+  LOG("Audio output latency: %dms", stm->output_latency_ms);
 
   res = (*stm->playerObj)->GetInterface(stm->playerObj,
                                         stm->context->SL_IID_PLAY,
@@ -1268,7 +1300,7 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
   stm->data_callback = data_callback;
   stm->state_callback = state_callback;
   stm->user_ptr = user_ptr;
-  stm->latency_frames = latency_frames ? latency_frames : DEFAULT_NUM_OF_FRAMES;
+  stm->buffer_size_frames = latency_frames ? latency_frames : DEFAULT_NUM_OF_FRAMES;
   stm->input_enabled = (input_stream_params) ? 1 : 0;
   stm->output_enabled = (output_stream_params) ? 1 : 0;
   stm->shutdown = 1;
@@ -1290,7 +1322,7 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
   if (output_stream_params) {
     LOG("Playback params: Rate %d, channels %d, format %d, latency in frames %d.",
         output_stream_params->rate, output_stream_params->channels,
-        output_stream_params->format, stm->latency_frames);
+        output_stream_params->format, stm->buffer_size_frames);
     r = opensl_configure_playback(stm, output_stream_params);
     if (r != CUBEB_OK) {
       opensl_stream_destroy(stm);
@@ -1301,7 +1333,7 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
   if (input_stream_params) {
     LOG("Capture params: Rate %d, channels %d, format %d, latency in frames %d.",
         input_stream_params->rate, input_stream_params->channels,
-        input_stream_params->format, stm->latency_frames);
+        input_stream_params->format, stm->buffer_size_frames);
     r = opensl_configure_capture(stm, input_stream_params);
     if (r != CUBEB_OK) {
       opensl_stream_destroy(stm);
@@ -1539,10 +1571,6 @@ opensl_stream_get_position(cubeb_stream * stm, uint64_t * position)
   uint32_t compensation_msec = 0;
   SLresult res;
 
-  if (!cubeb_output_latency_method_is_loaded(stm->context->p_output_latency_function)) {
-    return CUBEB_ERROR_NOT_SUPPORTED;
-  }
-
   res = (*stm->play)->GetPosition(stm->play, &msec);
   if (res != SL_RESULT_SUCCESS)
     return CUBEB_ERROR;
@@ -1558,22 +1586,22 @@ opensl_stream_get_position(cubeb_stream * stm, uint64_t * position)
   }
 
   uint64_t samplerate = stm->user_output_rate;
-  uint32_t mixer_latency = cubeb_get_output_latency(stm->context->p_output_latency_function);
+  uint32_t output_latency = stm->output_latency_ms;
 
   pthread_mutex_lock(&stm->mutex);
   int64_t maximum_position = stm->written * (int64_t)stm->user_output_rate / stm->output_configured_rate;
   pthread_mutex_unlock(&stm->mutex);
   assert(maximum_position >= 0);
 
-  if (msec > mixer_latency) {
+  if (msec > output_latency) {
     int64_t unadjusted_position;
     if (stm->lastCompensativePosition > msec + compensation_msec) {
       // Over compensation, use lastCompensativePosition.
       unadjusted_position =
-        samplerate * (stm->lastCompensativePosition - mixer_latency) / 1000;
+        samplerate * (stm->lastCompensativePosition - output_latency) / 1000;
     } else {
       unadjusted_position =
-        samplerate * (msec - mixer_latency + compensation_msec) / 1000;
+        samplerate * (msec - output_latency + compensation_msec) / 1000;
       stm->lastCompensativePosition = msec + compensation_msec;
     }
     *position = unadjusted_position < maximum_position ?
