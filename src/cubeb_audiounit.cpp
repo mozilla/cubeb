@@ -2575,14 +2575,14 @@ audiounit_setup_stream(cubeb_stream * stm)
   }
 
   /* Latency cannot change if another stream is operating in parallel. In this case
-  * latecy is set to the other stream value. */
+   * latency is set to the other stream value. */
   if (audiounit_active_streams(stm->context) > 1) {
     LOG("(%p) More than one active stream, use global latency.", stm);
     stm->latency_frames = stm->context->global_latency_frames;
   } else {
     /* Silently clamp the latency down to the platform default, because we
-    * synthetize the clock from the callbacks, and we want the clock to update
-    * often. */
+     * synthetize the clock from the callbacks, and we want the clock to update
+     * often. */
     stm->latency_frames = audiounit_clamp_latency(stm, stm->latency_frames);
     assert(stm->latency_frames); // Ungly error check
     audiounit_set_global_latency(stm->context, stm->latency_frames);
