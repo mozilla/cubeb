@@ -2762,8 +2762,6 @@ audiounit_stream_init(cubeb * context,
   int r;
   *stream = NULL;
   assert(latency_frames > 0);
-  assert(state_callback);
-  assert(data_callback);
 
   /* These could be different in the future if we have both
    * full-duplex stream and different devices for input vs output. */
