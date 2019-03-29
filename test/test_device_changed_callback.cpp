@@ -26,6 +26,15 @@
 #define OUTPUT_CHANNELS 2
 #define OUTPUT_LAYOUT CUBEB_LAYOUT_STEREO
 
+long data_callback(cubeb_stream * stream, void * user, const void * inputbuffer, void * outputbuffer, long nframes)
+{
+  return 0;
+}
+
+void state_callback(cubeb_stream * stream, void * user, cubeb_state state)
+{
+}
+
 void device_changed_callback(void * user)
 {
   fprintf(stderr, "device changed callback\n");
@@ -105,7 +114,7 @@ TEST(cubeb, device_changed_callbacks)
 
   r = cubeb_stream_init(ctx, &stream, "Cubeb duplex",
                         NULL, &input_params, NULL, &output_params,
-                        latency_frames, nullptr, nullptr, nullptr);
+                        latency_frames, data_callback, state_callback, nullptr);
   ASSERT_EQ(r, CUBEB_OK) << "Error initializing cubeb stream";
 
   test_registering_null_callback_twice(stream);
