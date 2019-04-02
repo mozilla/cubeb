@@ -111,7 +111,7 @@ enum device_flags {
 };
 
 void audiounit_stream_stop_internal(cubeb_stream * stm);
-void audiounit_stream_start_internal(cubeb_stream * stm);
+static int audiounit_stream_start_internal(cubeb_stream * stm);
 static void audiounit_close_stream(cubeb_stream *stm);
 static int audiounit_setup_stream(cubeb_stream *stm);
 static vector<AudioObjectID>
@@ -854,7 +854,10 @@ audiounit_reinit_stream(cubeb_stream * stm, device_flags_value flags)
 
     // If the stream was running, start it again.
     if (!stm->shutdown) {
-      audiounit_stream_start_internal(stm);
+      r = audiounit_stream_start_internal(stm);
+      if (r != CUBEB_OK) {
+        return CUBEB_ERROR;
+      }
     }
   }
   return CUBEB_OK;
@@ -2884,18 +2887,25 @@ audiounit_stream_destroy(cubeb_stream * stm)
   delete stm;
 }
 
-void
+static int
 audiounit_stream_start_internal(cubeb_stream * stm)
 {
   OSStatus r;
   if (stm->input_unit != NULL) {
     r = AudioOutputUnitStart(stm->input_unit);
-    assert(r == 0);
+    if (r != noErr) {
+      LOG("AudioOutputUnitStart (input) rv=%d", r);
+      return CUBEB_ERROR;
+    }
   }
   if (stm->output_unit != NULL) {
     r = AudioOutputUnitStart(stm->output_unit);
-    assert(r == 0);
+    if (r != noErr) {
+      LOG("AudioOutputUnitStart (output) rv=%d", r);
+      return CUBEB_ERROR;
+    }
   }
+  return CUBEB_OK;
 }
 
 static int
@@ -2905,7 +2915,10 @@ audiounit_stream_start(cubeb_stream * stm)
   stm->shutdown = false;
   stm->draining = false;
 
-  audiounit_stream_start_internal(stm);
+  int r = audiounit_stream_start_internal(stm);
+  if (r != CUBEB_OK) {
+    return r;
+  }
 
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STARTED);
 
