@@ -2584,7 +2584,7 @@ audiounit_setup_stream(cubeb_stream * stm)
      * synthetize the clock from the callbacks, and we want the clock to update
      * often. */
     stm->latency_frames = audiounit_clamp_latency(stm, stm->latency_frames);
-    assert(stm->latency_frames); // Ungly error check
+    assert(stm->latency_frames); // Ugly error check
     audiounit_set_global_latency(stm->context, stm->latency_frames);
   }
 
