@@ -1135,9 +1135,8 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
                                           &performanceMode,
                                           sizeof(performanceMode));
   if (res != SL_RESULT_SUCCESS) {
-    LOG("Failed to set Android performance mode to %d Error code: %lu",
-        performanceMode, res);
-    return CUBEB_ERROR;
+    LOG("Failed to set Android performance mode to %d Error code: %lu. This is"
+        " not fatal", performanceMode, res);
   }
 
   res = (*stm->playerObj)->Realize(stm->playerObj, SL_BOOLEAN_FALSE);
