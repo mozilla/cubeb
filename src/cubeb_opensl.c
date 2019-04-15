@@ -57,8 +57,10 @@
 #endif
 
 #define ANDROID_VERSION_GINGERBREAD_MR1 10
+#define ANDROID_VERSION_JELLY_BEAN 18
 #define ANDROID_VERSION_LOLLIPOP 21
 #define ANDROID_VERSION_MARSHMALLOW 23
+#define ANDROID_VERSION_N_MR1 25
 #endif
 
 #define DEFAULT_SAMPLE_RATE 48000
@@ -858,7 +860,7 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
                                                stm->context->SL_IID_ANDROIDSIMPLEBUFFERQUEUE,
                                                stm->context->SL_IID_ANDROIDCONFIGURATION };
 
-  const SLboolean lSoundRecorderReqs[] = { SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE};
+  const SLboolean lSoundRecorderReqs[] = { SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE };
   // create the audio recorder abstract object
   SLresult res = (*stm->context->eng)->CreateAudioRecorder(stm->context->eng,
                                                            &stm->recorderObj,
@@ -893,34 +895,36 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
     }
   }
 
-  SLAndroidConfigurationItf recorderConfig;
-  res = (*stm->recorderObj)
-            ->GetInterface(stm->recorderObj,
-                           stm->context->SL_IID_ANDROIDCONFIGURATION,
-                           &recorderConfig);
 
-  if (res != SL_RESULT_SUCCESS) {
-    LOG("Failed to get the android configuration interface for recorder. Error "
-        "code: %lu",
-        res);
-    return CUBEB_ERROR;
+  if (get_android_version() > ANDROID_VERSION_JELLY_BEAN) {
+    SLAndroidConfigurationItf recorderConfig;
+    res = (*stm->recorderObj)
+              ->GetInterface(stm->recorderObj,
+                             stm->context->SL_IID_ANDROIDCONFIGURATION,
+                             &recorderConfig);
+
+    if (res != SL_RESULT_SUCCESS) {
+      LOG("Failed to get the android configuration interface for recorder. Error "
+          "code: %lu",
+          res);
+      return CUBEB_ERROR;
+    }
+
+    // Voice recognition is the lowest latency, according to the docs. Camcorder
+    // uses a microphone that is in the same direction as the camera.
+    SLint32 streamType = stm->voice ? SL_ANDROID_RECORDING_PRESET_VOICE_RECOGNITION
+                                    : SL_ANDROID_RECORDING_PRESET_CAMCORDER;
+
+    res = (*recorderConfig)
+              ->SetConfiguration(recorderConfig, SL_ANDROID_KEY_RECORDING_PRESET,
+                                 &streamType, sizeof(SLint32));
+
+    if (res != SL_RESULT_SUCCESS) {
+      LOG("Failed to set the android configuration to VOICE for the recorder. "
+          "Error code: %lu", res);
+      return CUBEB_ERROR;
+    }
   }
-
-  // Voice recognition is the lowest latency, according to the docs. Camcorder
-  // uses a microphone that is in the same direction as the camera.
-  SLint32 streamType = stm->voice ? SL_ANDROID_RECORDING_PRESET_VOICE_RECOGNITION
-                                  : SL_ANDROID_RECORDING_PRESET_CAMCORDER;
-
-  res = (*recorderConfig)
-            ->SetConfiguration(recorderConfig, SL_ANDROID_KEY_RECORDING_PRESET,
-                               &streamType, sizeof(SLint32));
-
-  if (res != SL_RESULT_SUCCESS) {
-    LOG("Failed to set the android configuration to VOICE for the recorder. "
-        "Error code: %lu. This is not fatal.",
-        res);
-  }
-
   // realize the audio recorder
   res = (*stm->recorderObj)->Realize(stm->recorderObj, SL_BOOLEAN_FALSE);
   if (res != SL_RESULT_SUCCESS) {
@@ -1100,42 +1104,44 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
     assert(stm->queuebuf[i]);
   }
 
-  SLAndroidConfigurationItf playerConfig;
-  res = (*stm->playerObj)
-            ->GetInterface(stm->playerObj,
-                           stm->context->SL_IID_ANDROIDCONFIGURATION,
-                           &playerConfig);
-  if (res != SL_RESULT_SUCCESS) {
-    LOG("Failed to get Android configuration interface. Error code: %lu", res);
-    return CUBEB_ERROR;
-  }
+  SLAndroidConfigurationItf playerConfig = NULL;
 
-  SLint32 streamType = SL_ANDROID_STREAM_MEDIA;
-  if (stm->voice) {
-    streamType = SL_ANDROID_STREAM_VOICE;
-  }
-  res = (*playerConfig)->SetConfiguration(playerConfig,
-                                          SL_ANDROID_KEY_STREAM_TYPE,
-                                          &streamType,
-                                          sizeof(streamType));
-  if (res != SL_RESULT_SUCCESS) {
-    LOG("Failed to set Android configuration to %d Error code: %lu",
-        streamType, res);
-    return CUBEB_ERROR;
-  }
+  if (get_android_version() >= ANDROID_VERSION_N_MR1) {
+    res = (*stm->playerObj)
+              ->GetInterface(stm->playerObj,
+                             stm->context->SL_IID_ANDROIDCONFIGURATION,
+                             &playerConfig);
+    if (res != SL_RESULT_SUCCESS) {
+      LOG("Failed to get Android configuration interface. Error code: %lu", res);
+      return CUBEB_ERROR;
+    }
 
-  SLuint32 performanceMode = SL_ANDROID_PERFORMANCE_LATENCY;
-  if (stm->buffer_size_frames > POWERSAVE_LATENCY_FRAMES_THRESHOLD) {
-    performanceMode = SL_ANDROID_PERFORMANCE_POWER_SAVING;
-  }
+    SLint32 streamType = SL_ANDROID_STREAM_MEDIA;
+    if (stm->voice) {
+      streamType = SL_ANDROID_STREAM_VOICE;
+    }
+    res = (*playerConfig)->SetConfiguration(playerConfig,
+                                            SL_ANDROID_KEY_STREAM_TYPE,
+                                            &streamType,
+                                            sizeof(streamType));
+    if (res != SL_RESULT_SUCCESS) {
+      LOG("Failed to set Android configuration to %d Error code: %lu",
+          streamType, res);
+    }
 
-  res = (*playerConfig)->SetConfiguration(playerConfig,
-                                          SL_ANDROID_KEY_PERFORMANCE_MODE,
-                                          &performanceMode,
-                                          sizeof(performanceMode));
-  if (res != SL_RESULT_SUCCESS) {
-    LOG("Failed to set Android performance mode to %d Error code: %lu. This is"
-        " not fatal", performanceMode, res);
+    SLuint32 performanceMode = SL_ANDROID_PERFORMANCE_LATENCY;
+    if (stm->buffer_size_frames > POWERSAVE_LATENCY_FRAMES_THRESHOLD) {
+      performanceMode = SL_ANDROID_PERFORMANCE_POWER_SAVING;
+    }
+
+    res = (*playerConfig)->SetConfiguration(playerConfig,
+                                            SL_ANDROID_KEY_PERFORMANCE_MODE,
+                                            &performanceMode,
+                                            sizeof(performanceMode));
+    if (res != SL_RESULT_SUCCESS) {
+      LOG("Failed to set Android performance mode to %d Error code: %lu. This is"
+          " not fatal", performanceMode, res);
+    }
   }
 
   res = (*stm->playerObj)->Realize(stm->playerObj, SL_BOOLEAN_FALSE);
@@ -1157,19 +1163,28 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
   SLuint32 audioLatency = 0;
   SLuint32 paramSize = sizeof(SLuint32);
   // The reported latency is in milliseconds.
-  res = (*playerConfig)->GetConfiguration(playerConfig,
-                                          (const SLchar *)"androidGetAudioLatency",
-                                          &paramSize,
-                                          &audioLatency);
-  if (res == SL_RESULT_SUCCESS) {
-    LOG("Got playback latency using android configuration extension");
-    stm->output_latency_ms = audioLatency;
-  } else if (cubeb_output_latency_method_is_loaded(stm->context->p_output_latency_function)) {
-    LOG("Got playback latency using JNI");
-    stm->output_latency_ms = cubeb_get_output_latency(stm->context->p_output_latency_function);
-  } else {
-    LOG("No alternate latency querying method loaded, A/V sync will be off.");
-    stm->output_latency_ms = 0;
+  if (playerConfig) {
+    res = (*playerConfig)->GetConfiguration(playerConfig,
+                                            (const SLchar *)"androidGetAudioLatency",
+                                            &paramSize,
+                                            &audioLatency);
+    if (res == SL_RESULT_SUCCESS) {
+      LOG("Got playback latency using android configuration extension");
+      stm->output_latency_ms = audioLatency;
+    }
+  }
+  // `playerConfig` is available, but the above failed, or `playerConfig` is not
+  // available. In both cases, we need to acquire the output latency by an other
+  // mean.
+  if ((playerConfig && res != SL_RESULT_SUCCESS) ||
+      !playerConfig) {
+    if (cubeb_output_latency_method_is_loaded(stm->context->p_output_latency_function)) {
+      LOG("Got playback latency using JNI");
+      stm->output_latency_ms = cubeb_get_output_latency(stm->context->p_output_latency_function);
+    } else {
+      LOG("No alternate latency querying method loaded, A/V sync will be off.");
+      stm->output_latency_ms = 0;
+    }
   }
 
   LOG("Audio output latency: %dms", stm->output_latency_ms);
