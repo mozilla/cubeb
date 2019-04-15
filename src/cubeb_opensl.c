@@ -917,9 +917,8 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
 
   if (res != SL_RESULT_SUCCESS) {
     LOG("Failed to set the android configuration to VOICE for the recorder. "
-        "Error code: %lu",
+        "Error code: %lu. This is not fatal.",
         res);
-    return CUBEB_ERROR;
   }
 
   // realize the audio recorder
