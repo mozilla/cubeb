@@ -51,6 +51,7 @@ public:
   bool destroy_stream() const;
   bool destroy();
   bool activate_log(cubeb_log_level log_level) const;
+  uint64_t get_stream_position() const;
 
   long user_data_cb(cubeb_stream* stm, void* user, const void* input_buffer,
                     void* output_buffer, long nframes);
@@ -149,6 +150,16 @@ bool cubeb_client::stop_stream() const {
     return false;
   }
   return true;
+}
+
+uint64_t cubeb_client::get_stream_position() const {
+  uint64_t pos = 0;
+  int rv = cubeb_stream_get_position(stream, &pos);
+  if (rv != CUBEB_OK) {
+    fprintf(stderr, "Could not get the position the stream\n");
+    return 0;
+  }
+  return pos;
 }
 
 bool cubeb_client::destroy_stream() const {
@@ -257,6 +268,7 @@ void print_help() {
     "2: change log level to verbose\n"
     "p: start a initialized stream\n"
     "s: stop a started stream\n"
+    "c: get stream position (client thread)\n"
     "i: change device type to input\n"
     "o: change device type to output\n"
     "a: change device type to input and output\n"
@@ -318,6 +330,9 @@ bool choose_action(const cubeb_client& cl, operation_data * op, char c) {
     } else {
       fprintf(stderr, "stop_stream failed\n");
     }
+  } else if (c == 'c') {
+    uint64_t pos = cl.get_stream_position();
+    fprintf(stderr, "stream position %lu\n", pos);
   } else if (c == 'i') {
     op->collection_device_type = CUBEB_DEVICE_TYPE_INPUT;
     fprintf(stderr, "collection device type changed to INPUT\n");
