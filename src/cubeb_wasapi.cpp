@@ -450,9 +450,9 @@ public:
   wasapi_collection_notification_client(cubeb * context)
     : ref_count(1)
     , cubeb_context(context)
+    , monitor_notifications(context)
   {
     XASSERT(cubeb_context);
-    monitor_notifications.reset(new monitor_device_notifications(cubeb_context));
   }
 
   virtual ~wasapi_collection_notification_client()
@@ -493,7 +493,7 @@ public:
       if (FAILED(hr)) {
         return hr;
       }
-      monitor_notifications->notify(flow);
+      monitor_notifications.notify(flow);
     }
     return S_OK;
   }
@@ -531,7 +531,7 @@ private:
   LONG ref_count;
 
   cubeb * cubeb_context = nullptr;
-  std::unique_ptr<monitor_device_notifications> monitor_notifications;
+  monitor_device_notifications monitor_notifications;
 };
 
 class wasapi_endpoint_notification_client : public IMMNotificationClient
