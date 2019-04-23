@@ -156,7 +156,7 @@ uint64_t cubeb_client::get_stream_position() const {
   uint64_t pos = 0;
   int rv = cubeb_stream_get_position(stream, &pos);
   if (rv != CUBEB_OK) {
-    fprintf(stderr, "Could not stop the stream\n");
+    fprintf(stderr, "Could not get the position the stream\n");
     return 0;
   }
   return pos;
