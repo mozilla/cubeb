@@ -227,6 +227,9 @@ typedef enum {
                                          specified on the input params and an
                                          output device to loopback from should
                                          be passed in place of an input device. */
+  CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING = 0x02, /**< Disable switching
+                                                          default device on OS
+                                                          changes. */
   CUBEB_STREAM_PREF_VOICE = 0x04  /**< This stream is going to transport voice data.
                                        Depending on the backend and platform, this can
                                        change the audio input or output devices
