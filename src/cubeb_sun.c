@@ -189,13 +189,11 @@ sun_enumerate_devices(cubeb * context, cubeb_device_type type,
         sun_prinfo_verify_sanity(&hwfmt.record)) {
       /* the device supports recording, probably */
       device.type |= CUBEB_DEVICE_TYPE_INPUT;
-      prinfo = &hwfmt.record;
     }
     if ((hwprops & AUDIO_PROP_PLAYBACK) != 0 &&
         sun_prinfo_verify_sanity(&hwfmt.play)) {
       /* the device supports playback, probably */
       device.type |= CUBEB_DEVICE_TYPE_OUTPUT;
-      prinfo = &hwfmt.play;
     }
     switch (device.type) {
     case 0:
@@ -213,6 +211,12 @@ sun_enumerate_devices(cubeb * context, cubeb_device_type type,
         continue;
       }
       break;
+    }
+    if ((type & CUBEB_DEVICE_TYPE_INPUT) != 0) {
+      prinfo = &hwfmt.record;
+    }
+    if ((type & CUBEB_DEVICE_TYPE_OUTPUT) != 0) {
+      prinfo = &hwfmt.play;
     }
     if (i > 0) {
       (void)snprintf(dev_friendly, sizeof(dev_friendly), "%s %s %s (%d)",
