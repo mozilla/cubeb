@@ -1,10 +1,8 @@
 language: cpp
-dist: trusty
+dist: xenial
 sudo: required
 addons:
   apt:
-    sources:
-      - ubuntu-toolchain-r-test
     packages:
       - clang-3.6
       - g++-4.8
@@ -24,7 +22,7 @@ matrix:
     - env: C_COMPILER=gcc-4.8 CXX_COMPILER=g++-4.8
     - env: SCAN_BUILD=true
     - env: CROSS=mingw
-    - env: CROSS=android API_LEVEL=android-15
+    - env: CROSS=android API_LEVEL=android-16
     - os: osx
       osx_image: xcode6.4
     - os: osx
@@ -39,7 +37,7 @@ before_install:
       export SCAN_BUILD_PATH="$SCAN_BUILD_PATH -o scan_results";
     fi
   - if [[ $CROSS = "android" ]]; then
-      NDK=android-ndk-r13b;
+      NDK=android-ndk-r19c;
       curl -LO https://dl.google.com/android/repository/$NDK-linux-x86_64.zip;
       unzip -q $NDK-linux-x86_64.zip;
       rm $NDK-linux-x86_64.zip;
@@ -56,7 +54,7 @@ before_script:
       export TOOLCHAIN=-DCMAKE_TOOLCHAIN_FILE=../cmake/toolchain-cross-$CROSS.cmake;
     fi
   - if [[ $CROSS = "android" ]]; then
-      export TOOLCHAIN="$TOOLCHAIN -DANDROID_NATIVE_API_LEVEL=$API_LEVEL";
+      export TOOLCHAIN="-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake -DANDROID_NATIVE_API_LEVEL=$API_LEVEL";
     fi
   - mkdir build && cd build
   - $SCAN_BUILD_PATH cmake -DCMAKE_BUILD_TYPE=Debug -DSANITIZE_ADDRESS=$CMAKE_USE_ASAN $TOOLCHAIN ..;
