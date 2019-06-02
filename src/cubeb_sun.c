@@ -28,6 +28,10 @@
 #define SUN_LATENCY_MS (40)
 #endif
 
+#ifndef SUN_DEFAULT_DEVICE
+#define SUN_DEFAULT_DEVICE "/dev/audio"
+#endif
+
 /*
  * Supported on NetBSD regardless of hardware.
  */
@@ -51,6 +55,8 @@ struct cubeb {
 };
 
 struct cubeb_stream {
+  struct cubeb * context;
+  void * user_ptr;
   int floating;
   int play_fd;
   int record_fd;
@@ -61,9 +67,14 @@ struct cubeb_stream {
 int
 sun_init(cubeb ** context, char const * context_name)
 {
-  *context = malloc(sizeof(*context));
-  (*context)->ops = &sun_ops;
+  cubeb * c;
+
   (void)context_name;
+  if ((c = calloc(1, sizeof(cubeb))) == NULL) {
+    return CUBEB_ERROR;
+  }
+  c->ops = &sun_ops;
+  *context = c;
   return CUBEB_OK;
 }
 
@@ -153,7 +164,7 @@ sun_enumerate_devices(cubeb * context, cubeb_device_type type,
 {
   unsigned i;
   cubeb_device_info device = {0};
-  char dev[16] = "/dev/audio";
+  char dev[16] = SUN_DEFAULT_DEVICE;
   char dev_friendly[64];
   struct audio_info hwfmt;
   struct audio_device hwname;
@@ -270,10 +281,10 @@ sun_copy_params(int fd, cubeb_stream * stream, cubeb_stream_params * params,
     LOG("Unsupported format");
     return CUBEB_ERROR_NOT_SUPPORTED;
   }
-  if (ioctl(fd, AUDIO_SETINFO, info) == -1) {
+  if (ioctl(fd, AUDIO_SETINFO, &stream->info) == -1) {
     return CUBEB_ERROR;
   }
-  if (ioctl(fd, AUDIO_GETINFO, info) == -1) {
+  if (ioctl(fd, AUDIO_GETINFO, &stream->info) == -1) {
     return CUBEB_ERROR;
   }
   return CUBEB_OK;
@@ -285,7 +296,7 @@ sun_stream_destroy(cubeb_stream * s)
   if (s->play_fd != -1) {
     close(s->play_fd);
   }
-  if (s->play_fd != s->record_fd) {
+  if (s->record_fd != s->play_fd) {
     if (s->record_fd != -1) {
       close(s->record_fd);
     }
@@ -318,12 +329,17 @@ sun_stream_init(cubeb * context,
   s->record_fd = -1;
   s->play_fd = -1;
   AUDIO_INITINFO(&s->info);
-  if (input_device != NULL && output_device != NULL &&
-      strcmp(input_device, output_device) == 0 &&
+  if (input_device == NULL) {
+    input_device = SUN_DEFAULT_DEVICE;
+  }
+  if (output_device == NULL) {
+    output_device = SUN_DEFAULT_DEVICE;
+  }
+  if (strcmp(input_device, output_device) == 0 &&
       input_stream_params != NULL && output_stream_params != NULL) {
     int fd;
 
-    if ((fd = open(output_device, O_RDWR | O_NONBLOCK) == -1)) {
+    if ((fd = open(output_device, O_RDWR | O_NONBLOCK)) == -1) {
       LOG("Audio device cannot be opened as r/w");
       ret = CUBEB_ERROR;
       goto error;
@@ -337,14 +353,16 @@ sun_stream_init(cubeb * context,
       ret = CUBEB_ERROR_NOT_SUPPORTED;
       goto error;
     }
-    if (s->record_fd == -1 &&
-       (s->record_fd = open(input_device, O_RDONLY | O_NONBLOCK) == -1)) { 
-      LOG("Audio device cannot be opened as read-only");
-      ret = CUBEB_ERROR;
-      goto error;
+    if (s->record_fd == -1) {
+      if ((s->record_fd = open(input_device, O_RDONLY | O_NONBLOCK)) == -1) {
+        LOG("Audio device cannot be opened as read-only");
+        ret = CUBEB_ERROR;
+        goto error;
+      }
     } 
-    if ((ret = sun_copy_params(s->record_fd, s,
-                        output_stream_params, &s->info.record)) != CUBEB_OK) {
+    if ((ret = sun_copy_params(s->record_fd, s, input_stream_params,
+                               &s->info.record)) != CUBEB_OK) {
+      LOG("Setting record params failed");
       goto error;
     }
   }
@@ -354,17 +372,20 @@ sun_stream_init(cubeb * context,
       ret = CUBEB_ERROR_NOT_SUPPORTED;
       goto error;
     }
-    if (s->play_fd == -1 &&
-       (s->play_fd = open(output_device, O_WRONLY | O_NONBLOCK) == -1)) {
-      LOG("Audio device cannot be opened as write-only");
-      ret = CUBEB_ERROR;
-      goto error;
+    if (s->play_fd == -1) {
+      if ((s->play_fd = open(output_device, O_WRONLY | O_NONBLOCK)) == -1) {
+        LOG("Audio device cannot be opened as write-only");
+        ret = CUBEB_ERROR;
+        goto error;
+      }
     }
-    if ((ret = sun_copy_params(s->play_fd, s,
-                        input_stream_params, &s->info.play)) != CUBEB_OK) {
+    if ((ret = sun_copy_params(s->play_fd, s, output_stream_params,
+                               &s->info.play)) != CUBEB_OK) {
+      LOG("Setting play params failed");
       goto error;
     }
   }
+  s->context = context;
   s->volume = 1.0;
   *stream = s;
   return CUBEB_OK;
