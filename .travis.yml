@@ -4,8 +4,8 @@ sudo: required
 addons:
   apt:
     packages:
-      - clang-3.6
-      - g++-4.8
+      - clang-3.8
+      - g++-5
       - libpulse-dev
       - libasound2-dev
       - pulseaudio
@@ -17,14 +17,13 @@ env:
     - CMAKE_USE_ASAN=OFF
 matrix:
   include:
-    - env: C_COMPILER=clang-3.6 CXX_COMPILER=clang++-3.6
-    - env: C_COMPILER=clang-3.6 CXX_COMPILER=clang++-3.6 CMAKE_USE_ASAN=ON
-    - env: C_COMPILER=gcc-4.8 CXX_COMPILER=g++-4.8
+    - env: C_COMPILER=clang-3.8 CXX_COMPILER=clang++-3.8
+    - env: C_COMPILER=clang-3.8 CXX_COMPILER=clang++-3.8 CMAKE_USE_ASAN=ON
+    - env: C_COMPILER=gcc-5 CXX_COMPILER=g++-5
     - env: SCAN_BUILD=true
     - env: CROSS=mingw
     - env: CROSS=android API_LEVEL=android-16
     - os: osx
-      osx_image: xcode6.4
     - os: osx
       env: SCAN_BUILD=true
 before_install:
@@ -32,7 +31,7 @@ before_install:
       if [[ $TRAVIS_OS_NAME = "osx" ]]; then
         . scan-build-install.sh;
       else
-        export SCAN_BUILD_PATH=/usr/share/clang/scan-build-3.6/scan-build;
+        export SCAN_BUILD_PATH=/usr/share/clang/scan-build-3.8/bin/scan-build;
       fi;
       export SCAN_BUILD_PATH="$SCAN_BUILD_PATH -o scan_results";
     fi
