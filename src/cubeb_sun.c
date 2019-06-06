@@ -576,7 +576,7 @@ sun_stream_init(cubeb * context,
   s->data_cb = data_callback;
   s->user_ptr = user_ptr;
   if (s->play_fd != -1 && (s->play_buf = calloc(latency_frames,
-      s->r_info.play.channels * sizeof(int16_t))) == NULL) {
+      s->p_info.play.channels * sizeof(int16_t))) == NULL) {
     ret = CUBEB_ERROR;
     goto error;
   }
