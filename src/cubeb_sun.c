@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <poll.h>
 #include <pthread.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
