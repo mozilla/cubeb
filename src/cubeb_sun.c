@@ -293,21 +293,21 @@ sun_device_collection_destroy(cubeb * context,
 
 static int
 sun_copy_params(int fd, cubeb_stream * stream, cubeb_stream_params * params,
-                struct audio_prinfo * info)
+                struct audio_info * info, struct audio_prinfo * prinfo)
 {
-  info->channels = params->channels;
-  info->sample_rate = params->rate;
-  info->precision = 16;
+  prinfo->channels = params->channels;
+  prinfo->sample_rate = params->rate;
+  prinfo->precision = 16;
   switch (params->format) {
   case CUBEB_SAMPLE_S16LE:
-    info->encoding = AUDIO_ENCODING_SLINEAR_LE;
+    prinfo->encoding = AUDIO_ENCODING_SLINEAR_LE;
     break;
   case CUBEB_SAMPLE_S16BE:
-    info->encoding = AUDIO_ENCODING_SLINEAR_BE;
+    prinfo->encoding = AUDIO_ENCODING_SLINEAR_BE;
     break;
   case CUBEB_SAMPLE_FLOAT32NE:
     stream->floating = 1;
-    info->encoding = AUDIO_ENCODING_SLINEAR;
+    prinfo->encoding = AUDIO_ENCODING_SLINEAR;
     break;
   default:
     LOG("Unsupported format");
@@ -535,8 +535,9 @@ sun_stream_init(cubeb * context,
       }
     }
     AUDIO_INITINFO(&s->r_info);
+    s->r_info.mode = AUMODE_RECORD;
     if ((ret = sun_copy_params(s->record_fd, s, input_stream_params,
-                               &s->r_info.record)) != CUBEB_OK) {
+                               &s->r_info, &s->r_info.record)) != CUBEB_OK) {
       LOG("Setting record params failed");
       goto error;
     }
@@ -556,8 +557,9 @@ sun_stream_init(cubeb * context,
       }
     }
     AUDIO_INITINFO(&s->p_info);
+    s->p_info.mode = AUMODE_PLAY;
     if ((ret = sun_copy_params(s->play_fd, s, output_stream_params,
-                               &s->p_info.play)) != CUBEB_OK) {
+                               &s->p_info, &s->p_info.play)) != CUBEB_OK) {
       LOG("Setting play params failed");
       goto error;
     }
