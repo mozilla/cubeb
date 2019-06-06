@@ -497,7 +497,7 @@ sun_io_routine(void * arg)
         state = CUBEB_STATE_ERROR;
         break;
       }
-      if (to_write == 0 && (pfds[1].revents & POLLIN) == 0) {
+      if (to_write == 0 && (pfds[1].events & POLLIN) == 0) {
         break;
       }
       if (to_write > 0 && (pfds[0].revents & POLLOUT)) {
@@ -512,7 +512,6 @@ sun_io_routine(void * arg)
         write_ofs += frames;
         if (to_write == 0) {
           pfds[0].events = 0;
-          state = CUBEB_STATE_DRAINED;
         }
       }
       if (to_read > 0 && (pfds[1].revents & POLLIN)) {
