@@ -87,6 +87,7 @@ struct cubeb_stream {
   char input_name[16];
   char output_name[16];
   unsigned latency_frames;
+  uint64_t frames_written;
 };
 
 int
@@ -364,9 +365,13 @@ sun_float_to_linear(float * in, int16_t * out,
 
 static void
 sun_linear_to_float(int16_t * in, float * out,
-                    unsigned channels, long count)
+                    unsigned channels, long frames)
 {
-  /* TODO */
+  unsigned i, sample_count = frames * channels;
+
+  for (i = 0; i < sample_count; ++i) {
+    out[i] = (1.0 / 0x8000) * in[i];
+  }
 }
 
 static void
@@ -385,11 +390,12 @@ sun_io_routine(void * arg)
 {
   cubeb_stream *s = arg;
   cubeb_state state = CUBEB_STATE_STARTED;
-  size_t to_read;
-  long to_write;
-  size_t write_ofs;
-  size_t read_ofs;
+  size_t to_read = 0;
+  long to_write = 0;
+  size_t write_ofs = 0;
+  size_t read_ofs = 0;
   struct pollfd pfds[2];
+  int drain = 0;
 
   s->state_cb(s, s->user_ptr, CUBEB_STATE_STARTED);
   while (state != CUBEB_STATE_ERROR) {
@@ -423,6 +429,9 @@ sun_io_routine(void * arg)
         sun_linear_set_vol(s->play_buf, s->p_info.play.channels, to_write, s->volume);
       }
     }
+    if (to_write < s->latency_frames) {
+      drain = 1;
+    }
     pfds[0].fd = s->play_fd;
     pfds[1].fd = s->record_fd;
     if (s->play_fd != -1) {
@@ -430,7 +439,7 @@ sun_io_routine(void * arg)
         pfds[0].events = POLLOUT;
       }
     } else {
-      pfds[1].events = 0;
+      pfds[0].events = 0;
       to_write = 0;
     }
     if (s->record_fd != -1) {
@@ -442,7 +451,7 @@ sun_io_routine(void * arg)
     }
     write_ofs = 0;
     read_ofs = 0;
-    do {
+    while (to_write > 0 || to_read > 0) {
       size_t bytes;
       ssize_t n, frames;
 
@@ -467,11 +476,12 @@ sun_io_routine(void * arg)
           break;
         }
         frames = BYTES_TO_FRAMES(n, s->p_info.play.channels);
+        s->frames_written += frames;
         to_write -= frames;
         write_ofs += frames;
         if (to_write == 0) {
           pfds[0].events = 0;
-          s->state_cb(s, s->user_ptr, CUBEB_STATE_DRAINED);
+          state = CUBEB_STATE_DRAINED;
         }
       }
       if (to_read > 0 && (pfds[1].revents & POLLIN)) {
@@ -487,7 +497,11 @@ sun_io_routine(void * arg)
           pfds[1].events = 0;
         }
       }
-    } while (to_write > 0 || to_read > 0);
+    }
+    if (drain && state != CUBEB_STATE_ERROR) {
+      state = CUBEB_STATE_DRAINED;
+      break;
+    }
   }
   s->state_cb(s, s->user_ptr, state);
   return NULL;
@@ -621,12 +635,7 @@ sun_stream_start(cubeb_stream * s)
 static int
 sun_stream_get_position(cubeb_stream * s, uint64_t * position)
 {
-  struct audio_offset ofs;
-
-  if (s->play_fd == -1 || ioctl(s->play_fd, AUDIO_GETOOFFS, &ofs) == -1) {
-    return CUBEB_ERROR;
-  }
-  *position = BYTES_TO_FRAMES(ofs.samples, s->p_info.play.channels);
+  *position = s->frames_written;
   return CUBEB_OK;
 }
 
