@@ -50,7 +50,11 @@
  */
 
 #ifndef SUN_MAX_CHANNELS
-#define SUN_MAX_CHANNELS (12)
+# ifdef __NetBSD__
+#  define SUN_MAX_CHANNELS (12)
+# else
+#  define SUN_MAX_CHANNELS (2)
+# endif
 #endif
 
 #ifndef SUN_MIN_RATE
@@ -153,12 +157,16 @@ sun_get_hwinfo(const char * device, struct audio_info * format,
   if ((fd = open(device, O_RDONLY)) == -1) {
     goto error;
   }
+#ifdef AUDIO_GETFORMAT
   if (ioctl(fd, AUDIO_GETFORMAT, format) != 0) {
     goto error;
   }
+#endif
+#ifdef AUDIO_GETPROPS
   if (ioctl(fd, AUDIO_GETPROPS, props) != 0) {
     goto error;
   }
+#endif
   if (ioctl(fd, AUDIO_GETDEV, dev) != 0) {
     goto error;
   }
@@ -208,6 +216,7 @@ sun_enumerate_devices(cubeb * context, cubeb_device_type type,
     if (sun_get_hwinfo(dev, &hwfmt, &hwprops, &hwname) != CUBEB_OK) {
       continue;
     }
+#ifdef AUDIO_GETPROPS
     device.type = 0;
     if ((hwprops & AUDIO_PROP_CAPTURE) != 0 &&
         sun_prinfo_verify_sanity(&hwfmt.record)) {
@@ -242,6 +251,7 @@ sun_enumerate_devices(cubeb * context, cubeb_device_type type,
     if ((type & CUBEB_DEVICE_TYPE_OUTPUT) != 0) {
       prinfo = &hwfmt.play;
     }
+#endif
     if (i > 0) {
       (void)snprintf(dev_friendly, sizeof(dev_friendly), "%s %s %s (%d)",
                      hwname.name, hwname.version, hwname.config, i - 1);
@@ -257,8 +267,13 @@ sun_enumerate_devices(cubeb * context, cubeb_device_type type,
     device.type = type;
     device.state = CUBEB_DEVICE_STATE_ENABLED;
     device.preferred = (i == 0) ? CUBEB_DEVICE_PREF_ALL : CUBEB_DEVICE_PREF_NONE;
+#ifdef AUDIO_GETFORMAT
     device.max_channels = prinfo->channels;
     device.default_rate = prinfo->sample_rate;
+#else
+    device.max_channels = 2;
+    device.default_rate = SUN_PREFER_RATE;
+#endif
     device.default_format = CUBEB_DEVICE_FMT_S16NE;
     device.format = CUBEB_DEVICE_FMT_S16NE;
     device.min_rate = SUN_MIN_RATE;
@@ -293,6 +308,7 @@ sun_copy_params(int fd, cubeb_stream * stream, cubeb_stream_params * params,
   prinfo->channels = params->channels;
   prinfo->sample_rate = params->rate;
   prinfo->precision = 16;
+#ifdef AUDIO_ENCODING_SLINEAR_LE
   switch (params->format) {
   case CUBEB_SAMPLE_S16LE:
     prinfo->encoding = AUDIO_ENCODING_SLINEAR_LE;
@@ -308,6 +324,20 @@ sun_copy_params(int fd, cubeb_stream * stream, cubeb_stream_params * params,
     LOG("Unsupported format");
     return CUBEB_ERROR_INVALID_FORMAT;
   }
+#else
+  switch (params->format) {
+  case CUBEB_SAMPLE_S16NE:
+    prinfo->encoding = AUDIO_ENCODING_LINEAR;
+    break;
+  case CUBEB_SAMPLE_FLOAT32NE:
+    stream->floating = 1;
+    prinfo->encoding = AUDIO_ENCODING_LINEAR;
+    break;
+  default:
+    LOG("Unsupported format");
+    return CUBEB_ERROR_INVALID_FORMAT;
+  }
+#endif
   if (ioctl(fd, AUDIO_SETINFO, info) == -1) {
     return CUBEB_ERROR;
   }
