@@ -84,8 +84,8 @@ struct cubeb_stream {
   int16_t * record_buf;
   float * f_play_buf;
   float * f_record_buf;
-  char *input_name;
-  char *output_name;
+  char input_name[16];
+  char output_name[16];
   unsigned latency_frames;
 };
 
@@ -248,7 +248,7 @@ sun_enumerate_devices(cubeb * context, cubeb_device_type type,
       (void)snprintf(dev_friendly, sizeof(dev_friendly), "%s %s %s (default)",
                      hwname.name, hwname.version, hwname.config);
     }
-    device.devid = strdup(dev);
+    device.devid = (void *)(uintptr_t)i;
     device.device_id = strdup(dev);
     device.friendly_name = strdup(dev_friendly);
     device.group_id = strdup(dev);
@@ -276,7 +276,6 @@ sun_device_collection_destroy(cubeb * context,
   unsigned i;
 
   for (i = 0; i < collection->count; ++i) {
-    free((char *)collection->device[i].devid);
     free((char *)collection->device[i].device_id);
     free((char *)collection->device[i].friendly_name);
     free((char *)collection->device[i].group_id);
@@ -341,8 +340,6 @@ sun_stream_destroy(cubeb_stream * s)
   free(s->f_record_buf);
   free(s->play_buf);
   free(s->record_buf);
-  free(s->output_name);
-  free(s->input_name);
   free(s);
 }
 
@@ -519,11 +516,17 @@ sun_stream_init(cubeb * context,
   }
   s->record_fd = -1;
   s->play_fd = -1;
-  if (input_device == NULL) {
-    input_device = SUN_DEFAULT_DEVICE;
+  if (input_device != 0) {
+    snprintf(s->input_name, sizeof(s->input_name),
+      "/dev/audio%zu", (uintptr_t)input_device - 1);
+  } else {
+    snprintf(s->input_name, sizeof(s->input_name), "%s", SUN_DEFAULT_DEVICE);
   }
-  if (output_device == NULL) {
-    output_device = SUN_DEFAULT_DEVICE;
+  if (output_device != 0) {
+    snprintf(s->output_name, sizeof(s->output_name),
+      "/dev/audio%zu", (uintptr_t)output_device - 1);
+  } else {
+    snprintf(s->output_name, sizeof(s->output_name), "%s", SUN_DEFAULT_DEVICE);
   }
   if (input_stream_params != NULL) {
     if (input_stream_params->prefs & CUBEB_STREAM_PREF_LOOPBACK) {
@@ -532,7 +535,7 @@ sun_stream_init(cubeb * context,
       goto error;
     }
     if (s->record_fd == -1) {
-      if ((s->record_fd = open(input_device, O_RDONLY | O_NONBLOCK)) == -1) {
+      if ((s->record_fd = open(s->input_name, O_RDONLY | O_NONBLOCK)) == -1) {
         LOG("Audio device cannot be opened as read-only");
         ret = CUBEB_ERROR_DEVICE_UNAVAILABLE;
         goto error;
@@ -545,7 +548,6 @@ sun_stream_init(cubeb * context,
       LOG("Setting record params failed");
       goto error;
     }
-    s->input_name = strdup(input_device);
   }
   if (output_stream_params != NULL) {
     if (output_stream_params->prefs & CUBEB_STREAM_PREF_LOOPBACK) {
@@ -554,7 +556,7 @@ sun_stream_init(cubeb * context,
       goto error;
     }
     if (s->play_fd == -1) {
-      if ((s->play_fd = open(output_device, O_WRONLY | O_NONBLOCK)) == -1) {
+      if ((s->play_fd = open(s->output_name, O_WRONLY | O_NONBLOCK)) == -1) {
         LOG("Audio device cannot be opened as write-only");
         ret = CUBEB_ERROR_DEVICE_UNAVAILABLE;
         goto error;
@@ -567,7 +569,6 @@ sun_stream_init(cubeb * context,
       LOG("Setting play params failed");
       goto error;
     }
-    s->output_name = strdup(output_device);
   }
   s->latency_frames = latency_frames;
   s->context = context;
@@ -654,9 +655,9 @@ sun_get_current_device(cubeb_stream * stream, cubeb_device ** const device)
   if (*device == NULL) {
     return CUBEB_ERROR;
   }
-  (*device)->input_name = stream->input_name != NULL ?
+  (*device)->input_name = stream->record_fd != -1 ?
     strdup(stream->input_name) : NULL;
-  (*device)->output_name = stream->output_name != NULL ?
+  (*device)->output_name = stream->play_fd != -1 ?
     strdup(stream->output_name) : NULL;
   return CUBEB_OK;
 }
