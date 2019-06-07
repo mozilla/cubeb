@@ -89,8 +89,8 @@ struct cubeb_stream {
   int16_t * record_buf;
   float * f_play_buf;
   float * f_record_buf;
-  char input_name[16];
-  char output_name[16];
+  char input_name[32];
+  char output_name[32];
   unsigned latency_frames;
   uint64_t frames_written;
 };
