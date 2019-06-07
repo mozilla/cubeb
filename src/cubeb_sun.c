@@ -586,7 +586,9 @@ sun_stream_init(cubeb * context,
       }
     }
     AUDIO_INITINFO(&s->r_info);
+#ifdef AUMODE_RECORD
     s->r_info.mode = AUMODE_RECORD;
+#endif
     if ((ret = sun_copy_params(s->record_fd, s, input_stream_params,
                                &s->r_info, &s->r_info.record)) != CUBEB_OK) {
       LOG("Setting record params failed");
@@ -607,7 +609,9 @@ sun_stream_init(cubeb * context,
       }
     }
     AUDIO_INITINFO(&s->p_info);
+#ifdef AUMODE_PLAY
     s->p_info.mode = AUMODE_PLAY;
+#endif
     if ((ret = sun_copy_params(s->play_fd, s, output_stream_params,
                                &s->p_info, &s->p_info.play)) != CUBEB_OK) {
       LOG("Setting play params failed");
