@@ -42,6 +42,9 @@ int alsa_init(cubeb ** context, char const * context_name);
 #if defined(USE_AUDIOUNIT)
 int audiounit_init(cubeb ** context, char const * context_name);
 #endif
+#if defined(USE_AUDIOUNIT_RUST)
+int audiounit_rust_init(cubeb ** contet, char const * context_name);
+#endif
 #if defined(USE_WINMM)
 int winmm_init(cubeb ** context, char const * context_name);
 #endif
@@ -136,6 +139,10 @@ cubeb_init(cubeb ** context, char const * context_name, char const * backend_nam
 #if defined(USE_AUDIOUNIT)
       init_oneshot = audiounit_init;
 #endif
+    } else if (!strcmp(backend_name, "audiounit-rust")) {
+#if defined(USE_AUDIOUNIT_RUST)
+      init_oneshot = audiounit_rust_init;
+#endif
     } else if (!strcmp(backend_name, "wasapi")) {
 #if defined(USE_WASAPI)
       init_oneshot = wasapi_init;
@@ -185,6 +192,9 @@ cubeb_init(cubeb ** context, char const * context_name, char const * backend_nam
 #endif
 #if defined(USE_AUDIOUNIT)
     audiounit_init,
+#endif
+#if defined(USE_AUDIOUNIT_RUST)
+    audiounit_rust_init,
 #endif
 #if defined(USE_WASAPI)
     wasapi_init,
