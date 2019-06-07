@@ -46,6 +46,10 @@
 #define SUN_POLL_TIMEOUT (1000)
 #endif
 
+#ifndef SUN_BUFFER_FRAMES
+#define SUN_BUFFER_FRAMES (32)
+#endif
+
 /*
  * Supported on NetBSD regardless of hardware.
  */
@@ -91,7 +95,6 @@ struct cubeb_stream {
   float * f_record_buf;
   char input_name[32];
   char output_name[32];
-  unsigned latency_frames;
   uint64_t frames_written;
 };
 
@@ -425,7 +428,7 @@ sun_io_routine(void * arg)
   long to_write = 0;
   size_t write_ofs = 0;
   size_t read_ofs = 0;
-  struct pollfd pfds[2];
+  struct pollfd pfds[1];
   int drain = 0;
 
   s->state_cb(s, s->user_ptr, CUBEB_STATE_STARTED);
@@ -437,10 +440,10 @@ sun_io_routine(void * arg)
     if (s->floating) {
       if (s->record_fd != -1) {
         sun_linear_to_float(s->record_buf, s->f_record_buf,
-                            s->r_info.record.channels, s->latency_frames);
+                            s->r_info.record.channels, SUN_BUFFER_FRAMES);
       }
       to_write = s->data_cb(s, s->user_ptr,
-                            s->f_record_buf, s->f_play_buf, s->latency_frames);
+                            s->f_record_buf, s->f_play_buf, SUN_BUFFER_FRAMES);
       if (to_write == CUBEB_ERROR) {
         state = CUBEB_STATE_ERROR;
         break;
@@ -451,7 +454,7 @@ sun_io_routine(void * arg)
       }
     } else {
       to_write = s->data_cb(s, s->user_ptr,
-                            s->record_buf, s->play_buf, s->latency_frames);
+                            s->record_buf, s->play_buf, SUN_BUFFER_FRAMES);
       if (to_write == CUBEB_ERROR) {
         state = CUBEB_STATE_ERROR;
         break;
@@ -460,11 +463,10 @@ sun_io_routine(void * arg)
         sun_linear_set_vol(s->play_buf, s->p_info.play.channels, to_write, s->volume);
       }
     }
-    if (to_write < s->latency_frames) {
+    if (to_write < SUN_BUFFER_FRAMES) {
       drain = 1;
     }
     pfds[0].fd = s->play_fd;
-    pfds[1].fd = s->record_fd;
     if (s->play_fd != -1) {
       if (to_write > 0) {
         pfds[0].events = POLLOUT;
@@ -473,31 +475,21 @@ sun_io_routine(void * arg)
       pfds[0].events = 0;
       to_write = 0;
     }
-    if (s->record_fd != -1) {
-      pfds[1].events = POLLIN;
-      to_read = s->latency_frames;
-    } else {
-      pfds[1].events = 0;
-      to_read = 0;
-    }
+    to_read = s->record_fd != -1 ? SUN_BUFFER_FRAMES : 0;
     write_ofs = 0;
     read_ofs = 0;
     while (to_write > 0 || to_read > 0) {
       size_t bytes;
       ssize_t n, frames;
 
-      if (poll(pfds, 2, SUN_POLL_TIMEOUT) == -1) {
+      if (pfds[0].events != 0 && poll(pfds, 1, SUN_POLL_TIMEOUT) == -1) {
         LOG("poll failed");
         state = CUBEB_STATE_ERROR;
         break;
       }
-      if ((pfds[0].revents & POLLHUP) || (pfds[1].revents & POLLHUP) ||
-          (pfds[0].revents & POLLERR) || (pfds[1].revents & POLLERR)) {
+      if ((pfds[0].revents & POLLHUP) || (pfds[0].revents & POLLERR)) {
         LOG("audio device disconnected");
         state = CUBEB_STATE_ERROR;
-        break;
-      }
-      if (to_write == 0 && (pfds[1].events & POLLIN) == 0) {
         break;
       }
       if (to_write > 0 && (pfds[0].revents & POLLOUT)) {
@@ -514,7 +506,7 @@ sun_io_routine(void * arg)
           pfds[0].events = 0;
         }
       }
-      if (to_read > 0 && (pfds[1].revents & POLLIN)) {
+      if (to_read > 0) {
         bytes = FRAMES_TO_BYTES(to_read, s->r_info.record.channels);
         if ((n = read(s->record_fd, s->record_buf + read_ofs, bytes)) < 0) {
           state = CUBEB_STATE_ERROR;
@@ -523,9 +515,6 @@ sun_io_routine(void * arg)
         frames = BYTES_TO_FRAMES(n, s->r_info.record.channels);
         to_read -= frames;
         read_ofs += frames;
-        if (to_read == 0) {
-          pfds[1].events = 0;
-        }
       }
     }
     if (drain && state != CUBEB_STATE_ERROR) {
@@ -554,6 +543,7 @@ sun_stream_init(cubeb * context,
   cubeb_stream *s = NULL;
 
   (void)stream_name;
+  (void)latency_frames;
   if ((s = calloc(1, sizeof(cubeb_stream))) == NULL) {
     ret = CUBEB_ERROR;
     goto error;
@@ -579,7 +569,7 @@ sun_stream_init(cubeb * context,
       goto error;
     }
     if (s->record_fd == -1) {
-      if ((s->record_fd = open(s->input_name, O_RDONLY | O_NONBLOCK)) == -1) {
+      if ((s->record_fd = open(s->input_name, O_RDONLY)) == -1) {
         LOG("Audio device cannot be opened as read-only");
         ret = CUBEB_ERROR_DEVICE_UNAVAILABLE;
         goto error;
@@ -618,29 +608,28 @@ sun_stream_init(cubeb * context,
       goto error;
     }
   }
-  s->latency_frames = latency_frames;
   s->context = context;
   s->volume = 1.0;
   s->state_cb = state_callback;
   s->data_cb = data_callback;
   s->user_ptr = user_ptr;
-  if (s->play_fd != -1 && (s->play_buf = calloc(latency_frames,
+  if (s->play_fd != -1 && (s->play_buf = calloc(SUN_BUFFER_FRAMES,
       s->p_info.play.channels * sizeof(int16_t))) == NULL) {
     ret = CUBEB_ERROR;
     goto error;
   }
-  if (s->record_fd != -1 && (s->record_buf = calloc(latency_frames,
+  if (s->record_fd != -1 && (s->record_buf = calloc(SUN_BUFFER_FRAMES,
       s->r_info.record.channels * sizeof(int16_t))) == NULL) {
     ret = CUBEB_ERROR;
     goto error;
   }
   if (s->floating) {
-    if (s->play_fd != -1 && (s->f_play_buf = calloc(latency_frames,
+    if (s->play_fd != -1 && (s->f_play_buf = calloc(SUN_BUFFER_FRAMES,
         s->p_info.play.channels * sizeof(float))) == NULL) {
       ret = CUBEB_ERROR;
       goto error;
     }
-    if (s->record_fd != -1 && (s->f_record_buf = calloc(latency_frames,
+    if (s->record_fd != -1 && (s->f_record_buf = calloc(SUN_BUFFER_FRAMES,
         s->r_info.record.channels * sizeof(float))) == NULL) {
       ret = CUBEB_ERROR;
       goto error;
@@ -676,12 +665,23 @@ sun_stream_get_position(cubeb_stream * s, uint64_t * position)
 static int
 sun_stream_get_latency(cubeb_stream * stream, uint32_t * latency)
 {
-  cubeb_stream_params params;
+#ifdef AUDIO_GETBUFINFO
+  struct audio_info info;
 
-  params.rate = (stream->play_fd != -1) ?
-    stream->p_info.play.sample_rate :
-    stream->r_info.record.sample_rate;
+  if (ioctl(stream->play_fd, AUDIO_GETBUFINFO, &info) == -1) {
+    return CUBEB_ERROR;
+  }
+
+  *latency = BYTES_TO_FRAMES(info.play.seek + info.blocksize,
+                             info.play.channels);
+  return CUBEB_OK;
+#else
+  cubeb_params params;
+
+  params.rate = stream->p_info.play.sample_rate;
+
   return sun_get_min_latency(NULL, params, latency);
+#endif
 }
 
 static int
