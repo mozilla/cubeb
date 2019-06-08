@@ -45,6 +45,9 @@ if (BUILD_RUST_LIBS)
   if(EXISTS "${PROJECT_SOURCE_DIR}/src/cubeb-pulse-rs")
     set(USE_PULSE_RUST 1)
   endif()
+  if(EXISTS "${PROJECT_SOURCE_DIR}/src/cubeb-coreaudio-rs")
+    set(USE_AUDIOUNIT_RUST 1)
+  endif()
 endif()
 
 # On OS/2, visibility attribute is not supported.
@@ -246,6 +249,24 @@ if(USE_PULSE_RUST)
   target_link_libraries(cubeb PRIVATE
     debug "${CMAKE_SOURCE_DIR}/src/cubeb-pulse-rs/target/debug/libcubeb_pulse.a"
     optimized "${CMAKE_SOURCE_DIR}/src/cubeb-pulse-rs/target/release/libcubeb_pulse.a")
+endif()
+
+if(USE_AUDIOUNIT_RUST)
+  include(ExternalProject)
+  set_directory_properties(PROPERTIES EP_PREFIX ${CMAKE_BINARY_DIR}/rust)
+  ExternalProject_Add(
+    cubeb_coreaudio_rs
+    DOWNLOAD_COMMAND ""
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND cargo build COMMAND cargo build --release
+    BINARY_DIR "${CMAKE_SOURCE_DIR}/src/cubeb-coreaudio-rs"
+    INSTALL_COMMAND ""
+    LOG_BUILD ON)
+  add_dependencies(cubeb cubeb_coreaudio_rs)
+  target_compile_definitions(cubeb PRIVATE USE_AUDIOUNIT_RUST)
+  target_link_libraries(cubeb PRIVATE
+    debug "${CMAKE_SOURCE_DIR}/src/cubeb-coreaudio-rs/target/debug/libcubeb_coreaudio.a"
+    optimized "${CMAKE_SOURCE_DIR}/src/cubeb-coreaudio-rs/target/release/libcubeb_coreaudio.a")
 endif()
 
 find_package(Doxygen)
