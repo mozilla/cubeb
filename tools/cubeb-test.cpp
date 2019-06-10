@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdarg>
 #include <cstring>
+#include <inttypes.h>
 #include <iostream>
 #ifdef _WIN32
 #include <objbase.h> // Used by CoInitialize()
@@ -332,7 +333,7 @@ bool choose_action(const cubeb_client& cl, operation_data * op, char c) {
     }
   } else if (c == 'c') {
     uint64_t pos = cl.get_stream_position();
-    fprintf(stderr, "stream position %llu\n", pos);
+    fprintf(stderr, "stream position %" PRIu64 "\n", pos);
   } else if (c == 'i') {
     op->collection_device_type = CUBEB_DEVICE_TYPE_INPUT;
     fprintf(stderr, "collection device type changed to INPUT\n");
