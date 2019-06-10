@@ -96,7 +96,7 @@ void test_ring_multi(lock_free_audio_ring_buffer<T>& buf, int channels, int capa
 
   const int block_size = 128;
 
-  std::thread t([&buf, capacity_frames, channels] {
+  std::thread t([=, &buf] {
     int iterations = 1002;
     std::unique_ptr<T[]> in_buffer(new T[capacity_frames * channels]);
     sequence_generator<T> gen(channels);
@@ -160,7 +160,7 @@ void test_reset_api() {
 	const size_t enqueue_size = ring_buffer_size / 2;
 
 	lock_free_queue<float> ring(ring_buffer_size);
-	std::thread t([&ring] {
+	std::thread t([=, &ring] {
 		std::unique_ptr<float[]> in_buffer(new float[enqueue_size]);
 		ring.enqueue(in_buffer.get(), enqueue_size);
 	});
@@ -171,7 +171,7 @@ void test_reset_api() {
 
 	// Enqueue with a different thread. We have reset the thread ID
 	// in the ring buffer, this should work.
-	std::thread t2([&ring] {
+	std::thread t2([=, &ring] {
 		std::unique_ptr<float[]> in_buffer(new float[enqueue_size]);
 		ring.enqueue(in_buffer.get(), enqueue_size);
 	});
