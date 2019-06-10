@@ -1,3 +1,4 @@
+#define __STDC_FORMAT_MACROS
 #include "cubeb/cubeb.h"
 #include <atomic>
 #include <cassert>
