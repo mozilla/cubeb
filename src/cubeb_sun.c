@@ -80,6 +80,7 @@ struct cubeb_stream {
   struct cubeb * context;
   void * user_ptr;
   pthread_t thread;
+  pthread_mutex_t mutex; /* protects volume, frames_written */
   int floating;
   int running;
   int play_fd;
@@ -364,6 +365,7 @@ sun_stream_stop(cubeb_stream * s)
 static void
 sun_stream_destroy(cubeb_stream * s)
 {
+  pthread_mutex_destroy(&s->mutex);
   sun_stream_stop(s);
   if (s->play_fd != -1) {
     close(s->play_fd);
@@ -449,8 +451,10 @@ sun_io_routine(void * arg)
         break;
       }
       if (s->play_fd != -1) {
+        pthread_mutex_lock(&s->mutex);
         sun_float_to_linear(s->f_play_buf, s->play_buf,
                             s->p_info.play.channels, to_write, s->volume);
+        pthread_mutex_unlock(&s->mutex);
       }
     } else {
       to_write = s->data_cb(s, s->user_ptr,
@@ -460,7 +464,9 @@ sun_io_routine(void * arg)
         break;
       }
       if (s->play_fd != -1) {
+        pthread_mutex_lock(&s->mutex);
         sun_linear_set_vol(s->play_buf, s->p_info.play.channels, to_write, s->volume);
+        pthread_mutex_unlock(&s->mutex);
       }
     }
     if (to_write < SUN_BUFFER_FRAMES) {
@@ -499,7 +505,9 @@ sun_io_routine(void * arg)
           break;
         }
         frames = BYTES_TO_FRAMES(n, s->p_info.play.channels);
+        pthread_mutex_lock(&s->mutex);
         s->frames_written += frames;
+        pthread_mutex_unlock(&s->mutex);
         to_write -= frames;
         write_ofs += frames;
         if (to_write == 0) {
@@ -613,6 +621,10 @@ sun_stream_init(cubeb * context,
   s->state_cb = state_callback;
   s->data_cb = data_callback;
   s->user_ptr = user_ptr;
+  if (pthread_mutex_init(&s->mutex, NULL) != 0) {
+    LOG("Failed to create mutex");
+    goto error;
+  }
   if (s->play_fd != -1 && (s->play_buf = calloc(SUN_BUFFER_FRAMES,
       s->p_info.play.channels * sizeof(int16_t))) == NULL) {
     ret = CUBEB_ERROR;
@@ -648,7 +660,7 @@ static int
 sun_stream_start(cubeb_stream * s)
 {
   s->running = 1;
-  if (pthread_create(&s->thread, NULL, sun_io_routine, s) == -1) {
+  if (pthread_create(&s->thread, NULL, sun_io_routine, s) != 0) {
     LOG("Couldn't create thread");
     return CUBEB_ERROR;
   }
@@ -658,7 +670,9 @@ sun_stream_start(cubeb_stream * s)
 static int
 sun_stream_get_position(cubeb_stream * s, uint64_t * position)
 {
+  pthread_mutex_lock(&s->mutex);
   *position = s->frames_written;
+  pthread_mutex_unlock(&s->mutex);
   return CUBEB_OK;
 }
 
@@ -687,7 +701,9 @@ sun_stream_get_latency(cubeb_stream * stream, uint32_t * latency)
 static int
 sun_stream_set_volume(cubeb_stream * stream, float volume)
 {
+  pthread_mutex_lock(&stream->mutex);
   stream->volume = volume;
+  pthread_mutex_unlock(&stream->mutex);
   return CUBEB_OK;
 }
 
