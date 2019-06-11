@@ -80,7 +80,7 @@ struct cubeb_stream {
   struct cubeb * context;
   void * user_ptr;
   pthread_t thread;
-  pthread_mutex_t mutex; /* protects volume, frames_written */
+  pthread_mutex_t mutex; /* protects running, volume, frames_written */
   int floating;
   int running;
   int play_fd;
@@ -355,9 +355,13 @@ sun_copy_params(int fd, cubeb_stream * stream, cubeb_stream_params * params,
 static int
 sun_stream_stop(cubeb_stream * s)
 {
+  pthread_mutex_lock(&s->mutex);
   if (s->running) {
     s->running = 0;
+    pthread_mutex_unlock(&s->mutex);
     pthread_join(s->thread, NULL);
+  } else {
+    pthread_mutex_unlock(&s->mutex);
   }
   return CUBEB_OK;
 }
@@ -435,10 +439,13 @@ sun_io_routine(void * arg)
 
   s->state_cb(s, s->user_ptr, CUBEB_STATE_STARTED);
   while (state != CUBEB_STATE_ERROR) {
+    pthread_mutex_lock(&s->mutex);
     if (!s->running) {
+      pthread_mutex_unlock(&s->mutex);
       state = CUBEB_STATE_STOPPED;
       break;
     }
+    pthread_mutex_unlock(&s->mutex);
     if (s->floating) {
       if (s->record_fd != -1) {
         sun_linear_to_float(s->record_buf, s->f_record_buf,
