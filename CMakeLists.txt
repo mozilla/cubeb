@@ -225,6 +225,14 @@ if(USE_SNDIO)
   target_link_libraries(cubeb PRIVATE sndio)
 endif()
 
+check_include_files(sys/audioio.h USE_SUN)
+if(USE_SUN)
+  target_sources(cubeb PRIVATE
+    src/cubeb_sun.c)
+  target_compile_definitions(cubeb PRIVATE USE_SUN)
+  target_link_libraries(cubeb PRIVATE pthread)
+endif()
+
 check_include_files(kai.h USE_KAI)
 if(USE_KAI)
   target_sources(cubeb PRIVATE
