@@ -8,7 +8,6 @@
 #include <sys/ioctl.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <poll.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -97,6 +96,7 @@ struct cubeb_stream {
   char input_name[32];
   char output_name[32];
   uint64_t frames_written;
+  uint64_t blocks_written;
 };
 
 int
@@ -434,7 +434,6 @@ sun_io_routine(void * arg)
   long to_write = 0;
   size_t write_ofs = 0;
   size_t read_ofs = 0;
-  struct pollfd pfds[1];
   int drain = 0;
 
   s->state_cb(s, s->user_ptr, CUBEB_STATE_STARTED);
@@ -479,15 +478,7 @@ sun_io_routine(void * arg)
     if (to_write < SUN_BUFFER_FRAMES) {
       drain = 1;
     }
-    pfds[0].fd = s->play_fd;
-    if (s->play_fd != -1) {
-      if (to_write > 0) {
-        pfds[0].events = POLLOUT;
-      }
-    } else {
-      pfds[0].events = 0;
-      to_write = 0;
-    }
+    to_write = s->play_fd != -1 ? to_write : 0;
     to_read = s->record_fd != -1 ? SUN_BUFFER_FRAMES : 0;
     write_ofs = 0;
     read_ofs = 0;
@@ -495,17 +486,7 @@ sun_io_routine(void * arg)
       size_t bytes;
       ssize_t n, frames;
 
-      if (pfds[0].events != 0 && poll(pfds, 1, SUN_POLL_TIMEOUT) == -1) {
-        LOG("poll failed");
-        state = CUBEB_STATE_ERROR;
-        break;
-      }
-      if ((pfds[0].revents & POLLHUP) || (pfds[0].revents & POLLERR)) {
-        LOG("audio device disconnected");
-        state = CUBEB_STATE_ERROR;
-        break;
-      }
-      if (to_write > 0 && (pfds[0].revents & POLLOUT)) {
+      if (to_write > 0) {
         bytes = FRAMES_TO_BYTES(to_write, s->p_info.play.channels);
         if ((n = write(s->play_fd, s->play_buf + write_ofs, bytes)) < 0) {
           state = CUBEB_STATE_ERROR;
@@ -517,9 +498,6 @@ sun_io_routine(void * arg)
         pthread_mutex_unlock(&s->mutex);
         to_write -= frames;
         write_ofs += frames;
-        if (to_write == 0) {
-          pfds[0].events = 0;
-        }
       }
       if (to_read > 0) {
         bytes = FRAMES_TO_BYTES(to_read, s->r_info.record.channels);
@@ -607,7 +585,7 @@ sun_stream_init(cubeb * context,
       goto error;
     }
     if (s->play_fd == -1) {
-      if ((s->play_fd = open(s->output_name, O_WRONLY | O_NONBLOCK)) == -1) {
+      if ((s->play_fd = open(s->output_name, O_WRONLY)) == -1) {
         LOG("Audio device cannot be opened as write-only");
         ret = CUBEB_ERROR_DEVICE_UNAVAILABLE;
         goto error;
@@ -677,10 +655,22 @@ sun_stream_start(cubeb_stream * s)
 static int
 sun_stream_get_position(cubeb_stream * s, uint64_t * position)
 {
+#ifdef AUDIO_GETOOFFS
+  struct audio_offset offset;
+
+  if (ioctl(s->play_fd, AUDIO_GETOOFFS, &offset) == -1) {
+    return CUBEB_ERROR;
+  }
+  s->blocks_written += offset.deltablks;
+  *position = BYTES_TO_FRAMES(s->blocks_written * s->p_info.blocksize,
+                              s->p_info.play.channels);
+  return CUBEB_OK;
+#else
   pthread_mutex_lock(&s->mutex);
   *position = s->frames_written;
   pthread_mutex_unlock(&s->mutex);
   return CUBEB_OK;
+#endif
 }
 
 static int
