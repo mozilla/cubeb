@@ -26,6 +26,7 @@ matrix:
     - os: osx
     - os: osx
       env: SCAN_BUILD=true
+    - os: windows
 before_install:
   - if [[ -n $SCAN_BUILD ]]; then
       if [[ $TRAVIS_OS_NAME = "osx" ]]; then
