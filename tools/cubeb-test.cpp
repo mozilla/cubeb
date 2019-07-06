@@ -282,10 +282,13 @@ void print_help() {
   fprintf(stderr, "%s\n", msg);
 }
 
-bool choose_action(const cubeb_client& cl, operation_data * op, char c) {
+bool choose_action(const cubeb_client& cl, operation_data * op, int c) {
+  // Consume "enter" and "space"
   while (c == 10 || c == 32) {
-    // Consume "enter and "space"
     c = getchar();
+  }
+  if (c == EOF) {
+    c = 'q';
   }
 
   if (c == 'q') {
@@ -362,7 +365,7 @@ bool choose_action(const cubeb_client& cl, operation_data * op, char c) {
       fprintf(stderr, "unregister_device_collection_changed failed\n");
     }
   } else {
-    fprintf(stderr, "Error: %c is not a valid entry\n", c);
+    fprintf(stderr, "Error: '%c' is not a valid entry\n", c);
   }
 
   return true; // Loop up
