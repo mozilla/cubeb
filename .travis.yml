@@ -5,8 +5,8 @@ notifications:
     on_success: never
 
 rust:
-# Version 1.21 is the minimum version of rust supported by Gecko.
-- 1.21.0
+# Version 1.36 is the minimum version of rust supported by Gecko.
+- 1.36.0
 - stable
 - nightly
 
@@ -33,7 +33,7 @@ addons: &apt_64
 matrix:
   include:
   # Add in 32-bit builds
-  - rust: 1.21.0
+  - rust: 1.36.0
     env:
     - TARGET=i686-unknown-linux-gnu
     addons: &apt_32
@@ -43,7 +43,7 @@ matrix:
         - g++-multilib
         - libpulse-dev:i386
         - libglib2.0-dev:i386
-  - rust: 1.21.0
+  - rust: 1.36.0
     env:
     - TARGET=i686-unknown-linux-gnu
     - FEATURES=pulse-dlopen
