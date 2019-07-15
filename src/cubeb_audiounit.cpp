@@ -61,7 +61,7 @@ const char * PRIVATE_AGGREGATE_DEVICE_NAME = "CubebAggregateDevice";
 /* Testing empirically, some headsets report a minimal latency that is very
  * low, but this does not work in practice. Lie and say the minimum is 256
  * frames. */
-const uint32_t SAFE_MIN_LATENCY_FRAMES = 256;
+const uint32_t SAFE_MIN_LATENCY_FRAMES = 128;
 const uint32_t SAFE_MAX_LATENCY_FRAMES = 512;
 
 const AudioObjectPropertyAddress DEFAULT_INPUT_DEVICE_PROPERTY_ADDRESS = {
