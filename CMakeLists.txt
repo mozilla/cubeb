@@ -256,7 +256,7 @@ if(USE_PULSE_RUST)
   target_compile_definitions(cubeb PRIVATE USE_PULSE_RUST)
   target_link_libraries(cubeb PRIVATE
     debug "${CMAKE_SOURCE_DIR}/src/cubeb-pulse-rs/target/debug/libcubeb_pulse.a"
-    optimized "${CMAKE_SOURCE_DIR}/src/cubeb-pulse-rs/target/release/libcubeb_pulse.a")
+    optimized "${CMAKE_SOURCE_DIR}/src/cubeb-pulse-rs/target/release/libcubeb_pulse.a" pulse)
 endif()
 
 if(USE_AUDIOUNIT_RUST)
