@@ -8,7 +8,7 @@ use context;
 use ffi;
 use operation;
 use std::ffi::CStr;
-use std::mem::{self, forget, MaybeUninit};
+use std::mem;
 use std::os::raw::{c_int, c_void};
 use std::ptr;
 use util::*;
@@ -190,9 +190,9 @@ impl Stream {
         unsafe extern "C" fn wrapped<F>(s: *mut ffi::pa_stream, success: c_int, userdata: *mut c_void)
             where F: Fn(&Stream, i32, *mut c_void)
         {
+            use std::mem::{forget, uninitialized};
             let mut stm = stream::from_raw_ptr(s);
-            let cb = MaybeUninit::<F>::uninit();
-            let result = (*cb.as_ptr())(&mut stm, success, userdata);
+            let result = uninitialized::<F>()(&mut stm, success, userdata);
             forget(stm);
 
             result
@@ -225,9 +225,9 @@ impl Stream {
         unsafe extern "C" fn wrapped<F>(s: *mut ffi::pa_stream, userdata: *mut c_void)
             where F: Fn(&Stream, *mut c_void)
         {
+            use std::mem::{forget, uninitialized};
             let mut stm = stream::from_raw_ptr(s);
-            let cb = MaybeUninit::<F>::uninit();
-            let result = (*cb.as_ptr())(&mut stm, userdata);
+            let result = uninitialized::<F>()(&mut stm, userdata);
             forget(stm);
 
             result
@@ -253,9 +253,9 @@ impl Stream {
         unsafe extern "C" fn wrapped<F>(s: *mut ffi::pa_stream, nbytes: usize, userdata: *mut c_void)
             where F: Fn(&Stream, usize, *mut c_void)
         {
+            use std::mem::{forget, uninitialized};
             let mut stm = stream::from_raw_ptr(s);
-            let cb = MaybeUninit::<F>::uninit();
-            let result = (*cb.as_ptr())(&mut stm, nbytes, userdata);
+            let result = uninitialized::<F>()(&mut stm, nbytes, userdata);
             forget(stm);
 
             result
@@ -281,9 +281,9 @@ impl Stream {
         unsafe extern "C" fn wrapped<F>(s: *mut ffi::pa_stream, nbytes: usize, userdata: *mut c_void)
             where F: Fn(&Stream, usize, *mut c_void)
         {
+            use std::mem::{forget, uninitialized};
             let mut stm = stream::from_raw_ptr(s);
-            let cb = MaybeUninit::<F>::uninit();
-            let result = (*cb.as_ptr())(&mut stm, nbytes, userdata);
+            let result = uninitialized::<F>()(&mut stm, nbytes, userdata);
             forget(stm);
 
             result
@@ -303,9 +303,9 @@ impl Stream {
         unsafe extern "C" fn wrapped<F>(s: *mut ffi::pa_stream, success: c_int, userdata: *mut c_void)
             where F: Fn(&Stream, i32, *mut c_void)
         {
+            use std::mem::{forget, uninitialized};
             let mut stm = stream::from_raw_ptr(s);
-            let cb = MaybeUninit::<F>::uninit();
-            let result = (*cb.as_ptr())(&mut stm, success, userdata);
+            let result = uninitialized::<F>()(&mut stm, success, userdata);
             forget(stm);
 
             result
