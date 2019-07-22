@@ -20,12 +20,6 @@ use self::RingBufferProducer::*;
 use self::LinearInputBuffer::*;
 
 const PULSE_NO_GAIN: f32 = -1.0;
-// When running duplex callbacks, the input data is fed to a ring buffer, and then later copied to
-// a linear piece of memory is used to hold the input samples, so that they are passed to the audio
-// callback that delivers it to the callees. Their size depends on the buffer size requested
-// initially.  This is to be tuned when changing tlength and fragsize, but this value works for
-// now.
-const INPUT_BUFFER_CAPACITY: usize = 4096;
 
 /// Iterator interface to `ChannelLayout`.
 ///
@@ -149,23 +143,23 @@ struct BufferManager {
 impl BufferManager {
     // When opening a duplex stream, the sample-spec are guaranteed to match. It's ok to have
     // either the input or output sample-spec here.
-    fn new(sample_spec: &pulse::SampleSpec) -> BufferManager {
+    fn new(input_buffer_size: usize, sample_spec: &pulse::SampleSpec) -> BufferManager {
         if sample_spec.format == PA_SAMPLE_S16BE ||
            sample_spec.format == PA_SAMPLE_S16LE  {
-                let ring = RingBuffer::<i16>::new(INPUT_BUFFER_CAPACITY);
+                let ring = RingBuffer::<i16>::new(input_buffer_size);
                 let (prod, cons) = ring.split();
                 return BufferManager {
                     producer: IntegerRingBufferProducer(prod),
                     consumer: IntegerRingBufferConsumer(cons),
-                    linear_input_buffer: IntegerLinearInputBuffer(Vec::<i16>::with_capacity(INPUT_BUFFER_CAPACITY))
+                    linear_input_buffer: IntegerLinearInputBuffer(Vec::<i16>::with_capacity(input_buffer_size))
                 };
             } else {
-                let ring = RingBuffer::<f32>::new(INPUT_BUFFER_CAPACITY);
+                let ring = RingBuffer::<f32>::new(input_buffer_size);
                 let (prod, cons) = ring.split();
                 return BufferManager {
                     producer: FloatRingBufferProducer(prod),
                     consumer: FloatRingBufferConsumer(cons),
-                    linear_input_buffer: FloatLinearInputBuffer(Vec::<f32>::with_capacity(INPUT_BUFFER_CAPACITY))
+                    linear_input_buffer: FloatLinearInputBuffer(Vec::<f32>::with_capacity(input_buffer_size))
                 };
             }
     }
@@ -408,8 +402,15 @@ impl<'ctx> PulseStream<'ctx> {
                         s.set_state_callback(check_error, stm.as_mut() as *mut _ as *mut _);
                         s.set_write_callback(write_data, stm.as_mut() as *mut _ as *mut _);
 
-                        let battr =
-                            set_buffering_attribute(latency_frames, &stm.output_sample_spec);
+                        let buffer_size_bytes = latency_frames * stm.output_sample_spec.frame_size() as u32;
+
+                        let battr = pa_buffer_attr {
+                            maxlength: u32::max_value(),
+                            prebuf: u32::max_value(),
+                            fragsize: u32::max_value(),
+                            tlength: buffer_size_bytes * 2,
+                            minreq: buffer_size_bytes / 4
+                        };
                         let device_name = super::try_cstr_from(output_device as *const _);
                         let _ = s.connect_playback(
                             device_name,
@@ -441,7 +442,14 @@ impl<'ctx> PulseStream<'ctx> {
                         s.set_state_callback(check_error, stm.as_mut() as *mut _ as *mut _);
                         s.set_read_callback(read_data, stm.as_mut() as *mut _ as *mut _);
 
-                        let battr = set_buffering_attribute(latency_frames, &stm.input_sample_spec);
+                        let buffer_size_bytes = latency_frames * stm.input_sample_spec.frame_size() as u32;
+                        let battr = pa_buffer_attr {
+                            maxlength: u32::max_value(),
+                            prebuf: u32::max_value(),
+                            fragsize: buffer_size_bytes,
+                            tlength: buffer_size_bytes,
+                            minreq: buffer_size_bytes
+                        };
                         let device_name = super::try_cstr_from(input_device as *const _);
                         let _ = s.connect_record(
                             device_name,
@@ -464,7 +472,9 @@ impl<'ctx> PulseStream<'ctx> {
 
             // Duplex, set up the ringbuffer
             if input_stream_params.is_some() && output_stream_params.is_some() {
-                stm.input_buffer_manager = Some(BufferManager::new(&stm.input_sample_spec))
+                // A bit more room in case of output underrun.
+                let buffer_size_bytes = 2 * latency_frames * stm.input_sample_spec.frame_size() as u32;
+                stm.input_buffer_manager = Some(BufferManager::new(buffer_size_bytes as usize, &stm.input_sample_spec))
             }
 
             let r = if stm.wait_until_ready() {
@@ -556,7 +566,7 @@ impl<'ctx> StreamOps for PulseStream<'ctx> {
                 let size = stm.output_stream
                     .as_ref()
                     .map_or(0, |s| s.writable_size().unwrap_or(0));
-                stm.trigger_user_callback(ptr::null_mut(), size);
+                stm.trigger_user_callback(std::ptr::null(), size);
             }
         }
 
@@ -1096,30 +1106,6 @@ fn context_success(_: &pulse::Context, success: i32, u: *mut c_void) {
         cubeb_log!("context_success ignored failure: {}", success);
     }
     ctx.mainloop.signal();
-}
-
-fn set_buffering_attribute(latency_frames: u32, sample_spec: &pa_sample_spec) -> pa_buffer_attr {
-    // When changing this, change the constant INPUT_BUFFER_CAPACITY to reflect the new sizes.
-    let tlength = latency_frames * sample_spec.frame_size() as u32;
-    let minreq = tlength / 4;
-    let battr = pa_buffer_attr {
-        maxlength: u32::max_value(),
-        prebuf: u32::max_value(),
-        tlength: tlength,
-        minreq: minreq,
-        fragsize: minreq,
-    };
-
-    cubeb_log!(
-        "Requested buffer attributes maxlength {}, tlength {}, prebuf {}, minreq {}, fragsize {}",
-        battr.maxlength,
-        battr.tlength,
-        battr.prebuf,
-        battr.minreq,
-        battr.fragsize
-    );
-
-    battr
 }
 
 fn invalid_format() -> Error {
