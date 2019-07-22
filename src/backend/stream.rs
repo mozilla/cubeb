@@ -368,8 +368,9 @@ impl<'ctx> PulseStream<'ctx> {
             }
 
             if stm.input_stream.is_some() {
-                let nsamples = nbytes / stm.output_sample_spec.sample_size();
-                let p = stm.input_buffer_manager.as_mut().unwrap().get_linear_input_data(nsamples);
+                let nframes = nbytes / stm.output_sample_spec.frame_size();
+                let nsamples_input = nframes * stm.input_sample_spec.channels as usize;
+                let p = stm.input_buffer_manager.as_mut().unwrap().get_linear_input_data(nsamples_input);
                 stm.trigger_user_callback(p, nbytes);
             } else {
                 // Output/playback only operation.
