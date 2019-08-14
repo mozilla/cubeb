@@ -692,7 +692,7 @@ get_rate(cubeb_stream * stm)
 uint32_t
 hns_to_frames(uint32_t rate, REFERENCE_TIME hns)
 {
-  return std::ceil(hns / 10000000.0 * rate);
+  return std::ceil((hns - 1) / 10000000.0 * rate);
 }
 
 uint32_t
