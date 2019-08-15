@@ -611,18 +611,6 @@ audiounit_output_callback(void * user_ptr,
     return noErr;
   }
 
-  if (stm->draining) {
-    OSStatus r = AudioOutputUnitStop(stm->output_unit);
-    assert(r == 0);
-    if (stm->input_unit) {
-      r = AudioOutputUnitStop(stm->input_unit);
-      assert(r == 0);
-    }
-    stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
-    audiounit_make_silent(&outBufferList->mBuffers[0]);
-    return noErr;
-  }
-
   /* Get output buffer. */
   if (stm->mixer) {
     // If remixing needs to occur, we can't directly work in our final
@@ -721,6 +709,12 @@ audiounit_output_callback(void * user_ptr,
         cubeb_pan_stereo_buffer_int((short*)output_buffer, outframes, panning);
       }
     }
+  }
+
+  if (stm->draining) {
+    audiounit_stream_stop_internal(stm);
+    stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
+    stm->shutdown = true;
   }
 
   return noErr;
