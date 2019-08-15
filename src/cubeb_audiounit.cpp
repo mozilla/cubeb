@@ -498,8 +498,8 @@ audiounit_input_callback(void * user_ptr,
   assert(stm->input_unit != NULL);
   assert(AU_IN_BUS == bus);
 
-  if (stm->shutdown) {
-    ALOG("(%p) input shutdown", stm);
+  if (stm->shutdown || stm->reinit_pending) {
+    ALOG("(%p) input shutdown or reinit exit callback early.", stm);
     return noErr;
   }
 
@@ -605,8 +605,8 @@ audiounit_output_callback(void * user_ptr,
   long input_frames = 0;
   void * output_buffer = NULL, * input_buffer = NULL;
 
-  if (stm->shutdown) {
-    ALOG("(%p) output shutdown.", stm);
+  if (stm->shutdown || stm->reinit_pending) {
+    ALOG("(%p) output shutdown or reinit exit callback early.", stm);
     audiounit_make_silent(&outBufferList->mBuffers[0]);
     return noErr;
   }
