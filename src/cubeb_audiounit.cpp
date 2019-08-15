@@ -503,6 +503,17 @@ audiounit_input_callback(void * user_ptr,
     return noErr;
   }
 
+  if (stm->draining) {
+    OSStatus r = AudioOutputUnitStop(stm->input_unit);
+    assert(r == 0);
+    // Only fire state callback in input-only stream. For duplex stream,
+    // the state callback will be fired in output callback.
+    if (stm->output_unit == NULL) {
+      stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
+    }
+    return noErr;
+  }
+
   OSStatus r = audiounit_render_input(stm, flags, tstamp, bus, input_frames);
   if (r != noErr) {
     return r;
@@ -522,12 +533,7 @@ audiounit_input_callback(void * user_ptr,
                                         &total_input_frames,
                                         NULL,
                                         0);
-  if (outframes < total_input_frames) {
-    OSStatus r = AudioOutputUnitStop(stm->input_unit);
-    assert(r == 0);
-    stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
-    return noErr;
-  }
+  stm->draining = outframes < total_input_frames;
 
   // Reset input buffer
   stm->input_linear_buffer->clear();
@@ -614,10 +620,6 @@ audiounit_output_callback(void * user_ptr,
   if (stm->draining) {
     OSStatus r = AudioOutputUnitStop(stm->output_unit);
     assert(r == 0);
-    if (stm->input_unit) {
-      r = AudioOutputUnitStop(stm->input_unit);
-      assert(r == 0);
-    }
     stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
     audiounit_make_silent(&outBufferList->mBuffers[0]);
     return noErr;
