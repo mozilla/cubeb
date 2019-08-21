@@ -67,7 +67,6 @@ add_library(cubeb
   src/cubeb.c
   src/cubeb_mixer.cpp
   src/cubeb_resampler.cpp
-  src/cubeb_panner.cpp
   src/cubeb_log.cpp
   src/cubeb_strings.c
   src/cubeb_utils.cpp

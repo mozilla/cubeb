@@ -434,19 +434,6 @@ cubeb_stream_set_volume(cubeb_stream * stream, float volume)
   return stream->context->ops->stream_set_volume(stream, volume);
 }
 
-int cubeb_stream_set_panning(cubeb_stream * stream, float panning)
-{
-  if (!stream || panning < -1.0 || panning > 1.0) {
-    return CUBEB_ERROR_INVALID_PARAMETER;
-  }
-
-  if (!stream->context->ops->stream_set_panning) {
-    return CUBEB_ERROR_NOT_SUPPORTED;
-  }
-
-  return stream->context->ops->stream_set_panning(stream, panning);
-}
-
 int cubeb_stream_get_current_device(cubeb_stream * stream,
                                     cubeb_device ** const device)
 {
