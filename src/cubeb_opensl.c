@@ -1625,6 +1625,20 @@ opensl_stream_get_position(cubeb_stream * stm, uint64_t * position)
   return CUBEB_OK;
 }
 
+static int
+opensl_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
+{
+  assert(stm && latency);
+
+  uint32_t stream_latency_frames =
+    (stm->user_output_rate * stm->output_latency_ms) / 1000;
+
+  if (stm->resampler) {
+    return stream_latency_frames + cubeb_resampler_latency(stm->resampler);
+  }
+  return stream_latency_frames;
+}
+
 int
 opensl_stream_set_volume(cubeb_stream * stm, float volume)
 {
@@ -1671,7 +1685,7 @@ static struct cubeb_ops const opensl_ops = {
   .stream_stop = opensl_stream_stop,
   .stream_reset_default_device = NULL,
   .stream_get_position = opensl_stream_get_position,
-  .stream_get_latency = NULL,
+  .stream_get_latency = opensl_stream_get_latency,
   .stream_set_volume = opensl_stream_set_volume,
   .stream_get_current_device = NULL,
   .stream_device_destroy = NULL,
