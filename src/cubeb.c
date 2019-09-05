@@ -194,6 +194,9 @@ cubeb_init(cubeb ** context, char const * context_name, char const * backend_nam
 #if defined(USE_JACK)
     jack_init,
 #endif
+#if defined(USE_SNDIO)
+    sndio_init,
+#endif
 #if defined(USE_ALSA)
     alsa_init,
 #endif
@@ -208,9 +211,6 @@ cubeb_init(cubeb ** context, char const * context_name, char const * backend_nam
 #endif
 #if defined(USE_WINMM)
     winmm_init,
-#endif
-#if defined(USE_SNDIO)
-    sndio_init,
 #endif
 #if defined(USE_SUN)
     sun_init,
