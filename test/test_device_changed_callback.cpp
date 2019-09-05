@@ -76,7 +76,7 @@ void test_registering_second_callbacks(cubeb_stream * stream)
 
   // Get an assertion fails when registering a callback
   // without unregistering the original one.
-  ASSERT_DEATH(
+  ASSERT_DEATH_IF_SUPPORTED(
     cubeb_stream_register_device_changed_callback(stream, device_changed_callback),
     ""
   );
