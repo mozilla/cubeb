@@ -163,7 +163,7 @@ if(USE_ALSA)
   target_sources(cubeb PRIVATE
     src/cubeb_alsa.c)
   target_compile_definitions(cubeb PRIVATE USE_ALSA)
-  target_link_libraries(cubeb PRIVATE asound pthread)
+  target_link_libraries(cubeb PRIVATE pthread ${CMAKE_DL_LIBS})
 endif()
 
 check_include_files(jack/jack.h USE_JACK)
