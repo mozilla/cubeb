@@ -14,5 +14,5 @@ crate-type = ["staticlib", "rlib"]
 cubeb-backend = "0.6"
 pulse-ffi = { path = "pulse-ffi" }
 pulse = { path = "pulse-rs" }
-semver = "^0.6"
+semver = "^0.7"
 ringbuf = "0.1"
