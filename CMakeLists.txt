@@ -212,7 +212,7 @@ if(USE_SNDIO)
   target_sources(cubeb PRIVATE
     src/cubeb_sndio.c)
   target_compile_definitions(cubeb PRIVATE USE_SNDIO)
-  target_link_libraries(cubeb PRIVATE pthread)
+  target_link_libraries(cubeb PRIVATE pthread ${CMAKE_DL_LIBS})
 endif()
 
 check_include_files(sys/audioio.h USE_SUN)
