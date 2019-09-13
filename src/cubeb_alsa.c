@@ -811,9 +811,12 @@ alsa_init(cubeb ** context, char const * context_name)
   *context = NULL;
 
 #ifndef DISABLE_LIBASOUND_DLOPEN
-  libasound = dlopen("libasound.so", RTLD_LAZY);
+  libasound = dlopen("libasound.so.2", RTLD_LAZY);
   if (!libasound) {
-    return CUBEB_ERROR;
+    libasound = dlopen("libasound.so", RTLD_LAZY);
+    if (!libasound) {
+      return CUBEB_ERROR;
+    }
   }
 
 #define LOAD(x) {                               \

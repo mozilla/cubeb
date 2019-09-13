@@ -627,7 +627,10 @@ pulse_init(cubeb ** context, char const * context_name)
 #ifndef DISABLE_LIBPULSE_DLOPEN
   libpulse = dlopen("libpulse.so.0", RTLD_LAZY);
   if (!libpulse) {
-    return CUBEB_ERROR;
+    libpulse = dlopen("libpulse.so", RTLD_LAZY);
+    if (!libpulse) {
+      return CUBEB_ERROR;
+    }
   }
 
 #define LOAD(x) {                               \

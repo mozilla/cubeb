@@ -283,10 +283,13 @@ sndio_init(cubeb **context, char const *context_name)
   void * libsndio = NULL;
 
 #ifndef DISABLE_LIBSNDIO_DLOPEN
-  libsndio = dlopen("libsndio.so", RTLD_LAZY);
+  libsndio = dlopen("libsndio.so.7.0", RTLD_LAZY);
   if (!libsndio) {
-    DPR("sndio_init(%s) failed dlopen(libsndio.so)\n", context_name);
-    return CUBEB_ERROR;
+    libsndio = dlopen("libsndio.so", RTLD_LAZY);
+    if (!libsndio) {
+      DPR("sndio_init(%s) failed dlopen(libsndio.so)\n", context_name);
+      return CUBEB_ERROR;
+    }
   }
 
 #define LOAD(x) {                               \
