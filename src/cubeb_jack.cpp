@@ -211,6 +211,9 @@ load_jack_lib(cubeb * context)
 # endif
 #else
   context->libjack = dlopen("libjack.so.0", RTLD_LAZY);
+  if (!context->libjack) {
+    context->libjack = dlopen("libjack.so", RTLD_LAZY);
+  }
 #endif
   if (!context->libjack) {
     return CUBEB_ERROR;
