@@ -496,8 +496,8 @@ audiounit_input_callback(void * user_ptr,
   assert(stm->input_unit != NULL);
   assert(AU_IN_BUS == bus);
 
-  if (stm->shutdown) {
-    ALOG("(%p) input shutdown", stm);
+  if (stm->shutdown || stm->reinit_pending) {
+    ALOG("(%p) input shutdown or reinit exit callback early.", stm);
     return noErr;
   }
 
@@ -603,20 +603,8 @@ audiounit_output_callback(void * user_ptr,
   long input_frames = 0;
   void * output_buffer = NULL, * input_buffer = NULL;
 
-  if (stm->shutdown) {
-    ALOG("(%p) output shutdown.", stm);
-    audiounit_make_silent(&outBufferList->mBuffers[0]);
-    return noErr;
-  }
-
-  if (stm->draining) {
-    OSStatus r = AudioOutputUnitStop(stm->output_unit);
-    assert(r == 0);
-    if (stm->input_unit) {
-      r = AudioOutputUnitStop(stm->input_unit);
-      assert(r == 0);
-    }
-    stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
+  if (stm->shutdown || stm->reinit_pending) {
+    ALOG("(%p) output shutdown or reinit exit callback early.", stm);
     audiounit_make_silent(&outBufferList->mBuffers[0]);
     return noErr;
   }
@@ -705,6 +693,12 @@ audiounit_output_callback(void * user_ptr,
                                 stm->temp_buffer_size,
                                 outBufferList->mBuffers[0].mData,
                                 outBufferList->mBuffers[0].mDataByteSize);
+  }
+
+  if (stm->draining) {
+    audiounit_stream_stop_internal(stm);
+    stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
+    stm->shutdown = true;
   }
 
   return noErr;
