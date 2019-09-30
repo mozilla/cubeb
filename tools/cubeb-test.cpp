@@ -58,6 +58,7 @@ public:
   void set_latency_frames(uint32_t latency_frames);
   uint64_t get_stream_position() const;
   uint32_t get_stream_latency() const;
+  uint32_t get_max_channel_count() const;
 
   long user_data_cb(cubeb_stream* stm, void* user, const void* input_buffer,
                     void* output_buffer, long nframes);
@@ -100,6 +101,7 @@ bool cubeb_client::init(char const * backend_name) {
     fprintf(stderr, "Could not init cubeb\n");
     return false;
   }
+  fprintf(stderr, "Init cubeb backend: %s\n", cubeb_get_backend_id(context));
   return true;
 }
 
@@ -200,6 +202,16 @@ uint32_t cubeb_client::get_stream_latency() const {
     return 0;
   }
   return latency;
+}
+
+uint32_t cubeb_client::get_max_channel_count() const {
+  uint32_t channels = 0;
+  int rv = cubeb_get_max_channel_count(context, &channels);
+  if (rv != CUBEB_OK) {
+    fprintf(stderr, "Could not get max channel count\n");
+    return 0;
+  }
+  return channels;
 }
 
 bool cubeb_client::destroy_stream() const {
@@ -341,10 +353,11 @@ void print_help() {
     "0: change log level to disabled\n"
     "1: change log level to normal\n"
     "2: change log level to verbose\n"
+    "c: get max number of channels\n"
     "p: start a initialized stream\n"
     "s: stop a started stream\n"
     "d: force stream to drain\n"
-    "c: get stream position (client thread)\n"
+    "f: get stream position (client thread)\n"
     "i: change device type to input\n"
     "o: change device type to output\n"
     "a: change device type to input and output\n"
@@ -412,6 +425,9 @@ bool choose_action(cubeb_client& cl, operation_data * op, int c) {
   } else if (c == 'd') {
     cl.force_drain();
   } else if (c == 'c') {
+    uint32_t channel_count = cl.get_max_channel_count();
+    fprintf(stderr, "max channel count (default output device): %u\n", channel_count);
+  } else if (c == 'f') {
     uint64_t pos = cl.get_stream_position();
     uint64_t latency = cl.get_stream_latency();
     fprintf(stderr, "stream position %" PRIu64 " (latency %" PRIu64 ")\n", pos, latency);
