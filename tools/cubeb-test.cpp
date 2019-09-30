@@ -96,7 +96,7 @@ private:
 };
 
 bool cubeb_client::init(char const * backend_name) {
-  int rv = cubeb_init(&context, "Cubeb Test Application", nullptr);
+  int rv = cubeb_init(&context, "Cubeb Test Application", backend_name);
   if (rv != CUBEB_OK) {
     fprintf(stderr, "Could not init cubeb\n");
     return false;
@@ -497,7 +497,7 @@ int main(int argc, char* argv[]) {
   cubeb_client cl;
   cl.activate_log(CUBEB_LOG_DISABLED);
   fprintf(stderr, "Log level is DISABLED\n");
-  cl.init();
+  cl.init(/* default backend */);
 
   op.collection_device_type = CUBEB_DEVICE_TYPE_UNKNOWN;
   fprintf(stderr, "collection device type is UNKNOWN\n");
