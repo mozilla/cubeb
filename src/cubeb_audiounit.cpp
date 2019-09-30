@@ -692,9 +692,13 @@ audiounit_output_callback(void * user_ptr,
 
   /* Post process output samples. */
   if (stm->draining) {
-    size_t outbpf = cubeb_sample_size(stm->output_stream_params.format);
     /* Clear missing frames (silence) */
-    memset((uint8_t*)output_buffer + outframes * outbpf, 0, (output_frames - outframes) * outbpf);
+    size_t missing_samples = (output_frames - outframes) * stm->output_desc.mChannelsPerFrame;
+    size_t size_sample = cubeb_sample_size(stm->output_stream_params.format);
+    /* number of bytes that have been filled with valid audio by the callback. */
+    size_t audio_byte_count = outframes * stm->output_desc.mChannelsPerFrame * size_sample;
+    PodZero((uint8_t*)output_buffer + audio_byte_count,
+            missing_samples * size_sample);
   }
 
   /* Mixing */
