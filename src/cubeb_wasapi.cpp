@@ -331,7 +331,9 @@ struct cubeb_stream {
   bool draining = false;
   /* True when we've destroyed the stream. This pointer is leaked on stream
    * destruction if we could not join the thread. */
-  std::atomic<std::atomic<bool>*> emergency_bailout;
+  std::atomic<std::atomic<bool>*> emergency_bailout { nullptr };
+  /* Synchronizes render thread start to ensure safe access to emergency_bailout. */
+  HANDLE thread_ready_event = 0;
 };
 
 class monitor_device_notifications {
@@ -1143,6 +1145,13 @@ wasapi_stream_render_loop(LPVOID stream)
   cubeb_stream * stm = static_cast<cubeb_stream *>(stream);
   std::atomic<bool> * emergency_bailout = stm->emergency_bailout;
 
+  // Signal wasapi_stream_start that we've copied emergency_bailout.
+  BOOL ok = SetEvent(stm->thread_ready_event);
+  if (!ok) {
+    LOG("thread_ready SetEvent failed: %lx", GetLastError());
+    return 0;
+  }
+
   bool is_playing = true;
   HANDLE wait_array[4] = {
     stm->shutdown_event,
@@ -1169,11 +1178,6 @@ wasapi_stream_render_loop(LPVOID stream)
   if (!mmcss_handle) {
     /* This is not fatal, but we might glitch under heavy load. */
     LOG("Unable to use mmcss to bump the render thread priority: %lx", GetLastError());
-  }
-
-  // This has already been nulled out, simply exit.
-  if (!emergency_bailout) {
-    is_playing = false;
   }
 
   /* WaitForMultipleObjects timeout can trigger in cases where we don't want to
@@ -2471,12 +2475,26 @@ int wasapi_stream_start(cubeb_stream * stm)
     return CUBEB_ERROR;
   }
 
+  stm->thread_ready_event = CreateEvent(NULL, 0, 0, NULL);
+  if (!stm->thread_ready_event) {
+    LOG("Can't create the thread_ready event, error: %lx", GetLastError());
+    return CUBEB_ERROR;
+  }
+
   cubeb_async_log_reset_threads();
   stm->thread = (HANDLE) _beginthreadex(NULL, 512 * 1024, wasapi_stream_render_loop, stm, STACK_SIZE_PARAM_IS_A_RESERVATION, NULL);
   if (stm->thread == NULL) {
     LOG("could not create WASAPI render thread.");
     return CUBEB_ERROR;
   }
+
+  // Wait for wasapi_stream_render_loop to signal that emergency_bailout has
+  // been read, avoiding a bailout situation where we could free `stm`
+  // before wasapi_stream_render_loop had a chance to run.
+  HRESULT hr = WaitForSingleObject(stm->thread_ready_event, INFINITE);
+  XASSERT(hr == WAIT_OBJECT_0);
+  CloseHandle(stm->thread_ready_event);
+  stm->thread_ready_event = 0;
 
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STARTED);
 
@@ -2511,11 +2529,8 @@ int wasapi_stream_stop(cubeb_stream * stm)
   }
 
   if (stop_and_join_render_thread(stm)) {
-    // This is null if we've given the pointer to the other thread
-    if (stm->emergency_bailout.load()) {
-      delete stm->emergency_bailout.load();
-      stm->emergency_bailout = nullptr;
-    }
+    delete stm->emergency_bailout.load();
+    stm->emergency_bailout = nullptr;
   } else {
     // If we could not join the thread, put the stream in error.
     stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
