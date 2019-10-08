@@ -1548,24 +1548,15 @@ bool stop_and_join_render_thread(cubeb_stream * stm)
   /* Wait five seconds for the rendering thread to return. It's supposed to
    * check its event loop very often, five seconds is rather conservative. */
   DWORD r = WaitForSingleObject(stm->thread, 5000);
-  if (r == WAIT_TIMEOUT) {
+  if (r != WAIT_OBJECT_0) {
     /* Something weird happened, leak the thread and continue the shutdown
      * process. */
     *(stm->emergency_bailout) = true;
     // We give the ownership to the rendering thread.
     stm->emergency_bailout = nullptr;
-    LOG("Destroy WaitForSingleObject on thread timed out,"
-        " leaking the thread: %lx", GetLastError());
+    LOG("Destroy WaitForSingleObject on thread failed: %lx, %lx", r, GetLastError());
     rv = false;
   }
-  if (r == WAIT_FAILED) {
-    *(stm->emergency_bailout) = true;
-    // We give the ownership to the rendering thread.
-    stm->emergency_bailout = nullptr;
-    LOG("Destroy WaitForSingleObject on thread failed: %lx", GetLastError());
-    rv = false;
-  }
-
 
   // Only attempts to close and null out the thread and event if the
   // WaitForSingleObject above succeeded, so that calling this function again
