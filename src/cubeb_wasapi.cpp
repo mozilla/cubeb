@@ -347,7 +347,7 @@ public:
   ~monitor_device_notifications()
   {
     SetEvent(shutdown);
-    WaitForSingleObject(thread, 5000);
+    WaitForSingleObject(thread, INFINITE);
     CloseHandle(thread);
 
     CloseHandle(input_changed);
