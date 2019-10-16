@@ -1178,21 +1178,6 @@ pulse_stream_set_volume(cubeb_stream * stm, float volume)
   return CUBEB_OK;
 }
 
-struct sink_input_info_result {
-  pa_cvolume * cvol;
-  pa_threaded_mainloop * mainloop;
-};
-
-static void
-sink_input_info_cb(pa_context * c, pa_sink_input_info const * i, int eol, void * u)
-{
-  struct sink_input_info_result * r = u;
-  if (!eol) {
-    *r->cvol = i->volume;
-  }
-  WRAP(pa_threaded_mainloop_signal)(r->mainloop, 0);
-}
-
 typedef struct {
   char * default_sink_name;
   char * default_source_name;
