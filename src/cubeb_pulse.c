@@ -576,6 +576,11 @@ layout_to_channel_map(cubeb_channel_layout layout, pa_channel_map * cm)
   unsigned int channels_from_layout = cubeb_channel_layout_nb_channels(layout);
   assert(channels_from_layout <= UINT8_MAX);
   cm->channels = (uint8_t) channels_from_layout;
+
+  // Special case single channel center mapping as mono.
+  if (cm->channels == 1 && cm->map[0] == PA_CHANNEL_POSITION_FRONT_CENTER) {
+    cm->map[0] = PA_CHANNEL_POSITION_MONO;
+  }
 }
 
 static void pulse_context_destroy(cubeb * ctx);
