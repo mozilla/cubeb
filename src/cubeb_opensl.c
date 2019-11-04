@@ -1628,15 +1628,13 @@ opensl_stream_get_position(cubeb_stream * stm, uint64_t * position)
 static int
 opensl_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
 {
-  assert(stm && latency);
+  assert(stm);
+  assert(latency);
 
   uint32_t stream_latency_frames =
-    (stm->user_output_rate * stm->output_latency_ms) / 1000;
+    stm->user_output_rate * (stm->output_latency_ms / 1000);
 
-  if (stm->resampler) {
-    return stream_latency_frames + cubeb_resampler_latency(stm->resampler);
-  }
-  return stream_latency_frames;
+  return stream_latency_frames + cubeb_resampler_latency(stm->resampler);
 }
 
 int
