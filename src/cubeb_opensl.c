@@ -794,6 +794,53 @@ opensl_destroy(cubeb * ctx)
 
 static void opensl_stream_destroy(cubeb_stream * stm);
 
+#if defined(__ANDROID__) && (__ANDROID_API__ >= ANDROID_VERSION_LOLLIPOP)
+static int
+opensl_set_format_android(SLAndroidDataFormat_PCM_EX * format, cubeb_stream_params * params)
+{
+  assert(format);
+  assert(params);
+
+  format->formatType = SL_ANDROID_DATAFORMAT_PCM_EX;
+  format->numChannels = params->channels;
+  // samplesPerSec is in milliHertz
+  format->sampleRate = params->rate * 1000;
+  format->channelMask = params->channels == 1 ?
+                       SL_SPEAKER_FRONT_CENTER :
+                       SL_SPEAKER_FRONT_LEFT | SL_SPEAKER_FRONT_RIGHT;
+
+  switch (params->format) {
+    case CUBEB_SAMPLE_S16LE:
+      format->bitsPerSample = 16;
+      format->containerSize = 16;
+      format->representation = SL_ANDROID_PCM_REPRESENTATION_SIGNED_INT;
+      format->endianness = SL_BYTEORDER_LITTLEENDIAN;
+      break;
+    case CUBEB_SAMPLE_S16BE:
+      format->bitsPerSample = 16;
+      format->containerSize = 16;
+      format->representation = SL_ANDROID_PCM_REPRESENTATION_SIGNED_INT;
+      format->endianness = SL_BYTEORDER_BIGENDIAN;
+      break;
+    case CUBEB_SAMPLE_FLOAT32LE:
+      format->bitsPerSample = 32;
+      format->containerSize = 32;
+      format->representation = SL_ANDROID_PCM_REPRESENTATION_FLOAT;
+      format->endianness = SL_BYTEORDER_LITTLEENDIAN;
+      break;
+    case CUBEB_SAMPLE_FLOAT32BE:
+      format->bitsPerSample = 32;
+      format->containerSize = 32;
+      format->representation = SL_ANDROID_PCM_REPRESENTATION_FLOAT;
+      format->endianness = SL_BYTEORDER_BIGENDIAN;
+      break;
+    default:
+      return CUBEB_ERROR_INVALID_FORMAT;
+  }
+  return CUBEB_OK;
+}
+#endif
+
 static int
 opensl_set_format(SLDataFormat_PCM * format, cubeb_stream_params * params)
 {
@@ -1020,13 +1067,34 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
   assert(params);
 
   stm->user_output_rate = params->rate;
-  stm->framesize = params->channels * sizeof(int16_t);
+  if(params->format == CUBEB_SAMPLE_S16NE || params->format == CUBEB_SAMPLE_S16BE) {
+    stm->framesize = params->channels * sizeof(int16_t);
+  } else if(params->format == CUBEB_SAMPLE_FLOAT32NE || params->format == CUBEB_SAMPLE_FLOAT32BE) {
+    stm->framesize = params->channels * sizeof(float);
+  }
   stm->lastPosition = -1;
   stm->lastPositionTimeStamp = 0;
   stm->lastCompensativePosition = -1;
 
-  SLDataFormat_PCM format;
-  int r = opensl_set_format(&format, params);
+  void* format = NULL;
+  SLuint32* format_sample_rate = NULL;
+  int r;
+#if defined(__ANDROID__) && (__ANDROID_API__ >= ANDROID_VERSION_LOLLIPOP)
+  SLAndroidDataFormat_PCM_EX aformat;
+  if(get_android_version() >= ANDROID_VERSION_LOLLIPOP) {
+    format = &aformat;
+    format_sample_rate = &aformat.sampleRate;
+    r = opensl_set_format_android(&aformat, params);
+  }
+#endif
+
+  SLDataFormat_PCM bformat;
+  if(!format) {
+    format = &bformat;
+    format_sample_rate = &bformat.samplesPerSec;
+    r = opensl_set_format(&bformat, params);
+  }
+
   if (r != CUBEB_OK) {
     return CUBEB_ERROR_INVALID_FORMAT;
   }
@@ -1036,7 +1104,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
   loc_bufq.numBuffers = NBUFS;
   SLDataSource source;
   source.pLocator = &loc_bufq;
-  source.pFormat = &format;
+  source.pFormat = format;
 
   SLDataLocator_OutputMix loc_outmix;
   loc_outmix.locatorType = SL_DATALOCATOR_OUTPUTMIX;
@@ -1072,7 +1140,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
   if (res == SL_RESULT_CONTENT_UNSUPPORTED &&
       preferred_sampling_rate != DEFAULT_SAMPLE_RATE) {
     preferred_sampling_rate = DEFAULT_SAMPLE_RATE;
-    format.samplesPerSec = preferred_sampling_rate * 1000;
+    *format_sample_rate = preferred_sampling_rate * 1000;
     res = (*stm->context->eng)->CreateAudioPlayer(stm->context->eng,
                                                   &stm->playerObj,
                                                   &source,
