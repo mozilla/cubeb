@@ -752,7 +752,7 @@ opensl_init(cubeb ** context, char const * context_name)
   }
 
   ctx->p_output_latency_function = cubeb_output_latency_load_method(android_version);
-  if (!ctx->p_output_latency_function) {
+  if (!cubeb_output_latency_method_is_loaded(ctx->p_output_latency_function)) {
     LOG("Warning: output latency is not available, cubeb_stream_get_position() is not supported");
   }
 
