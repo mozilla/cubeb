@@ -796,14 +796,14 @@ static void opensl_stream_destroy(cubeb_stream * stm);
 
 #if defined(__ANDROID__) && (__ANDROID_API__ >= ANDROID_VERSION_LOLLIPOP)
 static int
-opensl_set_format_android(SLAndroidDataFormat_PCM_EX * format, cubeb_stream_params * params)
+opensl_set_format_ext(SLAndroidDataFormat_PCM_EX * format, cubeb_stream_params * params)
 {
   assert(format);
   assert(params);
 
   format->formatType = SL_ANDROID_DATAFORMAT_PCM_EX;
   format->numChannels = params->channels;
-  // samplesPerSec is in milliHertz
+  // sampleRate is in milliHertz
   format->sampleRate = params->rate * 1000;
   format->channelMask = params->channels == 1 ?
                        SL_SPEAKER_FRONT_CENTER :
@@ -811,26 +811,26 @@ opensl_set_format_android(SLAndroidDataFormat_PCM_EX * format, cubeb_stream_para
 
   switch (params->format) {
     case CUBEB_SAMPLE_S16LE:
-      format->bitsPerSample = 16;
-      format->containerSize = 16;
+      format->bitsPerSample = SL_PCMSAMPLEFORMAT_FIXED_16;
+      format->containerSize = SL_PCMSAMPLEFORMAT_FIXED_16;
       format->representation = SL_ANDROID_PCM_REPRESENTATION_SIGNED_INT;
       format->endianness = SL_BYTEORDER_LITTLEENDIAN;
       break;
     case CUBEB_SAMPLE_S16BE:
-      format->bitsPerSample = 16;
-      format->containerSize = 16;
+      format->bitsPerSample = SL_PCMSAMPLEFORMAT_FIXED_16;
+      format->containerSize = SL_PCMSAMPLEFORMAT_FIXED_16;
       format->representation = SL_ANDROID_PCM_REPRESENTATION_SIGNED_INT;
       format->endianness = SL_BYTEORDER_BIGENDIAN;
       break;
     case CUBEB_SAMPLE_FLOAT32LE:
-      format->bitsPerSample = 32;
-      format->containerSize = 32;
+      format->bitsPerSample = SL_PCMSAMPLEFORMAT_FIXED_32;
+      format->containerSize = SL_PCMSAMPLEFORMAT_FIXED_32;
       format->representation = SL_ANDROID_PCM_REPRESENTATION_FLOAT;
       format->endianness = SL_BYTEORDER_LITTLEENDIAN;
       break;
     case CUBEB_SAMPLE_FLOAT32BE:
-      format->bitsPerSample = 32;
-      format->containerSize = 32;
+      format->bitsPerSample = SL_PCMSAMPLEFORMAT_FIXED_32;
+      format->containerSize = SL_PCMSAMPLEFORMAT_FIXED_32;
       format->representation = SL_ANDROID_PCM_REPRESENTATION_FLOAT;
       format->endianness = SL_BYTEORDER_BIGENDIAN;
       break;
@@ -1078,25 +1078,27 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
 
   void* format = NULL;
   SLuint32* format_sample_rate = NULL;
-  int r;
+
 #if defined(__ANDROID__) && (__ANDROID_API__ >= ANDROID_VERSION_LOLLIPOP)
   SLAndroidDataFormat_PCM_EX aformat;
-  if(get_android_version() >= ANDROID_VERSION_LOLLIPOP) {
+  if (get_android_version() >= ANDROID_VERSION_LOLLIPOP) {
+    if (opensl_set_format_ext(&aformat, params) != CUBEB_OK) {
+      return CUBEB_ERROR_INVALID_FORMAT;
+    }
+
     format = &aformat;
     format_sample_rate = &aformat.sampleRate;
-    r = opensl_set_format_android(&aformat, params);
   }
 #endif
 
   SLDataFormat_PCM bformat;
   if(!format) {
+    if(opensl_set_format(&bformat, params) != CUBEB_OK) {
+      return CUBEB_ERROR_INVALID_FORMAT;
+    }
+
     format = &bformat;
     format_sample_rate = &bformat.samplesPerSec;
-    r = opensl_set_format(&bformat, params);
-  }
-
-  if (r != CUBEB_OK) {
-    return CUBEB_ERROR_INVALID_FORMAT;
   }
 
   SLDataLocator_BufferQueue loc_bufq;
