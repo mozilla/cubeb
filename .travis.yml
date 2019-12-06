@@ -29,6 +29,7 @@ matrix:
       compiler: gcc
     - os: freebsd
       env: SCAN_BUILD=true
+    - env: CROSS=android API_LEVEL=android-26
     - os: osx
     - os: osx
       env: SCAN_BUILD=true
