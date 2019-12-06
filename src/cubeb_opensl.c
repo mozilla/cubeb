@@ -1080,25 +1080,23 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params) {
   SLuint32* format_sample_rate = NULL;
 
 #if defined(__ANDROID__) && (__ANDROID_API__ >= ANDROID_VERSION_LOLLIPOP)
-  SLAndroidDataFormat_PCM_EX aformat;
+  SLAndroidDataFormat_PCM_EX pcm_ext_format;
   if (get_android_version() >= ANDROID_VERSION_LOLLIPOP) {
-    if (opensl_set_format_ext(&aformat, params) != CUBEB_OK) {
+    if (opensl_set_format_ext(&pcm_ext_format, params) != CUBEB_OK) {
       return CUBEB_ERROR_INVALID_FORMAT;
     }
-
-    format = &aformat;
-    format_sample_rate = &aformat.sampleRate;
+    format = &pcm_ext_format;
+    format_sample_rate = &pcm_ext_format.sampleRate;
   }
 #endif
 
-  SLDataFormat_PCM bformat;
+  SLDataFormat_PCM pcm_format;
   if(!format) {
-    if(opensl_set_format(&bformat, params) != CUBEB_OK) {
+    if(opensl_set_format(&pcm_format, params) != CUBEB_OK) {
       return CUBEB_ERROR_INVALID_FORMAT;
     }
-
-    format = &bformat;
-    format_sample_rate = &bformat.samplesPerSec;
+    format = &pcm_format;
+    format_sample_rate = &pcm_format.samplesPerSec;
   }
 
   SLDataLocator_BufferQueue loc_bufq;
