@@ -149,8 +149,8 @@ static void update_state(cubeb_stream * stm)
     return;
   }
 
-  // don't wait to stream operations in the main thread.
-  // if an operation on a stream takes a while, the state thread
+  // Don't wait to stream operations in the main thread.
+  // If an operation on a stream takes a while, the state thread
   // can still continue update the other streams.
   int err = pthread_mutex_trylock(&stm->mutex);
   if (err != 0) {
@@ -164,6 +164,10 @@ static void update_state(cubeb_stream * stm)
   enum stream_state old_state = atomic_load(&stm->state);
   enum stream_state new_state;
 
+  // We compute the new state the stream has and then compare_exchange it
+  // if it has changed. This way we will never just overwrite state
+  // changes that were set from the audio thread in the meantime,
+  // such as a draining or error state.
   do {
     if (old_state == STREAM_STATE_SHUTDOWN) {
       pthread_mutex_unlock(&stm->mutex);
@@ -270,21 +274,14 @@ static void update_state(cubeb_stream * stm)
           }
         }
 
-        if (ostate && ostate == AAUDIO_STREAM_STATE_STOPPED) {
-          // setting the state to STOPPING here instead of STOPPED
-          // since the input stream might not be stopped yet.
-          // Even if it is, we consistently want to trigger
-          // CUBEB_STATE_STOPPED. While this may be somewhat unexpected,
-          // it's not wrong and avoiding it would require us to add a
-          // new state (in case istream hasn't stopped yet), something like
-          // STREAM_STATE_STOPPING_QUIET that won't trigger the callback
-          // or just setting the state always (sometimes incorrectly) to STOPPED.
-          new_state = STREAM_STATE_STOPPING;
+        // we always wait until both streams are stopped until we
+        // send STATE_DRAINED. Then we can directly transition
+        // our logical state to STREAM_STATE_STOPPED, not triggering
+        // an additional STATE_STOPPED callback
+        if ((!ostate || ostate == AAUDIO_STREAM_STATE_STOPPED) &&
+            (!istate || istate == AAUDIO_STREAM_STATE_STOPPED)) {
+          new_state = STREAM_STATE_STOPPED;
           stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
-        } else if (!ostate) {
-          // we have an input only stream: draining simply means stopping it
-          assert(istate);
-          new_state = STREAM_STATE_STOPPING;
         }
 
         break;
@@ -437,8 +434,14 @@ aaudio_duplex_data_cb(AAudioStream * astream, void * user_data,
     return AAUDIO_CALLBACK_RESULT_STOP;
   }
 
+  // This can happen shortly after starting the stream. AAudio might immediately
+  // begin to buffer output but not have any input ready yet. We could
+  // block AAudioStream_read (passing a timeout > 0) but that leads to issues
+  // since blocking in this callback is a bad idea in general and it might break
+  // the stream when it is stopped by another thread shortly after being started.
+  // We therefore simply send silent input to the application.
   if (in_num_frames < num_frames) {
-    LOG("AAudioStream_read returned not enough frames: %ld instead of %d",
+    ALOGV("AAudioStream_read returned not enough frames: %ld instead of %d",
       in_num_frames, num_frames);
     unsigned left = num_frames - in_num_frames;
     char * buf = ((char*) stm->in_buf) + in_num_frames * stm->in_frame_size;
