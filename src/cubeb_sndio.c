@@ -32,6 +32,7 @@
   X(sio_eof)                                 \
   X(sio_getpar)                              \
   X(sio_initpar)                             \
+  X(sio_nfds)                                \
   X(sio_onmove)                              \
   X(sio_open)                                \
   X(sio_pollfd)                              \
@@ -135,18 +136,23 @@ sndio_onmove(void *arg, int delta)
 static void *
 sndio_mainloop(void *arg)
 {
-#define MAXFDS 8
-  struct pollfd pfds[MAXFDS];
+  struct pollfd *pfds;
   cubeb_stream *s = arg;
   int n, eof = 0, prime, nfds, events, revents, state = CUBEB_STATE_STARTED;
   size_t pstart = 0, pend = 0, rstart = 0, rend = 0;
   long nfr;
+
+  nfds = WRAP(sio_nfds)(s->hdl);
+  pfds = calloc(nfds, sizeof (struct pollfd));
+  if (pfds == NULL)
+	  return NULL;
 
   DPR("sndio_mainloop()\n");
   s->state_cb(s, s->arg, CUBEB_STATE_STARTED);
   pthread_mutex_lock(&s->mtx);
   if (!WRAP(sio_start)(s->hdl)) {
     pthread_mutex_unlock(&s->mtx);
+    free(pfds);
     return NULL;
   }
   DPR("sndio_mainloop(), started\n");
@@ -274,6 +280,7 @@ sndio_mainloop(void *arg)
   s->hwpos = s->swpos;
   pthread_mutex_unlock(&s->mtx);
   s->state_cb(s, s->arg, state);
+  free(pfds);
   return NULL;
 }
 
