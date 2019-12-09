@@ -282,6 +282,8 @@ sndio_init(cubeb **context, char const *context_name)
 {
   void * libsndio = NULL;
 
+  assert(context);
+
 #ifndef DISABLE_LIBSNDIO_DLOPEN
   libsndio = dlopen("libsndio.so.7.0", RTLD_LAZY);
   if (!libsndio) {
@@ -306,7 +308,9 @@ sndio_init(cubeb **context, char const *context_name)
 #endif
 
   DPR("sndio_init(%s)\n", context_name);
-  *context = malloc(sizeof(*context));
+  *context = malloc(sizeof(**context));
+  if (*context == NULL)
+	return CUBEB_ERROR;
   (*context)->libsndio = libsndio;
   (*context)->ops = &sndio_ops;
   (void)context_name;
