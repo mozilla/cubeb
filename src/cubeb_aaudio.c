@@ -401,7 +401,15 @@ static void * state_thread(void * user_ptr)
       // AAudioStream_waitForStateChange is pretty much the same:
       // https://android.googlesource.com/platform/frameworks/av/+/refs/heads/master/media/libaaudio/src/core/AudioStream.cpp#277
       struct timespec timeout;
+
+      // pthread_condattr_setclock isn't available before android api v21.
+      // pthread condition variables use the realtime clock by default, which
+      // means that system time changes can interfer with wakeup timeouts.
+#if __ANDROID_API__ >= 21
       clock_gettime(CLOCK_MONOTONIC, &timeout);
+#else
+      clock_gettime(CLOCK_REALTIME, &timeout);
+#endif
       timeout.tv_nsec += 5 * 1000 * 1000; // wait 5ms
       pthread_cond_timedwait(&ctx->state.cond, &ctx->state.mutex, &timeout);
     } else {
@@ -505,7 +513,14 @@ aaudio_init(cubeb ** context, char const * context_name) {
 
   pthread_condattr_t cond_attr;
   pthread_condattr_init(&cond_attr);
+
+  // pthread_condttr_setclock isn't available before android api v21.
+  // pthread condition variables use the realtime clock by default, which
+  // means that system time changes can interfer with wakeup timeouts.
+#if __ANDROID_API__ >= 21
   pthread_condattr_setclock(&cond_attr, CLOCK_MONOTONIC);
+#endif
+
   err = pthread_cond_init(&ctx->state.cond, &cond_attr);
   if (err) {
     LOG("pthread_cond_init: %s", strerror(err));
