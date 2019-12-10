@@ -145,7 +145,7 @@ struct cubeb {
 };
 
 // Only allowed from state thread, while mutex on stm is locked
-static void shutdown(cubeb_stream* stm)
+static void shutdown(cubeb_stream * stm)
 {
   if (stm->istream) {
     WRAP(AAudioStream_requestStop)(stm->istream);
@@ -162,7 +162,7 @@ static void shutdown(cubeb_stream* stm)
 // an asynchronous change
 static bool waiting_state(enum stream_state state)
 {
-  switch(state) {
+  switch (state) {
     case STREAM_STATE_DRAINING:
     case STREAM_STATE_STARTING:
     case STREAM_STATE_STOPPING:
@@ -257,7 +257,7 @@ static void update_state(cubeb_stream * stm)
        istate == AAUDIO_STREAM_STATE_FLUSHED ||
        istate == AAUDIO_STREAM_STATE_UNKNOWN ||
        istate == AAUDIO_STREAM_STATE_DISCONNECTED) {
-      const char* name = WRAP(AAudio_convertStreamStateToText)(istate);
+      const char * name = WRAP(AAudio_convertStreamStateToText)(istate);
       LOG("Invalid android input stream state %s", name);
       shutdown(stm);
       pthread_mutex_unlock(&stm->mutex);
@@ -270,7 +270,7 @@ static void update_state(cubeb_stream * stm)
        ostate == AAUDIO_STREAM_STATE_FLUSHED ||
        ostate == AAUDIO_STREAM_STATE_UNKNOWN ||
        ostate == AAUDIO_STREAM_STATE_DISCONNECTED) {
-      const char* name = WRAP(AAudio_convertStreamStateToText)(istate);
+      const char * name = WRAP(AAudio_convertStreamStateToText)(istate);
       LOG("Invalid android output stream state %s", name);
       shutdown(stm);
       pthread_mutex_unlock(&stm->mutex);
@@ -377,13 +377,13 @@ static void * state_thread(void * user_ptr)
       atomic_store(&ctx->state.waiting, false);
       waiting = false;
       for (unsigned i = 0u; i < MAX_STREAMS; ++i) {
-        cubeb_stream* stm = &ctx->streams[i];
+        cubeb_stream * stm = &ctx->streams[i];
         update_state(stm);
         waiting |= waiting_state(atomic_load(&stm->state));
       }
 
       // state changed from another thread, update again immediately
-      if(atomic_load(&ctx->state.waiting)) {
+      if (atomic_load(&ctx->state.waiting)) {
         waiting = true;
         continue;
       }
@@ -445,7 +445,7 @@ aaudio_destroy(cubeb * ctx)
 {
 #ifndef NDEBUG
   // make sure all streams were destroyed
-  for(unsigned i = 0u; i < MAX_STREAMS; ++i) {
+  for (unsigned i = 0u; i < MAX_STREAMS; ++i) {
     assert(!atomic_load(&ctx->streams[i].in_use));
   }
 #endif
@@ -504,7 +504,7 @@ aaudio_init(cubeb ** context, char const * context_name) {
 #undef LOAD
 #endif
 
-  cubeb* ctx = (cubeb*) calloc(1, sizeof(*ctx));
+  cubeb * ctx = (cubeb*) calloc(1, sizeof(*ctx));
   ctx->ops = &aaudio_ops;
   ctx->libaaudio = libaaudio;
   atomic_init(&ctx->state.join, false);
@@ -563,18 +563,18 @@ static void
 apply_volume(cubeb_stream * stm, void * audio_data, uint32_t num_frames) {
   // optimization: we don't have to change anything in this case
   float volume = atomic_load(&stm->volume);
-  if(volume == 1.f) {
+  if (volume == 1.f) {
     return;
   }
 
-  switch(stm->out_format) {
+  switch (stm->out_format) {
     case CUBEB_SAMPLE_S16NE:
-      for(uint32_t i = 0u; i < num_frames * stm->out_channels; ++i) {
+      for (uint32_t i = 0u; i < num_frames * stm->out_channels; ++i) {
         ((int16_t*)audio_data)[i] *= volume;
       }
       break;
     case CUBEB_SAMPLE_FLOAT32NE:
-      for(uint32_t i = 0u; i < num_frames * stm->out_channels; ++i) {
+      for (uint32_t i = 0u; i < num_frames * stm->out_channels; ++i) {
         ((float*)audio_data)[i] *= volume;
       }
       break;
@@ -648,7 +648,7 @@ aaudio_duplex_data_cb(AAudioStream * astream, void * user_data,
     atomic_store(&stm->context->state.waiting, true);
     pthread_cond_signal(&stm->context->state.cond);
 
-    char* begin = ((char*)audio_data) + done_frames * stm->out_frame_size;
+    char * begin = ((char*)audio_data) + done_frames * stm->out_frame_size;
     memset(begin, 0x0, (num_frames - done_frames) * stm->out_frame_size);
   }
 
@@ -692,7 +692,7 @@ aaudio_output_data_cb(AAudioStream * astream, void * user_data,
     atomic_store(&stm->context->state.waiting, true);
     pthread_cond_signal(&stm->context->state.cond);
 
-    char* begin = ((char*)audio_data) + done_frames * stm->out_frame_size;
+    char * begin = ((char*)audio_data) + done_frames * stm->out_frame_size;
     memset(begin, 0x0, (num_frames - done_frames) * stm->out_frame_size);
   }
 
@@ -1156,7 +1156,7 @@ aaudio_stream_start(cubeb_stream * stm)
     break;
   }
 
-  if(success) {
+  if (success) {
     atomic_store(&stm->context->state.waiting, true);
     pthread_cond_signal(&stm->context->state.cond);
   }
@@ -1276,7 +1276,7 @@ aaudio_stream_stop(cubeb_stream * stm)
     break;
   }
 
-  if(success) {
+  if (success) {
     atomic_store(&stm->context->state.waiting, true);
     pthread_cond_signal(&stm->context->state.cond);
   }
