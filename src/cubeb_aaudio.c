@@ -115,6 +115,10 @@ struct cubeb_stream {
   pthread_mutex_t mutex;
 
   unsigned in_frame_size;
+
+  cubeb_sample_format out_format;
+  _Atomic float volume;
+  unsigned out_channels;
   unsigned out_frame_size;
 };
 
@@ -397,6 +401,30 @@ aaudio_init(cubeb ** context, char const * context_name) {
   return CUBEB_OK;
 }
 
+static void
+apply_volume(cubeb_stream * stm, void * audio_data, uint32_t num_frames) {
+  // optimization: we don't have to change anything in this case
+  float volume = atomic_load(&stm->volume);
+  if(volume == 1.f) {
+    return;
+  }
+
+  switch(stm->out_format) {
+    case CUBEB_SAMPLE_S16NE:
+      for(uint32_t i = 0u; i < num_frames * stm->out_channels; ++i) {
+        ((int16_t*)audio_data)[i] *= volume;
+      }
+      break;
+    case CUBEB_SAMPLE_FLOAT32NE:
+      for(uint32_t i = 0u; i < num_frames * stm->out_channels; ++i) {
+        ((float*)audio_data)[i] *= volume;
+      }
+      break;
+    default:
+      assert(false && "Unreachable: invalid stream out_format");
+  }
+}
+
 // Returning AAUDIO_CALLBACK_RESULT_STOP seems to put the stream in
 // an invalid state. Seems like an AAudio bug/bad documentation.
 // We therefore only return it on error.
@@ -408,6 +436,7 @@ aaudio_duplex_data_cb(AAudioStream * astream, void * user_data,
   cubeb_stream * stm = (cubeb_stream*) user_data;
   assert(stm->ostream == astream);
   assert(stm->istream);
+  assert(num_frames >= 0);
 
   enum stream_state state = atomic_load(&stm->state);
   int istate = WRAP(AAudioStream_getState)(stm->istream);
@@ -458,12 +487,12 @@ aaudio_duplex_data_cb(AAudioStream * astream, void * user_data,
     return AAUDIO_CALLBACK_RESULT_STOP;
   } else if (done_frames < num_frames) {
     atomic_store(&stm->state, STREAM_STATE_DRAINING);
-    // RESULT_STOP would make more sense here but leads to errors.
-    // Restarting the stream would not be possible
-    return AAUDIO_CALLBACK_RESULT_CONTINUE;
+
+    char* begin = ((char*)audio_data) + done_frames * stm->out_frame_size;
+    memset(begin, 0x0, (num_frames - done_frames) * stm->out_frame_size);
   }
 
-  assert(in_num_frames == num_frames);
+  apply_volume(stm, audio_data, done_frames);
   return AAUDIO_CALLBACK_RESULT_CONTINUE;
 }
 
@@ -474,6 +503,7 @@ aaudio_output_data_cb(AAudioStream * astream, void * user_data,
   cubeb_stream * stm = (cubeb_stream*) user_data;
   assert(stm->ostream == astream);
   assert(!stm->istream);
+  assert(num_frames >= 0);
 
   enum stream_state state = atomic_load(&stm->state);
   int ostate = WRAP(AAudioStream_getState)(stm->ostream);
@@ -499,9 +529,12 @@ aaudio_output_data_cb(AAudioStream * astream, void * user_data,
     return AAUDIO_CALLBACK_RESULT_STOP;
   } else if (done_frames < num_frames) {
     atomic_store(&stm->state, STREAM_STATE_DRAINING);
-    return AAUDIO_CALLBACK_RESULT_CONTINUE;
+
+    char* begin = ((char*)audio_data) + done_frames * stm->out_frame_size;
+    memset(begin, 0x0, (num_frames - done_frames) * stm->out_frame_size);
   }
 
+  apply_volume(stm, audio_data, done_frames);
   return AAUDIO_CALLBACK_RESULT_CONTINUE;
 }
 
@@ -512,6 +545,7 @@ aaudio_input_data_cb(AAudioStream * astream, void * user_data,
   cubeb_stream * stm = (cubeb_stream*) user_data;
   assert(stm->istream == astream);
   assert(!stm->ostream);
+  assert(num_frames >= 0);
 
   enum stream_state state = atomic_load(&stm->state);
   int istate = WRAP(AAudioStream_getState)(stm->istream);
@@ -540,7 +574,6 @@ aaudio_input_data_cb(AAudioStream * astream, void * user_data,
     // stop it from the state thread. That is signaled via the
     // DRAINING state.
     atomic_store(&stm->state, STREAM_STATE_DRAINING);
-    return AAUDIO_CALLBACK_RESULT_CONTINUE;
   }
 
   return AAUDIO_CALLBACK_RESULT_CONTINUE;
@@ -629,6 +662,7 @@ aaudio_stream_destroy(cubeb_stream * stm)
     }
 
     WRAP(AAudioStream_close)(stm->ostream);
+    stm->ostream = NULL;
   }
 
   if (stm->istream) {
@@ -642,6 +676,7 @@ aaudio_stream_destroy(cubeb_stream * stm)
     }
 
     WRAP(AAudioStream_close)(stm->istream);
+    stm->istream = NULL;
   }
 
   if (stm->resampler) {
@@ -769,7 +804,11 @@ aaudio_stream_init(cubeb * ctx,
     target_sample_rate = output_stream_params->rate;
     out_params = *output_stream_params;
     out_params.rate = rate;
+
+    stm->out_channels = output_stream_params->channels;
+    stm->out_format = output_stream_params->format;
     stm->out_frame_size = frame_size;
+    atomic_store(&stm->volume, 1.f);
   }
 
   // input
@@ -1113,6 +1152,14 @@ aaudio_stream_get_position(cubeb_stream * stm, uint64_t * position)
   return CUBEB_OK;
 }
 
+static int
+aaudio_stream_set_volume(cubeb_stream * stm, float volume)
+{
+  assert(stm && stm->ostream);
+  atomic_store(&stm->volume, volume);
+  return CUBEB_OK;
+}
+
 static const struct cubeb_ops aaudio_ops = {
   .init = aaudio_init,
   .get_backend_id = aaudio_get_backend_id,
@@ -1132,7 +1179,7 @@ static const struct cubeb_ops aaudio_ops = {
   .stream_reset_default_device = NULL,
   .stream_get_position = aaudio_stream_get_position,
   .stream_get_latency = NULL,
-  .stream_set_volume = NULL,
+  .stream_set_volume = aaudio_stream_set_volume,
   .stream_get_current_device = NULL,
   .stream_device_destroy = NULL,
   .stream_register_device_changed_callback = NULL,
