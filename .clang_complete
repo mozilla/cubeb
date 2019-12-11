@@ -1,4 +1,0 @@
--D__ANDROID__
--D__ANDROID_API__=24
--I./build/exports
--I/opt/android-ndk/sysroot/usr/include
