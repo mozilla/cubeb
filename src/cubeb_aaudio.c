@@ -522,6 +522,7 @@ aaudio_init(cubeb ** context, char const * context_name) {
 #endif
 
   err = pthread_cond_init(&ctx->state.cond, &cond_attr);
+  pthread_condattr_destroy(&cond_attr);
   if (err) {
     LOG("pthread_cond_init: %s", strerror(err));
     aaudio_destroy(ctx);
