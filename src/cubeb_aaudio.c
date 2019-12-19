@@ -1,5 +1,5 @@
 /* ex: set tabstop=2 shiftwidth=2 expandtab:
- * Copyright © 2011 Jan Kelling
+ * Copyright © 2019 Jan Kelling
  *
  * This program is made available under an ISC-style license.  See the
  * accompanying file LICENSE for details.
@@ -289,7 +289,7 @@ static void update_state(cubeb_stream * stm)
         // The DRAINING state means that we want to stop the streams but
         // may not have done so yet.
         // The aaudio docs state that returning STOP from the callback isn't
-        // enough, the stream has to be stopped from another threads
+        // enough, the stream has to be stopped from another thread
         // afterwards.
         // No callbacks are triggered anymore when requestStop returns.
         // That is important as we otherwise might read from a closed istream
@@ -598,10 +598,10 @@ aaudio_duplex_data_cb(AAudioStream * astream, void * user_data,
   assert(num_frames >= 0);
 
   enum stream_state state = atomic_load(&stm->state);
-  int istate = WRAP(AAudioStream_getState)(stm->istream);
-  int ostate = WRAP(AAudioStream_getState)(stm->ostream);
-  ALOGV("aaudio duplex data cb on stream %p: state %ld (in: %d, out: %d), num_frames: %ld",
-      (void*) stm, state, istate, ostate, num_frames);
+  // int istate = WRAP(AAudioStream_getState)(stm->istream);
+  // int ostate = WRAP(AAudioStream_getState)(stm->ostream);
+  // ALOGV("aaudio duplex data cb on stream %p: state %ld (in: %d, out: %d), num_frames: %ld",
+  //     (void*) stm, state, istate, ostate, num_frames);
 
   // all other states may happen since the callback might be called
   // from within requestStart
@@ -629,8 +629,8 @@ aaudio_duplex_data_cb(AAudioStream * astream, void * user_data,
   // the stream when it is stopped by another thread shortly after being started.
   // We therefore simply send silent input to the application.
   if (in_num_frames < num_frames) {
-    ALOGV("AAudioStream_read returned not enough frames: %ld instead of %d",
-      in_num_frames, num_frames);
+    // ALOGV("AAudioStream_read returned not enough frames: %ld instead of %d",
+    //   in_num_frames, num_frames);
     unsigned left = num_frames - in_num_frames;
     char * buf = ((char*) stm->in_buf) + in_num_frames * stm->in_frame_size;
     memset(buf, 0x0, left * stm->in_frame_size);
@@ -667,9 +667,9 @@ aaudio_output_data_cb(AAudioStream * astream, void * user_data,
   assert(num_frames >= 0);
 
   enum stream_state state = atomic_load(&stm->state);
-  int ostate = WRAP(AAudioStream_getState)(stm->ostream);
-  ALOGV("aaudio output data cb on stream %p: state %ld (%d), num_frames: %ld",
-      (void*) stm, state, ostate, num_frames);
+  // int ostate = WRAP(AAudioStream_getState)(stm->ostream);
+  // ALOGV("aaudio output data cb on stream %p: state %ld (%d), num_frames: %ld",
+  //     (void*) stm, state, ostate, num_frames);
 
   // all other states may happen since the callback might be called
   // from within requestStart
@@ -711,9 +711,9 @@ aaudio_input_data_cb(AAudioStream * astream, void * user_data,
   assert(num_frames >= 0);
 
   enum stream_state state = atomic_load(&stm->state);
-  int istate = WRAP(AAudioStream_getState)(stm->istream);
-  ALOGV("aaudio input data cb on stream %p: state %ld (%d), num_frames: %ld",
-      (void*) stm, state, istate, num_frames);
+  // int istate = WRAP(AAudioStream_getState)(stm->istream);
+  // ALOGV("aaudio input data cb on stream %p: state %ld (%d), num_frames: %ld",
+  //     (void*) stm, state, istate, num_frames);
 
   // all other states may happen since the callback might be called
   // from within requestStart
@@ -1006,10 +1006,6 @@ aaudio_stream_init(cubeb * ctx,
     LOG("AAudio input stream buffer rate: %d", rate);
 
     stm->in_buf = malloc(bcap * frame_size);
-
-    // NOTE: not sure about this.
-    // But when this stream contains input and output stream, their
-    // sample rates have to match, don't they?
     assert(!target_sample_rate || target_sample_rate == input_stream_params->rate);
 
     target_sample_rate = input_stream_params->rate;
