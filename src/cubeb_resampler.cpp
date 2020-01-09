@@ -80,6 +80,11 @@ long passthrough_resampler<T>::fill(void * input_buffer, long * input_frames_cou
       // to the callback
       internal_input_buffer.push(static_cast<T*>(input_buffer),
                                  frames_to_samples(*input_frames_count));
+      if (internal_input_buffer.length() < frames_to_samples(output_frames)) {
+        // Grrr glitch!!!
+        internal_input_buffer.push_silence(
+            frames_to_samples(output_frames) - internal_input_buffer.length());
+      }
       in_buf = internal_input_buffer.data();
       pop_input_count = frames_to_samples(output_frames);
     } else if(*input_frames_count > output_frames) {
@@ -91,6 +96,17 @@ long passthrough_resampler<T>::fill(void * input_buffer, long * input_frames_cou
       unsigned long samples_off = frames_to_samples(output_frames);
       internal_input_buffer.push(static_cast<T*>(input_buffer) + samples_off,
                                  frames_to_samples(*input_frames_count - output_frames));
+    } else if (*input_frames_count < output_frames) {
+      // This is a glitch. We are not happy about it but it can happen when
+      // system's performance is poor. Audible silence is being pushed at the
+      // end of the short input buffer. An improvement for the future is to
+      // resample to the output number of frames, when that happens.
+      internal_input_buffer.push(static_cast<T*>(input_buffer),
+                                 frames_to_samples(*input_frames_count));
+      internal_input_buffer.push_silence(
+          frames_to_samples(output_frames - *input_frames_count));
+      in_buf = internal_input_buffer.data();
+      pop_input_count = frames_to_samples(output_frames);
     }
   }
 
