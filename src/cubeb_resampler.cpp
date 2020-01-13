@@ -74,14 +74,18 @@ long passthrough_resampler<T>::fill(void * input_buffer, long * input_frames_cou
   if (input_buffer && !output_buffer) {
       output_frames = *input_frames_count;
   } else if(input_buffer) {
-    if (internal_input_buffer.length() != 0) {
-      // In this case we have pending input data left and have
-      // to first append the input so we can pass it as one pointer
-      // to the callback
+    if (internal_input_buffer.length() != 0 ||
+        *input_frames_count < output_frames) {
+      // If we have pending input data left and have to first append the input
+      // so we can pass it as one pointer to the callback. Or this is a glitch.
+      // It can happen when system's performance is poor. Audible silence is
+      // being pushed at the end of the short input buffer. An improvement for
+      // the future is to resample to the output number of frames, when that happens.
       internal_input_buffer.push(static_cast<T*>(input_buffer),
                                  frames_to_samples(*input_frames_count));
       if (internal_input_buffer.length() < frames_to_samples(output_frames)) {
-        // Grrr glitch!!!
+        // This is unxpected but it can happen when a glitch occurs. Fill the
+        // buffer with silence
         internal_input_buffer.push_silence(
             frames_to_samples(output_frames) - internal_input_buffer.length());
       }
@@ -96,17 +100,6 @@ long passthrough_resampler<T>::fill(void * input_buffer, long * input_frames_cou
       unsigned long samples_off = frames_to_samples(output_frames);
       internal_input_buffer.push(static_cast<T*>(input_buffer) + samples_off,
                                  frames_to_samples(*input_frames_count - output_frames));
-    } else if (*input_frames_count < output_frames) {
-      // This is a glitch. We are not happy about it but it can happen when
-      // system's performance is poor. Audible silence is being pushed at the
-      // end of the short input buffer. An improvement for the future is to
-      // resample to the output number of frames, when that happens.
-      internal_input_buffer.push(static_cast<T*>(input_buffer),
-                                 frames_to_samples(*input_frames_count));
-      internal_input_buffer.push_silence(
-          frames_to_samples(output_frames - *input_frames_count));
-      in_buf = internal_input_buffer.data();
-      pop_input_count = frames_to_samples(output_frames);
     }
   }
 
