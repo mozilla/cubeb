@@ -85,12 +85,15 @@ long passthrough_resampler<T>::fill(void * input_buffer, long * input_frames_cou
                                  frames_to_samples(*input_frames_count));
       if (internal_input_buffer.length() < frames_to_samples(output_frames)) {
         // This is unxpected but it can happen when a glitch occurs. Fill the
-        // buffer with silence
+        // buffer with silence. First keep the actual number of input samples
+        // used without the silence.
+        pop_input_count = internal_input_buffer.length();
         internal_input_buffer.push_silence(
             frames_to_samples(output_frames) - internal_input_buffer.length());
+      } else {
+        pop_input_count = frames_to_samples(output_frames);
       }
       in_buf = internal_input_buffer.data();
-      pop_input_count = frames_to_samples(output_frames);
     } else if(*input_frames_count > output_frames) {
       // In this case we have more input that we need output and
       // fill the overflowing input into internal_input_buffer
@@ -108,9 +111,10 @@ long passthrough_resampler<T>::fill(void * input_buffer, long * input_frames_cou
   if (input_buffer) {
     if (pop_input_count) {
       internal_input_buffer.pop(nullptr, pop_input_count);
+      *input_frames_count = samples_to_frames(pop_input_count);
+    } else {
+      *input_frames_count = output_frames;
     }
-
-    *input_frames_count = output_frames;
     drop_audio_if_needed();
   }
 
