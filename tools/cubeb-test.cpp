@@ -356,7 +356,8 @@ void print_help() {
     "c: get max number of channels\n"
     "p: start a initialized stream\n"
     "s: stop a started stream\n"
-    "d: force stream to drain\n"
+    "d: destroy stream\n"
+    "e: force stream to drain\n"
     "f: get stream position (client thread)\n"
     "i: change device type to input\n"
     "o: change device type to output\n"
@@ -423,6 +424,13 @@ bool choose_action(cubeb_client& cl, operation_data * op, int c) {
       fprintf(stderr, "stop_stream failed\n");
     }
   } else if (c == 'd') {
+    bool res = cl.destroy_stream();
+    if (res) {
+      fprintf(stderr, "destroy_stream succeed\n");
+    } else {
+      fprintf(stderr, "destroy_stream failed\n");
+    }
+  } else if (c == 'e') {
     cl.force_drain();
   } else if (c == 'c') {
     uint32_t channel_count = cl.get_max_channel_count();
