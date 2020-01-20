@@ -120,6 +120,10 @@ long passthrough_resampler<T>::fill(void * input_buffer, long * input_frames_cou
   return rv;
 }
 
+// Explicit instantiation of template class.
+template class passthrough_resampler<float>;
+template class passthrough_resampler<short>;
+
 template<typename T, typename InputProcessor, typename OutputProcessor>
 cubeb_resampler_speex<T, InputProcessor, OutputProcessor>
   ::cubeb_resampler_speex(InputProcessor * input_processor,
