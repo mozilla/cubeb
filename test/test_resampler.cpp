@@ -918,7 +918,7 @@ TEST(cubeb, passthrough_resampler_fill_eq_input) {
   long output_frame_count = 32;
   float input[64] = {};
   float output[64] = {};
-  for (int i = 0; i < input_frame_count * channels; ++i) {
+  for (uint32_t i = 0; i < input_frame_count * channels; ++i) {
     input[i] = 0.01 * i;
   }
   long got = resampler.fill(input, &input_frame_count, output, output_frame_count);
@@ -961,7 +961,7 @@ TEST(cubeb, passthrough_resampler_fill_short_input) {
   long output_frame_count = 32;
   float input[64] = {};
   float output[64] = {};
-  for (int i = 0; i < input_frame_count * channels; ++i) {
+  for (uint32_t i = 0; i < input_frame_count * channels; ++i) {
     input[i] = 0.01 * i;
   }
   long got = resampler.fill(input, &input_frame_count, output, output_frame_count);
@@ -1031,7 +1031,7 @@ TEST(cubeb, passthrough_resampler_fill_input_left) {
   const long output_frame_count = 32;
   float input[96] = {};
   float output[64] = {};
-  for (int i = 0; i < input_frame_count * channels; ++i) {
+  for (uint32_t i = 0; i < input_frame_count * channels; ++i) {
     input[i] = 0.01 * i;
   }
 
