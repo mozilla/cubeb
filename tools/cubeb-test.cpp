@@ -265,7 +265,7 @@ long cubeb_client::user_data_cb(cubeb_stream* stm, void* user,
     const float* in = static_cast<const float*>(input_buffer);
     float* out = static_cast<float*>(output_buffer);
     if (_latency_testing) {
-      for (uint32_t i = 0; i < nframes; i++) {
+      for (int32_t i = 0; i < nframes; i++) {
         // Impulses every second, mixed with the input signal fed back at half
         // gain, to measure the input-to-output latency via feedback.
         uint32_t clock = ((_total_frames + i) % _rate);
@@ -280,7 +280,7 @@ long cubeb_client::user_data_cb(cubeb_stream* stm, void* user,
         }
       }
     } else {
-      for (uint32_t i = 0; i < nframes; i++) {
+      for (int32_t i = 0; i < nframes; i++) {
         for (uint32_t j = 0; j < _channels; j++) {
           out[i * _channels + j] = in[i];
         }
