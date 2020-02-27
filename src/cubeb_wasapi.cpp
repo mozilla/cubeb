@@ -346,13 +346,14 @@ public:
 
   ~monitor_device_notifications()
   {
-    SetEvent(shutdown);
-    WaitForSingleObject(thread, INFINITE);
+    SetEvent(begin_shutdown);
+    WaitForSingleObject(shutdown_complete, INFINITE);
     CloseHandle(thread);
 
     CloseHandle(input_changed);
     CloseHandle(output_changed);
-    CloseHandle(shutdown);
+    CloseHandle(begin_shutdown);
+    CloseHandle(shutdown_complete);
   }
 
   void notify(EDataFlow flow)
@@ -377,8 +378,9 @@ private:
   thread_proc(LPVOID args)
   {
     XASSERT(args);
-    static_cast<monitor_device_notifications*>(args)
-      ->notification_thread_loop();
+    auto mdn = static_cast<monitor_device_notifications*>(args);
+    mdn->notification_thread_loop();
+    SetEvent(mdn->shutdown_complete);
     return 0;
   }
 
@@ -397,7 +399,7 @@ private:
     HANDLE wait_array[3] = {
       input_changed,
       output_changed,
-      shutdown,
+      begin_shutdown,
     };
 
     while (true) {
@@ -435,9 +437,15 @@ private:
       return;
     }
 
-    shutdown = CreateEvent(nullptr, 0, 0, nullptr);
-    if (!shutdown) {
-      LOG("Failed to create shutdown event.");
+    begin_shutdown = CreateEvent(nullptr, 0, 0, nullptr);
+    if (!begin_shutdown) {
+      LOG("Failed to create begin_shutdown event.");
+      return;
+    }
+
+    shutdown_complete = CreateEvent(nullptr, 0, 0, nullptr);
+    if (!shutdown_complete) {
+      LOG("Failed to create shutdown_complete event.");
       return;
     }
 
@@ -456,7 +464,8 @@ private:
   HANDLE thread = INVALID_HANDLE_VALUE;
   HANDLE output_changed = INVALID_HANDLE_VALUE;
   HANDLE input_changed = INVALID_HANDLE_VALUE;
-  HANDLE shutdown = INVALID_HANDLE_VALUE;
+  HANDLE begin_shutdown = INVALID_HANDLE_VALUE;
+  HANDLE shutdown_complete = INVALID_HANDLE_VALUE;
 
   cubeb * cubeb_context = nullptr;
 };
