@@ -239,6 +239,7 @@ if(USE_PULSE_RUST)
     DOWNLOAD_COMMAND ""
     CONFIGURE_COMMAND ""
     BUILD_COMMAND cargo build COMMAND cargo build --release
+    BUILD_ALWAYS ON
     BINARY_DIR "${CMAKE_SOURCE_DIR}/src/cubeb-pulse-rs"
     INSTALL_COMMAND ""
     LOG_BUILD ON)
@@ -257,6 +258,7 @@ if(USE_AUDIOUNIT_RUST)
     DOWNLOAD_COMMAND ""
     CONFIGURE_COMMAND ""
     BUILD_COMMAND cargo build COMMAND cargo build --release
+    BUILD_ALWAYS ON
     BINARY_DIR "${CMAKE_SOURCE_DIR}/src/cubeb-coreaudio-rs"
     INSTALL_COMMAND ""
     LOG_BUILD ON)
