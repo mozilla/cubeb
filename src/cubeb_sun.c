@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -74,19 +75,19 @@ struct cubeb_stream {
   void * user_ptr;
   pthread_t thread;
   pthread_mutex_t mutex; /* protects running, volume, frames_written */
-  int floating;
-  int running;
-  int play_fd;
-  int record_fd;
+  bool floating;
+  bool running;
   float volume;
+  int play_fd;
+  void * play_buf;
   struct audio_info p_info; /* info for the play fd */
-  unsigned p_frame_size;
+  unsigned p_frame_size; /* precision in bytes * channels for the play fd*/
+  int record_fd;
+  void * record_buf;
   struct audio_info r_info; /* info for the record fd */
-  unsigned r_frame_size;
+  unsigned r_frame_size; /* precision in bytes * channels for the record fd */
   cubeb_data_callback data_cb;
   cubeb_state_callback state_cb;
-  void * play_buf;
-  void * record_buf;
   char input_name[32];
   char output_name[32];
   uint64_t frames_written;
@@ -319,7 +320,7 @@ sun_copy_params(int fd, cubeb_stream * stream, cubeb_stream_params * params,
   case CUBEB_SAMPLE_FLOAT32NE:
     prinfo->encoding = AUDIO_ENCODING_SLINEAR;
     prinfo->precision = 32;
-    stream->floating = 1;
+    stream->floating = true;
     break;
   default:
     LOG("Unsupported format");
@@ -334,7 +335,7 @@ sun_copy_params(int fd, cubeb_stream * stream, cubeb_stream_params * params,
   case CUBEB_SAMPLE_FLOAT32NE:
     prinfo->encoding = AUDIO_ENCODING_LINEAR;
     prinfo->precision = 32;
-    stream->floating = 1;
+    stream->floating = true;
     break;
   default:
     LOG("Unsupported format");
@@ -355,7 +356,7 @@ sun_stream_stop(cubeb_stream * s)
 {
   pthread_mutex_lock(&s->mutex);
   if (s->running) {
-    s->running = 0;
+    s->running = false;
     pthread_mutex_unlock(&s->mutex);
     pthread_join(s->thread, NULL);
   } else {
@@ -629,7 +630,7 @@ error:
 static int
 sun_stream_start(cubeb_stream * s)
 {
-  s->running = 1;
+  s->running = true;
   if (pthread_create(&s->thread, NULL, sun_io_routine, s) != 0) {
     LOG("Couldn't create thread");
     return CUBEB_ERROR;
