@@ -36,10 +36,6 @@
 #define SUN_DEFAULT_DEVICE "/dev/audio"
 #endif
 
-#ifndef SUN_POLL_TIMEOUT
-#define SUN_POLL_TIMEOUT (1000)
-#endif
-
 #ifndef SUN_BUFFER_FRAMES
 #define SUN_BUFFER_FRAMES (32)
 #endif
