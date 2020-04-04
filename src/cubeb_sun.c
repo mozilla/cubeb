@@ -1,5 +1,5 @@
 /*
- * Copyright © 2019-2020 Nia Alarie
+ * Copyright © 2019-2020 Nia Alarie <nia@NetBSD.org>
  *
  * This program is made available under an ISC-style license.  See the
  * accompanying file LICENSE for details.
