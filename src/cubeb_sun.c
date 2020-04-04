@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <math.h>
+#include <limits.h>
 #include "cubeb/cubeb.h"
 #include "cubeb-internal.h"
 
