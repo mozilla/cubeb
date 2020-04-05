@@ -604,7 +604,7 @@ sun_stream_init(cubeb * context,
     ret = CUBEB_ERROR;
     goto error;
   }
-  s->record.frame_size = s->record.info.record.channels * \
+  s->record.frame_size = s->record.info.record.channels *
                         (s->record.info.record.precision / 8);
   if (s->record.fd != -1 &&
      (s->record.buf = calloc(SUN_BUFFER_FRAMES, s->record.frame_size)) == NULL) {
