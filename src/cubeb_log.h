@@ -34,10 +34,10 @@ void cubeb_async_log_reset_threads();
 #define LOGV(msg, ...) LOG_INTERNAL(CUBEB_LOG_VERBOSE, msg, ##__VA_ARGS__)
 #define LOG(msg, ...) LOG_INTERNAL(CUBEB_LOG_NORMAL, msg, ##__VA_ARGS__)
 
-#define LOG_INTERNAL(level, fmt, ...) do {                                   \
-    if (g_cubeb_log_callback && level <= g_cubeb_log_level) {                            \
+#define LOG_INTERNAL(level, fmt, ...) do {                                              \
+    if (g_cubeb_log_callback && level <= g_cubeb_log_level) {                           \
       g_cubeb_log_callback("%s:%d: " fmt "\n",  __FILENAME__, __LINE__, ##__VA_ARGS__); \
-    }                                                                        \
+    }                                                                                   \
   } while(0)
 
 /* Asynchronous verbose logging, to log in real-time callbacks. */
