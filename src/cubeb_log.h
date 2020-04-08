@@ -16,7 +16,9 @@ extern "C" {
 
 #if defined(__GNUC__) || defined(__clang__)
 #define PRINTF_FORMAT(fmt, args) __attribute__((format(printf, fmt, args)))
+#define __FILENAME__ (__builtin_strrchr(__FILE__, '/') ? __builtin_strrchr(__FILE__, '/') + 1 : __FILE__)
 #else
+#define __FILENAME__ __FILE__
 #define PRINTF_FORMAT(fmt, args)
 #endif
 
@@ -34,7 +36,7 @@ void cubeb_async_log_reset_threads();
 
 #define LOG_INTERNAL(level, fmt, ...) do {                                   \
     if (g_cubeb_log_callback && level <= g_cubeb_log_level) {                            \
-      g_cubeb_log_callback("%s:%d: " fmt "\n", __FILE__, __LINE__, ##__VA_ARGS__); \
+      g_cubeb_log_callback("%s:%d: " fmt "\n",  __FILENAME__, __LINE__, ##__VA_ARGS__); \
     }                                                                        \
   } while(0)
 
