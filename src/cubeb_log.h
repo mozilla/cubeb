@@ -18,8 +18,8 @@ extern "C" {
 #define PRINTF_FORMAT(fmt, args) __attribute__((format(printf, fmt, args)))
 #define __FILENAME__ (__builtin_strrchr(__FILE__, '/') ? __builtin_strrchr(__FILE__, '/') + 1 : __FILE__)
 #else
-#define __FILENAME__ __FILE__
 #define PRINTF_FORMAT(fmt, args)
+#define __FILENAME__ __FILE__
 #endif
 
 extern cubeb_log_level g_cubeb_log_level;
