@@ -23,7 +23,8 @@ extern "C" {
 #endif
 #else
 #define PRINTF_FORMAT(fmt, args)
-#define __FILENAME__ __FILE__
+#include <string.h>
+#define __FILENAME__ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #endif
 
 extern cubeb_log_level g_cubeb_log_level;
