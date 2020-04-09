@@ -16,7 +16,11 @@ extern "C" {
 
 #if defined(__GNUC__) || defined(__clang__)
 #define PRINTF_FORMAT(fmt, args) __attribute__((format(printf, fmt, args)))
+#if defined(__FILE_NAME__)
+#define __FILENAME__ __FILE_NAME__
+#else
 #define __FILENAME__ (__builtin_strrchr(__FILE__, '/') ? __builtin_strrchr(__FILE__, '/') + 1 : __FILE__)
+#endif
 #else
 #define PRINTF_FORMAT(fmt, args)
 #define __FILENAME__ __FILE__
