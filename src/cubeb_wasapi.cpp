@@ -2637,7 +2637,14 @@ int wasapi_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
   if (FAILED(hr)) {
     return CUBEB_ERROR;
   }
-  *latency = hns_to_frames(stm, latency_hns);
+  // This happens on windows 10: no error, but always 0 for latency.
+  if (latency_hns == 0) {
+     double delay_s = current_stream_delay(stm);
+     // convert to sample-frames
+     *latency = delay_s * stm->output_stream_params.rate;
+  } else {
+     *latency = hns_to_frames(stm, latency_hns);
+  }
 
   return CUBEB_OK;
 }
