@@ -23,18 +23,35 @@ matrix:
     - env: SCAN_BUILD=true
     - env: CROSS=mingw
     - env: CROSS=android API_LEVEL=android-16
+    - os: freebsd
+      compiler: clang
+    - os: freebsd
+      compiler: gcc
+    - os: freebsd
+      env: SCAN_BUILD=true
     - os: osx
     - os: osx
       env: SCAN_BUILD=true
     - os: windows
+  allow_failures:
+    - os: freebsd
+      env: SCAN_BUILD=true
 before_install:
   - if [[ -n $SCAN_BUILD ]]; then
       if [[ $TRAVIS_OS_NAME = "osx" ]]; then
         . scan-build-install.sh;
+      elif [[ $TRAVIS_OS_NAME = "freebsd" ]]; then
+        export SCAN_BUILD_PATH=scan-build10;
+        sudo pkg install -y llvm10;
       else
         export SCAN_BUILD_PATH=/usr/share/clang/scan-build-3.8/bin/scan-build;
       fi;
       export SCAN_BUILD_PATH="$SCAN_BUILD_PATH -o scan_results";
+    fi
+  - if [[ $TRAVIS_OS_NAME = "freebsd" ]]; then
+      export CFLAGS+=" -isystem/usr/local/include";
+      export CXXFLAGS+=" -isystem/usr/local/include";
+      sudo pkg install -y alsa-lib jackit pulseaudio sndio;
     fi
   - if [[ $CROSS = "android" ]]; then
       NDK=android-ndk-r19c;
