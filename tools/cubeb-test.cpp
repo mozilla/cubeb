@@ -58,6 +58,7 @@ public:
   void set_latency_frames(uint32_t latency_frames);
   uint64_t get_stream_position() const;
   uint32_t get_stream_latency() const;
+  uint32_t get_input_stream_latency() const;
   uint32_t get_max_channel_count() const;
 
   long user_data_cb(cubeb_stream* stm, void* user, const void* input_buffer,
@@ -199,6 +200,16 @@ uint32_t cubeb_client::get_stream_latency() const {
   int rv = cubeb_stream_get_latency(stream, &latency);
   if (rv != CUBEB_OK) {
     fprintf(stderr, "Could not get the latency of the stream\n");
+    return 0;
+  }
+  return latency;
+}
+
+uint32_t cubeb_client::get_input_stream_latency() const {
+  uint32_t latency = 0;
+  int rv = cubeb_stream_get_input_latency(stream, &latency);
+  if (rv != CUBEB_OK) {
+    fprintf(stderr, "Could not get the latency of the input stream\n");
     return 0;
   }
   return latency;
@@ -439,6 +450,10 @@ bool choose_action(cubeb_client& cl, operation_data * op, int c) {
     uint64_t pos = cl.get_stream_position();
     uint64_t latency = cl.get_stream_latency();
     fprintf(stderr, "stream position %" PRIu64 " (latency %" PRIu64 ")\n", pos, latency);
+    if(op->collection_device_type & CUBEB_DEVICE_TYPE_INPUT) {
+      latency = cl.get_input_stream_latency();
+      fprintf(stderr, "input stream latency %" PRIu64 ")\n", latency);
+    }
   } else if (c == 'i') {
     op->collection_device_type = CUBEB_DEVICE_TYPE_INPUT;
     fprintf(stderr, "collection device type changed to INPUT\n");
