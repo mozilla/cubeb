@@ -658,9 +658,9 @@ cbjack_get_max_channel_count(cubeb * /*ctx*/, uint32_t * max_channels)
 }
 
 static int
-cbjack_get_latency(cubeb_stream * stm, unsigned int * latency_ms)
+cbjack_get_latency(cubeb_stream * stm, unsigned int * latency)
 {
-  *latency_ms = stm->context->jack_latency;
+  *latency = stm->context->jack_latency + ceil(cubeb_resampler_latency(stm->resampler) * stm->ratio);
   return CUBEB_OK;
 }
 
@@ -955,7 +955,7 @@ cbjack_stream_stop(cubeb_stream * stream)
 static int
 cbjack_stream_get_position(cubeb_stream * stream, uint64_t * position)
 {
-  *position = stream->position;
+  *position = stream->position - ceil(cubeb_resampler_latency(stream->resampler) * stream->ratio);
   return CUBEB_OK;
 }
 

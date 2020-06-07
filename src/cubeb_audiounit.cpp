@@ -2969,10 +2969,12 @@ static int
 audiounit_stream_get_position(cubeb_stream * stm, uint64_t * position)
 {
   assert(stm);
-  if (stm->current_latency_frames > stm->frames_played) {
+  uint32_t latency_frames = stm->total_output_latency_frames + cubeb_resampler_latency(stm->resampler.get());
+
+  if (latency_frames > stm->frames_played) {
     *position = 0;
   } else {
-    *position = stm->frames_played - stm->current_latency_frames;
+    *position = stm->frames_played - latency_frames;
   }
   return CUBEB_OK;
 }
@@ -2984,7 +2986,7 @@ audiounit_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
   //TODO
   return CUBEB_ERROR_NOT_SUPPORTED;
 #else
-  *latency = stm->total_output_latency_frames;
+  *latency = stm->total_output_latency_frames + cubeb_resampler_latency(stm->resampler.get());
   return CUBEB_OK;
 #endif
 }

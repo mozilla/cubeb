@@ -1669,7 +1669,7 @@ opensl_stream_get_position(cubeb_stream * stm, uint64_t * position)
   }
 
   uint64_t samplerate = stm->user_output_rate;
-  uint32_t output_latency = stm->output_latency_ms;
+  uint32_t output_latency = stm->output_latency_ms + ((double)cubeb_resampler_latency(stm->resampler) / stm->output_configured_rate);
 
   pthread_mutex_lock(&stm->mutex);
   int64_t maximum_position = stm->written * (int64_t)stm->user_output_rate / stm->output_configured_rate;
@@ -1703,8 +1703,8 @@ opensl_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
 
   uint32_t stream_latency_frames =
     stm->user_output_rate * (stm->output_latency_ms / 1000);
-
-  return stream_latency_frames + cubeb_resampler_latency(stm->resampler);
+  uint32_t resampler_latency_frames = (uint32_t)ceil(cubeb_resampler_latency(stm->resampler) * ((double)stm->user_output_rate) / stm->output_configured_rate);
+  return stream_latency_frames + resampler_latency_frames;
 }
 
 int
