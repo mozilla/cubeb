@@ -242,6 +242,7 @@ struct cubeb_stream {
   atomic<uint32_t> current_latency_frames{ 0 };
   atomic<uint32_t> total_output_latency_frames { 0 };
   unique_ptr<cubeb_resampler, decltype(&cubeb_resampler_destroy)> resampler;
+  float resample_ratio;
   /* This is true if a device change callback is currently running.  */
   atomic<bool> switching_device{ false };
   atomic<bool> buffer_size_change_state{ false };
@@ -2681,6 +2682,8 @@ audiounit_setup_stream(cubeb_stream * stm)
     input_unconverted_params.rate = stm->input_hw_rate;
   }
 
+  stm->resample_ratio = static_cast<float>(stm->output_stream_params.rate) / target_sample_rate;
+
   /* Create resampler. Output params are unchanged
    * because we do not need conversion on the output. */
   stm->resampler.reset(cubeb_resampler_create(stm,
@@ -2969,7 +2972,8 @@ static int
 audiounit_stream_get_position(cubeb_stream * stm, uint64_t * position)
 {
   assert(stm);
-  uint32_t latency_frames = stm->total_output_latency_frames + cubeb_resampler_latency(stm->resampler.get());
+  uint32_t resample_latency = static_cast<uint32_t>(ceil(cubeb_resampler_latency(stm->resampler.get()) * stm->resample_ratio));
+  uint32_t latency_frames = stm->total_output_latency_frames + resample_latency;
 
   if (latency_frames > stm->frames_played) {
     *position = 0;
@@ -2986,7 +2990,9 @@ audiounit_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
   //TODO
   return CUBEB_ERROR_NOT_SUPPORTED;
 #else
-  *latency = stm->total_output_latency_frames + cubeb_resampler_latency(stm->resampler.get());
+  uint32_t resample_latency = static_cast<uint32_t>(ceil(cubeb_resampler_latency(stm->resampler.get()) * stm->resample_ratio));
+
+  *latency = stm->total_output_latency_frames + resample_latency;
   return CUBEB_OK;
 #endif
 }
