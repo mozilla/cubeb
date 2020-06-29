@@ -1777,7 +1777,7 @@ handle_channel_layout(cubeb_stream * stm,  EDataFlow direction, com_heap_ptr<WAV
   waveformatex_update_derived_properties(mix_format.get());
 
   /* Check if wasapi will accept our channel layout request. */
-  WAVEFORMATEX * closest;
+  WAVEFORMATEX * closest = nullptr;
   HRESULT hr = audio_client->IsFormatSupported(AUDCLNT_SHAREMODE_SHARED,
                                                mix_format.get(),
                                                &closest);
@@ -1802,6 +1802,7 @@ handle_channel_layout(cubeb_stream * stm,  EDataFlow direction, com_heap_ptr<WAV
   } else {
     LOG("IsFormatSupported unhandled error: %lx", hr);
   }
+  CoTaskMemFree(closest);
 }
 
 static bool
