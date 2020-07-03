@@ -1788,7 +1788,7 @@ handle_channel_layout(cubeb_stream * stm,  EDataFlow direction, com_heap_ptr<WAV
        the suggestion, since it seems to always be IEEE_FLOAT. */
     LOG("Using WASAPI suggested format: channels: %d", closest->nChannels);
     XASSERT(closest->wFormatTag == WAVE_FORMAT_EXTENSIBLE);
-    WAVEFORMATEXTENSIBLE * closest_pcm = reinterpret_cast<WAVEFORMATEXTENSIBLE *>(closest);
+    WAVEFORMATEXTENSIBLE * closest_pcm = reinterpret_cast<WAVEFORMATEXTENSIBLE *>(closest.get());
     format_pcm->dwChannelMask = closest_pcm->dwChannelMask;
     mix_format->nChannels = closest->nChannels;
     waveformatex_update_derived_properties(mix_format.get());
