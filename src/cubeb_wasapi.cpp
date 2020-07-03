@@ -1777,10 +1777,11 @@ handle_channel_layout(cubeb_stream * stm,  EDataFlow direction, com_heap_ptr<WAV
   waveformatex_update_derived_properties(mix_format.get());
 
   /* Check if wasapi will accept our channel layout request. */
-  WAVEFORMATEX * closest;
+  WAVEFORMATEX * tmp = nullptr;
   HRESULT hr = audio_client->IsFormatSupported(AUDCLNT_SHAREMODE_SHARED,
                                                mix_format.get(),
-                                               &closest);
+                                               &tmp);
+  com_heap_ptr<WAVEFORMATEX> closest(tmp);
   if (hr == S_FALSE) {
     /* Channel layout not supported, but WASAPI gives us a suggestion. Use it,
        and handle the eventual upmix/downmix ourselves. Ignore the subformat of
