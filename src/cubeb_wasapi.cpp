@@ -245,6 +245,7 @@ struct cubeb_stream {
   cubeb_stream_params output_stream_params = { CUBEB_SAMPLE_FLOAT32NE, 0, 0, CUBEB_LAYOUT_UNDEFINED, CUBEB_STREAM_PREF_NONE };
   /* A MMDevice role for this stream: either communication or console here. */
   ERole role;
+  bool voice;
   /* The input and output device, or NULL for default. */
   std::unique_ptr<const wchar_t[]> input_device;
   std::unique_ptr<const wchar_t[]> output_device;
@@ -2213,7 +2214,7 @@ int setup_wasapi_stream(cubeb_stream * stm)
                            target_sample_rate,
                            stm->data_callback,
                            stm->user_ptr,
-                           CUBEB_RESAMPLER_QUALITY_DESKTOP));
+                           stm->voice ? CUBEB_RESAMPLER_QUALITY_VOIP : CUBEB_RESAMPLER_QUALITY_DESKTOP));
   if (!stm->resampler) {
     LOG("Could not get a resampler");
     return CUBEB_ERROR;
@@ -2303,10 +2304,12 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
 
   if (stm->output_stream_params.prefs & CUBEB_STREAM_PREF_VOICE ||
       stm->input_stream_params.prefs & CUBEB_STREAM_PREF_VOICE) {
-    stm->role = eCommunications;
+    stm->voice = true;
   } else {
-    stm->role = eConsole;
+    stm->voice = false;
   }
+
+  stm->role = eConsole;
 
   if (input_stream_params) {
     stm->input_stream_params = *input_stream_params;
