@@ -1038,9 +1038,6 @@ refill_callback_duplex(cubeb_stream * stm)
   }
 
   input_frames = stm->linear_input_buffer->length() / stm->input_stream_params.channels;
-  if (!input_frames) {
-    return true;
-  }
 
   rv = get_output_buffer(stm, output_buffer, output_frames);
   if (!rv) {
