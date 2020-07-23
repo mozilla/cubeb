@@ -35,6 +35,7 @@ MOZ_END_STD_NAMESPACE
 #include "cubeb_utils.h"
 #include "cubeb-speex-resampler.h"
 #include "cubeb_resampler.h"
+#include "cubeb_log.h"
 #include <stdio.h>
 
 /* This header file contains the internal C++ API of the resamplers, for testing. */
@@ -528,6 +529,7 @@ cubeb_resampler_create_internal(cubeb_stream * stream,
       (output_params && output_params->rate == target_rate)) ||
       (input_params && !output_params && (input_params->rate == target_rate)) ||
       (output_params && !input_params && (output_params->rate == target_rate))) {
+    LOG("Input and output sample-rate match, target rate of %dHz", target_rate);
     return new passthrough_resampler<T>(stream, callback,
                                         user_ptr,
                                         input_params ? input_params->channels : 0,
@@ -578,6 +580,7 @@ cubeb_resampler_create_internal(cubeb_stream * stream,
   }
 
   if (input_resampler && output_resampler) {
+    LOG("Resampling input (%d) and output (%d) to target rate of %dHz", input_params->rate, output_params->rate, target_rate);
     return new cubeb_resampler_speex<T,
                                      cubeb_resampler_speex_one_way<T>,
                                      cubeb_resampler_speex_one_way<T>>
@@ -585,6 +588,7 @@ cubeb_resampler_create_internal(cubeb_stream * stream,
                                         output_resampler.release(),
                                         stream, callback, user_ptr);
   } else if (input_resampler) {
+    LOG("Resampling input (%d) to target and output rate of %dHz", input_params->rate, target_rate);
     return new cubeb_resampler_speex<T,
                                      cubeb_resampler_speex_one_way<T>,
                                      delay_line<T>>
@@ -592,6 +596,7 @@ cubeb_resampler_create_internal(cubeb_stream * stream,
                                        output_delay.release(),
                                        stream, callback, user_ptr);
   } else {
+    LOG("Resampling output (%dHz) to target and input rate of %dHz", output_params->rate, target_rate);
     return new cubeb_resampler_speex<T,
                                      delay_line<T>,
                                      cubeb_resampler_speex_one_way<T>>
