@@ -2629,22 +2629,27 @@ int wasapi_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
   /* The GetStreamLatency method only works if the
      AudioClient has been initialized. */
   if (!stm->output_client) {
+    LOG("get_latency: No output_client.");
     return CUBEB_ERROR;
   }
 
   REFERENCE_TIME latency_hns;
   HRESULT hr = stm->output_client->GetStreamLatency(&latency_hns);
   if (FAILED(hr)) {
+    LOG("GetStreamLatency failed %lx.", hr);
     return CUBEB_ERROR;
   }
   // This happens on windows 10: no error, but always 0 for latency.
   if (latency_hns == 0) {
+    LOG("GetStreamLatency returned 0, using workaround.");
      double delay_s = current_stream_delay(stm);
      // convert to sample-frames
      *latency = delay_s * stm->output_stream_params.rate;
   } else {
      *latency = hns_to_frames(stm, latency_hns);
   }
+
+  LOG("Output latency %u frames.", *latency);
 
   return CUBEB_OK;
 }
@@ -2655,12 +2660,14 @@ int wasapi_stream_get_input_latency(cubeb_stream * stm, uint32_t * latency)
   XASSERT(stm && latency);
 
   if (!has_input(stm)) {
+    LOG("Input latency queried on an output-only stream.");
     return CUBEB_ERROR;
   }
 
   auto_lock lock(stm->stream_reset_lock);
 
   if (stm->input_latency_hns == LATENCY_NOT_AVAILABLE_YET) {
+    LOG("Input latency not available yet.");
     return CUBEB_ERROR;
   }
 
