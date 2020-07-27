@@ -2356,13 +2356,6 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
   stm->state_callback = state_callback;
   stm->user_ptr = user_ptr;
 
-  if (stm->output_stream_params.prefs & CUBEB_STREAM_PREF_VOICE ||
-      stm->input_stream_params.prefs & CUBEB_STREAM_PREF_VOICE) {
-    stm->voice = true;
-  } else {
-    stm->voice = false;
-  }
-
   stm->role = eConsole;
 
   if (input_stream_params) {
@@ -2372,6 +2365,13 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
   if (output_stream_params) {
     stm->output_stream_params = *output_stream_params;
     stm->output_device_id = utf8_to_wstr(reinterpret_cast<char const *>(output_device));
+  }
+
+  if (stm->output_stream_params.prefs & CUBEB_STREAM_PREF_VOICE ||
+      stm->input_stream_params.prefs & CUBEB_STREAM_PREF_VOICE) {
+    stm->voice = true;
+  } else {
+    stm->voice = false;
   }
 
   switch (output_stream_params ? output_stream_params->format : input_stream_params->format) {
