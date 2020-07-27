@@ -193,6 +193,8 @@ int wasapi_stream_start(cubeb_stream * stm);
 void close_wasapi_stream(cubeb_stream * stm);
 int setup_wasapi_stream(cubeb_stream * stm);
 ERole pref_to_role(cubeb_stream_prefs param);
+static int wasapi_enumerate_devices(cubeb * context, cubeb_device_type type, cubeb_device_collection * out);
+static int wasapi_device_collection_destroy(cubeb * ctx, cubeb_device_collection * collection);
 static char const * wstr_to_utf8(wchar_t const * str);
 static std::unique_ptr<wchar_t const []> utf8_to_wstr(char const * str);
 
@@ -249,6 +251,8 @@ struct cubeb_stream {
   /* The input and output device, or NULL for default. */
   std::unique_ptr<const wchar_t[]> input_device_id;
   std::unique_ptr<const wchar_t[]> output_device_id;
+  com_ptr<IMMDevice> input_device;
+  com_ptr<IMMDevice> output_device;
   /* The latency initially requested for this stream, in frames. */
   unsigned latency = 0;
   cubeb_state_callback state_callback = nullptr;
@@ -1918,9 +1922,9 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
                                  uint32_t * buffer_frame_count,
                                  HANDLE & event,
                                  T & render_or_capture_client,
-                                 cubeb_stream_params * mix_params)
+                                 cubeb_stream_params * mix_params,
+                                 com_ptr<IMMDevice>& device)
 {
-  com_ptr<IMMDevice> device;
   HRESULT hr;
   bool is_loopback = stream_params->prefs & CUBEB_STREAM_PREF_LOOPBACK;
   if (is_loopback && direction != eCapture) {
@@ -2080,6 +2084,49 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
 
 #undef DIRECTION_NAME
 
+void wasapi_find_matching_output_device(cubeb_stream * stm) {
+  HRESULT hr;
+  cubeb_device_info * input_device;
+  cubeb_device_collection collection;
+
+  wchar_t * tmp = nullptr;
+  hr = stm->input_device->GetId(&tmp);
+  if (FAILED(hr)) {
+    LOG("Couldn't get input device id in wasapi_find_matching_output_device");
+    return;
+  }
+  com_heap_ptr<wchar_t> device_id(tmp);
+  cubeb_devid input_device_id = intern_device_id(stm->context, device_id.get());
+  if (!input_device_id) {
+    return;
+  }
+
+
+  int rv = wasapi_enumerate_devices(stm->context, (cubeb_device_type)(CUBEB_DEVICE_TYPE_INPUT|CUBEB_DEVICE_TYPE_OUTPUT), &collection);
+
+  // Find the input device, and then find the output device with the same group
+  // id and the same rate.
+  for (uint32_t i = 0; i < collection.count; i++) {
+    cubeb_device_info dev = collection.device[i];
+    if (dev.devid == input_device_id) {
+      input_device = &dev;
+      break;
+    }
+  }
+
+  for (uint32_t i = 0; i < collection.count; i++) {
+    cubeb_device_info dev = collection.device[i];
+    if (dev.type == CUBEB_DEVICE_TYPE_OUTPUT &&
+        dev.group_id && !strcmp(dev.group_id, input_device->group_id) &&
+        dev.default_rate == input_device->default_rate) {
+      LOG("Found matching device for %s: %s", input_device->friendly_name, dev.friendly_name);
+      stm->output_device_id = utf8_to_wstr(reinterpret_cast<char const *>(dev.devid));
+    }
+  }
+
+  wasapi_device_collection_destroy(stm->context, &collection);
+}
+
 int setup_wasapi_stream(cubeb_stream * stm)
 {
   int rv;
@@ -2099,7 +2146,8 @@ int setup_wasapi_stream(cubeb_stream * stm)
                                       &stm->input_buffer_frame_count,
                                       stm->input_available_event,
                                       stm->capture_client,
-                                      &stm->input_mix_params);
+                                      &stm->input_mix_params,
+                                      stm->input_device);
     if (rv != CUBEB_OK) {
       LOG("Failure to open the input side.");
       return rv;
@@ -2118,6 +2166,14 @@ int setup_wasapi_stream(cubeb_stream * stm)
     stm->linear_input_buffer->push_silence(stm->input_buffer_frame_count *
                                            stm->input_stream_params.channels *
                                            silent_buffer_count);
+
+    // If this is a bluetooth device, and the output device is the default
+    // device, and the default device is the same bluetooth device, pick the
+    // right output device, running at the same rate and with the same protocol
+    // as the input.
+    if (!stm->output_device_id) {
+      wasapi_find_matching_output_device(stm);
+    }
   }
 
   // If we don't have an output device but are requesting a loopback device,
@@ -2152,7 +2208,8 @@ int setup_wasapi_stream(cubeb_stream * stm)
                                       &stm->output_buffer_frame_count,
                                       stm->refill_event,
                                       stm->render_client,
-                                      &stm->output_mix_params);
+                                      &stm->output_mix_params,
+                                      stm->output_device);
     if (rv != CUBEB_OK) {
       LOG("Failure to open the output side.");
       return rv;
