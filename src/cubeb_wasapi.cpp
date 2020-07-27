@@ -247,8 +247,8 @@ struct cubeb_stream {
   ERole role;
   bool voice;
   /* The input and output device, or NULL for default. */
-  std::unique_ptr<const wchar_t[]> input_device;
-  std::unique_ptr<const wchar_t[]> output_device;
+  std::unique_ptr<const wchar_t[]> input_device_id;
+  std::unique_ptr<const wchar_t[]> output_device_id;
   /* The latency initially requested for this stream, in frames. */
   unsigned latency = 0;
   cubeb_state_callback state_callback = nullptr;
@@ -2089,10 +2089,10 @@ int setup_wasapi_stream(cubeb_stream * stm)
   XASSERT((!stm->output_client || !stm->input_client) && "WASAPI stream already setup, close it first.");
 
   if (has_input(stm)) {
-    LOG("(%p) Setup capture: device=%p", stm, stm->input_device.get());
+    LOG("(%p) Setup capture: device=%p", stm, stm->input_device_id.get());
     rv = setup_wasapi_stream_one_side(stm,
                                       &stm->input_stream_params,
-                                      stm->input_device.get(),
+                                      stm->input_device_id.get(),
                                       eCapture,
                                       __uuidof(IAudioCaptureClient),
                                       stm->input_client,
@@ -2128,24 +2128,24 @@ int setup_wasapi_stream(cubeb_stream * stm)
     stm->output_stream_params.rate = stm->input_stream_params.rate;
     stm->output_stream_params.channels = stm->input_stream_params.channels;
     stm->output_stream_params.layout = stm->input_stream_params.layout;
-    if (stm->input_device) {
-      size_t len = wcslen(stm->input_device.get());
+    if (stm->input_device_id) {
+      size_t len = wcslen(stm->input_device_id.get());
       std::unique_ptr<wchar_t[]> tmp(new wchar_t[len + 1]);
-      if (wcsncpy_s(tmp.get(), len + 1, stm->input_device.get(), len) != 0) {
+      if (wcsncpy_s(tmp.get(), len + 1, stm->input_device_id.get(), len) != 0) {
         LOG("Failed to copy device identifier while copying input stream"
             " configuration to output stream configuration to drive loopback.");
         return CUBEB_ERROR;
       }
-      stm->output_device = move(tmp);
+      stm->output_device_id = move(tmp);
     }
     stm->has_dummy_output = true;
   }
 
   if (has_output(stm)) {
-    LOG("(%p) Setup render: device=%p", stm, stm->output_device.get());
+    LOG("(%p) Setup render: device=%p", stm, stm->output_device_id.get());
     rv = setup_wasapi_stream_one_side(stm,
                                       &stm->output_stream_params,
-                                      stm->output_device.get(),
+                                      stm->output_device_id.get(),
                                       eRender,
                                       __uuidof(IAudioRenderClient),
                                       stm->output_client,
@@ -2310,11 +2310,11 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
 
   if (input_stream_params) {
     stm->input_stream_params = *input_stream_params;
-    stm->input_device = utf8_to_wstr(reinterpret_cast<char const *>(input_device));
+    stm->input_device_id = utf8_to_wstr(reinterpret_cast<char const *>(input_device));
   }
   if (output_stream_params) {
     stm->output_stream_params = *output_stream_params;
-    stm->output_device = utf8_to_wstr(reinterpret_cast<char const *>(output_device));
+    stm->output_device_id = utf8_to_wstr(reinterpret_cast<char const *>(output_device));
   }
 
   switch (output_stream_params ? output_stream_params->format : input_stream_params->format) {
