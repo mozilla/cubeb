@@ -236,8 +236,12 @@ typedef enum {
                                        selected, as well as the quality of the stream,
                                        for example to accomodate bluetooth SCO modes on
                                        bluetooth devices. */
-  CUBEB_STREAM_PREF_RAW = 0x08  /**< Windows only. Bypass all signal processing
+  CUBEB_STREAM_PREF_RAW = 0x08, /**< Windows only. Bypass all signal processing
                                      except for always on APO, driver and hardware. */
+  CUBEB_STREAM_PREF_PERSIST = 0x10, /**< Request that the volume and mute settings
+                                         should persist across restarts of the stream
+                                         and/or application. May not be honored for
+                                         all backends and platforms. */
 } cubeb_stream_prefs;
 
 /** Stream format initialization parameters. */

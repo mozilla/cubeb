@@ -1857,7 +1857,7 @@ initialize_iaudioclient3(com_ptr<IAudioClient> & audio_client,
 
   // IAudioClient3 doesn't support AUDCLNT_STREAMFLAGS_NOPERSIST, and will return
   // AUDCLNT_E_INVALID_STREAM_FLAG. This is undocumented.
-  flags = flags ^ AUDCLNT_STREAMFLAGS_NOPERSIST;
+  flags = flags & ~AUDCLNT_STREAMFLAGS_NOPERSIST;
 
   // Some people have reported glitches with capture streams:
   // http://blog.nirbheek.in/2018/03/low-latency-audio-on-windows-with.html
@@ -2054,7 +2054,13 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
       mix_params->format, mix_params->rate, mix_params->channels,
       mix_params->layout);
 
-  DWORD flags = AUDCLNT_STREAMFLAGS_NOPERSIST;
+
+  DWORD flags = 0;
+
+  bool is_persist = stream_params->prefs & CUBEB_STREAM_PREF_PERSIST;
+  if (!is_persist) {
+    flags |= AUDCLNT_STREAMFLAGS_NOPERSIST;
+  }
 
   // Check if a loopback device should be requested. Note that event callbacks
   // do not work with loopback devices, so only request these if not looping.
