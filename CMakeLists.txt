@@ -199,6 +199,14 @@ if(USE_OPENSL)
   target_link_libraries(cubeb PRIVATE OpenSLES)
 endif()
 
+check_include_files(sys/soundcard.h USE_OSS)
+if(USE_OSS)
+  target_sources(cubeb PRIVATE
+    src/cubeb_oss.c)
+  target_compile_definitions(cubeb PRIVATE USE_OSS)
+  target_link_libraries(cubeb PRIVATE pthread)
+endif()
+
 check_include_files(android/log.h USE_AUDIOTRACK)
 if(USE_AUDIOTRACK)
   target_sources(cubeb PRIVATE
