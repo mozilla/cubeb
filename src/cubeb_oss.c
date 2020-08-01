@@ -174,11 +174,12 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
   mixer_fd = open(OSS_DEFAULT_MIXER, O_RDWR);
   if (mixer_fd == -1) {
     LOG("Failed to open mixer %s. errno: %d", OSS_DEFAULT_MIXER, errno);
+    return CUBEB_ERROR;
   }
 
   error = ioctl(mixer_fd, SNDCTL_SYSINFO, &si);
   if (error)
-      return CUBEB_ERROR;
+    goto fail;
 
 #if defined(__FreeBSD__)
   devinfop = calloc(si.numcards, sizeof(cubeb_device_info));
@@ -330,9 +331,11 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
   collection->count = collection_cnt;
   collection->device = devinfop;
 
+  close(mixer_fd);
   return CUBEB_OK;
 
 fail:
+  close(mixer_fd);
   free(devinfop);
   return CUBEB_ERROR;
 }
