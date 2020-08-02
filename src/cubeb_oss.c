@@ -199,7 +199,6 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
     unsigned int devunit;
     oss_card_info ci;
     oss_audioinfo ai;
-    audio_buf_info bi;
     oss_devnode_t dsppath;
 
     ci.card = i;
@@ -237,13 +236,6 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
       devinfop[collection_cnt].type |= CUBEB_DEVICE_TYPE_OUTPUT;
     }
 
-    if (type == CUBEB_DEVICE_TYPE_INPUT)
-      error = ioctl(dspfd, SNDCTL_DSP_GETISPACE, &bi);
-    else
-      error = ioctl(dspfd, SNDCTL_DSP_GETOSPACE, &bi);
-    if (error)
-      OSS_ENUM_CLOSECONT;
-
     devinfop[collection_cnt].devid = strdup(dsppath);
     devinfop[collection_cnt].device_id = strdup(ci.shortname);
     devinfop[collection_cnt].friendly_name = strdup(ci.longname);
@@ -259,15 +251,14 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
 
     devinfop[collection_cnt].state = CUBEB_DEVICE_STATE_ENABLED;
     devinfop[collection_cnt].preferred = CUBEB_DEVICE_PREF_NONE;
-    // TODO: More precise format detection
     devinfop[collection_cnt].format = CUBEB_DEVICE_FMT_S16NE;
     devinfop[collection_cnt].default_format = CUBEB_DEVICE_FMT_S16NE;
     devinfop[collection_cnt].max_channels = ai.max_channels;
     devinfop[collection_cnt].default_rate = OSS_PREFER_RATE;
     devinfop[collection_cnt].max_rate = ai.max_rate;
     devinfop[collection_cnt].min_rate = ai.min_rate;
-    devinfop[collection_cnt].latency_lo = bi.fragstotal;
-    devinfop[collection_cnt].latency_hi = bi.fragstotal;
+    devinfop[collection_cnt].latency_lo = 0;
+    devinfop[collection_cnt].latency_hi = 0;
  #undef OSS_ENUM_CLOSECONT
 
     close(dspfd);
