@@ -7,6 +7,8 @@
  */
 
 #include <errno.h>
+#include <sys/types.h>
+#include <sys/sysctl.h>
 #include <sys/soundcard.h>
 #include <sys/ioctl.h>
 #include <fcntl.h>
@@ -235,13 +237,17 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
   if (devinfop == NULL)
     goto fail;
 
+  int prefunit = -1;
+  size_t prefunitsize = sizeof(prefunit);
+  sysctlbyname("hw.snd.default_unit", &prefunit, &prefunitsize, NULL, 0);
+
   /*
    * XXX: On FreeBSD we have to rely on SNDCTL_CARDINFO to get all
    * the usable audio devices currently, as SNDCTL_AUDIOINFO will
    * never return directly usable audio device nodes.
    */
   for (i = 0; i < si.numcards; i++) {
-    unsigned int devunit;
+    int devunit;
     oss_audioinfo ai;
     oss_card_info ci;
     oss_devnode_t dsppath;
@@ -251,11 +257,11 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
     if (error)
       continue;
 
-    error = sscanf(ci.shortname, "pcm%u", &devunit);
+    error = sscanf(ci.shortname, "pcm%d", &devunit);
     if (error < 1)
       continue;
 
-    error = snprintf(dsppath, sizeof(dsppath), "/dev/dsp%u", devunit);
+    error = snprintf(dsppath, sizeof(dsppath), "/dev/dsp%d", devunit);
     if (error < 0)
       continue;
 
@@ -287,7 +293,8 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
     }
 
     devinfop[collection_cnt].state = CUBEB_DEVICE_STATE_ENABLED;
-    devinfop[collection_cnt].preferred = CUBEB_DEVICE_PREF_NONE;
+    devinfop[collection_cnt].preferred =
+        (devunit == prefunit) ? CUBEB_DEVICE_PREF_ALL : CUBEB_DEVICE_PREF_NONE;
     devinfop[collection_cnt].format = CUBEB_DEVICE_FMT_S16NE;
     devinfop[collection_cnt].default_format = CUBEB_DEVICE_FMT_S16NE;
     devinfop[collection_cnt].max_channels = ai.max_channels;
