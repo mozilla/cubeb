@@ -226,14 +226,15 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
       OSS_ENUM_CLOSECONT;
 
     devinfop[collection_cnt].type = 0;
-    if (type == CUBEB_DEVICE_TYPE_INPUT) {
+    if (type & CUBEB_DEVICE_TYPE_INPUT) {
       if (!(ai.caps & DSP_CAP_INPUT))
         OSS_ENUM_CLOSECONT;
-      devinfop[collection_cnt].type = CUBEB_DEVICE_TYPE_INPUT;
-    } else if (type == CUBEB_DEVICE_TYPE_OUTPUT) {
+      devinfop[collection_cnt].type |= CUBEB_DEVICE_TYPE_INPUT;
+    }
+    if (type & CUBEB_DEVICE_TYPE_OUTPUT) {
       if (!(ai.caps & DSP_CAP_OUTPUT))
         OSS_ENUM_CLOSECONT;
-      devinfop[collection_cnt].type = CUBEB_DEVICE_TYPE_OUTPUT;
+      devinfop[collection_cnt].type |= CUBEB_DEVICE_TYPE_OUTPUT;
     }
 
     if (type == CUBEB_DEVICE_TYPE_INPUT)
@@ -291,14 +292,15 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
     if (!ai.enabled)
       continue;
 
-    if (type == CUBEB_DEVICE_TYPE_INPUT) {
+    if (type & CUBEB_DEVICE_TYPE_INPUT) {
       if (!(ai.caps & DSP_CAP_INPUT))
         continue;
-      cdi.type = CUBEB_DEVICE_TYPE_INPUT;
-    } else if (type == CUBEB_DEVICE_TYPE_OUTPUT) {
+      cdi.type |= CUBEB_DEVICE_TYPE_INPUT;
+    }
+    if (type & CUBEB_DEVICE_TYPE_OUTPUT) {
       if (!(ai.caps & DSP_CAP_OUTPUT))
         continue;
-      cdi.type = CUBEB_DEVICE_TYPE_OUTPUT;
+      cdi.type |= CUBEB_DEVICE_TYPE_OUTPUT;
     }
 
     cdi.devid = strdup(ai.devnode);
