@@ -153,11 +153,9 @@ oss_get_min_latency(cubeb * context, cubeb_stream_params params,
 static void
 oss_free_cubeb_device_info_strings(cubeb_device_info *cdi)
 {
-  free((char *)cdi->devid);
   free((char *)cdi->device_id);
   free((char *)cdi->friendly_name);
   free((char *)cdi->group_id);
-  cdi->devid = NULL;
   cdi->device_id = NULL;
   cdi->friendly_name = NULL;
   cdi->group_id = NULL;
@@ -279,18 +277,18 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
       devinfop[collection_cnt].type |= CUBEB_DEVICE_TYPE_OUTPUT;
     }
 
-    devinfop[collection_cnt].devid = strdup(dsppath);
     devinfop[collection_cnt].device_id = strdup(ci.shortname);
     devinfop[collection_cnt].friendly_name = strdup(ci.longname);
     devinfop[collection_cnt].group_id = strdup(ci.shortname);
     devinfop[collection_cnt].vendor_name = NULL;
-    if (devinfop[collection_cnt].devid == NULL ||
-        devinfop[collection_cnt].device_id == NULL ||
+    if (devinfop[collection_cnt].device_id == NULL ||
         devinfop[collection_cnt].friendly_name == NULL ||
         devinfop[collection_cnt].group_id == NULL) {
       oss_free_cubeb_device_info_strings(&devinfop[collection_cnt]);
       continue;
     }
+
+    devinfop[collection_cnt].devid = (cubeb_devid)((intptr_t)devunit + 1);
 
     devinfop[collection_cnt].state = CUBEB_DEVICE_STATE_ENABLED;
     devinfop[collection_cnt].preferred =
@@ -632,12 +630,14 @@ oss_stream_init(cubeb * context,
   s->record.nfr = OSS_DEFAULT_NFRAMES;
   s->play.nfr = OSS_DEFAULT_NFRAMES;
   if (input_device != NULL) {
-    strlcpy(s->record.name, input_device, sizeof(s->record.name));
+    snprintf(s->record.name, sizeof(s->record.name), "/dev/dsp%td",
+             (intptr_t)input_device - 1);
   } else {
     strlcpy(s->record.name, OSS_DEFAULT_DEVICE, sizeof(s->record.name));
   }
   if (output_device != NULL) {
-    strlcpy(s->play.name, output_device, sizeof(s->play.name));
+    snprintf(s->record.name, sizeof(s->record.name), "/dev/dsp%td",
+             (intptr_t)output_device - 1);
   } else {
     strlcpy(s->play.name, OSS_DEFAULT_DEVICE, sizeof(s->play.name));
   }
