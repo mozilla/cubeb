@@ -161,6 +161,53 @@ oss_free_cubeb_device_info_strings(cubeb_device_info *cdi)
   cdi->group_id = NULL;
 }
 
+#if defined(__FreeBSD__)
+/*
+ * Check if the specified DSP is okay for the purpose specified
+ * in type. Here type can only specify one operation each time
+ * this helper is called.
+ *
+ * Return 0 if OK, otherwise 1.
+ */
+static int
+oss_probe_open(const char *dsppath, cubeb_device_type type,
+               int *fdp, oss_audioinfo *resai)
+{
+  oss_audioinfo ai;
+  int error;
+  int oflags = (type == CUBEB_DEVICE_TYPE_INPUT) ? O_RDONLY : O_WRONLY;
+  int dspfd = open(dsppath, oflags);
+  if (dspfd == -1)
+    return 1;
+
+  ai.dev = -1;
+  error = ioctl(dspfd, SNDCTL_AUDIOINFO, &ai);
+  if (error < 0)
+    goto not_ok;
+
+  if (type == CUBEB_DEVICE_TYPE_INPUT) {
+    if (!(ai.caps & DSP_CAP_INPUT))
+      goto not_ok;
+  } else if (type == CUBEB_DEVICE_TYPE_OUTPUT){
+    if (!(ai.caps & DSP_CAP_OUTPUT))
+      goto not_ok;
+  } else
+    goto not_ok;
+
+  if (resai)
+    *resai = ai;
+  if (fdp)
+    *fdp = dspfd;
+  else
+    close(dspfd);
+  return 0;
+
+not_ok:
+  close(dspfd);
+  return 1;
+}
+#endif
+
 static int
 oss_enumerate_devices(cubeb * context, cubeb_device_type type,
                       cubeb_device_collection * collection)
@@ -212,25 +259,17 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
     if (error < 0)
       continue;
 
-    int dspfd = open(dsppath, O_RDWR);
-    if (dspfd == -1)
-      continue;
-
- #define OSS_ENUM_CLOSECONT { close(dspfd); continue; }
-    ai.dev = -1;
-    error = ioctl(dspfd, SNDCTL_AUDIOINFO, &ai);
-    if (error < 0)
-      OSS_ENUM_CLOSECONT;
-
     devinfop[collection_cnt].type = 0;
     if (type & CUBEB_DEVICE_TYPE_INPUT) {
-      if (!(ai.caps & DSP_CAP_INPUT))
-        OSS_ENUM_CLOSECONT;
+      error = oss_probe_open(dsppath, CUBEB_DEVICE_TYPE_INPUT, NULL, &ai);
+      if (error)
+        continue;
       devinfop[collection_cnt].type |= CUBEB_DEVICE_TYPE_INPUT;
     }
     if (type & CUBEB_DEVICE_TYPE_OUTPUT) {
-      if (!(ai.caps & DSP_CAP_OUTPUT))
-        OSS_ENUM_CLOSECONT;
+      error = oss_probe_open(dsppath, CUBEB_DEVICE_TYPE_OUTPUT, NULL, &ai);
+      if (error)
+        continue;
       devinfop[collection_cnt].type |= CUBEB_DEVICE_TYPE_OUTPUT;
     }
 
@@ -244,7 +283,7 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
         devinfop[collection_cnt].friendly_name == NULL ||
         devinfop[collection_cnt].group_id == NULL) {
       oss_free_cubeb_device_info_strings(&devinfop[collection_cnt]);
-      OSS_ENUM_CLOSECONT;
+      continue;
     }
 
     devinfop[collection_cnt].state = CUBEB_DEVICE_STATE_ENABLED;
@@ -257,9 +296,7 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
     devinfop[collection_cnt].min_rate = ai.min_rate;
     devinfop[collection_cnt].latency_lo = 0;
     devinfop[collection_cnt].latency_hi = 0;
- #undef OSS_ENUM_CLOSECONT
 
-    close(dspfd);
     collection_cnt++;
   }
 #else
