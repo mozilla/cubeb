@@ -20,6 +20,7 @@
 #include <string.h>
 #include <limits.h>
 #include "cubeb/cubeb.h"
+#include "cubeb_strings.h"
 #include "cubeb-internal.h"
 
 /* Supported well by most hardware. */
@@ -59,10 +60,18 @@
 # endif
 #endif
 
+#ifdef __FreeBSD__
+#define SNDSTAT_BEGIN_STR "Installed devices:"
+#define SNDSTAT_USER_BEGIN_STR "Installed devices from userspace:"
+#endif
+
 static struct cubeb_ops const oss_ops;
 
 struct cubeb {
   struct cubeb_ops const * ops;
+
+  /* Our intern string store */
+  cubeb_strings *devid_strs;
 };
 
 struct oss_stream {
@@ -105,6 +114,10 @@ oss_init(cubeb **context, char const *context_name) {
   if ((c = calloc(1, sizeof(cubeb))) == NULL) {
     return CUBEB_ERROR;
   }
+  if (cubeb_strings_init(&c->devid_strs) == CUBEB_ERROR) {
+    free(c);
+    return CUBEB_ERROR;
+  }
   c->ops = &oss_ops;
   *context = c;
   return CUBEB_OK;
@@ -113,6 +126,7 @@ oss_init(cubeb **context, char const *context_name) {
 static void
 oss_destroy(cubeb * context)
 {
+  cubeb_strings_destroy(context->devid_strs);
   free(context);
 }
 
@@ -182,17 +196,10 @@ oss_probe_open(const char *dsppath, cubeb_device_type type,
 
   ai.dev = -1;
   error = ioctl(dspfd, SNDCTL_AUDIOINFO, &ai);
-  if (error < 0)
-    goto not_ok;
-
-  if (type == CUBEB_DEVICE_TYPE_INPUT) {
-    if (!(ai.caps & DSP_CAP_INPUT))
-      goto not_ok;
-  } else if (type == CUBEB_DEVICE_TYPE_OUTPUT){
-    if (!(ai.caps & DSP_CAP_OUTPUT))
-      goto not_ok;
-  } else
-    goto not_ok;
+  if (error < 0) {
+    close(dspfd);
+    return 1;
+  }
 
   if (resai)
     *resai = ai;
@@ -201,10 +208,6 @@ oss_probe_open(const char *dsppath, cubeb_device_type type,
   else
     close(dspfd);
   return 0;
-
-not_ok:
-  close(dspfd);
-  return 1;
 }
 #endif
 
@@ -216,22 +219,14 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
   int error, i;
   cubeb_device_info *devinfop = NULL;
   int collection_cnt = 0;
-  int mixer_fd;
+  int mixer_fd = -1;
 
-  mixer_fd = open(OSS_DEFAULT_MIXER, O_RDWR);
-  if (mixer_fd == -1) {
-    LOG("Failed to open mixer %s. errno: %d", OSS_DEFAULT_MIXER, errno);
-    return CUBEB_ERROR;
-  }
-
-  error = ioctl(mixer_fd, SNDCTL_SYSINFO, &si);
-  if (error) {
-    LOG("Failed to run SNDCTL_SYSINFO on mixer %s. errno: %d", OSS_DEFAULT_MIXER, errno);
-    goto fail;
-  }
+  (void)si;
+  (void)mixer_fd;
+  (void)i;
 
 #if defined(__FreeBSD__)
-  devinfop = calloc(si.numcards, sizeof(cubeb_device_info));
+  devinfop = calloc(1, sizeof(cubeb_device_info));
   if (devinfop == NULL)
     goto fail;
 
@@ -244,42 +239,119 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
    * the usable audio devices currently, as SNDCTL_AUDIOINFO will
    * never return directly usable audio device nodes.
    */
-  for (i = 0; i < si.numcards; i++) {
-    int devunit;
+  char *line = NULL;
+  size_t linecap = 0;
+  FILE *sndstatfp = fopen("/dev/sndstat", "r");
+  if (sndstatfp == NULL)
+    goto fail;
+  int userspace_matching = 0;
+  while (getline(&line, &linecap, sndstatfp) > 0) {
+    char *matchptr = line, *n = NULL;
+    const char *devid = NULL;
+    oss_devnode_t devname;
+    char *desc = NULL, *playrec = NULL;
+    size_t desclen = 0, playreclen = 0;
+    int preferred = 0;
+    cubeb_device_type devtype = 0;
     oss_audioinfo ai;
-    oss_card_info ci;
-    oss_devnode_t dsppath;
 
-    ci.card = i;
-    error = ioctl(mixer_fd, SNDCTL_CARDINFO, &ci);
+    if (!strncmp(matchptr, SNDSTAT_BEGIN_STR, strlen(SNDSTAT_BEGIN_STR))) {
+      userspace_matching = 0;
+      continue;
+    }
+    if (!strncmp(matchptr, SNDSTAT_USER_BEGIN_STR,
+        strlen(SNDSTAT_USER_BEGIN_STR))) {
+      userspace_matching = 1;
+      continue;
+    }
+
+    n = strchr(matchptr, ':');
+    if (n == NULL)
+      continue;
+    if (userspace_matching == 0) {
+      unsigned int devunit;
+
+      error = sscanf(matchptr, "pcm%u: ", &devunit);
+      if (error < 1)
+        continue;
+
+      error = snprintf(devname, sizeof(devname), "/dev/dsp%u", devunit);
+      if (error < 1)
+        continue;
+
+      if (devunit == (unsigned int)prefunit)
+        preferred = 1;
+    } else {
+      if (n - matchptr >= (ssize_t)(sizeof(devname) - strlen("/dev/")))
+        continue;
+
+      strlcpy(devname, "/dev/", sizeof(devname));
+      strncat(devname, matchptr, n - matchptr);
+    }
+    matchptr = n + 1;
+    if (matchptr >= line + linecap)
+      continue;
+
+    n = strchr(matchptr, '<');
+    if (n == NULL)
+      continue;
+    matchptr = n + 1;
+    if (matchptr >= line + linecap)
+      continue;
+    n = strchr(matchptr, '>');
+    if (n == NULL)
+      continue;
+    desc = matchptr;
+    desclen = n - matchptr;
+    matchptr = n + 1;
+    if (matchptr >= line + linecap)
+      continue;
+
+    n = strchr(matchptr, '(');
+    if (n == NULL)
+      continue;
+    matchptr = n + 1;
+    if (matchptr >= line + linecap)
+      continue;
+    n = strchr(matchptr, ')');
+    if (n == NULL)
+      continue;
+    playrec = matchptr;
+    playreclen = n - matchptr;
+    matchptr = n + 1;
+    if (matchptr >= line + linecap)
+      continue;
+
+    if (strnstr(playrec, "play", playreclen) != NULL)
+      devtype |= CUBEB_DEVICE_TYPE_OUTPUT;
+    if (strnstr(playrec, "rec", playreclen) != NULL)
+      devtype |= CUBEB_DEVICE_TYPE_INPUT;
+
+    devinfop[collection_cnt].type = 0;
+    switch (devtype) {
+    case CUBEB_DEVICE_TYPE_INPUT:
+      if (type & CUBEB_DEVICE_TYPE_OUTPUT)
+        continue;
+      break;
+    case CUBEB_DEVICE_TYPE_OUTPUT:
+      if (type & CUBEB_DEVICE_TYPE_INPUT)
+        continue;
+      break;
+    case 0:
+      continue;
+    }
+
+    error = oss_probe_open(devname, type, NULL, &ai);
     if (error)
       continue;
 
-    error = sscanf(ci.shortname, "pcm%d", &devunit);
-    if (error < 1)
+    devid = cubeb_strings_intern(context->devid_strs, devname);
+    if (devid == NULL)
       continue;
 
-    error = snprintf(dsppath, sizeof(dsppath), "/dev/dsp%d", devunit);
-    if (error < 0)
-      continue;
-
-    devinfop[collection_cnt].type = 0;
-    if (type & CUBEB_DEVICE_TYPE_INPUT) {
-      error = oss_probe_open(dsppath, CUBEB_DEVICE_TYPE_INPUT, NULL, &ai);
-      if (error)
-        continue;
-      devinfop[collection_cnt].type |= CUBEB_DEVICE_TYPE_INPUT;
-    }
-    if (type & CUBEB_DEVICE_TYPE_OUTPUT) {
-      error = oss_probe_open(dsppath, CUBEB_DEVICE_TYPE_OUTPUT, NULL, &ai);
-      if (error)
-        continue;
-      devinfop[collection_cnt].type |= CUBEB_DEVICE_TYPE_OUTPUT;
-    }
-
-    devinfop[collection_cnt].device_id = strdup(ci.shortname);
-    devinfop[collection_cnt].friendly_name = strdup(ci.longname);
-    devinfop[collection_cnt].group_id = strdup(ci.shortname);
+    devinfop[collection_cnt].device_id = strdup(devname);
+    devinfop[collection_cnt].friendly_name = strndup(desc, desclen);
+    devinfop[collection_cnt].group_id = strdup(devname);
     devinfop[collection_cnt].vendor_name = NULL;
     if (devinfop[collection_cnt].device_id == NULL ||
         devinfop[collection_cnt].friendly_name == NULL ||
@@ -288,11 +360,11 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
       continue;
     }
 
-    devinfop[collection_cnt].devid = (cubeb_devid)((intptr_t)devunit + 1);
-
+    devinfop[collection_cnt].type = type;
+    devinfop[collection_cnt].devid = devid;
     devinfop[collection_cnt].state = CUBEB_DEVICE_STATE_ENABLED;
     devinfop[collection_cnt].preferred =
-        (devunit == prefunit) ? CUBEB_DEVICE_PREF_ALL : CUBEB_DEVICE_PREF_NONE;
+        (preferred) ? CUBEB_DEVICE_PREF_ALL : CUBEB_DEVICE_PREF_NONE;
     devinfop[collection_cnt].format = CUBEB_DEVICE_FMT_S16NE;
     devinfop[collection_cnt].default_format = CUBEB_DEVICE_FMT_S16NE;
     devinfop[collection_cnt].max_channels = ai.max_channels;
@@ -303,8 +375,31 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
     devinfop[collection_cnt].latency_hi = 0;
 
     collection_cnt++;
+
+    void *newp = reallocarray(devinfop, collection_cnt + 1,
+                              sizeof(cubeb_device_info));
+    if (newp == NULL) {
+      free(line);
+      fclose(sndstatfp);
+      goto fail;
+    }
+    devinfop = newp;
   }
+  free(line);
+  fclose(sndstatfp);
 #else
+  mixer_fd = open(OSS_DEFAULT_MIXER, O_RDWR);
+  if (mixer_fd == -1) {
+    LOG("Failed to open mixer %s. errno: %d", OSS_DEFAULT_MIXER, errno);
+    return CUBEB_ERROR;
+  }
+
+  error = ioctl(mixer_fd, SNDCTL_SYSINFO, &si);
+  if (error) {
+    LOG("Failed to run SNDCTL_SYSINFO on mixer %s. errno: %d", OSS_DEFAULT_MIXER, errno);
+    goto fail;
+  }
+
   devinfop = calloc(si.numaudios, sizeof(cubeb_device_info));
   if (devinfop == NULL)
     goto fail;
@@ -364,11 +459,13 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
   collection->count = collection_cnt;
   collection->device = devinfop;
 
-  close(mixer_fd);
+  if (mixer_fd != -1)
+    close(mixer_fd);
   return CUBEB_OK;
 
 fail:
-  close(mixer_fd);
+  if (mixer_fd != -1)
+    close(mixer_fd);
   free(devinfop);
   return CUBEB_ERROR;
 }
