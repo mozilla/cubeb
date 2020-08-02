@@ -178,8 +178,10 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
   }
 
   error = ioctl(mixer_fd, SNDCTL_SYSINFO, &si);
-  if (error)
+  if (error) {
+    LOG("Failed to run SNDCTL_SYSINFO on mixer %s. errno: %d", OSS_DEFAULT_MIXER, errno);
     goto fail;
+  }
 
 #if defined(__FreeBSD__)
   devinfop = calloc(si.numcards, sizeof(cubeb_device_info));
@@ -191,14 +193,10 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
    * the usable audio devices currently, as SNDCTL_AUDIOINFO will
    * never return directly usable audio device nodes.
    */
-  error = ioctl(mixer_fd, SNDCTL_CARDINFO, &si);
-  if (error)
-    return CUBEB_ERROR;
-
   for (i = 0; i < si.numcards; i++) {
     unsigned int devunit;
-    oss_card_info ci;
     oss_audioinfo ai;
+    oss_card_info ci;
     oss_devnode_t dsppath;
 
     ci.card = i;
