@@ -694,8 +694,13 @@ oss_stream_init(cubeb * context,
                       (s->play.info.precision / 8);
   if (s->play.fd != -1) {
     audio_buf_info bi;
-    if (ioctl(s->play.fd, SNDCTL_DSP_GETOSPACE, &bi) == 0)
-      s->play.nfr = bi.bytes / s->play.frame_size;
+    if (ioctl(s->play.fd, SNDCTL_DSP_GETOSPACE, &bi) == 0) {
+      unsigned int nfr = bi.fragstotal * bi.fragsize / s->play.frame_size;
+        /* XXX: How can allocated fragments be zero?? */
+      if (nfr != 0) {
+        s->play.nfr = nfr;
+      }
+    }
     if ((s->play.buf = calloc(s->play.nfr, s->play.frame_size)) == NULL) {
       ret = CUBEB_ERROR;
       goto error;
@@ -705,8 +710,13 @@ oss_stream_init(cubeb * context,
                         (s->record.info.precision / 8);
   if (s->record.fd != -1) {
     audio_buf_info bi;
-    if (ioctl(s->record.fd, SNDCTL_DSP_GETISPACE, &bi) == 0)
-      s->record.nfr = bi.bytes / s->record.frame_size;
+    if (ioctl(s->record.fd, SNDCTL_DSP_GETISPACE, &bi) == 0) {
+      unsigned int nfr = bi.fragstotal * bi.fragsize / s->record.frame_size;
+        /* XXX: How can allocated fragments be zero?? */
+      if (nfr != 0) {
+        s->record.nfr = nfr;
+      }
+    }
     if ((s->record.buf = calloc(s->record.nfr, s->record.frame_size)) == NULL) {
       ret = CUBEB_ERROR;
       goto error;
