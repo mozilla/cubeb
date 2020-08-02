@@ -241,8 +241,8 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
     devinfop[collection_cnt].vendor_name = NULL;
     if (devinfop[collection_cnt].devid == NULL ||
         devinfop[collection_cnt].device_id == NULL ||
-        devinfop[collection_cnt].friendly_name ||
-        devinfop[collection_cnt].group_id) {
+        devinfop[collection_cnt].friendly_name == NULL ||
+        devinfop[collection_cnt].group_id == NULL) {
       oss_free_cubeb_device_info_strings(&devinfop[collection_cnt]);
       OSS_ENUM_CLOSECONT;
     }
