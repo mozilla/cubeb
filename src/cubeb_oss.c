@@ -493,13 +493,15 @@ oss_io_routine(void * arg)
   cubeb_stream *s = arg;
   cubeb_state state = CUBEB_STATE_STARTED;
   size_t to_read = 0;
-  long to_write = 0;
+  size_t to_write = 0;
+  long cb_nfr = 0;
+  long nfr = 0;
   size_t write_ofs = 0;
   size_t read_ofs = 0;
   int drain = 0;
 
   s->state_cb(s, s->user_ptr, CUBEB_STATE_STARTED);
-  while (state != CUBEB_STATE_ERROR) {
+  while (state == CUBEB_STATE_STARTED) {
     pthread_mutex_lock(&s->mutex);
     if (!s->running) {
       pthread_mutex_unlock(&s->mutex);
@@ -507,14 +509,22 @@ oss_io_routine(void * arg)
       break;
     }
     pthread_mutex_unlock(&s->mutex);
+    if (s->play.fd == -1 && s->record.fd == -1) {
+      /*
+       * Stop here if the stream is not play & record stream,
+       * play-only stream or record-only stream
+       */
+
+      state = CUBEB_STATE_STOPPED;
+      break;
+    }
     if (s->record.fd != -1 && s->record.floating) {
       oss_linear32_to_float(s->record.buf,
                             s->record.info.channels * s->record.nfr);
     }
-    to_write = s->data_cb(s, s->user_ptr,
-                          s->record.buf, s->play.buf,
-                          s->play.fd != -1 ? s->play.nfr : s->record.nfr);
-    if (to_write == CUBEB_ERROR) {
+    nfr = s->play.fd != -1 ? s->play.nfr : s->record.nfr;
+    cb_nfr = s->data_cb(s, s->user_ptr, s->record.buf, s->play.buf, nfr);
+    if (cb_nfr == CUBEB_ERROR) {
       state = CUBEB_STATE_ERROR;
       break;
     }
@@ -527,16 +537,27 @@ oss_io_routine(void * arg)
 
       if (s->play.floating) {
         oss_float_to_linear32(s->play.buf,
-                              s->play.info.channels * to_write, vol);
+                              s->play.info.channels * cb_nfr, vol);
       } else {
         oss_linear16_set_vol(s->play.buf,
-                             s->play.info.channels * to_write, vol);
+                             s->play.info.channels * cb_nfr, vol);
       }
     }
-    if (to_write < s->play.nfr) {
-      drain = 1;
+    if (cb_nfr < nfr) {
+      if (s->play.fd != -1) {
+        drain = 1;
+      } else {
+        /*
+         * This is a record-only stream and number of frames
+         * returned from data_cb() is smaller than number
+         * of frames required to read. Stop here.
+         */
+
+        state = CUBEB_STATE_STOPPED;
+        break;
+      }
     }
-    to_write = s->play.fd != -1 ? to_write : 0;
+    to_write = s->play.fd != -1 ? cb_nfr : 0;
     to_read = s->record.fd != -1 ? s->record.nfr : 0;
     write_ofs = 0;
     read_ofs = 0;
