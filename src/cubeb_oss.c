@@ -814,13 +814,18 @@ oss_stream_init(cubeb * context,
     s->nfr = playnfr;
   else if (s->record.fd != -1)
     s->nfr = recnfr;
-  if ((s->play.buf = calloc(s->nfr, s->play.frame_size)) == NULL) {
-    ret = CUBEB_ERROR;
-    goto error;
+
+  if (s->play.fd != -1) {
+    if ((s->play.buf = calloc(s->nfr, s->play.frame_size)) == NULL) {
+      ret = CUBEB_ERROR;
+      goto error;
+    }
   }
-  if ((s->record.buf = calloc(s->nfr, s->record.frame_size)) == NULL) {
-    ret = CUBEB_ERROR;
-    goto error;
+  if (s->record.fd != -1) {
+    if ((s->record.buf = calloc(s->nfr, s->record.frame_size)) == NULL) {
+      ret = CUBEB_ERROR;
+      goto error;
+    }
   }
 
   *stream = s;
