@@ -87,7 +87,6 @@ struct oss_stream {
   } info;
 
   unsigned int frame_size; /* precision in bytes * channels */
-  unsigned int nfr; /* Number of frames allocated */
   bool floating;
 };
 
@@ -104,6 +103,7 @@ struct cubeb_stream {
   cubeb_state_callback state_cb;
   uint64_t frames_written;
   uint64_t blocks_written;
+  unsigned int nfr; /* Number of frames allocated */
 };
 
 int
@@ -597,7 +597,6 @@ oss_io_routine(void * arg)
   size_t to_read = 0;
   size_t to_write = 0;
   long cb_nfr = 0;
-  long nfr = 0;
   size_t write_ofs = 0;
   size_t read_ofs = 0;
   int drain = 0;
@@ -622,10 +621,9 @@ oss_io_routine(void * arg)
     }
     if (s->record.fd != -1 && s->record.floating) {
       oss_linear32_to_float(s->record.buf,
-                            s->record.info.channels * s->record.nfr);
+                            s->record.info.channels * s->nfr);
     }
-    nfr = s->play.fd != -1 ? s->play.nfr : s->record.nfr;
-    cb_nfr = s->data_cb(s, s->user_ptr, s->record.buf, s->play.buf, nfr);
+    cb_nfr = s->data_cb(s, s->user_ptr, s->record.buf, s->play.buf, s->nfr);
     if (cb_nfr == CUBEB_ERROR) {
       state = CUBEB_STATE_ERROR;
       break;
@@ -645,7 +643,7 @@ oss_io_routine(void * arg)
                              s->play.info.channels * cb_nfr, vol);
       }
     }
-    if (cb_nfr < nfr) {
+    if (cb_nfr < s->nfr) {
       if (s->play.fd != -1) {
         drain = 1;
       } else {
@@ -660,7 +658,7 @@ oss_io_routine(void * arg)
       }
     }
     to_write = s->play.fd != -1 ? cb_nfr : 0;
-    to_read = s->record.fd != -1 ? s->record.nfr : 0;
+    to_read = s->record.fd != -1 ? s->nfr : 0;
     write_ofs = 0;
     read_ofs = 0;
     while (to_write > 0 || to_read > 0) {
@@ -714,6 +712,8 @@ oss_stream_init(cubeb * context,
                 void * user_ptr)
 {
   int ret = CUBEB_OK;
+  unsigned int playnfr = 1;
+  unsigned int recnfr = 1;
   cubeb_stream *s = NULL;
 
   (void)stream_name;
@@ -724,8 +724,7 @@ oss_stream_init(cubeb * context,
   }
   s->record.fd = -1;
   s->play.fd = -1;
-  s->record.nfr = OSS_DEFAULT_NFRAMES;
-  s->play.nfr = OSS_DEFAULT_NFRAMES;
+  s->nfr = OSS_DEFAULT_NFRAMES;
   if (input_device != NULL) {
     snprintf(s->record.name, sizeof(s->record.name), "/dev/dsp%td",
              (intptr_t)input_device - 1);
@@ -793,14 +792,9 @@ oss_stream_init(cubeb * context,
     audio_buf_info bi;
     if (ioctl(s->play.fd, SNDCTL_DSP_GETOSPACE, &bi) == 0) {
       unsigned int nfr = bi.fragstotal * bi.fragsize / s->play.frame_size;
-        /* XXX: How can allocated fragments be zero?? */
-      if (nfr != 0) {
-        s->play.nfr = nfr;
+      if (playnfr < nfr) {
+        playnfr = nfr;
       }
-    }
-    if ((s->play.buf = calloc(s->play.nfr, s->play.frame_size)) == NULL) {
-      ret = CUBEB_ERROR;
-      goto error;
     }
   }
   s->record.frame_size = s->record.info.channels *
@@ -809,16 +803,26 @@ oss_stream_init(cubeb * context,
     audio_buf_info bi;
     if (ioctl(s->record.fd, SNDCTL_DSP_GETISPACE, &bi) == 0) {
       unsigned int nfr = bi.fragstotal * bi.fragsize / s->record.frame_size;
-        /* XXX: How can allocated fragments be zero?? */
-      if (nfr != 0) {
-        s->record.nfr = nfr;
+      if (recnfr < nfr) {
+        recnfr = nfr;
       }
     }
-    if ((s->record.buf = calloc(s->record.nfr, s->record.frame_size)) == NULL) {
-      ret = CUBEB_ERROR;
-      goto error;
-    }
   }
+  if (s->play.fd != -1 && s->record.fd != -1)
+    s->nfr = (playnfr < recnfr) ? playnfr : recnfr;
+  else if (s->play.fd != -1)
+    s->nfr = playnfr;
+  else if (s->record.fd != -1)
+    s->nfr = recnfr;
+  if ((s->play.buf = calloc(s->nfr, s->play.frame_size)) == NULL) {
+    ret = CUBEB_ERROR;
+    goto error;
+  }
+  if ((s->record.buf = calloc(s->nfr, s->record.frame_size)) == NULL) {
+    ret = CUBEB_ERROR;
+    goto error;
+  }
+
   *stream = s;
   return CUBEB_OK;
 error:
