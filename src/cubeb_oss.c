@@ -726,14 +726,12 @@ oss_stream_init(cubeb * context,
   s->play.fd = -1;
   s->nfr = OSS_DEFAULT_NFRAMES;
   if (input_device != NULL) {
-    snprintf(s->record.name, sizeof(s->record.name), "/dev/dsp%td",
-             (intptr_t)input_device - 1);
+    strlcpy(s->record.name, input_device, sizeof(s->record.name));
   } else {
     strlcpy(s->record.name, OSS_DEFAULT_DEVICE, sizeof(s->record.name));
   }
   if (output_device != NULL) {
-    snprintf(s->record.name, sizeof(s->record.name), "/dev/dsp%td",
-             (intptr_t)output_device - 1);
+    strlcpy(s->play.name, output_device, sizeof(s->play.name));
   } else {
     strlcpy(s->play.name, OSS_DEFAULT_DEVICE, sizeof(s->play.name));
   }
@@ -745,7 +743,8 @@ oss_stream_init(cubeb * context,
     }
     if (s->record.fd == -1) {
       if ((s->record.fd = open(s->record.name, O_RDONLY)) == -1) {
-        LOG("Audio device could not be opened as read-only");
+        LOG("Audio device \"%s\" could not be opened as read-only",
+            s->record.name);
         ret = CUBEB_ERROR_DEVICE_UNAVAILABLE;
         goto error;
       }
@@ -765,7 +764,8 @@ oss_stream_init(cubeb * context,
     }
     if (s->play.fd == -1) {
       if ((s->play.fd = open(s->play.name, O_WRONLY)) == -1) {
-        LOG("Audio device could not be opened as write-only");
+        LOG("Audio device \"%s\" could not be opened as write-only",
+            s->play.name);
         ret = CUBEB_ERROR_DEVICE_UNAVAILABLE;
         goto error;
       }
