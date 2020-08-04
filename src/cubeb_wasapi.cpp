@@ -1334,17 +1334,11 @@ void wasapi_destroy(cubeb * context);
 
 HRESULT register_notification_client(cubeb_stream * stm)
 {
-  HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator),
-                                NULL, CLSCTX_INPROC_SERVER,
-                                IID_PPV_ARGS(stm->device_enumerator.receive()));
-  if (FAILED(hr)) {
-    LOG("Could not get device enumerator: %lx", hr);
-    return hr;
-  }
+  assert(stm->device_enumerator);
 
   stm->notification_client.reset(new wasapi_endpoint_notification_client(stm->reconfigure_event, stm->role));
 
-  hr = stm->device_enumerator->RegisterEndpointNotificationCallback(stm->notification_client.get());
+  HRESULT hr = stm->device_enumerator->RegisterEndpointNotificationCallback(stm->notification_client.get());
   if (FAILED(hr)) {
     LOG("Could not register endpoint notification callback: %lx", hr);
     stm->notification_client = nullptr;
@@ -1372,7 +1366,6 @@ HRESULT unregister_notification_client(cubeb_stream * stm)
   }
 
   stm->notification_client = nullptr;
-  stm->device_enumerator = nullptr;
 
   return S_OK;
 }
@@ -2358,6 +2351,14 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
 
   stm->role = eConsole;
 
+  HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator),
+                                NULL, CLSCTX_INPROC_SERVER,
+                                IID_PPV_ARGS(stm->device_enumerator.receive()));
+  if (FAILED(hr)) {
+    LOG("Could not get device enumerator: %lx", hr);
+    return hr;
+  }
+
   if (input_stream_params) {
     stm->input_stream_params = *input_stream_params;
     stm->input_device_id = utf8_to_wstr(reinterpret_cast<char const *>(input_device));
@@ -2487,6 +2488,8 @@ void wasapi_stream_destroy(cubeb_stream * stm)
   // The variables intialized in wasapi_stream_init,
   // must be destroyed in wasapi_stream_destroy.
   stm->linear_input_buffer.reset();
+
+  stm->device_enumerator = nullptr;
 
   {
     auto_lock lock(stm->stream_reset_lock);
