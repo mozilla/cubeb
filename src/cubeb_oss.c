@@ -557,12 +557,12 @@ oss_float_to_linear32(void * buf, unsigned sample_count, float vol)
   int32_t * tail = out + sample_count;
 
   while (out < tail) {
-    float f = *(in++) * vol;
-    if (f < -1.0)
-      f = -1.0;
-    else if (f > 1.0)
-      f = 1.0;
-    *(out++) = f * (float)INT32_MAX;
+    int64_t f = *(in++) * vol * 0x80000000;
+    if (f < -INT32_MAX)
+      f = -INT32_MAX;
+    else if (f > INT32_MAX)
+      f = INT32_MAX;
+    *(out++) = f;
   }
 }
 
@@ -874,6 +874,10 @@ oss_stream_get_latency(cubeb_stream * s, uint32_t * latency)
 static int
 oss_stream_set_volume(cubeb_stream * stream, float volume)
 {
+  if (volume < 0.0)
+    volume = 0.0;
+  else if (volume > 1.0)
+    volume = 1.0;
   pthread_mutex_lock(&stream->mutex);
   stream->volume = volume;
   pthread_mutex_unlock(&stream->mutex);
