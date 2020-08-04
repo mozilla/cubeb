@@ -2030,6 +2030,33 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
     flags |= AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
   }
 
+  // Sanity check the latency, it may be that the device doesn't support it.
+  REFERENCE_TIME minimum_period;
+  REFERENCE_TIME default_period;
+  hr = audio_client->GetDevicePeriod(&default_period, &minimum_period);
+  if (FAILED(hr)) {
+    LOG("Could not get device period: %lx", hr);
+    return CUBEB_ERROR;
+  }
+
+  cubeb_device_info device_info;
+  int rv = wasapi_create_device(stm->context, device_info, stm->device_enumerator.get(), device.get());
+  if (rv != CUBEB_OK) {
+    LOG("Could not get cubeb_device_info.");
+  }
+
+  REFERENCE_TIME latency = stm->latency;
+
+  const char* HANDSFREE_TAG = "BTHHFEENUM";
+  size_t len = sizeof(HANDSFREE_TAG);
+  if (direction == eCapture && strncmp(device_info.group_id, HANDSFREE_TAG, len) == 0) {
+    // Rather high-latency to prevent constant under-runs in this particular
+    // case of an input device using bluetooth handsfree.
+    latency = default_period * 4;
+  } else {
+    latency = std::max(latency, minimum_period);
+  }
+
 #if 0 // See https://bugzilla.mozilla.org/show_bug.cgi?id=1590902
   if (initialize_iaudioclient3(audio_client, stm, mix_format, flags, direction)) {
     LOG("Initialized with IAudioClient3");
@@ -2037,7 +2064,7 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
 #endif
     hr = audio_client->Initialize(AUDCLNT_SHAREMODE_SHARED,
                                   flags,
-                                  frames_to_hns(stm, stm->latency),
+                                  latency,
                                   0,
                                   mix_format.get(),
                                   NULL);
