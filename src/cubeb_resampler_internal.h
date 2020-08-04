@@ -270,7 +270,14 @@ public:
     speex_resample(resampling_in_buffer.data(), &in_len,
                    resampling_out_buffer.data(), &out_len);
 
-    assert(out_len == output_frame_count);
+    if (out_len < output_frame_count) {
+      LOGV("underrun during resampling: got %u frames, expected %u", out_len, output_frame_count);
+      // silence the rightmost part
+      T* data = resampling_out_buffer.data();
+      for (uint32_t i = frames_to_samples(out_len); i < frames_to_samples(output_frame_count); i++) {
+        data[i] = 0;
+      }
+    }
 
     /* This shifts back any unresampled samples to the beginning of the input
        buffer. */
