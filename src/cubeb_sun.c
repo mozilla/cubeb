@@ -666,7 +666,7 @@ sun_stream_get_latency(cubeb_stream * s, uint32_t * latency)
 #else
   cubeb_stream_params params;
 
-  params.rate = stream->play.info.play.sample_rate;
+  params.rate = s->play.info.play.sample_rate;
 
   return sun_get_min_latency(NULL, params, latency);
 #endif
