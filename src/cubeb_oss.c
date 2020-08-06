@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <poll.h>
 #include "cubeb/cubeb.h"
 #include "cubeb_strings.h"
 #include "cubeb-internal.h"
@@ -635,8 +636,18 @@ oss_io_routine(void * arg)
   size_t write_ofs = 0;
   size_t read_ofs = 0;
   int drain = 0;
+  int trig = 0;
 
   s->state_cb(s, s->user_ptr, CUBEB_STATE_STARTED);
+
+  if (s->record.fd != -1) {
+    if (ioctl(s->record.fd, SNDCTL_DSP_SETTRIGGER, &trig)) {
+      LOG("Error %d occured when setting trigger on record fd", errno);
+      state = CUBEB_STATE_ERROR;
+      goto out;
+    }
+  }
+
   while (state == CUBEB_STATE_STARTED) {
     pthread_mutex_lock(&s->mutex);
     if (!s->running) {
@@ -692,6 +703,16 @@ oss_io_routine(void * arg)
         break;
       }
     }
+
+    if (s->record.fd != -1 && !trig) {
+      trig |= PCM_ENABLE_INPUT;
+      if (ioctl(s->record.fd, SNDCTL_DSP_SETTRIGGER, &trig)) {
+        LOG("Error %d occured when setting trigger on record fd", errno);
+        state = CUBEB_STATE_ERROR;
+        break;
+      }
+    }
+
     to_write = s->play.fd != -1 ? cb_nfr : 0;
     to_read = s->record.fd != -1 ? s->nfr : 0;
     write_ofs = 0;
@@ -699,8 +720,41 @@ oss_io_routine(void * arg)
     while (to_write > 0 || to_read > 0) {
       size_t bytes;
       ssize_t n, frames;
+      struct pollfd pfds[2];
 
-      if (to_write > 0) {
+      pfds[0].fd = s->play.fd;
+      pfds[0].events = POLLOUT;
+      pfds[0].revents = 0;
+      pfds[1].fd = s->record.fd;
+      pfds[1].events = POLLIN;
+      pfds[1].revents = 0;
+
+      if (to_write > 0 && to_read > 0) {
+        int nfds;
+
+        nfds = poll(pfds, 2, 10000);
+        if (nfds == -1) {
+          if (errno == EINTR)
+            continue;
+          LOG("Error %d occured when polling playback and record fd", errno);
+          state = CUBEB_STATE_ERROR;
+          break;
+        } else if (nfds == 0)
+          continue;
+
+        if ((pfds[0].revents & (POLLERR|POLLHUP)) ||
+            (pfds[1].revents & (POLLERR|POLLHUP))) {
+          LOG("Error occured on playback or record fds", errno);
+          state = CUBEB_STATE_ERROR;
+          break;
+        }
+      } else if (to_write > 0) {
+        pfds[0].revents = POLLOUT;
+      } else {
+        pfds[1].revents = POLLIN;
+      }
+
+      if (to_write > 0 && pfds[0].revents) {
         bytes = to_write * s->play.frame_size;
         if ((n = write(s->play.fd, (uint8_t *)s->play.buf + write_ofs, bytes)) < 0) {
           state = CUBEB_STATE_ERROR;
@@ -713,7 +767,7 @@ oss_io_routine(void * arg)
         to_write -= frames;
         write_ofs += n;
       }
-      if (to_read > 0) {
+      if (to_read > 0 && pfds[1].revents) {
         bytes = to_read * s->record.frame_size;
         if ((n = read(s->record.fd, (uint8_t *)s->record.buf + read_ofs, bytes)) < 0) {
           state = CUBEB_STATE_ERROR;
@@ -729,6 +783,9 @@ oss_io_routine(void * arg)
       break;
     }
   }
+out:
+  if (s->record.fd != -1)
+    ioctl(s->record.fd, SNDCTL_DSP_HALT_INPUT, NULL);
   s->state_cb(s, s->user_ptr, state);
   return NULL;
 }
