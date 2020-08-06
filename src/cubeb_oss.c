@@ -883,7 +883,7 @@ oss_stream_init(cubeb * context,
   if (s->play.fd != -1) {
     audio_buf_info bi;
     if (ioctl(s->play.fd, SNDCTL_DSP_GETOSPACE, &bi) == 0) {
-      unsigned int nfr = bi.fragstotal * bi.fragsize / s->play.frame_size;
+      unsigned int nfr = bi.fragsize / s->play.frame_size;
       if (playnfr < nfr) {
         playnfr = nfr;
       }
@@ -894,7 +894,7 @@ oss_stream_init(cubeb * context,
   if (s->record.fd != -1) {
     audio_buf_info bi;
     if (ioctl(s->record.fd, SNDCTL_DSP_GETISPACE, &bi) == 0) {
-      unsigned int nfr = bi.fragstotal * bi.fragsize / s->record.frame_size;
+      unsigned int nfr = bi.fragsize / s->record.frame_size;
       if (recnfr < nfr) {
         recnfr = nfr;
       }
