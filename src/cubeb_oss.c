@@ -6,9 +6,12 @@
  * accompanying file LICENSE for details.
  */
 
+#include <assert.h>
 #include <errno.h>
 #include <sys/types.h>
+#if defined(__FreeBSD__)
 #include <sys/sysctl.h>
+#endif
 #include <sys/soundcard.h>
 #include <sys/ioctl.h>
 #include <fcntl.h>
@@ -18,7 +21,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <limits.h>
 #include "cubeb/cubeb.h"
 #include "cubeb_strings.h"
 #include "cubeb-internal.h"
@@ -45,22 +47,29 @@
 #define OSS_DEFAULT_NFRAMES (32)
 #endif
 
+#ifndef OSS_MAX_CHANNELS
+# if defined(__FreeBSD__)
 /*
  * The current maximum number of channels supported
  * on FreeBSD is 8.
  *
  * Reference: FreeBSD 12.1-RELEASE
  */
-
-#ifndef OSS_MAX_CHANNELS
-# ifdef __FreeBSD__
 #  define OSS_MAX_CHANNELS (8)
+# elif defined(__sun__)
+/*
+ * The current maximum number of channels supported
+ * on Illumos is 16.
+ *
+ * Reference: PSARC 2008/318
+ */
+#  define OSS_MAX_CHANNELS (16)
 # else
 #  define OSS_MAX_CHANNELS (2)
 # endif
 #endif
 
-#ifdef __FreeBSD__
+#if defined(__FreeBSD__)
 #define SNDSTAT_BEGIN_STR "Installed devices:"
 #define SNDSTAT_USER_BEGIN_STR "Installed devices from userspace:"
 #endif
@@ -408,6 +417,7 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
   for (i = 0; i < si.numaudios; i++) {
     oss_audioinfo ai;
     cubeb_device_info cdi = { 0 };
+    const char *devid = NULL;
 
     ai.dev = i;
     error = ioctl(mixer_fd, SNDCTL_AUDIOINFO, &ai);
@@ -418,39 +428,43 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
     if (!ai.enabled)
       continue;
 
-    if (type & CUBEB_DEVICE_TYPE_INPUT) {
-      if (!(ai.caps & DSP_CAP_INPUT))
+    cdi.type = 0;
+    switch (ai.caps & DSP_CAP_DUPLEX) {
+    case DSP_CAP_INPUT:
+      if (type & CUBEB_DEVICE_TYPE_OUTPUT)
         continue;
-      cdi.type |= CUBEB_DEVICE_TYPE_INPUT;
-    }
-    if (type & CUBEB_DEVICE_TYPE_OUTPUT) {
-      if (!(ai.caps & DSP_CAP_OUTPUT))
+      break;
+    case DSP_CAP_OUTPUT:
+      if (type & CUBEB_DEVICE_TYPE_INPUT)
         continue;
-      cdi.type |= CUBEB_DEVICE_TYPE_OUTPUT;
+      break;
+    case 0:
+      continue;
     }
+    cdi.type = type;
 
-    cdi.devid = strdup(ai.devnode);
+    devid = cubeb_strings_intern(context->devid_strs, ai.devnode);
     cdi.device_id = strdup(ai.name);
-    if (cdi.devid == NULL || cdi.device_id == NULL) {
+    cdi.friendly_name = strdup(ai.name);
+    cdi.group_id = strdup(ai.name);
+    if (devid == NULL || cdi.device_id == NULL || cdi.friendly_name == NULL ||
+        cdi.group_id == NULL) {
       oss_free_cubeb_device_info_strings(&cdi);
       continue;
     }
 
-    // TODO: Naming
-    cdi.friendly_name = strdup(ai.name);
-    cdi.group_id = strdup(ai.name);
+    cdi.devid = devid;
     cdi.vendor_name = NULL;
     cdi.state = CUBEB_DEVICE_STATE_ENABLED;
     cdi.preferred = CUBEB_DEVICE_PREF_NONE;
-    // TODO: More precise format detection
     cdi.format = CUBEB_DEVICE_FMT_S16NE;
     cdi.default_format = CUBEB_DEVICE_FMT_S16NE;
     cdi.max_channels = ai.max_channels;
-    cdi.default_rate = OSS_PREFERRED_SAMPLE_RATE;
+    cdi.default_rate = OSS_PREFER_RATE;
     cdi.max_rate = ai.max_rate;
     cdi.min_rate = ai.min_rate;
-    cdi.latency_lo = oss_buf_size(1, MIN_LATENCY_PROFILE);
-    cdi.latency_hi = oss_buf_size(1, MIN_LATENCY_PROFILE);
+    cdi.latency_lo = 0;
+    cdi.latency_hi = 0;
 
     devinfop[collection_cnt++] = cdi;
   }
@@ -643,7 +657,7 @@ oss_io_routine(void * arg)
                              s->play.info.channels * cb_nfr, vol);
       }
     }
-    if (cb_nfr < s->nfr) {
+    if (cb_nfr < (long)s->nfr) {
       if (s->play.fd != -1) {
         drain = 1;
       } else {
