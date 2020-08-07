@@ -9,7 +9,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <sys/types.h>
-#if defined(__FreeBSD__)
+# if defined(__FreeBSD__) || defined(__DragonFly__)
 #include <sys/sysctl.h>
 #endif
 #include <sys/soundcard.h>
@@ -49,7 +49,7 @@
 #endif
 
 #ifndef OSS_MAX_CHANNELS
-# if defined(__FreeBSD__)
+# if defined(__FreeBSD__) || defined(__DragonFly__)
 /*
  * The current maximum number of channels supported
  * on FreeBSD is 8.
@@ -70,7 +70,7 @@
 # endif
 #endif
 
-#if defined(__FreeBSD__)
+# if defined(__FreeBSD__) || defined(__DragonFly__)
 #define SNDSTAT_BEGIN_STR "Installed devices:"
 #define SNDSTAT_USER_BEGIN_STR "Installed devices from userspace:"
 #endif
@@ -185,7 +185,7 @@ oss_free_cubeb_device_info_strings(cubeb_device_info *cdi)
   cdi->group_id = NULL;
 }
 
-#if defined(__FreeBSD__)
+# if defined(__FreeBSD__) || defined(__DragonFly__)
 /*
  * Check if the specified DSP is okay for the purpose specified
  * in type. Here type can only specify one operation each time
