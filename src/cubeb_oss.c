@@ -282,7 +282,6 @@ oss_sndstat_line_parse(const char *line, int is_ud, int prefunit,
       res.type |= CUBEB_DEVICE_TYPE_OUTPUT;
     if (strstr(matchptr, "rec") != NULL)
       res.type |= CUBEB_DEVICE_TYPE_INPUT;
-    matchptr = n + 1;
 
     *sinfo = res;
     return 0;
