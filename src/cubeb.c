@@ -201,6 +201,9 @@ cubeb_init(cubeb ** context, char const * context_name, char const * backend_nam
 #if defined(USE_JACK)
     jack_init,
 #endif
+#if defined (USE_OSS)
+    oss_init,
+#endif
 #if defined(USE_SNDIO)
     sndio_init,
 #endif
