@@ -571,8 +571,8 @@ oss_stream_stop(cubeb_stream * s)
 static void
 oss_stream_destroy(cubeb_stream * s)
 {
-  pthread_mutex_destroy(&s->mutex);
   oss_stream_stop(s);
+  pthread_mutex_destroy(&s->mutex);
   if (s->play.fd != -1) {
     close(s->play.fd);
   }
