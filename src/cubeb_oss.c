@@ -112,7 +112,6 @@ struct cubeb_stream {
   cubeb_data_callback data_cb;
   cubeb_state_callback state_cb;
   uint64_t frames_written;
-  uint64_t blocks_written;
   unsigned int nfr; /* Number of frames allocated */
 };
 
