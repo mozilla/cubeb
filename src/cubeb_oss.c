@@ -557,10 +557,10 @@ oss_copy_params(int fd, cubeb_stream * stream, cubeb_stream_params * params,
     LOG("Unsupported format");
     return CUBEB_ERROR_INVALID_FORMAT;
   }
-  if (ioctl(fd, SNDCTL_DSP_SETFMT, &sinfo->fmt) == -1) {
+  if (ioctl(fd, SNDCTL_DSP_CHANNELS, &sinfo->channels) == -1) {
     return CUBEB_ERROR;
   }
-  if (ioctl(fd, SNDCTL_DSP_CHANNELS, &sinfo->channels) == -1) {
+  if (ioctl(fd, SNDCTL_DSP_SETFMT, &sinfo->fmt) == -1) {
     return CUBEB_ERROR;
   }
   if (ioctl(fd, SNDCTL_DSP_SPEED, &sinfo->sample_rate) == -1) {
@@ -823,7 +823,6 @@ oss_stream_init(cubeb * context,
   cubeb_stream *s = NULL;
 
   (void)stream_name;
-  (void)latency_frames;
   if ((s = calloc(1, sizeof(cubeb_stream))) == NULL) {
     ret = CUBEB_ERROR;
     goto error;
