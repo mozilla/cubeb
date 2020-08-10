@@ -7,6 +7,7 @@
  */
 
 #include <assert.h>
+#include <ctype.h>
 #include <errno.h>
 #include <sys/types.h>
 #if defined(__FreeBSD__) || defined(__DragonFly__)
@@ -73,6 +74,7 @@
 #if defined(__FreeBSD__) || defined(__DragonFly__)
 #define SNDSTAT_BEGIN_STR "Installed devices:"
 #define SNDSTAT_USER_BEGIN_STR "Installed devices from userspace:"
+#define SNDSTAT_FV_BEGIN_STR "File Versions:"
 #endif
 
 static struct cubeb_ops const oss_ops;
@@ -228,8 +230,7 @@ struct sndstat_info {
 };
 
 static int
-oss_sndstat_line_parse(const char *line, int is_ud, int prefunit,
-                       struct sndstat_info *sinfo)
+oss_sndstat_line_parse(const char *line, int is_ud, struct sndstat_info *sinfo)
 {
     const char *matchptr = line, *n = NULL;
     struct sndstat_info res;
@@ -247,9 +248,6 @@ oss_sndstat_line_parse(const char *line, int is_ud, int prefunit,
 
       if (snprintf(res.devname, sizeof(res.devname), "/dev/dsp%u", devunit) < 1)
         goto fail;
-
-      if (devunit == (unsigned int)prefunit)
-        res.preferred = 1;
     } else {
       if (n - matchptr >= (ssize_t)(sizeof(res.devname) - strlen("/dev/")))
         goto fail;
@@ -277,10 +275,23 @@ oss_sndstat_line_parse(const char *line, int is_ud, int prefunit,
     n = strchr(matchptr, ')');
     if (n == NULL)
       goto fail;
-    if (strstr(matchptr, "play") != NULL)
-      res.type |= CUBEB_DEVICE_TYPE_OUTPUT;
-    if (strstr(matchptr, "rec") != NULL)
-      res.type |= CUBEB_DEVICE_TYPE_INPUT;
+    if (!isdigit(matchptr[0])) {
+      if (strstr(matchptr, "play") != NULL)
+        res.type |= CUBEB_DEVICE_TYPE_OUTPUT;
+      if (strstr(matchptr, "rec") != NULL)
+        res.type |= CUBEB_DEVICE_TYPE_INPUT;
+    } else {
+      int p, r;
+      if (sscanf(matchptr, "%dp:%*dv/%dr:%*dv", &p, &r) != 2)
+        goto fail;
+      if (p > 0)
+        res.type |= CUBEB_DEVICE_TYPE_OUTPUT;
+      if (r > 0)
+        res.type |= CUBEB_DEVICE_TYPE_INPUT;
+    }
+    matchptr = n + 1;
+    if (strstr(matchptr, "default") != NULL)
+      res.preferred = 1;
 
     *sinfo = res;
     return 0;
@@ -299,15 +310,12 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
                       cubeb_device_collection * collection)
 {
   cubeb_device_info *devinfop = NULL;
-  int prefunit = -1;
-  size_t prefunitsize = sizeof(prefunit);
   char *line = NULL;
   size_t linecap = 0;
   FILE *sndstatfp = NULL;
   int collection_cnt = 0;
   int is_ud = 0;
-
-  sysctlbyname("hw.snd.default_unit", &prefunit, &prefunitsize, NULL, 0);
+  int skipall = 0;
 
   devinfop = calloc(1, sizeof(cubeb_device_info));
   if (devinfop == NULL)
@@ -321,16 +329,24 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
     struct sndstat_info sinfo;
     oss_audioinfo ai;
 
+    if (!strncmp(line, SNDSTAT_FV_BEGIN_STR, strlen(SNDSTAT_FV_BEGIN_STR))) {
+      skipall = 1;
+      continue;
+    }
     if (!strncmp(line, SNDSTAT_BEGIN_STR, strlen(SNDSTAT_BEGIN_STR))) {
       is_ud = 0;
+      skipall = 0;
       continue;
     }
     if (!strncmp(line, SNDSTAT_USER_BEGIN_STR, strlen(SNDSTAT_USER_BEGIN_STR))) {
       is_ud = 1;
+      skipall = 0;
       continue;
     }
+    if (skipall || isblank(line[0]))
+      continue;
 
-    if (oss_sndstat_line_parse(line, is_ud, prefunit, &sinfo))
+    if (oss_sndstat_line_parse(line, is_ud, &sinfo))
       continue;
 
     devinfop[collection_cnt].type = 0;
