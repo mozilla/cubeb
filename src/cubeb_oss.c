@@ -805,6 +805,16 @@ out:
 }
 
 static int
+oss_calc_frag_params(unsigned int frames, unsigned int frame_size)
+{
+  int n = 4;
+  int blksize = frames * frame_size / 2;
+  while ((1 << n) < blksize)
+    n++;
+  return 2 << 16 | n;
+}
+
+static int
 oss_stream_init(cubeb * context,
                 cubeb_stream ** stream,
                 char const * stream_name,
@@ -895,6 +905,9 @@ oss_stream_init(cubeb * context,
                       (s->play.info.precision / 8);
   if (s->play.fd != -1) {
     audio_buf_info bi;
+    int frag = oss_calc_frag_params(latency_frames, s->play.frame_size);
+    if (ioctl(s->play.fd, SNDCTL_DSP_SETFRAGMENT, &frag))
+      LOG("Failed to set play fd with SNDCTL_DSP_SETFRAGMENT. frag: 0x%x", frag);
     if (ioctl(s->play.fd, SNDCTL_DSP_GETOSPACE, &bi) == 0) {
       unsigned int nfr = bi.fragsize / s->play.frame_size;
       if (playnfr < nfr) {
@@ -906,6 +919,10 @@ oss_stream_init(cubeb * context,
                         (s->record.info.precision / 8);
   if (s->record.fd != -1) {
     audio_buf_info bi;
+    int frag = oss_calc_frag_params(latency_frames, s->record.frame_size);
+    if (ioctl(s->record.fd, SNDCTL_DSP_SETFRAGMENT, &frag))
+      LOG("Failed to set record fd with SNDCTL_DSP_SETFRAGMENT. frag: 0x%x",
+          frag);
     if (ioctl(s->record.fd, SNDCTL_DSP_GETISPACE, &bi) == 0) {
       unsigned int nfr = bi.fragsize / s->record.frame_size;
       if (recnfr < nfr) {
