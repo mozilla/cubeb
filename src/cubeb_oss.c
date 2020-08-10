@@ -591,7 +591,7 @@ oss_float_to_linear32(void * buf, unsigned sample_count, float vol)
   int32_t * tail = out + sample_count;
 
   while (out < tail) {
-    int64_t f = *(in++) * vol * 0x80000000;
+    int64_t f = *(in++) * vol * 0x80000000LL;
     if (f < -INT32_MAX)
       f = -INT32_MAX;
     else if (f > INT32_MAX)
@@ -608,7 +608,7 @@ oss_linear32_to_float(void * buf, unsigned sample_count)
   float * tail = out + sample_count;
 
   while (out < tail) {
-    *(out++) = (1.0 / 0x80000000) * *(in++);
+    *(out++) = (1.0 / 0x80000000LL) * *(in++);
   }
 }
 
