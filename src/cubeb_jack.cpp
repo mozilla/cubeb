@@ -261,6 +261,14 @@ cbjack_connect_ports (cubeb_stream * stream)
 
     api_jack_connect (stream->context->jack_client, src_port, phys_in_ports[c]);
   }
+
+  // Special case playing mono source in stereo
+  if (stream->out_params.channels == 1 && phys_in_ports[1] != NULL) {
+    const char *src_port = api_jack_port_name (stream->output_ports[0]);
+
+    api_jack_connect (stream->context->jack_client, src_port, phys_in_ports[1]);
+  }
+
   r = CUBEB_OK;
 
 skipplayback:
