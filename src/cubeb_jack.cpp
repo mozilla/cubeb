@@ -238,6 +238,22 @@ load_jack_lib(cubeb * context)
   return CUBEB_OK;
 }
 
+static void
+cbjack_connect_port_out (cubeb_stream * stream, const size_t out_port, const char * const phys_in_port)
+{
+  const char *src_port = api_jack_port_name (stream->output_ports[out_port]);
+
+  api_jack_connect (stream->context->jack_client, src_port, phys_in_port);
+}
+
+static void
+cbjack_connect_port_in (cubeb_stream * stream, const char * const phys_out_port, size_t in_port)
+{
+  const char *src_port = api_jack_port_name (stream->input_ports[in_port]);
+
+  api_jack_connect (stream->context->jack_client, phys_out_port, src_port);
+}
+
 static int
 cbjack_connect_ports (cubeb_stream * stream)
 {
@@ -257,16 +273,12 @@ cbjack_connect_ports (cubeb_stream * stream)
 
   // Connect outputs to playback
   for (unsigned int c = 0; c < stream->out_params.channels && phys_in_ports[c] != NULL; c++) {
-    const char *src_port = api_jack_port_name (stream->output_ports[c]);
-
-    api_jack_connect (stream->context->jack_client, src_port, phys_in_ports[c]);
+    cbjack_connect_port_out(stream, c, phys_in_ports[c]);
   }
 
   // Special case playing mono source in stereo
   if (stream->out_params.channels == 1 && phys_in_ports[1] != NULL) {
-    const char *src_port = api_jack_port_name (stream->output_ports[0]);
-
-    api_jack_connect (stream->context->jack_client, src_port, phys_in_ports[1]);
+    cbjack_connect_port_out(stream, 0, phys_in_ports[1]);
   }
 
   r = CUBEB_OK;
@@ -277,9 +289,7 @@ skipplayback:
   }
   // Connect inputs to capture
   for (unsigned int c = 0; c < stream->in_params.channels && phys_out_ports[c] != NULL; c++) {
-    const char *src_port = api_jack_port_name (stream->input_ports[c]);
-
-    api_jack_connect (stream->context->jack_client, phys_out_ports[c], src_port);
+    cbjack_connect_port_in(stream, phys_out_ports[c], c);
   }
   r = CUBEB_OK;
 end:
