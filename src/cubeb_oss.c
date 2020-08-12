@@ -224,15 +224,14 @@ oss_probe_open(const char *dsppath, cubeb_device_type type,
 struct sndstat_info {
   oss_devnode_t devname;
   const char *desc;
-  size_t desclen;
   cubeb_device_type type;
   int preferred;
 };
 
 static int
-oss_sndstat_line_parse(const char *line, int is_ud, struct sndstat_info *sinfo)
+oss_sndstat_line_parse(char *line, int is_ud, struct sndstat_info *sinfo)
 {
-    const char *matchptr = line, *n = NULL;
+    char *matchptr = line, *n = NULL;
     struct sndstat_info res;
 
     memset(&res, 0, sizeof(res));
@@ -264,8 +263,8 @@ oss_sndstat_line_parse(const char *line, int is_ud, struct sndstat_info *sinfo)
     n = strchr(matchptr, '>');
     if (n == NULL)
       goto fail;
+    *n = 0;
     res.desc = matchptr;
-    res.desclen = n - matchptr;
     matchptr = n + 1;
 
     n = strchr(matchptr, '(');
@@ -275,6 +274,7 @@ oss_sndstat_line_parse(const char *line, int is_ud, struct sndstat_info *sinfo)
     n = strchr(matchptr, ')');
     if (n == NULL)
       goto fail;
+    *n = 0;
     if (!isdigit(matchptr[0])) {
       if (strstr(matchptr, "play") != NULL)
         res.type |= CUBEB_DEVICE_TYPE_OUTPUT;
@@ -371,7 +371,7 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
       continue;
 
     devinfop[collection_cnt].device_id = strdup(sinfo.devname);
-    devinfop[collection_cnt].friendly_name = strndup(sinfo.desc, sinfo.desclen);
+    devinfop[collection_cnt].friendly_name = strdup(sinfo.desc);
     devinfop[collection_cnt].group_id = strdup(sinfo.devname);
     devinfop[collection_cnt].vendor_name = NULL;
     if (devinfop[collection_cnt].device_id == NULL ||
