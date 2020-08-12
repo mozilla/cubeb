@@ -260,7 +260,7 @@ oss_sndstat_line_parse(char *line, int is_ud, struct sndstat_info *sinfo)
     if (n == NULL)
       goto fail;
     matchptr = n + 1;
-    n = strchr(matchptr, '>');
+    n = strrchr(matchptr, '>');
     if (n == NULL)
       goto fail;
     *n = 0;
@@ -271,7 +271,7 @@ oss_sndstat_line_parse(char *line, int is_ud, struct sndstat_info *sinfo)
     if (n == NULL)
       goto fail;
     matchptr = n + 1;
-    n = strchr(matchptr, ')');
+    n = strrchr(matchptr, ')');
     if (n == NULL)
       goto fail;
     *n = 0;
