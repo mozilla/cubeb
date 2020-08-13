@@ -808,10 +808,11 @@ static int
 oss_calc_frag_params(unsigned int frames, unsigned int frame_size)
 {
   int n = 4;
-  int blksize = frames * frame_size / 2;
+  int blksize = OSS_DEFAULT_NFRAMES * frame_size;
+  int nblks = (frames * frame_size + blksize - 1) / blksize;
   while ((1 << n) < blksize)
     n++;
-  return 2 << 16 | n;
+  return nblks << 16 | n;
 }
 
 static int
