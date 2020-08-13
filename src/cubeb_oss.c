@@ -10,9 +10,6 @@
 #include <ctype.h>
 #include <errno.h>
 #include <sys/types.h>
-#if defined(__FreeBSD__) || defined(__DragonFly__)
-#include <sys/sysctl.h>
-#endif
 #include <sys/soundcard.h>
 #include <sys/ioctl.h>
 #include <fcntl.h>
