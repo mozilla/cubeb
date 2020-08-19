@@ -531,10 +531,54 @@ oss_device_collection_destroy(cubeb * context,
   return 0;
 }
 
+static unsigned int
+oss_chn_from_cubeb(cubeb_channel chn)
+{
+  switch (chn) {
+    case CHANNEL_FRONT_LEFT:
+      return CHID_L;
+    case CHANNEL_FRONT_RIGHT:
+      return CHID_R;
+    case CHANNEL_FRONT_CENTER:
+      return CHID_C;
+    case CHANNEL_LOW_FREQUENCY:
+      return CHID_LFE;
+    case CHANNEL_BACK_LEFT:
+      return CHID_LR;
+    case CHANNEL_BACK_RIGHT:
+      return CHID_RR;
+    case CHANNEL_SIDE_LEFT:
+      return CHID_LS;
+    case CHANNEL_SIDE_RIGHT:
+      return CHID_RS;
+  }
+  return CHID_UNDEF;
+}
+
+static unsigned long long
+oss_cubeb_layout_to_chnorder(cubeb_channel_layout layout)
+{
+  unsigned int i, nchns = 0;
+  unsigned long long chnorder = 0;
+
+  for (i = 0; layout; i++, layout >>= 1) {
+    unsigned long long chid = oss_chn_from_cubeb((layout & 1) << i);
+    if (chid == CHID_UNDEF)
+      continue;
+
+    chnorder |= (chid & 0xf) << nchns * 4;
+    nchns++;
+  }
+
+  return chnorder;
+}
+
 static int
 oss_copy_params(int fd, cubeb_stream * stream, cubeb_stream_params * params,
                 struct stream_info * sinfo)
 {
+  unsigned long long chnorder;
+
   sinfo->channels = params->channels;
   sinfo->sample_rate = params->rate;
   switch (params->format) {
@@ -562,6 +606,12 @@ oss_copy_params(int fd, cubeb_stream * stream, cubeb_stream_params * params,
   }
   if (ioctl(fd, SNDCTL_DSP_SPEED, &sinfo->sample_rate) == -1) {
     return CUBEB_ERROR;
+  }
+  /* Mono layout is an exception */
+  if (params->layout != CUBEB_LAYOUT_UNDEFINED && params->layout != CUBEB_LAYOUT_MONO) {
+    chnorder = oss_cubeb_layout_to_chnorder(params->layout);
+    if (ioctl(fd, SNDCTL_DSP_SET_CHNORDER, &chnorder) == -1)
+      LOG("Non-fatal error %d occured when setting channel order.", errno);
   }
   return CUBEB_OK;
 }
@@ -849,10 +899,17 @@ oss_stream_init(cubeb * context,
     strlcpy(s->play.name, OSS_DEFAULT_DEVICE, sizeof(s->play.name));
   }
   if (input_stream_params != NULL) {
+    unsigned int nb_channels;
     if (input_stream_params->prefs & CUBEB_STREAM_PREF_LOOPBACK) {
       LOG("Loopback not supported");
       ret = CUBEB_ERROR_NOT_SUPPORTED;
       goto error;
+    }
+    nb_channels = cubeb_channel_layout_nb_channels(input_stream_params->layout);
+    if (input_stream_params->layout != CUBEB_LAYOUT_UNDEFINED &&
+        nb_channels != input_stream_params->channels) {
+      LOG("input_stream_params->layout does not match input_stream_params->channels");
+      return CUBEB_ERROR;
     }
     if (s->record.fd == -1) {
       if ((s->record.fd = open(s->record.name, O_RDONLY)) == -1) {
@@ -870,6 +927,7 @@ oss_stream_init(cubeb * context,
     s->record.floating = (input_stream_params->format == CUBEB_SAMPLE_FLOAT32NE);
   }
   if (output_stream_params != NULL) {
+    unsigned int nb_channels;
     if (output_stream_params->prefs & CUBEB_STREAM_PREF_LOOPBACK) {
       LOG("Loopback not supported");
       ret = CUBEB_ERROR_NOT_SUPPORTED;
@@ -882,6 +940,12 @@ oss_stream_init(cubeb * context,
         ret = CUBEB_ERROR_DEVICE_UNAVAILABLE;
         goto error;
       }
+    }
+    nb_channels = cubeb_channel_layout_nb_channels(output_stream_params->layout);
+    if (output_stream_params->layout != CUBEB_LAYOUT_UNDEFINED &&
+        nb_channels != output_stream_params->channels) {
+      LOG("output_stream_params->layout does not match output_stream_params->channels");
+      return CUBEB_ERROR;
     }
     if ((ret = oss_copy_params(s->play.fd, s, output_stream_params,
                                &s->play.info)) != CUBEB_OK) {
