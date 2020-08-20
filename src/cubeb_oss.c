@@ -21,6 +21,7 @@
 #include <string.h>
 #include <poll.h>
 #include "cubeb/cubeb.h"
+#include "cubeb_mixer.h"
 #include "cubeb_strings.h"
 #include "cubeb-internal.h"
 
@@ -551,8 +552,9 @@ oss_chn_from_cubeb(cubeb_channel chn)
       return CHID_LS;
     case CHANNEL_SIDE_RIGHT:
       return CHID_RS;
+    default:
+      return CHID_UNDEF;
   }
-  return CHID_UNDEF;
 }
 
 static unsigned long long
@@ -909,7 +911,8 @@ oss_stream_init(cubeb * context,
     if (input_stream_params->layout != CUBEB_LAYOUT_UNDEFINED &&
         nb_channels != input_stream_params->channels) {
       LOG("input_stream_params->layout does not match input_stream_params->channels");
-      return CUBEB_ERROR;
+      ret = CUBEB_ERROR_INVALID_PARAMETER;
+      goto error;
     }
     if (s->record.fd == -1) {
       if ((s->record.fd = open(s->record.name, O_RDONLY)) == -1) {
@@ -933,6 +936,13 @@ oss_stream_init(cubeb * context,
       ret = CUBEB_ERROR_NOT_SUPPORTED;
       goto error;
     }
+    nb_channels = cubeb_channel_layout_nb_channels(output_stream_params->layout);
+    if (output_stream_params->layout != CUBEB_LAYOUT_UNDEFINED &&
+        nb_channels != output_stream_params->channels) {
+      LOG("output_stream_params->layout does not match output_stream_params->channels");
+      ret = CUBEB_ERROR_INVALID_PARAMETER;
+      goto error;
+    }
     if (s->play.fd == -1) {
       if ((s->play.fd = open(s->play.name, O_WRONLY)) == -1) {
         LOG("Audio device \"%s\" could not be opened as write-only",
@@ -940,12 +950,6 @@ oss_stream_init(cubeb * context,
         ret = CUBEB_ERROR_DEVICE_UNAVAILABLE;
         goto error;
       }
-    }
-    nb_channels = cubeb_channel_layout_nb_channels(output_stream_params->layout);
-    if (output_stream_params->layout != CUBEB_LAYOUT_UNDEFINED &&
-        nb_channels != output_stream_params->channels) {
-      LOG("output_stream_params->layout does not match output_stream_params->channels");
-      return CUBEB_ERROR;
     }
     if ((ret = oss_copy_params(s->play.fd, s, output_stream_params,
                                &s->play.info)) != CUBEB_OK) {
