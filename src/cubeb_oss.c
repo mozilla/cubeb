@@ -47,6 +47,8 @@
 #define OSS_DEFAULT_NFRAMES (32)
 #endif
 
+#define ENV_AUDIO_DEVICE "AUDIODEVICE"
+
 #ifndef OSS_MAX_CHANNELS
 # if defined(__FreeBSD__) || defined(__DragonFly__)
 /*
@@ -881,6 +883,10 @@ oss_stream_init(cubeb * context,
   unsigned int playnfr = 1;
   unsigned int recnfr = 1;
   cubeb_stream *s = NULL;
+  const char *defdsp;
+
+  if (!(defdsp = getenv(ENV_AUDIO_DEVICE)) || *defdsp == '\0')
+    defdsp = OSS_DEFAULT_DEVICE;
 
   (void)stream_name;
   if ((s = calloc(1, sizeof(cubeb_stream))) == NULL) {
@@ -893,12 +899,12 @@ oss_stream_init(cubeb * context,
   if (input_device != NULL) {
     strlcpy(s->record.name, input_device, sizeof(s->record.name));
   } else {
-    strlcpy(s->record.name, OSS_DEFAULT_DEVICE, sizeof(s->record.name));
+    strlcpy(s->record.name, defdsp, sizeof(s->record.name));
   }
   if (output_device != NULL) {
     strlcpy(s->play.name, output_device, sizeof(s->play.name));
   } else {
-    strlcpy(s->play.name, OSS_DEFAULT_DEVICE, sizeof(s->play.name));
+    strlcpy(s->play.name, defdsp, sizeof(s->play.name));
   }
   if (input_stream_params != NULL) {
     unsigned int nb_channels;
