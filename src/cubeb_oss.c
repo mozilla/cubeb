@@ -47,7 +47,7 @@
 #define OSS_DEFAULT_NFRAMES (32)
 #endif
 
-#define ENV_AUDIO_DEVICE "AUDIODEVICE"
+#define ENV_AUDIO_DEVICE "AUDIO_DEVICE"
 
 #ifndef OSS_MAX_CHANNELS
 # if defined(__FreeBSD__) || defined(__DragonFly__)
