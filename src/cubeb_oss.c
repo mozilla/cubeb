@@ -371,7 +371,8 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
       continue;
 
     devinfop[collection_cnt].device_id = strdup(sinfo.devname);
-    devinfop[collection_cnt].friendly_name = strdup(sinfo.desc);
+    asprintf((char **)&devinfop[collection_cnt].friendly_name, "%s: %s",
+             sinfo.devname, sinfo.desc);
     devinfop[collection_cnt].group_id = strdup(sinfo.devname);
     devinfop[collection_cnt].vendor_name = NULL;
     if (devinfop[collection_cnt].device_id == NULL ||
