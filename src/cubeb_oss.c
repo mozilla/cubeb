@@ -810,7 +810,7 @@ oss_io_routine(void * arg)
 
         if ((pfds[0].revents & (POLLERR|POLLHUP)) ||
             (pfds[1].revents & (POLLERR|POLLHUP))) {
-          LOG("Error occured on playback or record fds", errno);
+          LOG("Error %d occured on playback or record fds", errno);
           state = CUBEB_STATE_ERROR;
           break;
         }
