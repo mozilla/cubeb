@@ -83,6 +83,7 @@ struct cubeb {
   struct cubeb_ops const * ops;
 
   /* Our intern string store */
+  pthread_mutex_t mutex; /* protects devid_strs */
   cubeb_strings *devid_strs;
 };
 
@@ -117,6 +118,16 @@ struct cubeb_stream {
   unsigned int nfr; /* Number of frames allocated */
 };
 
+static char const *
+oss_cubeb_devid_intern(cubeb *context, char const * devid)
+{
+  char const *is;
+  pthread_mutex_lock(&context->mutex);
+  is = cubeb_strings_intern(context->devid_strs, devid);
+  pthread_mutex_unlock(&context->mutex);
+  return is;
+}
+
 int
 oss_init(cubeb **context, char const *context_name) {
   cubeb * c;
@@ -125,18 +136,29 @@ oss_init(cubeb **context, char const *context_name) {
   if ((c = calloc(1, sizeof(cubeb))) == NULL) {
     return CUBEB_ERROR;
   }
+
   if (cubeb_strings_init(&c->devid_strs) == CUBEB_ERROR) {
-    free(c);
-    return CUBEB_ERROR;
+    goto fail;
   }
+
+  if (pthread_mutex_init(&c->mutex, NULL) != 0) {
+    goto fail;
+  }
+
   c->ops = &oss_ops;
   *context = c;
   return CUBEB_OK;
+
+fail:
+  cubeb_strings_destroy(c->devid_strs);
+  free(c);
+  return CUBEB_ERROR;
 }
 
 static void
 oss_destroy(cubeb * context)
 {
+  pthread_mutex_destroy(&context->mutex);
   cubeb_strings_destroy(context->devid_strs);
   free(context);
 }
@@ -366,7 +388,7 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
     if (oss_probe_open(sinfo.devname, type, NULL, &ai))
       continue;
 
-    devid = cubeb_strings_intern(context->devid_strs, sinfo.devname);
+    devid = oss_cubeb_devid_intern(context, sinfo.devname);
     if (devid == NULL)
       continue;
 
@@ -479,7 +501,7 @@ oss_enumerate_devices(cubeb * context, cubeb_device_type type,
     }
     cdi.type = type;
 
-    devid = cubeb_strings_intern(context->devid_strs, ai.devnode);
+    devid = oss_cubeb_devid_intern(context, ai.devnode);
     cdi.device_id = strdup(ai.name);
     cdi.friendly_name = strdup(ai.name);
     cdi.group_id = strdup(ai.name);
