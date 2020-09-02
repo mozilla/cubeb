@@ -193,6 +193,7 @@ int wasapi_stream_start(cubeb_stream * stm);
 void close_wasapi_stream(cubeb_stream * stm);
 int setup_wasapi_stream(cubeb_stream * stm);
 ERole pref_to_role(cubeb_stream_prefs param);
+int wasapi_create_device(cubeb * ctx, cubeb_device_info& ret, IMMDeviceEnumerator * enumerator, IMMDevice * dev);
 static int wasapi_enumerate_devices(cubeb * context, cubeb_device_type type, cubeb_device_collection * out);
 static int wasapi_device_collection_destroy(cubeb * ctx, cubeb_device_collection * collection);
 static char const * wstr_to_utf8(wchar_t const * str);
@@ -247,7 +248,10 @@ struct cubeb_stream {
   cubeb_stream_params output_stream_params = { CUBEB_SAMPLE_FLOAT32NE, 0, 0, CUBEB_LAYOUT_UNDEFINED, CUBEB_STREAM_PREF_NONE };
   /* A MMDevice role for this stream: either communication or console here. */
   ERole role;
+  /* True if this stream will transport voice-data. */
   bool voice;
+  /* True if the input device of this stream is using bluetooth handsfree. */
+  bool input_bluetooth_handsfree;
   /* The input and output device, or NULL for default. */
   std::unique_ptr<const wchar_t[]> input_device_id;
   std::unique_ptr<const wchar_t[]> output_device_id;
@@ -2053,8 +2057,10 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
     // Rather high-latency to prevent constant under-runs in this particular
     // case of an input device using bluetooth handsfree.
     latency = default_period * 4;
+    stm->input_bluetooth_handsfree = true;
   } else {
     latency = std::max(latency, minimum_period);
+    stm->input_bluetooth_handsfree = false;
   }
 
 #if 0 // See https://bugzilla.mozilla.org/show_bug.cgi?id=1590902
@@ -2109,6 +2115,12 @@ void wasapi_find_matching_output_device(cubeb_stream * stm) {
   cubeb_device_info * input_device;
   cubeb_device_collection collection;
 
+  // Only try to match to an output device if the input device is a bluetooth
+  // device that is using the handsfree protocol
+  if (!stm->input_bluetooth_handsfree) {
+    return;
+  }
+
   wchar_t * tmp = nullptr;
   hr = stm->input_device->GetId(&tmp);
   if (FAILED(hr)) {
@@ -2120,7 +2132,6 @@ void wasapi_find_matching_output_device(cubeb_stream * stm) {
   if (!input_device_id) {
     return;
   }
-
 
   int rv = wasapi_enumerate_devices(stm->context, (cubeb_device_type)(CUBEB_DEVICE_TYPE_INPUT|CUBEB_DEVICE_TYPE_OUTPUT), &collection);
 
@@ -2375,8 +2386,8 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
   stm->data_callback = data_callback;
   stm->state_callback = state_callback;
   stm->user_ptr = user_ptr;
-
   stm->role = eConsole;
+  stm->input_bluetooth_handsfree = false;
 
   HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator),
                                 NULL, CLSCTX_INPROC_SERVER,
