@@ -783,6 +783,12 @@ frames_to_hns(cubeb_stream * stm, uint32_t frames)
   return std::ceil(frames * 10000000.0 / get_rate(stm));
 }
 
+REFERENCE_TIME
+frames_to_hns(uint32_t rate, uint32_t frames)
+{
+  return std::ceil(frames * 10000000.0 / rate);
+}
+
 /* This returns the size of a frame in the stream, before the eventual upmix
    occurs. */
 static size_t
@@ -2050,19 +2056,25 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
     LOG("Could not get cubeb_device_info.");
   }
 
-  REFERENCE_TIME latency = stm->latency;
+  uint32_t latency_frames = stm->latency;
 
   const char* HANDSFREE_TAG = "BTHHFEENUM";
   size_t len = sizeof(HANDSFREE_TAG);
   if (direction == eCapture && strncmp(device_info.group_id, HANDSFREE_TAG, len) == 0) {
     // Rather high-latency to prevent constant under-runs in this particular
     // case of an input device using bluetooth handsfree.
-    latency = default_period * 4;
+    uint32_t default_period_frames = hns_to_frames(device_info.default_rate, default_period);
+    latency_frames = default_period_frames * 4;
     stm->input_bluetooth_handsfree = true;
+    LOG("Input is a bluetooth device in handsfree, latency increased to %u frames from a default of %u", latency_frames, default_period_frames);
   } else {
-    latency = std::max(latency, minimum_period);
+    uint32_t minimum_period_frames = hns_to_frames(device_info.default_rate, minimum_period);
+    LOG("Input is a not bluetooth handsfree, latency %s to %u frames (minimum %u)", latency_frames < minimum_period_frames ? "increased" : "set", latency_frames, minimum_period_frames);
+    latency_frames = std::max(latency_frames, minimum_period_frames);
     stm->input_bluetooth_handsfree = false;
   }
+
+  REFERENCE_TIME latency_hns = frames_to_hns(device_info.default_rate, latency_frames);
 
   wasapi_destroy_device(&device_info);
 
@@ -2073,7 +2085,7 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
 #endif
     hr = audio_client->Initialize(AUDCLNT_SHAREMODE_SHARED,
                                   flags,
-                                  latency,
+                                  latency_hns,
                                   0,
                                   mix_format.get(),
                                   NULL);
