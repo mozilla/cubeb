@@ -194,6 +194,7 @@ void close_wasapi_stream(cubeb_stream * stm);
 int setup_wasapi_stream(cubeb_stream * stm);
 ERole pref_to_role(cubeb_stream_prefs param);
 int wasapi_create_device(cubeb * ctx, cubeb_device_info& ret, IMMDeviceEnumerator * enumerator, IMMDevice * dev);
+void wasapi_destroy_device(cubeb_device_info * device_info);
 static int wasapi_enumerate_devices(cubeb * context, cubeb_device_type type, cubeb_device_collection * out);
 static int wasapi_device_collection_destroy(cubeb * ctx, cubeb_device_collection * collection);
 static char const * wstr_to_utf8(wchar_t const * str);
@@ -2063,6 +2064,8 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
     stm->input_bluetooth_handsfree = false;
   }
 
+  wasapi_destroy_device(&device_info);
+
 #if 0 // See https://bugzilla.mozilla.org/show_bug.cgi?id=1590902
   if (initialize_iaudioclient3(audio_client, stm, mix_format, flags, direction)) {
     LOG("Initialized with IAudioClient3");
@@ -2973,6 +2976,13 @@ wasapi_create_device(cubeb * ctx, cubeb_device_info& ret, IMMDeviceEnumerator * 
   return CUBEB_OK;
 }
 
+void
+wasapi_destroy_device(cubeb_device_info * device)
+{
+  delete [] device->friendly_name;
+  delete [] device->group_id;
+}
+
 static int
 wasapi_enumerate_devices(cubeb * context, cubeb_device_type type,
                          cubeb_device_collection * out)
@@ -3036,8 +3046,7 @@ wasapi_device_collection_destroy(cubeb * /*ctx*/, cubeb_device_collection * coll
 
   for (size_t n = 0; n < collection->count; n++) {
     cubeb_device_info& dev = collection->device[n];
-    delete [] dev.friendly_name;
-    delete [] dev.group_id;
+    wasapi_destroy_device(&dev);
   }
 
   delete [] collection->device;
