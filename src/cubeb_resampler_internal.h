@@ -193,15 +193,13 @@ public:
                                            target_rate, quality, &r);
     assert(r == RESAMPLER_ERR_SUCCESS && "resampler allocation failure");
 
-    uint32_t ratio_num, ratio_den;
-    speex_resampler_get_ratio(speex_resampler, &ratio_num, &ratio_den);
     uint32_t input_latency = speex_resampler_get_input_latency(speex_resampler);
-    int64_t skip_frac_num = input_latency * ratio_den;
-    T input_buffer[8192] = {};
-    T output_buffer[8192] = {};
-    uint32_t input_frame_count, output_frame_count;
-    input_frame_count = input_latency;
-    output_frame_count = 8192;
+    const size_t LATENCY_SAMPLES = 8192;
+    T input_buffer[LATENCY_SAMPLES] = {};
+    T output_buffer[LATENCY_SAMPLES] = {};
+    uint32_t input_frame_count = input_latency;
+    uint32_t output_frame_count = LATENCY_SAMPLES;
+    assert(input_latency * channels <= LATENCY_SAMPLES);
     speex_resample(
       input_buffer,
       &input_frame_count,
