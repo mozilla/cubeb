@@ -102,9 +102,13 @@ struct oss_stream {
 struct cubeb_stream {
   struct cubeb * context;
   void * user_ptr;
+  int doorbell_fd[2];
   pthread_t thread;
-  pthread_mutex_t mutex; /* protects running, volume, frames_written */
+  pthread_cond_t cv;
+  pthread_mutex_t mtx; /* protects cv, running, destroying, volume, frames_written */
+  bool thread_created;
   bool running;
+  bool destroying;
   float volume;
   struct oss_stream play;
   struct oss_stream record;
@@ -642,27 +646,50 @@ oss_copy_params(int fd, cubeb_stream * stream, cubeb_stream_params * params,
 static int
 oss_stream_stop(cubeb_stream * s)
 {
-  pthread_mutex_lock(&s->mutex);
-  if (s->running) {
+  pthread_mutex_lock(&s->mtx);
+  if (s->thread_created && s->running) {
+    char ring = 0;
     s->running = false;
-    pthread_mutex_unlock(&s->mutex);
-    pthread_join(s->thread, NULL);
-  } else {
-    pthread_mutex_unlock(&s->mutex);
+    if (write(s->doorbell_fd[1], &ring, 1) <= 0) {
+      LOG("Error ringing doorbell.");
+      pthread_cancel(s->thread);
+      s->thread_created = false;
+      pthread_mutex_unlock(&s->mtx);
+      return CUBEB_ERROR;
+    }
+    pthread_cond_wait(&s->cv, &s->mtx);
   }
+  pthread_mutex_unlock(&s->mtx);
   return CUBEB_OK;
 }
 
 static void
 oss_stream_destroy(cubeb_stream * s)
 {
-  oss_stream_stop(s);
-  pthread_mutex_destroy(&s->mutex);
+  pthread_mutex_lock(&s->mtx);
+  if (s->thread_created) {
+    char ring = 0;
+    s->destroying = true;
+    if (write(s->doorbell_fd[1], &ring, 1) <= 0) {
+      pthread_cancel(s->thread);
+    }
+  }
+  pthread_mutex_unlock(&s->mtx);
+  pthread_join(s->thread, NULL);
+
+  pthread_cond_destroy(&s->cv);
+  pthread_mutex_destroy(&s->mtx);
   if (s->play.fd != -1) {
     close(s->play.fd);
   }
   if (s->record.fd != -1) {
     close(s->record.fd);
+  }
+  if (s->doorbell_fd[0] != -1) {
+    close(s->doorbell_fd[0]);
+  }
+  if (s->doorbell_fd[1] != -1) {
+    close(s->doorbell_fd[1]);
   }
   free(s->play.buf);
   free(s->record.buf);
@@ -709,20 +736,21 @@ oss_linear16_set_vol(int16_t * buf, unsigned sample_count, float vol)
   }
 }
 
-static void *
-oss_io_routine(void * arg)
+static int
+oss_audio_loop(cubeb_stream * s)
 {
-  cubeb_stream *s = arg;
-  cubeb_state state = CUBEB_STATE_STARTED;
-  size_t to_read = 0;
-  size_t to_write = 0;
-  long cb_nfr = 0;
-  size_t write_ofs = 0;
-  size_t read_ofs = 0;
-  int drain = 0;
+  int state = CUBEB_STATE_STARTED;
+  long nfr = 0;
   int trig = 0;
+  int drain = 0;
+  struct pollfd pfds[3];
 
-  s->state_cb(s, s->user_ptr, CUBEB_STATE_STARTED);
+  pfds[0].fd = s->play.fd;
+  pfds[0].events = POLLOUT;
+  pfds[1].fd = s->record.fd;
+  pfds[1].events = POLLIN;
+  pfds[2].fd = s->doorbell_fd[0];
+  pfds[2].events = POLLIN;
 
   if (s->record.fd != -1) {
     if (ioctl(s->record.fd, SNDCTL_DSP_SETTRIGGER, &trig)) {
@@ -730,16 +758,22 @@ oss_io_routine(void * arg)
       state = CUBEB_STATE_ERROR;
       goto out;
     }
+    trig |= PCM_ENABLE_INPUT;
+    if (ioctl(s->record.fd, SNDCTL_DSP_SETTRIGGER, &trig)) {
+      LOG("Error %d occured when setting trigger on record fd", errno);
+      state = CUBEB_STATE_ERROR;
+      goto out;
+    }
   }
 
-  while (state == CUBEB_STATE_STARTED) {
-    pthread_mutex_lock(&s->mutex);
-    if (!s->running) {
-      pthread_mutex_unlock(&s->mutex);
+  while (1) {
+    pthread_mutex_lock(&s->mtx);
+    if (!s->running || s->destroying) {
+      pthread_mutex_unlock(&s->mtx);
       state = CUBEB_STATE_STOPPED;
       break;
     }
-    pthread_mutex_unlock(&s->mutex);
+    pthread_mutex_unlock(&s->mtx);
     if (s->play.fd == -1 && s->record.fd == -1) {
       /*
        * Stop here if the stream is not play & record stream,
@@ -749,31 +783,29 @@ oss_io_routine(void * arg)
       state = CUBEB_STATE_STOPPED;
       break;
     }
+
     if (s->record.fd != -1 && s->record.floating) {
-      oss_linear32_to_float(s->record.buf,
-                            s->record.info.channels * s->nfr);
+      oss_linear32_to_float(s->record.buf, s->record.info.channels * s->nfr);
     }
-    cb_nfr = s->data_cb(s, s->user_ptr, s->record.buf, s->play.buf, s->nfr);
-    if (cb_nfr == CUBEB_ERROR) {
+    nfr = s->data_cb(s, s->user_ptr, s->record.buf, s->play.buf, s->nfr);
+    if (nfr == CUBEB_ERROR) {
       state = CUBEB_STATE_ERROR;
-      break;
+      goto out;
     }
     if (s->play.fd != -1) {
       float vol;
 
-      pthread_mutex_lock(&s->mutex);
+      pthread_mutex_lock(&s->mtx);
       vol = s->volume;
-      pthread_mutex_unlock(&s->mutex);
+      pthread_mutex_unlock(&s->mtx);
 
       if (s->play.floating) {
-        oss_float_to_linear32(s->play.buf,
-                              s->play.info.channels * cb_nfr, vol);
+        oss_float_to_linear32(s->play.buf, s->play.info.channels * nfr, vol);
       } else {
-        oss_linear16_set_vol(s->play.buf,
-                             s->play.info.channels * cb_nfr, vol);
+        oss_linear16_set_vol(s->play.buf, s->play.info.channels * nfr, vol);
       }
     }
-    if (cb_nfr < (long)s->nfr) {
+    if (nfr < (long)s->nfr) {
       if (s->play.fd != -1) {
         drain = 1;
       } else {
@@ -788,89 +820,149 @@ oss_io_routine(void * arg)
       }
     }
 
-    if (s->record.fd != -1 && !trig) {
-      trig |= PCM_ENABLE_INPUT;
-      if (ioctl(s->record.fd, SNDCTL_DSP_SETTRIGGER, &trig)) {
-        LOG("Error %d occured when setting trigger on record fd", errno);
-        state = CUBEB_STATE_ERROR;
-        break;
-      }
-    }
-
-    to_write = s->play.fd != -1 ? cb_nfr : 0;
-    to_read = s->record.fd != -1 ? s->nfr : 0;
-    write_ofs = 0;
-    read_ofs = 0;
+    size_t to_write = s->play.fd != -1 ? nfr : 0;
+    size_t to_read = s->record.fd != -1 ? s->nfr : 0;
+    size_t write_ofs = 0;
+    size_t read_ofs = 0;
     while (to_write > 0 || to_read > 0) {
       size_t bytes;
       ssize_t n, frames;
-      struct pollfd pfds[2];
+      int nfds;
 
-      pfds[0].fd = s->play.fd;
-      pfds[0].events = POLLOUT;
       pfds[0].revents = 0;
-      pfds[1].fd = s->record.fd;
-      pfds[1].events = POLLIN;
       pfds[1].revents = 0;
+      pfds[2].revents = 0;
 
-      if (to_write > 0 && to_read > 0) {
-        int nfds;
-
-        nfds = poll(pfds, 2, 10000);
-        if (nfds == -1) {
-          if (errno == EINTR)
-            continue;
-          LOG("Error %d occured when polling playback and record fd", errno);
-          state = CUBEB_STATE_ERROR;
-          break;
-        } else if (nfds == 0)
+      nfds = poll(pfds, 3, 10000);
+      if (nfds == -1) {
+        if (errno == EINTR)
           continue;
+        LOG("Error %d occured when polling playback and record fd", errno);
+        state = CUBEB_STATE_ERROR;
+        goto out;
+      } else if (nfds == 0)
+        continue;
 
-        if ((pfds[0].revents & (POLLERR|POLLHUP)) ||
-            (pfds[1].revents & (POLLERR|POLLHUP))) {
-          LOG("Error %d occured on playback or record fds", errno);
+      if (pfds[2].revents & (POLLERR | POLLHUP)) {
+        LOG("Error occured on doorbell fd");
+        state = CUBEB_STATE_ERROR;
+        goto out;
+      }
+      if ((pfds[0].revents & (POLLERR | POLLHUP)) ||
+          (pfds[1].revents & (POLLERR | POLLHUP))) {
+        LOG("Error occured on playback, record fds");
+        state = CUBEB_STATE_ERROR;
+        goto out;
+      }
+
+      if (pfds[2].revents) {
+        int dbr = 0;
+        do {
+          char ring[16];
+          dbr = read(s->doorbell_fd[0], ring, sizeof(ring));
+        } while (dbr > 0 || errno == EINTR);
+        assert(dbr != 0);
+        if (dbr < 0 && errno != EAGAIN) {
+          LOG("Error %d occured on doorbell fd", errno);
           state = CUBEB_STATE_ERROR;
-          break;
+          goto out;
         }
-      } else if (to_write > 0) {
-        pfds[0].revents = POLLOUT;
-      } else {
-        pfds[1].revents = POLLIN;
       }
 
       if (to_write > 0 && pfds[0].revents) {
         bytes = to_write * s->play.frame_size;
         if ((n = write(s->play.fd, (uint8_t *)s->play.buf + write_ofs, bytes)) < 0) {
           state = CUBEB_STATE_ERROR;
-          break;
+          goto out;
         }
         frames = n / s->play.frame_size;
-        pthread_mutex_lock(&s->mutex);
+        pthread_mutex_lock(&s->mtx);
         s->frames_written += frames;
-        pthread_mutex_unlock(&s->mutex);
+        pthread_mutex_unlock(&s->mtx);
         to_write -= frames;
         write_ofs += n;
       }
       if (to_read > 0 && pfds[1].revents) {
         bytes = to_read * s->record.frame_size;
-        if ((n = read(s->record.fd, (uint8_t *)s->record.buf + read_ofs, bytes)) < 0) {
+        if ((n = read(s->record.fd, (uint8_t *)s->record.buf + read_ofs,
+                      bytes)) < 0) {
           state = CUBEB_STATE_ERROR;
-          break;
+          goto out;
         }
         frames = n / s->record.frame_size;
         to_read -= frames;
         read_ofs += n;
       }
     }
-    if (drain && state != CUBEB_STATE_ERROR) {
+    if (drain) {
       state = CUBEB_STATE_DRAINED;
       break;
     }
   }
+
 out:
-  if (s->record.fd != -1)
-    ioctl(s->record.fd, SNDCTL_DSP_HALT_INPUT, NULL);
-  s->state_cb(s, s->user_ptr, state);
+  return state;
+}
+
+static void *
+oss_io_routine(void *arg)
+{
+  cubeb_stream *s = arg;
+  cubeb_state state = CUBEB_STATE_STARTED;
+  struct pollfd pfd;
+  int oldval;
+
+  pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, &oldval);
+  pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &oldval);
+
+  pfd.fd = s->doorbell_fd[0];
+  pfd.events = POLLIN;
+
+  do {
+    pthread_mutex_lock(&s->mtx);
+    if (s->destroying) {
+      pthread_mutex_unlock(&s->mtx);
+      break;
+    }
+    pthread_mutex_unlock(&s->mtx);
+
+    s->state_cb(s, s->user_ptr, state);
+
+    state = oss_audio_loop(s);
+    assert(state != CUBEB_STATE_STARTED);
+
+    if (s->record.fd != -1)
+      ioctl(s->record.fd, SNDCTL_DSP_HALT_INPUT, NULL);
+    s->state_cb(s, s->user_ptr, state);
+
+    pthread_mutex_lock(&s->mtx);
+    pthread_cond_signal(&s->cv);
+    if (s->destroying) {
+      pthread_mutex_unlock(&s->mtx);
+      break;
+    }
+    pthread_mutex_unlock(&s->mtx);
+
+    pfd.revents = 0;
+    if (poll(&pfd, 1, INFTIM) != 1) {
+      break;
+    }
+
+    int dbr = 0;
+    do {
+      char ring[16];
+      dbr = read(s->doorbell_fd[0], ring, sizeof(ring));
+    } while (dbr > 0 || errno == EINTR);
+    assert(dbr != 0);
+    if (dbr < 0 && errno != EAGAIN) {
+      LOG("Error %d occured on doorbell fd", errno);
+      break;
+    }
+  } while (1);
+
+  pthread_mutex_lock(&s->mtx);
+  s->thread_created = false;
+  pthread_mutex_unlock(&s->mtx);
   return NULL;
 }
 
@@ -911,8 +1003,8 @@ oss_stream_init(cubeb * context,
     ret = CUBEB_ERROR;
     goto error;
   }
-  s->record.fd = -1;
-  s->play.fd = -1;
+  s->record.fd = s->play.fd = -1;
+  s->doorbell_fd[0] = s->doorbell_fd[1] -1;
   s->nfr = 1;
   if (input_device != NULL) {
     strlcpy(s->record.name, input_device, sizeof(s->record.name));
@@ -987,10 +1079,25 @@ oss_stream_init(cubeb * context,
   s->state_cb = state_callback;
   s->data_cb = data_callback;
   s->user_ptr = user_ptr;
-  if (pthread_mutex_init(&s->mutex, NULL) != 0) {
+
+  if (pipe(s->doorbell_fd))
+    goto error;
+  ret = fcntl(s->doorbell_fd[0], F_GETFL);
+  if (ret == -1)
+    goto error;
+  ret |= O_NONBLOCK;
+  if (fcntl(s->doorbell_fd[0], F_SETFL, ret) == -1)
+    goto error;
+
+  if (pthread_mutex_init(&s->mtx, NULL) != 0) {
     LOG("Failed to create mutex");
     goto error;
   }
+  if (pthread_cond_init(&s->cv, NULL) != 0) {
+    LOG("Failed to create cv");
+    goto error;
+  }
+
   s->play.frame_size = s->play.info.channels *
                       (s->play.info.precision / 8);
   if (s->play.fd != -1) {
@@ -1050,22 +1157,44 @@ error:
 }
 
 static int
-oss_stream_start(cubeb_stream * s)
+oss_stream_thr_create(cubeb_stream * s)
 {
-  s->running = true;
+  if (s->thread_created) {
+    char ring = 0;
+    if (write(s->doorbell_fd[1], &ring, 1) <= 0) {
+      return CUBEB_ERROR;
+    }
+    return CUBEB_OK;
+  }
+
   if (pthread_create(&s->thread, NULL, oss_io_routine, s) != 0) {
     LOG("Couldn't create thread");
     return CUBEB_ERROR;
   }
+
+  return CUBEB_OK;
+}
+
+static int
+oss_stream_start(cubeb_stream * s)
+{
+  pthread_mutex_lock(&s->mtx);
+  if (!s->running && oss_stream_thr_create(s) != CUBEB_OK) {
+    pthread_mutex_unlock(&s->mtx);
+    return CUBEB_ERROR;
+  }
+  s->thread_created = true;
+  s->running = true;
+  pthread_mutex_unlock(&s->mtx);
   return CUBEB_OK;
 }
 
 static int
 oss_stream_get_position(cubeb_stream * s, uint64_t * position)
 {
-  pthread_mutex_lock(&s->mutex);
+  pthread_mutex_lock(&s->mtx);
   *position = s->frames_written;
-  pthread_mutex_unlock(&s->mutex);
+  pthread_mutex_unlock(&s->mtx);
   return CUBEB_OK;
 }
 
@@ -1090,9 +1219,9 @@ oss_stream_set_volume(cubeb_stream * stream, float volume)
     volume = 0.0;
   else if (volume > 1.0)
     volume = 1.0;
-  pthread_mutex_lock(&stream->mutex);
+  pthread_mutex_lock(&stream->mtx);
   stream->volume = volume;
-  pthread_mutex_unlock(&stream->mutex);
+  pthread_mutex_unlock(&stream->mtx);
   return CUBEB_OK;
 }
 
