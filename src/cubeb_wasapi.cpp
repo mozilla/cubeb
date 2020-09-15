@@ -2505,6 +2505,9 @@ void close_wasapi_stream(cubeb_stream * stm)
   stm->input_client = nullptr;
   stm->capture_client = nullptr;
 
+  stm->output_device = nullptr;
+  stm->input_device = nullptr;
+
   stm->audio_stream_volume = nullptr;
 
   stm->audio_clock = nullptr;
