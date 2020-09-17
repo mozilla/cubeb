@@ -2932,6 +2932,12 @@ wasapi_create_device(cubeb * ctx, cubeb_device_info& ret, IMMDeviceEnumerator * 
   hr = propstore->GetValue(PKEY_Device_FriendlyName, &namevar);
   if (SUCCEEDED(hr)) {
     ret.friendly_name = wstr_to_utf8(namevar.pwszVal);
+  } else {
+    // This is not fatal, but a valid string is expected in all cases.
+    char* empty = new char[1];
+    empty[0] = '\0';
+    ret.friendly_name = empty;
+  }
 
   devnode = wasapi_get_device_node(enumerator, dev);
   if (devnode) {
@@ -2944,6 +2950,13 @@ wasapi_create_device(cubeb * ctx, cubeb_device_info& ret, IMMDeviceEnumerator * 
     if (SUCCEEDED(hr)) {
       ret.group_id = wstr_to_utf8(instancevar.pwszVal);
     }
+  }
+
+  if (!ret.group_id) {
+    // This is not fatal, but a valid string is expected in all cases.
+    char* empty = new char[1];
+    empty[0] = '\0';
+    ret.group_id = empty;
   }
 
   ret.preferred = CUBEB_DEVICE_PREF_NONE;
@@ -3004,6 +3017,8 @@ wasapi_create_device(cubeb * ctx, cubeb_device_info& ret, IMMDeviceEnumerator * 
     ret.latency_lo = 0;
     ret.latency_hi = 0;
   }
+
+  XASSERT(ret.friendly_name && ret.group_id);
 
   return CUBEB_OK;
 }
