@@ -2895,14 +2895,20 @@ wasapi_create_device(cubeb * ctx, cubeb_device_info& ret, IMMDeviceEnumerator * 
   };
 
   hr = dev->QueryInterface(IID_PPV_ARGS(endpoint.receive()));
-  if (FAILED(hr)) return CUBEB_ERROR;
+  if (FAILED(hr)) {
+    return CUBEB_ERROR;
+  }
 
   hr = endpoint->GetDataFlow(&flow);
-  if (FAILED(hr)) return CUBEB_ERROR;
+  if (FAILED(hr)) {
+    return CUBEB_ERROR;
+  }
 
   wchar_t * tmp = nullptr;
   hr = dev->GetId(&tmp);
-  if (FAILED(hr)) return CUBEB_ERROR;
+  if (FAILED(hr)) {
+    return CUBEB_ERROR;
+  }
   com_heap_ptr<wchar_t> device_id(tmp);
 
   char const * device_id_intern = intern_device_id(ctx, device_id.get());
@@ -2911,16 +2917,20 @@ wasapi_create_device(cubeb * ctx, cubeb_device_info& ret, IMMDeviceEnumerator * 
   }
 
   hr = dev->OpenPropertyStore(STGM_READ, propstore.receive());
-  if (FAILED(hr)) return CUBEB_ERROR;
+  if (FAILED(hr)) {
+    return CUBEB_ERROR;
+  }
 
   hr = dev->GetState(&state);
-  if (FAILED(hr)) return CUBEB_ERROR;
+  if (FAILED(hr)) {
+    return CUBEB_ERROR;
+  }
 
   ret.device_id = device_id_intern;
   ret.devid = reinterpret_cast<cubeb_devid>(ret.device_id);
   prop_variant namevar;
   hr = propstore->GetValue(PKEY_Device_FriendlyName, &namevar);
-  if (SUCCEEDED(hr))
+  if (SUCCEEDED(hr)) {
     ret.friendly_name = wstr_to_utf8(namevar.pwszVal);
 
   devnode = wasapi_get_device_node(enumerator, dev);
@@ -2937,15 +2947,22 @@ wasapi_create_device(cubeb * ctx, cubeb_device_info& ret, IMMDeviceEnumerator * 
   }
 
   ret.preferred = CUBEB_DEVICE_PREF_NONE;
-  if (wasapi_is_default_device(flow, eConsole, device_id.get(), enumerator))
+  if (wasapi_is_default_device(flow, eConsole, device_id.get(), enumerator)) {
     ret.preferred = (cubeb_device_pref)(ret.preferred | CUBEB_DEVICE_PREF_MULTIMEDIA);
-  if (wasapi_is_default_device(flow, eCommunications, device_id.get(), enumerator))
+  }
+  if (wasapi_is_default_device(flow, eCommunications, device_id.get(), enumerator)) {
     ret.preferred = (cubeb_device_pref)(ret.preferred | CUBEB_DEVICE_PREF_VOICE);
-  if (wasapi_is_default_device(flow, eConsole, device_id.get(), enumerator))
+  }
+  if (wasapi_is_default_device(flow, eConsole, device_id.get(), enumerator)) {
     ret.preferred = (cubeb_device_pref)(ret.preferred | CUBEB_DEVICE_PREF_NOTIFICATION);
+  }
 
-  if (flow == eRender) ret.type = CUBEB_DEVICE_TYPE_OUTPUT;
-  else if (flow == eCapture) ret.type = CUBEB_DEVICE_TYPE_INPUT;
+  if (flow == eRender) {
+    ret.type = CUBEB_DEVICE_TYPE_OUTPUT;
+  } else if (flow == eCapture) {
+    ret.type = CUBEB_DEVICE_TYPE_INPUT;
+  }
+
   switch (state) {
     case DEVICE_STATE_ACTIVE:
       ret.state = CUBEB_DEVICE_STATE_ENABLED;
