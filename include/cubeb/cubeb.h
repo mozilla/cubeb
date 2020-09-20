@@ -242,6 +242,10 @@ typedef enum {
                                          should persist across restarts of the stream
                                          and/or application. May not be honored for
                                          all backends and platforms. */
+
+  CUBEB_STREAM_PREF_JACK_NO_AUTO_CONNECT = 0x20  /**< Don't automatically try to connect
+                                                      ports.  Only affects the jack
+                                                      backend. */
 } cubeb_stream_prefs;
 
 /** Stream format initialization parameters. */
