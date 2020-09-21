@@ -2051,33 +2051,36 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
     return CUBEB_ERROR;
   }
 
-  cubeb_device_info device_info;
-  int rv = wasapi_create_device(stm->context, device_info, stm->device_enumerator.get(), device.get());
-  if (rv != CUBEB_OK) {
-    LOG("Could not get cubeb_device_info.");
-  }
+  REFERENCE_TIME latency_hns;
 
   uint32_t latency_frames = stm->latency;
+  cubeb_device_info device_info;
+  int rv = wasapi_create_device(stm->context, device_info, stm->device_enumerator.get(), device.get());
+  if (rv == CUBEB_OK) {
+    const char* HANDSFREE_TAG = "BTHHFEENUM";
+    size_t len = sizeof(HANDSFREE_TAG);
+    if (direction == eCapture && strncmp(device_info.group_id, HANDSFREE_TAG, len) == 0) {
+      // Rather high-latency to prevent constant under-runs in this particular
+      // case of an input device using bluetooth handsfree.
+      uint32_t default_period_frames = hns_to_frames(device_info.default_rate, default_period);
+      latency_frames = default_period_frames * 4;
+      stm->input_bluetooth_handsfree = true;
+      LOG("Input is a bluetooth device in handsfree, latency increased to %u frames from a default of %u", latency_frames, default_period_frames);
+    } else {
+      uint32_t minimum_period_frames = hns_to_frames(device_info.default_rate, minimum_period);
+      latency_frames = std::max(latency_frames, minimum_period_frames);
+      stm->input_bluetooth_handsfree = false;
+      LOG("Input is a not bluetooth handsfree, latency %s to %u frames (minimum %u)", latency_frames < minimum_period_frames ? "increased" : "set", latency_frames, minimum_period_frames);
+    }
 
-  const char* HANDSFREE_TAG = "BTHHFEENUM";
-  size_t len = sizeof(HANDSFREE_TAG);
-  if (direction == eCapture && strncmp(device_info.group_id, HANDSFREE_TAG, len) == 0) {
-    // Rather high-latency to prevent constant under-runs in this particular
-    // case of an input device using bluetooth handsfree.
-    uint32_t default_period_frames = hns_to_frames(device_info.default_rate, default_period);
-    latency_frames = default_period_frames * 4;
-    stm->input_bluetooth_handsfree = true;
-    LOG("Input is a bluetooth device in handsfree, latency increased to %u frames from a default of %u", latency_frames, default_period_frames);
+    latency_hns = frames_to_hns(device_info.default_rate, latency_frames);
+
+    wasapi_destroy_device(&device_info);
   } else {
-    uint32_t minimum_period_frames = hns_to_frames(device_info.default_rate, minimum_period);
-    LOG("Input is a not bluetooth handsfree, latency %s to %u frames (minimum %u)", latency_frames < minimum_period_frames ? "increased" : "set", latency_frames, minimum_period_frames);
-    latency_frames = std::max(latency_frames, minimum_period_frames);
     stm->input_bluetooth_handsfree = false;
+    latency_hns = frames_to_hns(mix_params->rate, latency_frames);
+    LOG("Could not get cubeb_device_info.");
   }
-
-  REFERENCE_TIME latency_hns = frames_to_hns(device_info.default_rate, latency_frames);
-
-  wasapi_destroy_device(&device_info);
 
 #if 0 // See https://bugzilla.mozilla.org/show_bug.cgi?id=1590902
   if (initialize_iaudioclient3(audio_client, stm, mix_format, flags, direction)) {
