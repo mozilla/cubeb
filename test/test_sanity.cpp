@@ -677,6 +677,7 @@ TEST(cubeb, device_reset)
     r = cubeb_stream_get_position(stream, &position);
     ASSERT_EQ(r, CUBEB_OK);
     ASSERT_GE(position, previous_position);
+    previous_position = position;
     delay(100);
   }
 
@@ -688,9 +689,11 @@ TEST(cubeb, device_reset)
     r = cubeb_stream_get_position(stream, &position);
     ASSERT_EQ(r, CUBEB_OK);
     ASSERT_GE(position, previous_position);
+    previous_position = position;
     delay(100);
   }
 
+  cubeb_stream_stop(stream);
   cubeb_stream_destroy(stream);
   cubeb_destroy(ctx);
 }
