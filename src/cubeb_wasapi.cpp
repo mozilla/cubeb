@@ -711,8 +711,9 @@ intern_device_id(cubeb * ctx, wchar_t const * id)
   XASSERT(id);
 
   char const * tmp = wstr_to_utf8(id);
-  if (!tmp)
+  if (!tmp) {
     return nullptr;
+  }
 
   char const * interned = cubeb_strings_intern(ctx->device_ids, tmp);
 
@@ -2875,6 +2876,8 @@ wasapi_is_default_device(EDataFlow flow, ERole role, LPCWSTR device_id,
   return ret;
 }
 
+/* `ret` must be deallocated with `wasapi_destroy_device`, iff the return value
+ * of this function is `CUBEB_OK`. */
 int
 wasapi_create_device(cubeb * ctx, cubeb_device_info& ret, IMMDeviceEnumerator * enumerator, IMMDevice * dev)
 {
@@ -2887,6 +2890,10 @@ wasapi_create_device(cubeb * ctx, cubeb_device_info& ret, IMMDeviceEnumerator * 
   REFERENCE_TIME def_period, min_period;
   HRESULT hr;
 
+  // zero-out to be able to safely delete the pointers to friendly_name and
+  // group_id at all time in this function.
+  PodZero(&ret, 1);
+
   struct prop_variant : public PROPVARIANT {
     prop_variant() { PropVariantInit(this); }
     ~prop_variant() { PropVariantClear(this); }
@@ -2896,33 +2903,39 @@ wasapi_create_device(cubeb * ctx, cubeb_device_info& ret, IMMDeviceEnumerator * 
 
   hr = dev->QueryInterface(IID_PPV_ARGS(endpoint.receive()));
   if (FAILED(hr)) {
+    wasapi_destroy_device(&ret);
     return CUBEB_ERROR;
   }
 
   hr = endpoint->GetDataFlow(&flow);
   if (FAILED(hr)) {
+    wasapi_destroy_device(&ret);
     return CUBEB_ERROR;
   }
 
   wchar_t * tmp = nullptr;
   hr = dev->GetId(&tmp);
   if (FAILED(hr)) {
+    wasapi_destroy_device(&ret);
     return CUBEB_ERROR;
   }
   com_heap_ptr<wchar_t> device_id(tmp);
 
   char const * device_id_intern = intern_device_id(ctx, device_id.get());
   if (!device_id_intern) {
+    wasapi_destroy_device(&ret);
     return CUBEB_ERROR;
   }
 
   hr = dev->OpenPropertyStore(STGM_READ, propstore.receive());
   if (FAILED(hr)) {
+    wasapi_destroy_device(&ret);
     return CUBEB_ERROR;
   }
 
   hr = dev->GetState(&state);
   if (FAILED(hr)) {
+    wasapi_destroy_device(&ret);
     return CUBEB_ERROR;
   }
 
@@ -2930,9 +2943,10 @@ wasapi_create_device(cubeb * ctx, cubeb_device_info& ret, IMMDeviceEnumerator * 
   ret.devid = reinterpret_cast<cubeb_devid>(ret.device_id);
   prop_variant namevar;
   hr = propstore->GetValue(PKEY_Device_FriendlyName, &namevar);
-  if (SUCCEEDED(hr)) {
+  if (SUCCEEDED(hr) && namevar.vt == VT_LPWSTR) {
     ret.friendly_name = wstr_to_utf8(namevar.pwszVal);
-  } else {
+  }
+  if (!ret.friendly_name) {
     // This is not fatal, but a valid string is expected in all cases.
     char* empty = new char[1];
     empty[0] = '\0';
@@ -2943,11 +2957,14 @@ wasapi_create_device(cubeb * ctx, cubeb_device_info& ret, IMMDeviceEnumerator * 
   if (devnode) {
     com_ptr<IPropertyStore> ps;
     hr = devnode->OpenPropertyStore(STGM_READ, ps.receive());
-    if (FAILED(hr)) return CUBEB_ERROR;
+    if (FAILED(hr)) {
+      wasapi_destroy_device(&ret);
+      return CUBEB_ERROR;
+    }
 
     prop_variant instancevar;
     hr = ps->GetValue(PKEY_Device_InstanceId, &instancevar);
-    if (SUCCEEDED(hr)) {
+    if (SUCCEEDED(hr) && instancevar.vt == VT_LPWSTR) {
       ret.group_id = wstr_to_utf8(instancevar.pwszVal);
     }
   }
