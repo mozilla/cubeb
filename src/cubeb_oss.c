@@ -32,7 +32,7 @@
 
 /* Standard acceptable minimum. */
 #ifndef OSS_LATENCY_MS
-#define OSS_LATENCY_MS (40)
+#define OSS_LATENCY_MS (8)
 #endif
 
 #ifndef OSS_DEFAULT_DEVICE
@@ -41,10 +41,6 @@
 
 #ifndef OSS_DEFAULT_MIXER
 #define OSS_DEFAULT_MIXER "/dev/mixer"
-#endif
-
-#ifndef OSS_DEFAULT_NFRAMES
-#define OSS_DEFAULT_NFRAMES (32)
 #endif
 
 #define ENV_AUDIO_DEVICE "AUDIO_DEVICE"
@@ -193,7 +189,7 @@ oss_get_min_latency(cubeb * context, cubeb_stream_params params,
 {
   (void)context;
 
-  *latency_frames = OSS_LATENCY_MS * params.rate / 1000;
+  *latency_frames = (OSS_LATENCY_MS * params.rate) / 1000;
   return CUBEB_OK;
 }
 
@@ -882,11 +878,10 @@ static int
 oss_calc_frag_params(unsigned int frames, unsigned int frame_size)
 {
   int n = 4;
-  int blksize = OSS_DEFAULT_NFRAMES * frame_size;
-  int nblks = (frames * frame_size + blksize - 1) / blksize;
+  int blksize = frames * frame_size;
   while ((1 << n) < blksize)
     n++;
-  return nblks << 16 | n;
+  return (2 << 16) | n;
 }
 
 static int
@@ -918,7 +913,7 @@ oss_stream_init(cubeb * context,
   }
   s->record.fd = -1;
   s->play.fd = -1;
-  s->nfr = OSS_DEFAULT_NFRAMES;
+  s->nfr = 1;
   if (input_device != NULL) {
     strlcpy(s->record.name, input_device, sizeof(s->record.name));
   } else {
