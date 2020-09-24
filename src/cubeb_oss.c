@@ -123,7 +123,7 @@ struct cubeb_stream {
   uint64_t frames_written;
   unsigned int nfr; /* Number of frames allocated */
   unsigned int nfrags;
-  int bufframes;
+  unsigned int bufframes;
 };
 
 static char const *
@@ -736,7 +736,7 @@ oss_audio_loop(cubeb_stream * s)
   int trig = 0;
   int drain = 0;
   struct pollfd pfds[2];
-  int ppending, rpending;
+  unsigned int ppending, rpending;
 
   pfds[0].fd = s->play.fd;
   pfds[0].events = POLLOUT;
@@ -811,8 +811,10 @@ oss_audio_loop(cubeb_stream * s)
       }
       if (pptr) {
         ppending += nfr;
+        assert(ppending <= s->bufframes);
       }
       if (rptr) {
+        assert(rpending >= nfr);
         rpending -= nfr;
         memmove(rptr, rptr + nfr * s->record.frame_size,
                 (s->bufframes - nfr) * s->record.frame_size);
