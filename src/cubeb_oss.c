@@ -55,7 +55,6 @@
 /*
  * The current maximum number of channels supported
  * on FreeBSD is 8.
- * #endif
  *
  * Reference: FreeBSD 12.1-RELEASE
  */
@@ -782,7 +781,7 @@ oss_audio_loop(cubeb_stream * s)
       break;
     }
 
-    while (s->bufframes - ppending && rpending) {
+    while ((s->bufframes - ppending) >= s->nfr && rpending >= s->nfr) {
       long n = ((s->bufframes - ppending) < rpending) ? s->bufframes - ppending : rpending;
       char *rptr = NULL, *pptr = NULL;
       if (s->record.fd != -1)
@@ -790,7 +789,7 @@ oss_audio_loop(cubeb_stream * s)
       if (s->play.fd != -1)
         pptr = (char *)s->play.buf + ppending * s->play.frame_size;
       if (s->record.fd != -1 && s->record.floating) {
-        oss_linear32_to_float(s->record.buf, s->record.info.channels * s->nfr);
+        oss_linear32_to_float(s->record.buf, s->record.info.channels * n);
       }
       nfr = s->data_cb(s, s->user_ptr, rptr, pptr, n);
       if (nfr == CUBEB_ERROR) {
