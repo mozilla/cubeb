@@ -1,6 +1,10 @@
 /*
  * Copyright © 2019-2020 Nia Alarie <nia@NetBSD.org>
  * Copyright © 2020 Ka Ho Ng <khng300@gmail.com>
+ * Copyright © 2020 The FreeBSD Foundation
+ *
+ * Portions of this software were developed by Ka Ho Ng
+ * under sponsorship from the FreeBSD Foundation.
  *
  * This program is made available under an ISC-style license.  See the
  * accompanying file LICENSE for details.
