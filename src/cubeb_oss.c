@@ -821,6 +821,7 @@ oss_audio_loop(cubeb_stream * s)
       if (nfr < n) {
         if (s->play.fd != -1) {
           drain = 1;
+          break;
         } else {
           /*
            * This is a record-only stream and number of frames
@@ -858,13 +859,16 @@ oss_audio_loop(cubeb_stream * s)
     }
 
     if (pfds[0].revents) {
-      while (ppending > 0 || drain) {
+      while (ppending > 0) {
         size_t bytes = ppending * s->play.frame_size;
         if ((n = write(s->play.fd, (uint8_t *)s->play.buf, bytes)) < 0) {
           if (errno == EINTR)
             continue;
-          if (errno == EAGAIN)
+          if (errno == EAGAIN) {
+            if (drain)
+              continue;
             break;
+          }
           state = CUBEB_STATE_ERROR;
           goto out;
         }
@@ -917,6 +921,7 @@ oss_io_routine(void *arg)
     }
     pthread_mutex_unlock(&s->mtx);
 
+    state = CUBEB_STATE_STARTED;
     s->state_cb(s, s->user_ptr, state);
 
     state = oss_audio_loop(s);
