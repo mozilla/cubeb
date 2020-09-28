@@ -448,6 +448,20 @@ cubeb_stream_set_volume(cubeb_stream * stream, float volume)
   return stream->context->ops->stream_set_volume(stream, volume);
 }
 
+int
+cubeb_stream_set_name(cubeb_stream * stream, char const * stream_name)
+{
+  if (!stream || !stream_name) {
+    return CUBEB_ERROR_INVALID_PARAMETER;
+  }
+
+  if (!stream->context->ops->stream_set_name) {
+    return CUBEB_ERROR_NOT_SUPPORTED;
+  }
+
+  return stream->context->ops->stream_set_name(stream, stream_name);
+}
+
 int cubeb_stream_get_current_device(cubeb_stream * stream,
                                     cubeb_device ** const device)
 {

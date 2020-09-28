@@ -584,6 +584,14 @@ CUBEB_EXPORT int cubeb_stream_get_input_latency(cubeb_stream * stream, uint32_t 
     @retval CUBEB_ERROR_NOT_SUPPORTED */
 CUBEB_EXPORT int cubeb_stream_set_volume(cubeb_stream * stream, float volume);
 
+/** Change a stream's name.
+    @param stream the stream for which to set the name.
+    @param stream_name the new name for the stream
+    @retval CUBEB_OK
+    @retval CUBEB_ERROR_INVALID_PARAMETER if any pointer is invalid
+    @retval CUBEB_ERROR_NOT_SUPPORTED */
+CUBEB_EXPORT int cubeb_stream_set_name(cubeb_stream * stream, char const * stream_name);
+
 /** Get the current output device for this stream.
     @param stm the stream for which to query the current output device
     @param device a pointer in which the current output device will be stored.
