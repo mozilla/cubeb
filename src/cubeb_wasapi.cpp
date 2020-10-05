@@ -1813,6 +1813,26 @@ handle_channel_layout(cubeb_stream * stm,  EDataFlow direction, com_heap_ptr<WAV
 }
 
 static bool
+initialize_iaudioclient2(com_ptr<IAudioClient> & audio_client)
+{
+  com_ptr<IAudioClient2> audio_client2;
+  audio_client->QueryInterface<IAudioClient2>(audio_client2.receive());
+  if (!audio_client2) {
+    LOG("Could not get IAudioClient2 interface, not setting AUDCLNT_STREAMOPTIONS_RAW.");
+    return CUBEB_OK;
+  }
+  AudioClientProperties properties = { 0 };
+  properties.cbSize = sizeof(AudioClientProperties);
+  properties.Options |= AUDCLNT_STREAMOPTIONS_RAW;
+  HRESULT hr = audio_client2->SetClientProperties(&properties);
+  if (FAILED(hr)) {
+    LOG("Can't create the reconfigure event, error: %lx", GetLastError());
+    return CUBEB_ERROR;
+  }
+  return CUBEB_OK;
+}
+
+static bool
 initialize_iaudioclient3(com_ptr<IAudioClient> & audio_client,
                          cubeb_stream * stm,
                          const com_heap_ptr<WAVEFORMATEX> & mix_format,
@@ -2080,6 +2100,11 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
     stm->input_bluetooth_handsfree = false;
     latency_hns = frames_to_hns(mix_params->rate, latency_frames);
     LOG("Could not get cubeb_device_info.");
+  }
+
+  if (initialize_iaudioclient2(audio_client) != CUBEB_OK) {
+    LOG("Can't create the reconfigure event, error: %lx", GetLastError());
+    // This is not fatal.
   }
 
 #if 0 // See https://bugzilla.mozilla.org/show_bug.cgi?id=1590902
