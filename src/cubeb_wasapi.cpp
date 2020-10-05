@@ -4,7 +4,7 @@
  * This program is made available under an ISC-style license.  See the
  * accompanying file LICENSE for details.
  */
-#define _WIN32_WINNT 0x0600
+#define _WIN32_WINNT 0x0603
 #define NOMINMAX
 
 #include <initguid.h>
