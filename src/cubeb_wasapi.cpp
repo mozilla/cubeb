@@ -1823,7 +1823,9 @@ initialize_iaudioclient2(com_ptr<IAudioClient> & audio_client)
   }
   AudioClientProperties properties = { 0 };
   properties.cbSize = sizeof(AudioClientProperties);
+#ifndef __MINGW32__
   properties.Options |= AUDCLNT_STREAMOPTIONS_RAW;
+#endif
   HRESULT hr = audio_client2->SetClientProperties(&properties);
   if (FAILED(hr)) {
     LOG("Can't create the reconfigure event, error: %lx", GetLastError());
