@@ -2102,9 +2102,12 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
     LOG("Could not get cubeb_device_info.");
   }
 
-  if (initialize_iaudioclient2(audio_client) != CUBEB_OK) {
-    LOG("Can't create the reconfigure event, error: %lx", GetLastError());
-    // This is not fatal.
+  if (stm->output_stream_params.prefs & CUBEB_STREAM_PREF_RAW ||
+      stm->input_stream_params.prefs & CUBEB_STREAM_PREF_RAW) {
+    if (initialize_iaudioclient2(audio_client) != CUBEB_OK) {
+      LOG("Can't initialize an IAudioClient2, error: %lx", GetLastError());
+      // This is not fatal.
+    }
   }
 
 #if 0 // See https://bugzilla.mozilla.org/show_bug.cgi?id=1590902
