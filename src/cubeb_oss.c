@@ -661,7 +661,6 @@ oss_stream_stop(cubeb_stream * s)
   pthread_mutex_lock(&s->mtx);
   if (s->thread_created && s->running) {
     s->running = false;
-    pthread_cond_signal(&s->doorbell_cv);
     pthread_cond_wait(&s->stopped_cv, &s->mtx);
   }
   pthread_mutex_unlock(&s->mtx);
