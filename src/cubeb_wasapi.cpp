@@ -1828,7 +1828,7 @@ initialize_iaudioclient2(com_ptr<IAudioClient> & audio_client)
 #endif
   HRESULT hr = audio_client2->SetClientProperties(&properties);
   if (FAILED(hr)) {
-    LOG("Can't create the reconfigure event, error: %lx", GetLastError());
+    LOG("IAudioClient2::SetClientProperties error: %lx", GetLastError());
     return CUBEB_ERROR;
   }
   return CUBEB_OK;
@@ -2104,8 +2104,7 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
     LOG("Could not get cubeb_device_info.");
   }
 
-  if (stm->output_stream_params.prefs & CUBEB_STREAM_PREF_RAW ||
-      stm->input_stream_params.prefs & CUBEB_STREAM_PREF_RAW) {
+  if (stream_params->prefs & CUBEB_STREAM_PREF_RAW) {
     if (initialize_iaudioclient2(audio_client) != CUBEB_OK) {
       LOG("Can't initialize an IAudioClient2, error: %lx", GetLastError());
       // This is not fatal.
