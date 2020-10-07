@@ -942,9 +942,6 @@ oss_io_routine(void *arg)
       pthread_mutex_unlock(&s->mtx);
       break;
     }
-    pthread_mutex_unlock(&s->mtx);
-
-    pthread_mutex_lock(&s->mtx);
     pthread_cond_wait(&s->doorbell_cv, &s->mtx);
     pthread_mutex_unlock(&s->mtx);
   } while (1);
