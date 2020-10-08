@@ -943,9 +943,6 @@ oss_io_routine(void *arg)
     stopped = oss_audio_loop(s, &new_state);
     if (s->record.fd != -1)
       ioctl(s->record.fd, SNDCTL_DSP_HALT_INPUT, NULL);
-    pthread_mutex_lock(&s->mtx);
-    s->running = false;
-    pthread_mutex_unlock(&s->mtx);
     if (!stopped)
       s->state_cb(s, s->user_ptr, new_state);
 
