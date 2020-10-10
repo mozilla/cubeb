@@ -119,7 +119,7 @@ struct cubeb_stream {
   bool thread_created; /* (m) */
   bool running; /* (m) */
   bool destroying; /* (m) */
-  cubeb_state state;
+  cubeb_state state; /* (m) */
   float volume /* (m) */;
   struct oss_stream play;
   struct oss_stream record;
@@ -1007,6 +1007,7 @@ oss_stream_init(cubeb * context,
     ret = CUBEB_ERROR;
     goto error;
   }
+  s->state = CUBEB_STATE_STOPPED;
   s->record.fd = s->play.fd = -1;
   s->nfr = latency_frames;
   if (input_device != NULL) {
