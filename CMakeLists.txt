@@ -214,8 +214,20 @@ endif()
 check_include_files(aaudio/AAudio.h USE_AAUDIO)
 if(USE_AAUDIO)
   target_sources(cubeb PRIVATE
-    src/cubeb_aaudio.c)
+    src/cubeb_aaudio.cpp)
   target_compile_definitions(cubeb PRIVATE USE_AAUDIO)
+
+  # set this definition to enable low latency mode. Possibly bad for battery
+  target_compile_definitions(cubeb PRIVATE CUBEB_AAUDIO_LOW_LATENCY)
+
+  # set this definition to enable power saving mode. Possibly resulting
+  # in high latency
+  # target_compile_definitions(cubeb PRIVATE CUBEB_AAUDIO_LOW_POWER_SAVING)
+
+  # set this mode to make the backend use an exclusive stream.
+  # will decrease latency.
+  # target_compile_definitions(cubeb PRIVATE CUBEB_AAUDIO_EXCLUSIVE_STREAM)
+
   target_link_libraries(cubeb PRIVATE ${CMAKE_DL_LIBS})
 endif()
 
