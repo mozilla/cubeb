@@ -761,7 +761,14 @@ aaudio_stream_destroy(cubeb_stream * stm)
 
   if (stm->resampler) {
     cubeb_resampler_destroy(stm->resampler);
+    stm->resampler = NULL;
   }
+
+  stm->in_buf = {};
+  stm->in_frame_size = {};
+  stm->out_format = {};
+  stm->out_channels = {};
+  stm->out_frame_size = {};
 
   stm->state.store(stream_state::init);
   stm->in_use.store(false);
