@@ -523,6 +523,11 @@ aaudio_duplex_data_cb(AAudioStream * astream, void * user_data,
     return AAUDIO_CALLBACK_RESULT_CONTINUE;
   }
 
+  // The aaudio docs state that AAudioStream_read must not be called on
+  // the stream associated with a callback. But we call it on the input stream
+  // while this callback is for the output stream so this is ok.
+  // We also pass timeout 0, giving us strong non-blocking guarantees.
+  // This is exactly how it's done in the aaudio duplex example code snippet.
   long in_num_frames = WRAP(AAudioStream_read)(stm->istream,
     stm->in_buf.get(), num_frames, 0);
   if (in_num_frames < 0) { // error
@@ -536,9 +541,10 @@ aaudio_duplex_data_cb(AAudioStream * astream, void * user_data,
   // block AAudioStream_read (passing a timeout > 0) but that leads to issues
   // since blocking in this callback is a bad idea in general and it might break
   // the stream when it is stopped by another thread shortly after being started.
-  // We therefore simply send silent input to the application.
+  // We therefore simply send silent input to the application, as shown
+  // in the AAudio duplex stream code example.
   if (in_num_frames < num_frames) {
-    // ALOGV("AAudioStream_read returned not enough frames: %ld instead of %d",
+    // LOG("AAudioStream_read returned not enough frames: %ld instead of %d",
     //   in_num_frames, num_frames);
     unsigned left = num_frames - in_num_frames;
     char * buf = stm->in_buf.get() + in_num_frames * stm->in_frame_size;
@@ -794,8 +800,8 @@ aaudio_stream_init_impl(
   WRAP(AAudioStreamBuilder_setErrorCallback)(sb, aaudio_error_cb, stm);
   WRAP(AAudioStreamBuilder_setBufferCapacityInFrames)(sb, latency_frames);
 
-  AAudioStream_dataCallback in_data_callback;
-  AAudioStream_dataCallback out_data_callback;
+  AAudioStream_dataCallback in_data_callback {};
+  AAudioStream_dataCallback out_data_callback {};
   if (output_stream_params && input_stream_params) {
     out_data_callback = aaudio_duplex_data_cb;
     in_data_callback = NULL;
@@ -809,12 +815,15 @@ aaudio_stream_init_impl(
   }
 
 #ifdef CUBEB_AAUDIO_EXCLUSIVE_STREAM
+  LOG("AAudio setting exclusive share mode for stream");
   WRAP(AAudioStreamBuilder_setSharingMode)(sb, AAUDIO_SHARING_MODE_EXCLUSIVE);
 #endif
 
 #ifdef CUBEB_AAUDIO_LOW_LATENCY
+  LOG("AAudio setting low latency mode for stream");
   WRAP(AAudioStreamBuilder_setPerformanceMode)(sb, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
 #elif defined(CUBEB_AAUDIO_POWER_SAVING)
+  LOG("AAudio setting power saving mode for stream");
   WRAP(AAudioStreamBuilder_setPerformanceMode)(sb, AAUDIO_PERFORMANCE_MODE_POWER_SAVING);
 #endif
 
