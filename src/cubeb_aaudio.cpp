@@ -323,7 +323,6 @@ static void update_state(cubeb_stream * stm)
           new_state = stream_state::stopped;
           stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
         }
-
         break;
       case stream_state::stopping:
         assert(!istate ||
@@ -1302,7 +1301,9 @@ const static struct cubeb_ops aaudio_ops = {
   // NOTE: this could be implemented via means comparable to the
   // OpenSLES backend
   /*.stream_get_latency =*/ NULL,
+  /*.stream_get_input_latency =*/ NULL,
   /*.stream_set_volume =*/ aaudio_stream_set_volume,
+  /*.stream_set_name =*/ NULL,
   /*.stream_get_current_device =*/ NULL,
   /*.stream_device_destroy =*/ NULL,
   /*.stream_register_device_changed_callback =*/ NULL,
