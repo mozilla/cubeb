@@ -1254,6 +1254,7 @@ static struct cubeb_ops const oss_ops = {
     .stream_get_latency = oss_stream_get_latency,
     .stream_get_input_latency = NULL,
     .stream_set_volume = oss_stream_set_volume,
+    .stream_set_name = NULL,
     .stream_get_current_device = oss_get_current_device,
     .stream_device_destroy = oss_stream_device_destroy,
     .stream_register_device_changed_callback = NULL,
