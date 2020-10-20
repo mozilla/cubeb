@@ -213,17 +213,6 @@ public:
     speex_resampler_destroy(speex_resampler);
   }
 
-  /** Sometimes, it is necessary to add latency on one way of a two-way
-   * resampler so that the stream are synchronized. This must be called only on
-   * a fresh resampler, otherwise, silent samples will be inserted in the
-   * stream.
-   * @param frames the number of frames of latency to add. */
-  void add_latency(size_t frames)
-  {
-    additional_latency += frames;
-    resampling_in_buffer.push_silence(frames_to_samples(frames));
-  }
-
   /* Fill the resampler with `input_frame_count` frames. */
   void input(T * input_buffer, size_t input_frame_count)
   {
@@ -413,13 +402,6 @@ public:
   {
     /* Fill the delay line with some silent frames to add latency. */
     delay_input_buffer.push_silence(frames * channels);
-  }
-  /* Add some latency to the delay line.
-   * @param frames the number of frames of latency to add. */
-  void add_latency(size_t frames)
-  {
-    length += frames;
-    delay_input_buffer.push_silence(frames_to_samples(frames));
   }
   /** Push some frames into the delay line.
    * @parameter buffer the frames to push.
