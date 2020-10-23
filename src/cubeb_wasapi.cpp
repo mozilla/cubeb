@@ -2751,12 +2751,15 @@ int wasapi_stream_get_position(cubeb_stream * stm, uint64_t * position)
     return CUBEB_ERROR;
   }
 
+  double resample_ratio = stream_to_mix_samplerate_ratio(stm->output_stream_params, stm->output_mix_params);
+
   /* Calculate how far behind the current stream head the playback cursor is. */
-  uint64_t stream_delay = static_cast<uint64_t>(current_stream_delay(stm) * stm->output_stream_params.rate);
+  uint64_t resampler_delay = ceil(cubeb_resampler_latency(stm->resampler.get()) * resample_ratio);
+  uint64_t stream_delay = static_cast<uint64_t>((current_stream_delay(stm) * stm->output_stream_params.rate)) + resampler_delay;
 
   /* Calculate the logical stream head in frames at the stream sample rate. */
   uint64_t max_pos = stm->total_frames_written +
-                     static_cast<uint64_t>(round(stm->frames_written * stream_to_mix_samplerate_ratio(stm->output_stream_params, stm->output_mix_params)));
+                     static_cast<uint64_t>(round(stm->frames_written * resample_ratio));
 
   *position = max_pos;
   if (stream_delay <= *position) {
@@ -2794,14 +2797,19 @@ int wasapi_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
     LOG("GetStreamLatency failed %lx.", hr);
     return CUBEB_ERROR;
   }
+
+
+  double resample_ratio = stream_to_mix_samplerate_ratio(stm->output_stream_params, stm->output_mix_params);
+  uint32_t resample_latency = ceil(cubeb_resampler_latency(stm->resampler.get()) * resample_ratio);
+
   // This happens on windows 10: no error, but always 0 for latency.
   if (latency_hns == 0) {
     LOG("GetStreamLatency returned 0, using workaround.");
      double delay_s = current_stream_delay(stm);
-     // convert to sample-frames
-     *latency = delay_s * stm->output_stream_params.rate;
+     // convert to output(mix) rate sample-frames
+     *latency = (delay_s * stm->output_mix_params.rate) + resample_latency;
   } else {
-     *latency = hns_to_frames(stm, latency_hns);
+     *latency = hns_to_frames(stm, latency_hns) + resample_latency;
   }
 
   LOG("Output latency %u frames.", *latency);
@@ -2826,7 +2834,11 @@ int wasapi_stream_get_input_latency(cubeb_stream * stm, uint32_t * latency)
     return CUBEB_ERROR;
   }
 
-  *latency = hns_to_frames(stm, stm->input_latency_hns);
+
+  double resample_ratio = stream_to_mix_samplerate_ratio(stm->output_stream_params, stm->output_mix_params);
+  uint32_t resample_latency = ceil(cubeb_resampler_latency(stm->resampler.get()) * resample_ratio);
+
+  *latency = hns_to_frames(stm, stm->input_latency_hns) + resample_latency;
 
   return CUBEB_OK;
 }
