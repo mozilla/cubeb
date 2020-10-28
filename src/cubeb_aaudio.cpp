@@ -451,15 +451,11 @@ aaudio_destroy(cubeb * ctx)
   ctx->state.join.store(true);
   ctx->state.cond.notify_all();
 
-  try {
-    if(ctx->state.thread.joinable()) {
-      ctx->state.thread.join();
-    }
-    if(ctx->state.notifier.joinable()) {
-      ctx->state.notifier.join();
-    }
-  } catch(const std::system_error& err) {
-    LOG("Joining thread failed: %s", err.what());
+  if(ctx->state.thread.joinable()) {
+    ctx->state.thread.join();
+  }
+  if(ctx->state.notifier.joinable()) {
+    ctx->state.notifier.join();
   }
 
   if (ctx->libaaudio) {
@@ -1340,19 +1336,13 @@ aaudio_init(cubeb ** context, char const * context_name) {
   ctx->ops = &aaudio_ops;
   ctx->libaaudio = libaaudio;
 
-  try {
-    ctx->state.thread = std::thread(state_thread, ctx);
+  ctx->state.thread = std::thread(state_thread, ctx);
 
-    // NOTE: using platform-specific APIs we could set the priority of the
-    // notifier thread lower than the priority of the state thread.
-    // This way, it's more likely that the state thread will be woken up
-    // by the condition variable signal when both are currently waiting
-    ctx->state.notifier = std::thread(notifier_thread, ctx);
-  } catch(const std::exception& err) {
-    LOG("Failed to create thread: %s", err.what());
-    aaudio_destroy(ctx);
-    return CUBEB_ERROR;
-  }
+  // NOTE: using platform-specific APIs we could set the priority of the
+  // notifier thread lower than the priority of the state thread.
+  // This way, it's more likely that the state thread will be woken up
+  // by the condition variable signal when both are currently waiting
+  ctx->state.notifier = std::thread(notifier_thread, ctx);
 
   *context = ctx;
   return CUBEB_OK;
