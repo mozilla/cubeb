@@ -86,7 +86,7 @@ LIBAAUDIO_API_VISIT(MAKE_TYPEDEF)
 #undef MAKE_TYPEDEF
 #endif
 
-#define MAX_STREAMS 16
+const uint8_t MAX_STREAMS = 16;
 
 using unique_lock = std::unique_lock<std::mutex>;
 using lock_guard = std::lock_guard<std::mutex>;
