@@ -92,14 +92,14 @@ using unique_lock = std::unique_lock<std::mutex>;
 using lock_guard = std::lock_guard<std::mutex>;
 
 enum class stream_state {
-  init = 0,
-  stopped,
-  stopping,
-  started,
-  starting,
-  draining,
-  error,
-  shutdown,
+  INIT = 0,
+  STOPPED,
+  STOPPING,
+  STARTED,
+  STARTING,
+  DRAINING,
+  ERROR,
+  SHUTDOWN,
 };
 
 struct cubeb_stream {
@@ -109,7 +109,7 @@ struct cubeb_stream {
   /**/
 
   std::atomic<bool> in_use {false};
-  std::atomic<stream_state> state {stream_state::init};
+  std::atomic<stream_state> state {stream_state::INIT};
 
   AAudioStream * ostream {};
   AAudioStream * istream {};
@@ -161,7 +161,7 @@ static void shutdown(cubeb_stream * stm)
   }
 
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
-  stm->state.store(stream_state::shutdown);
+  stm->state.store(stream_state::SHUTDOWN);
 }
 
 // Returns whether the given state is one in which we wait for
@@ -169,9 +169,9 @@ static void shutdown(cubeb_stream * stm)
 static bool waiting_state(stream_state state)
 {
   switch (state) {
-    case stream_state::draining:
-    case stream_state::starting:
-    case stream_state::stopping:
+    case stream_state::DRAINING:
+    case stream_state::STARTING:
+    case stream_state::STOPPING:
       return true;
     default:
       return false;
@@ -182,10 +182,10 @@ static void update_state(cubeb_stream * stm)
 {
   // Fast path for streams that don't wait for state change or are invalid
   enum stream_state old_state = stm->state.load();
-  if (old_state == stream_state::init ||
-      old_state == stream_state::started ||
-      old_state == stream_state::stopped ||
-      old_state == stream_state::shutdown) {
+  if (old_state == stream_state::INIT ||
+      old_state == stream_state::STARTED ||
+      old_state == stream_state::STOPPED ||
+      old_state == stream_state::SHUTDOWN) {
     return;
   }
 
@@ -199,24 +199,24 @@ static void update_state(cubeb_stream * stm)
   // check again: if this is true now, the stream was destroyed or
   // changed between our fast path check and locking the mutex
   old_state = stm->state.load();
-  if (old_state == stream_state::init ||
-      old_state == stream_state::started ||
-      old_state == stream_state::stopped ||
-      old_state == stream_state::shutdown) {
+  if (old_state == stream_state::INIT ||
+      old_state == stream_state::STARTED ||
+      old_state == stream_state::STOPPED ||
+      old_state == stream_state::SHUTDOWN) {
     return;
   }
 
   // We compute the new state the stream has and then compare_exchange it
   // if it has changed. This way we will never just overwrite state
   // changes that were set from the audio thread in the meantime,
-  // such as a draining or error state.
+  // such as a DRAINING or error state.
   enum stream_state new_state;
   do {
-    if (old_state == stream_state::shutdown) {
+    if (old_state == stream_state::SHUTDOWN) {
       return;
     }
 
-    if (old_state == stream_state::error) {
+    if (old_state == stream_state::ERROR) {
       shutdown(stm);
       return;
     }
@@ -277,14 +277,14 @@ static void update_state(cubeb_stream * stm)
     }
 
     switch (old_state) {
-      case stream_state::starting:
+      case stream_state::STARTING:
         if ((!istate || istate == AAUDIO_STREAM_STATE_STARTED) &&
            (!ostate || ostate == AAUDIO_STREAM_STATE_STARTED)) {
           stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STARTED);
-          new_state = stream_state::started;
+          new_state = stream_state::STARTED;
         }
         break;
-      case stream_state::draining:
+      case stream_state::DRAINING:
         // The DRAINING state means that we want to stop the streams but
         // may not have done so yet.
         // The aaudio docs state that returning STOP from the callback isn't
@@ -315,16 +315,16 @@ static void update_state(cubeb_stream * stm)
 
         // we always wait until both streams are stopped until we
         // send CUBEB_STATE_DRAINED. Then we can directly transition
-        // our logical state to stream_state::stopped, not triggering
+        // our logical state to STOPPED, not triggering
         // an additional CUBEB_STATE_STOPPED callback (which might
         // be unexpected for the user).
         if ((!ostate || ostate == AAUDIO_STREAM_STATE_STOPPED) &&
             (!istate || istate == AAUDIO_STREAM_STATE_STOPPED)) {
-          new_state = stream_state::stopped;
+          new_state = stream_state::STOPPED;
           stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
         }
         break;
-      case stream_state::stopping:
+      case stream_state::STOPPING:
         assert(!istate ||
             istate == AAUDIO_STREAM_STATE_STOPPING ||
             istate == AAUDIO_STREAM_STATE_STOPPED);
@@ -334,7 +334,7 @@ static void update_state(cubeb_stream * stm)
         if ((!istate || istate == AAUDIO_STREAM_STATE_STOPPED) &&
            (!ostate || ostate == AAUDIO_STREAM_STATE_STOPPED)) {
           stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STOPPED);
-          new_state = stream_state::stopped;
+          new_state = stream_state::STOPPED;
         }
         break;
       default:
@@ -509,11 +509,11 @@ aaudio_duplex_data_cb(AAudioStream * astream, void * user_data,
 
   // all other states may happen since the callback might be called
   // from within requestStart
-  assert(state != stream_state::shutdown);
+  assert(state != stream_state::SHUTDOWN);
 
   // This might happen when we started draining but not yet actually
   // stopped the stream from the state thread.
-  if (state == stream_state::draining) {
+  if (state == stream_state::DRAINING) {
     std::memset(audio_data, 0x0, num_frames * stm->out_frame_size);
     return AAUDIO_CALLBACK_RESULT_CONTINUE;
   }
@@ -526,7 +526,7 @@ aaudio_duplex_data_cb(AAudioStream * astream, void * user_data,
   long in_num_frames = WRAP(AAudioStream_read)(stm->istream,
     stm->in_buf.get(), num_frames, 0);
   if (in_num_frames < 0) { // error
-    stm->state.store(stream_state::error);
+    stm->state.store(stream_state::ERROR);
     LOG("AAudioStream_read: %s", WRAP(AAudio_convertResultToText)(in_num_frames));
     return AAUDIO_CALLBACK_RESULT_STOP;
   }
@@ -552,10 +552,10 @@ aaudio_duplex_data_cb(AAudioStream * astream, void * user_data,
 
   if (done_frames < 0 || done_frames > num_frames) {
     LOG("Error in data callback or resampler: %ld", done_frames);
-    stm->state.store(stream_state::error);
+    stm->state.store(stream_state::ERROR);
     return AAUDIO_CALLBACK_RESULT_STOP;
   } else if (done_frames < num_frames) {
-    stm->state.store(stream_state::draining);
+    stm->state.store(stream_state::DRAINING);
     stm->context->state.waiting.store(true);
     stm->context->state.cond.notify_one();
 
@@ -583,11 +583,11 @@ aaudio_output_data_cb(AAudioStream * astream, void * user_data,
 
   // all other states may happen since the callback might be called
   // from within requestStart
-  assert(state != stream_state::shutdown);
+  assert(state != stream_state::SHUTDOWN);
 
   // This might happen when we started draining but not yet actually
   // stopped the stream from the state thread.
-  if (state == stream_state::draining) {
+  if (state == stream_state::DRAINING) {
     std::memset(audio_data, 0x0, num_frames * stm->out_frame_size);
     return AAUDIO_CALLBACK_RESULT_CONTINUE;
   }
@@ -596,10 +596,10 @@ aaudio_output_data_cb(AAudioStream * astream, void * user_data,
     audio_data, num_frames);
   if (done_frames < 0 || done_frames > num_frames) {
     LOG("Error in data callback or resampler: %ld", done_frames);
-    stm->state.store(stream_state::error);
+    stm->state.store(stream_state::ERROR);
     return AAUDIO_CALLBACK_RESULT_STOP;
   } else if (done_frames < num_frames) {
-    stm->state.store(stream_state::draining);
+    stm->state.store(stream_state::DRAINING);
     stm->context->state.waiting.store(true);
     stm->context->state.cond.notify_one();
 
@@ -627,11 +627,11 @@ aaudio_input_data_cb(AAudioStream * astream, void * user_data,
 
   // all other states may happen since the callback might be called
   // from within requestStart
-  assert(state != stream_state::shutdown);
+  assert(state != stream_state::SHUTDOWN);
 
   // This might happen when we started draining but not yet actually
-  // stopped the stream from the state thread.
-  if (state == stream_state::draining) {
+  // STOPPED the stream from the state thread.
+  if (state == stream_state::DRAINING) {
     return AAUDIO_CALLBACK_RESULT_CONTINUE;
   }
 
@@ -640,13 +640,13 @@ aaudio_input_data_cb(AAudioStream * astream, void * user_data,
     audio_data, &input_frame_count, NULL, 0);
   if (done_frames < 0 || done_frames > num_frames) {
     LOG("Error in data callback or resampler: %ld", done_frames);
-    stm->state.store(stream_state::error);
+    stm->state.store(stream_state::ERROR);
     return AAUDIO_CALLBACK_RESULT_STOP;
   } else if (done_frames < input_frame_count) {
     // we don't really drain an input stream, just have to
     // stop it from the state thread. That is signaled via the
     // DRAINING state.
-    stm->state.store(stream_state::draining);
+    stm->state.store(stream_state::DRAINING);
     stm->context->state.waiting.store(true);
     stm->context->state.cond.notify_one();
   }
@@ -660,7 +660,7 @@ aaudio_error_cb(AAudioStream * astream, void * user_data, aaudio_result_t error)
   cubeb_stream * stm = static_cast<cubeb_stream*>(user_data);
   assert(stm->ostream == astream || stm->istream == astream);
   LOG("AAudio error callback: %s", WRAP(AAudio_convertResultToText)(error));
-  stm->state.store(stream_state::error);
+  stm->state.store(stream_state::ERROR);
 }
 
 static int
@@ -714,12 +714,12 @@ static void
 aaudio_stream_destroy(cubeb_stream * stm)
 {
   lock_guard lock(stm->mutex);
-  assert(stm->state == stream_state::stopped ||
-      stm->state == stream_state::stopping ||
-      stm->state == stream_state::init ||
-      stm->state == stream_state::draining ||
-      stm->state == stream_state::error ||
-      stm->state == stream_state::shutdown);
+  assert(stm->state == stream_state::STOPPED ||
+      stm->state == stream_state::STOPPING ||
+      stm->state == stream_state::INIT ||
+      stm->state == stream_state::DRAINING ||
+      stm->state == stream_state::ERROR ||
+      stm->state == stream_state::SHUTDOWN);
 
   aaudio_result_t res;
 
@@ -727,9 +727,9 @@ aaudio_stream_destroy(cubeb_stream * stm)
   // That is important as we otherwise might read from a closed istream
   // for a duplex stream.
   if (stm->ostream) {
-    if (stm->state != stream_state::stopped &&
-        stm->state != stream_state::stopping &&
-        stm->state != stream_state::shutdown) {
+    if (stm->state != stream_state::STOPPED &&
+        stm->state != stream_state::STOPPING &&
+        stm->state != stream_state::SHUTDOWN) {
       res = WRAP(AAudioStream_requestStop)(stm->ostream);
       if (res != AAUDIO_OK) {
         LOG("AAudioStreamBuilder_requestStop: %s", WRAP(AAudio_convertResultToText)(res));
@@ -741,9 +741,9 @@ aaudio_stream_destroy(cubeb_stream * stm)
   }
 
   if (stm->istream) {
-    if (stm->state != stream_state::stopped &&
-        stm->state != stream_state::stopping &&
-        stm->state != stream_state::shutdown) {
+    if (stm->state != stream_state::STOPPED &&
+        stm->state != stream_state::STOPPING &&
+        stm->state != stream_state::SHUTDOWN) {
       res = WRAP(AAudioStream_requestStop)(stm->istream);
       if (res != AAUDIO_OK) {
         LOG("AAudioStreamBuilder_requestStop: %s", WRAP(AAudio_convertResultToText)(res));
@@ -765,7 +765,7 @@ aaudio_stream_destroy(cubeb_stream * stm)
   stm->out_channels = {};
   stm->out_frame_size = {};
 
-  stm->state.store(stream_state::init);
+  stm->state.store(stream_state::INIT);
   stm->in_use.store(false);
 }
 
@@ -779,7 +779,7 @@ aaudio_stream_init_impl(
     cubeb_stream_params * output_stream_params,
     unsigned int latency_frames)
 {
-  assert(stm->state.load() == stream_state::init);
+  assert(stm->state.load() == stream_state::INIT);
   stm->in_use.store(true);
 
   aaudio_result_t res;
@@ -910,11 +910,11 @@ aaudio_stream_init_impl(
     return CUBEB_ERROR;
   }
 
-  // the stream isn't started initially. We don't need to differntiate
+  // the stream isn't started initially. We don't need to differentiate
   // between a stream that was just initialized and one that played
-  // already but was stopped
-  stm->state.store(stream_state::stopped);
-  LOG("Cubeb stream (%p) init success", (void*) stm);
+  // already but was stopped.
+  stm->state.store(stream_state::STOPPED);
+  LOG("Cubeb stream (%p) INIT success", (void*) stm);
   return CUBEB_OK;
 }
 
@@ -996,22 +996,22 @@ aaudio_stream_start(cubeb_stream * stm)
   stream_state state = stm->state.load();
   int istate = stm->istream ? WRAP(AAudioStream_getState)(stm->istream) : 0;
   int ostate = stm->ostream ? WRAP(AAudioStream_getState)(stm->ostream) : 0;
-  LOGV("starting stream %p: %d (%d %d)", (void*) stm, state, istate, ostate);
+  LOGV("STARTING stream %p: %d (%d %d)", (void*) stm, state, istate, ostate);
 
   switch (state) {
-    case stream_state::started:
-    case stream_state::starting:
-      LOG("cubeb stream %p already starting/started", (void*) stm);
+    case stream_state::STARTED:
+    case stream_state::STARTING:
+      LOG("cubeb stream %p already STARTING/STARTED", (void*) stm);
       return CUBEB_OK;
-    case stream_state::error:
-    case stream_state::shutdown:
+    case stream_state::ERROR:
+    case stream_state::SHUTDOWN:
       return CUBEB_ERROR;
-    case stream_state::init:
+    case stream_state::INIT:
       assert(false && "Invalid stream");
       return CUBEB_ERROR;
-    case stream_state::stopped:
-    case stream_state::stopping:
-    case stream_state::draining:
+    case stream_state::STOPPED:
+    case stream_state::STOPPING:
+    case stream_state::DRAINING:
       break;
   }
 
@@ -1043,7 +1043,7 @@ aaudio_stream_start(cubeb_stream * stm)
     res = WRAP(AAudioStream_requestStart)(stm->istream);
     if (res != AAUDIO_OK) {
       LOG("AAudioStream_requestStart (istream): %s", WRAP(AAudio_convertResultToText)(res));
-      stm->state.store(stream_state::error);
+      stm->state.store(stream_state::ERROR);
       return CUBEB_ERROR;
     }
   }
@@ -1052,7 +1052,7 @@ aaudio_stream_start(cubeb_stream * stm)
     res = WRAP(AAudioStream_requestStart)(stm->ostream);
     if (res != AAUDIO_OK) {
       LOG("AAudioStream_requestStart (ostream): %s", WRAP(AAudio_convertResultToText)(res));
-      stm->state.store(stream_state::error);
+      stm->state.store(stream_state::ERROR);
       return CUBEB_ERROR;
     }
   }
@@ -1060,30 +1060,30 @@ aaudio_stream_start(cubeb_stream * stm)
   int ret = CUBEB_OK;
   bool success;
 
-  while (!(success = stm->state.compare_exchange_strong(state, stream_state::starting))) {
+  while (!(success = stm->state.compare_exchange_strong(state, stream_state::STARTING))) {
     // we land here only if the state has changed in the meantime
     switch (state) {
       // If an error ocurred in the meantime, we can't change that.
       // The stream will be stopped when shut down.
-      case stream_state::error:
+      case stream_state::ERROR:
         ret = CUBEB_ERROR;
         break;
       // The only situation in which the state could have switched to draining
       // is if the callback was already fired and requested draining. Don't
       // overwrite that. It's not an error either though.
-      case stream_state::draining:
+      case stream_state::DRAINING:
         break;
 
-      // If the state switched [draining -> stopping] or [draining/stopping -> stopped]
+      // If the state switched [DRAINING -> STOPPING] or [DRAINING/STOPPING -> STOPPED]
       // in the meantime, we can simply overwrite that since we restarted the stream.
-      case stream_state::stopping:
-      case stream_state::stopped:
+      case stream_state::STOPPING:
+      case stream_state::STOPPED:
         continue;
 
       // There is no situation in which the state could have been valid before
       // but now in shutdown mode, since we hold the streams mutex.
-      // There is also no way that it switched *into* starting or
-      // started mode.
+      // There is also no way that it switched *into* STARTING or
+      // STARTED mode.
       default:
         assert(false && "Invalid state change");
         ret = CUBEB_ERROR;
@@ -1110,22 +1110,22 @@ aaudio_stream_stop(cubeb_stream * stm)
   stream_state state = stm->state.load();
   int istate = stm->istream ? WRAP(AAudioStream_getState)(stm->istream) : 0;
   int ostate = stm->ostream ? WRAP(AAudioStream_getState)(stm->ostream) : 0;
-  LOGV("stopping stream %p: %d (%d %d)", (void*) stm, state, istate, ostate);
+  LOGV("STOPPING stream %p: %d (%d %d)", (void*) stm, state, istate, ostate);
 
   switch (state) {
-    case stream_state::stopped:
-    case stream_state::stopping:
-    case stream_state::draining:
-      LOG("cubeb stream %p already stopping/stopped", (void*) stm);
+    case stream_state::STOPPED:
+    case stream_state::STOPPING:
+    case stream_state::DRAINING:
+      LOG("cubeb stream %p already STOPPING/STOPPED", (void*) stm);
       return CUBEB_OK;
-    case stream_state::error:
-    case stream_state::shutdown:
+    case stream_state::ERROR:
+    case stream_state::SHUTDOWN:
       return CUBEB_ERROR;
-    case stream_state::init:
+    case stream_state::INIT:
       assert(false && "Invalid stream");
       return CUBEB_ERROR;
-    case stream_state::started:
-    case stream_state::starting:
+    case stream_state::STARTED:
+    case stream_state::STARTING:
       break;
   }
 
@@ -1159,7 +1159,7 @@ aaudio_stream_stop(cubeb_stream * stm)
     res = WRAP(AAudioStream_requestStop)(stm->ostream);
     if (res != AAUDIO_OK) {
       LOG("AAudioStream_requestStop (ostream): %s", WRAP(AAudio_convertResultToText)(res));
-      stm->state.store(stream_state::error);
+      stm->state.store(stream_state::ERROR);
       return CUBEB_ERROR;
     }
   }
@@ -1168,38 +1168,38 @@ aaudio_stream_stop(cubeb_stream * stm)
     res = WRAP(AAudioStream_requestStop)(stm->istream);
     if (res != AAUDIO_OK) {
       LOG("AAudioStream_requestStop (istream): %s", WRAP(AAudio_convertResultToText)(res));
-      stm->state.store(stream_state::error);
+      stm->state.store(stream_state::ERROR);
       return CUBEB_ERROR;
     }
   }
 
   int ret = CUBEB_OK;
   bool success;
-  while (!(success = atomic_compare_exchange_strong(&stm->state, &state, stream_state::stopping))) {
+  while (!(success = atomic_compare_exchange_strong(&stm->state, &state, stream_state::STOPPING))) {
     // we land here only if the state has changed in the meantime
     switch (state) {
       // If an error ocurred in the meantime, we can't change that.
-      // The stream will be stopped when shut down.
-      case stream_state::error:
+      // The stream will be STOPPED when shut down.
+      case stream_state::ERROR:
         ret = CUBEB_ERROR;
         break;
-      // If it was switched to draining in the meantime, it was or
-      // will be stopped soon anyways. We don't interfere with
-      // the draining process, no matter in which state.
+      // If it was switched to DRAINING in the meantime, it was or
+      // will be STOPPED soon anyways. We don't interfere with
+      // the DRAINING process, no matter in which state.
       // Not an error
-      case stream_state::draining:
-      case stream_state::stopping:
-      case stream_state::stopped:
+      case stream_state::DRAINING:
+      case stream_state::STOPPING:
+      case stream_state::STOPPED:
         break;
 
-      // If the state switched from starting to started in the meantime
-      // we can simply overwrite that since we just stopped it.
-      case stream_state::started:
+      // If the state switched from STARTING to STARTED in the meantime
+      // we can simply overwrite that since we just STOPPED it.
+      case stream_state::STARTED:
         continue;
 
       // There is no situation in which the state could have been valid before
       // but now in shutdown mode, since we hold the streams mutex.
-      // There is also no way that it switched *into* starting mode.
+      // There is also no way that it switched *into* STARTING mode.
       default:
         assert(false && "Invalid state change");
         ret = CUBEB_ERROR;
@@ -1226,21 +1226,21 @@ aaudio_stream_get_position(cubeb_stream * stm, uint64_t * position)
   stream_state state = stm->state.load();
   AAudioStream * stream = stm->ostream ? stm->ostream : stm->istream;
   switch (state) {
-    case stream_state::error:
-    case stream_state::shutdown:
+    case stream_state::ERROR:
+    case stream_state::SHUTDOWN:
       return CUBEB_ERROR;
-    case stream_state::draining:
-    case stream_state::stopped:
-    case stream_state::stopping:
+    case stream_state::DRAINING:
+    case stream_state::STOPPED:
+    case stream_state::STOPPING:
       // getTimestamp is only valid when the stream is playing.
       // Simply return the number of frames passed to aaudio
       *position = WRAP(AAudioStream_getFramesRead)(stream);
       return CUBEB_OK;
-    case stream_state::init:
+    case stream_state::INIT:
       assert(false && "Invalid stream");
       return CUBEB_ERROR;
-    case stream_state::started:
-    case stream_state::starting:
+    case stream_state::STARTED:
+    case stream_state::STARTING:
       break;
   }
 
@@ -1249,11 +1249,11 @@ aaudio_stream_get_position(cubeb_stream * stm, uint64_t * position)
   aaudio_result_t res;
   res = WRAP(AAudioStream_getTimestamp)(stream, CLOCK_MONOTONIC, &pos, &ns);
   if (res != AAUDIO_OK) {
-    // when we are in 'starting' state we try it and hope that the stream
+    // when we are in 'STARTING' state we try it and hope that the stream
     // has internally started and gives us a valid timestamp.
     // If that is not the case (invalid_state is returned) we simply
     // fall back to the method we use for non-playing streams.
-    if (res == AAUDIO_ERROR_INVALID_STATE && state == stream_state::starting) {
+    if (res == AAUDIO_ERROR_INVALID_STATE && state == stream_state::STARTING) {
       *position = WRAP(AAudioStream_getFramesRead)(stream);
       return CUBEB_OK;
     }
