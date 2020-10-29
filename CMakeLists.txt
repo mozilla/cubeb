@@ -57,6 +57,7 @@ if(NOT OS2)
   set(CMAKE_VISIBILITY_INLINES_HIDDEN 1)
 endif()
 
+set(GTEST_HAS_RTTI 0)
 set(CMAKE_CXX_WARNING_LEVEL 4)
 if(NOT MSVC)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wno-unused-parameter")
