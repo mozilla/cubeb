@@ -679,11 +679,11 @@ realize_stream(AAudioStreamBuilder * sb, const cubeb_stream_params * params,
   switch (params->format) {
     case CUBEB_SAMPLE_S16NE:
       fmt = AAUDIO_FORMAT_PCM_I16;
-      *frame_size = 2 * params->channels;
+      *frame_size = sizeof(int16_t) * params->channels;
       break;
     case CUBEB_SAMPLE_FLOAT32NE:
       fmt = AAUDIO_FORMAT_PCM_FLOAT;
-      *frame_size = 4 * params->channels;
+      *frame_size = sizeof(float) * params->channels;
       break;
     default:
       return CUBEB_ERROR_INVALID_FORMAT;
