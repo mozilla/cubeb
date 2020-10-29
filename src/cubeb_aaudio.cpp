@@ -20,6 +20,7 @@
 #include "cubeb-internal.h"
 #include "cubeb_resampler.h"
 #include "cubeb_log.h"
+#include "cubeb_android.h"
 
 #ifdef DISABLE_LIBAAUDIO_DLOPEN
 #define WRAP(x) x
@@ -821,13 +822,13 @@ aaudio_stream_init_impl(
   WRAP(AAudioStreamBuilder_setSharingMode)(sb, AAUDIO_SHARING_MODE_EXCLUSIVE);
 #endif
 
-#ifdef CUBEB_AAUDIO_LOW_LATENCY
-  LOG("AAudio setting low latency mode for stream");
-  WRAP(AAudioStreamBuilder_setPerformanceMode)(sb, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
-#elif defined(CUBEB_AAUDIO_POWER_SAVING)
-  LOG("AAudio setting power saving mode for stream");
-  WRAP(AAudioStreamBuilder_setPerformanceMode)(sb, AAUDIO_PERFORMANCE_MODE_POWER_SAVING);
-#endif
+  if (latency_frames <= POWERSAVE_LATENCY_FRAMES_THRESHOLD) {
+    LOG("AAudio setting low latency mode for stream");
+    WRAP(AAudioStreamBuilder_setPerformanceMode)(sb, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
+  } else {
+    LOG("AAudio setting power saving mode for stream");
+    WRAP(AAudioStreamBuilder_setPerformanceMode)(sb, AAUDIO_PERFORMANCE_MODE_POWER_SAVING);
+  }
 
   unsigned frame_size;
 
