@@ -420,9 +420,8 @@ static void state_thread(cubeb* ctx)
 }
 
 static char const *
-aaudio_get_backend_id(cubeb * ctx)
+aaudio_get_backend_id(cubeb * /* ctx */)
 {
-  (void)ctx;
   return "aaudio";
 }
 
