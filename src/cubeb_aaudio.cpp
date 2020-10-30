@@ -130,6 +130,7 @@ struct cubeb_stream {
   std::atomic<float> volume {1.f};
   unsigned out_channels {};
   unsigned out_frame_size {};
+  int64_t latest_output_latency = 0;
 };
 
 struct cubeb {
@@ -1263,6 +1264,32 @@ aaudio_stream_get_position(cubeb_stream * stm, uint64_t * position)
 }
 
 static int
+aaudio_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
+{
+  int64_t pos;
+  int64_t ns;
+  aaudio_result_t res;
+
+  if (!stm->ostream) {
+    LOG("error: aaudio_stream_get_latency on input-only stream");
+    return CUBEB_ERROR;
+  }
+
+  res = WRAP(AAudioStream_getTimestamp)(stm->ostream, CLOCK_MONOTONIC, &pos, &ns);
+  if (res != AAUDIO_OK) {
+    LOG("aaudio_stream_get_latency, AAudioStream_getTimestamp: %s, returning memoized value", WRAP(AAudio_convertResultToText)(res));
+    // Expected when the stream is paused.
+    *latency = stm->latest_output_latency;
+    return CUBEB_OK;
+  }
+
+  int64_t read = WRAP(AAudioStream_getFramesRead)(stm->ostream);
+
+  *latency = stm->latest_output_latency = read - pos;
+  LOG("aaudio_stream_get_latency, %u", *latency);
+
+  return CUBEB_OK;
+}
 aaudio_stream_set_volume(cubeb_stream * stm, float volume)
 {
   assert(stm && stm->in_use.load() && stm->ostream);
@@ -1290,10 +1317,8 @@ const static struct cubeb_ops aaudio_ops = {
   /*.stream_stop =*/ aaudio_stream_stop,
   /*.stream_reset_default_device =*/ NULL,
   /*.stream_get_position =*/ aaudio_stream_get_position,
-  // NOTE: this could be implemented via means comparable to the
-  // OpenSLES backend
-  /*.stream_get_latency =*/ NULL,
   /*.stream_get_input_latency =*/ NULL,
+  /*.stream_get_latency =*/ aaudio_stream_get_latency,
   /*.stream_set_volume =*/ aaudio_stream_set_volume,
   /*.stream_set_name =*/ NULL,
   /*.stream_get_current_device =*/ NULL,
