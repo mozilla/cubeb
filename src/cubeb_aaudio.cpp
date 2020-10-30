@@ -57,6 +57,7 @@
   X(AAudioStream_waitForStateChange)              \
   X(AAudioStream_getFramesRead)                   \
   X(AAudioStream_getState)                        \
+  X(AAudioStream_getFramesWritten)                \
 
 
   // not needed or added later on
@@ -69,7 +70,6 @@
   // X(AAudioStream_getChannelCount)                 \
   // X(AAudioStream_getFormat)                       \
   // X(AAudioStream_getFramesPerBurst)               \
-  // X(AAudioStream_getFramesWritten)                \
   // X(AAudioStream_getXRunCount)                    \
   // X(AAudioStream_isMMapUsed)                      \
   // X(AAudioStreamBuilder_setUsage)                 \
@@ -131,6 +131,7 @@ struct cubeb_stream {
   unsigned out_channels {};
   unsigned out_frame_size {};
   int64_t latest_output_latency = 0;
+  int64_t latest_input_latency = 0;
 };
 
 struct cubeb {
@@ -1290,6 +1291,36 @@ aaudio_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
 
   return CUBEB_OK;
 }
+
+static int
+aaudio_stream_get_input_latency(cubeb_stream * stm, uint32_t * latency)
+{
+  int64_t pos;
+  int64_t ns;
+  aaudio_result_t res;
+
+  if (!stm->istream) {
+    LOG("error: aaudio_stream_get_input_latency on an ouput-only stream");
+    return CUBEB_ERROR;
+  }
+
+  res = WRAP(AAudioStream_getTimestamp)(stm->istream, CLOCK_MONOTONIC, &pos, &ns);
+  if (res != AAUDIO_OK) {
+    // Expected when the stream is paused.
+    LOG("aaudio_stream_get_input_latency, AAudioStream_getTimestamp: %s, returning memoized value", WRAP(AAudio_convertResultToText)(res));
+    *latency = stm->latest_input_latency;
+    return CUBEB_OK;
+  }
+
+  int64_t written = WRAP(AAudioStream_getFramesWritten)(stm->istream);
+
+  *latency = stm->latest_input_latency = written - pos;
+  LOG("aaudio_stream_get_input_latency, %u", *latency);
+
+  return CUBEB_OK;
+}
+
+static int
 aaudio_stream_set_volume(cubeb_stream * stm, float volume)
 {
   assert(stm && stm->in_use.load() && stm->ostream);
@@ -1317,8 +1348,8 @@ const static struct cubeb_ops aaudio_ops = {
   /*.stream_stop =*/ aaudio_stream_stop,
   /*.stream_reset_default_device =*/ NULL,
   /*.stream_get_position =*/ aaudio_stream_get_position,
-  /*.stream_get_input_latency =*/ NULL,
   /*.stream_get_latency =*/ aaudio_stream_get_latency,
+  /*.stream_get_input_latency =*/ aaudio_stream_get_input_latency,
   /*.stream_set_volume =*/ aaudio_stream_set_volume,
   /*.stream_set_name =*/ NULL,
   /*.stream_get_current_device =*/ NULL,
