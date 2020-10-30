@@ -1380,6 +1380,24 @@ aaudio_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * laten
   return CUBEB_OK;
 }
 
+int
+aaudio_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
+{
+  AAudioStream* stream = init_dummy_stream();
+
+  if (!stream) {
+    return CUBEB_ERROR;
+  }
+
+  *rate = WRAP(AAudioStream_getSampleRate)(stream);
+
+  LOG("aaudio_get_preferred_sample_rate %uHz", *rate);
+
+  destroy_dummy_stream(stream);
+
+  return CUBEB_OK;
+}
+
 extern "C" int aaudio_init(cubeb ** context, char const * context_name);
 
 const static struct cubeb_ops aaudio_ops = {
@@ -1387,7 +1405,7 @@ const static struct cubeb_ops aaudio_ops = {
   /*.get_backend_id =*/ aaudio_get_backend_id,
   /*.get_max_channel_count =*/ aaudio_get_max_channel_count,
   /* .get_min_latency =*/ aaudio_get_min_latency,
-  /*.get_preferred_sample_rate =*/ NULL,
+  /*.get_preferred_sample_rate =*/ aaudio_get_preferred_sample_rate,
   /*.enumerate_devices =*/ NULL,
   /*.device_collection_destroy =*/ NULL,
   /*.destroy =*/ aaudio_destroy,
