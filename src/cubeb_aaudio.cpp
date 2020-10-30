@@ -58,6 +58,7 @@
   X(AAudioStream_getFramesRead)                   \
   X(AAudioStream_getState)                        \
   X(AAudioStream_getFramesWritten)                \
+  X(AAudioStream_getFramesPerBurst)               \
 
 
   // not needed or added later on
@@ -69,7 +70,6 @@
   // X(AAudioStream_write)                           \
   // X(AAudioStream_getChannelCount)                 \
   // X(AAudioStream_getFormat)                       \
-  // X(AAudioStream_getFramesPerBurst)               \
   // X(AAudioStream_getXRunCount)                    \
   // X(AAudioStream_isMMapUsed)                      \
   // X(AAudioStreamBuilder_setUsage)                 \
@@ -1328,16 +1328,65 @@ aaudio_stream_set_volume(cubeb_stream * stm, float volume)
   return CUBEB_OK;
 }
 
+aaudio_data_callback_result_t dummy_callback(AAudioStream *stream, void *userData, void *audioData, int32_t numFrames) {
+  return AAUDIO_CALLBACK_RESULT_STOP;
+}
+
+// Returns a dummy stream with all default settings
+static AAudioStream*
+init_dummy_stream() {
+  AAudioStreamBuilder *streamBuilder;
+  aaudio_result_t res;
+  res = WRAP(AAudio_createStreamBuilder)(&streamBuilder);
+  if (res != AAUDIO_OK) {
+    LOG("init_dummy_stream: AAudio_createStreamBuilder: %s", WRAP(AAudio_convertResultToText)(res));
+    return nullptr;
+  }
+  WRAP(AAudioStreamBuilder_setDataCallback)(streamBuilder, dummy_callback, nullptr);
+  WRAP(AAudioStreamBuilder_setPerformanceMode)(streamBuilder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
+
+  AAudioStream *stream;
+  res = WRAP(AAudioStreamBuilder_openStream)(streamBuilder, &stream);
+  if (res != AAUDIO_OK) {
+    LOG("init_dummy_stream: AAudioStreamBuilder_openStream %s", WRAP(AAudio_convertResultToText)(res));
+    return nullptr;
+  }
+  WRAP(AAudioStreamBuilder_delete)(streamBuilder);
+
+  return stream;
+}
+
+static void
+destroy_dummy_stream(AAudioStream* stream) {
+  WRAP(AAudioStream_close)(stream);
+}
+
+static int
+aaudio_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * latency_frames)
+{
+  AAudioStream* stream = init_dummy_stream();
+
+  if (!stream) {
+    return CUBEB_ERROR;
+  }
+
+  // https://android.googlesource.com/platform/compatibility/cdd/+/refs/heads/master/5_multimedia/5_6_audio-latency.md
+  *latency_frames = WRAP(AAudioStream_getFramesPerBurst)(stream);
+
+  LOG("aaudio_get_min_latency: %u frames", *latency_frames);
+
+  destroy_dummy_stream(stream);
+
+  return CUBEB_OK;
+}
+
 extern "C" int aaudio_init(cubeb ** context, char const * context_name);
 
 const static struct cubeb_ops aaudio_ops = {
   /*.init =*/ aaudio_init,
   /*.get_backend_id =*/ aaudio_get_backend_id,
   /*.get_max_channel_count =*/ aaudio_get_max_channel_count,
-  // NOTE: i guess we could support min_latency and preferred sample
-  // rate via guessing, i.e. creating a dummy stream and check
-  // its settings.
-  /*.get_min_latency =*/ NULL,
+  /* .get_min_latency =*/ aaudio_get_min_latency,
   /*.get_preferred_sample_rate =*/ NULL,
   /*.enumerate_devices =*/ NULL,
   /*.device_collection_destroy =*/ NULL,
