@@ -106,7 +106,6 @@ struct cubeb_stream {
   /* Note: Must match cubeb_stream layout in cubeb.c. */
   cubeb * context {};
   void * user_ptr {};
-  /**/
 
   std::atomic<bool> in_use {false};
   std::atomic<stream_state> state {stream_state::INIT};
@@ -701,6 +700,7 @@ realize_stream(AAudioStreamBuilder * sb, const cubeb_stream_params * params,
     // Just try again with default rate, we create a resampler anyways
     WRAP(AAudioStreamBuilder_setSampleRate)(sb, AAUDIO_UNSPECIFIED);
     res = WRAP(AAudioStreamBuilder_openStream)(sb, stream);
+    LOG("Requested rate of %u is not supported, inserting resampler", params->rate);
   }
 
   // When the app has no permission to record audio (android.permission.RECORD_AUDIO)
@@ -1033,24 +1033,6 @@ aaudio_stream_start(cubeb_stream * stm)
 
   aaudio_result_t res;
 
-  // NOTE: aaudio docs don't state explicitly if we have to do this or
-  // if we are allowed to call requestStart while the stream is
-  // in the transient STOPPING state. Works without this in testing though
-  // if (ostate == AAUDIO_STREAM_STATE_STOPPING) {
-  //     res = WRAP(AAudioStream_waitForStateChange)(stm->ostream,
-  //       AAUDIO_STREAM_STATE_STOPPING, &ostate, INT64_MAX);
-  //     if (res != AAUDIO_OK) {
-  //       LOG("AAudioStream_waitForStateChanged: %s", WRAP(AAudio_convertResultToText)(res));
-  //     }
-  // }
-  // if (istate == AAUDIO_STREAM_STATE_STOPPING) {
-  //     res = WRAP(AAudioStream_waitForStateChange)(stm->istream,
-  //       AAUDIO_STREAM_STATE_STOPPING, &istate, INT64_MAX);
-  //     if (res != AAUDIO_OK) {
-  //       LOG("AAudioStream_waitForStateChanged: %s", WRAP(AAudio_convertResultToText)(res));
-  //     }
-  // }
-
   // Important to start istream before ostream.
   // As soon as we start ostream, the callbacks might be triggered an we
   // might read from istream (on duplex). If istream wasn't started yet
@@ -1146,24 +1128,6 @@ aaudio_stream_stop(cubeb_stream * stm)
   }
 
   aaudio_result_t res;
-
-  // NOTE: aaudio docs don't state explicitly if we have to do this or
-  // if we are allowed to call requestStop while the stream is
-  // in the transient STARTING state. Works without in testing though.
-  // if (ostate == AAUDIO_STREAM_STATE_STARTING) {
-  //     res = WRAP(AAudioStream_waitForStateChange)(stm->ostream,
-  //       AAUDIO_STREAM_STATE_STARTING, &ostate, INT64_MAX);
-  //     if (res != AAUDIO_OK) {
-  //       LOG("AAudioStream_waitForStateChanged: %s", WRAP(AAudio_convertResultToText)(res));
-  //     }
-  // }
-  // if (istate == AAUDIO_STREAM_STATE_STARTING) {
-  //     res = WRAP(AAudioStream_waitForStateChange)(stm->istream,
-  //       AAUDIO_STREAM_STATE_STARTING, &istate, INT64_MAX);
-  //     if (res != AAUDIO_OK) {
-  //       LOG("AAudioStream_waitForStateChanged: %s", WRAP(AAudio_convertResultToText)(res));
-  //     }
-  // }
 
   // No callbacks are triggered anymore when requestStop returns.
   // That is important as we otherwise might read from a closed istream
