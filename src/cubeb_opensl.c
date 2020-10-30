@@ -1698,7 +1698,7 @@ opensl_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
   assert(latency);
 
   uint32_t stream_latency_frames =
-    stm->user_output_rate * (stm->output_latency_ms / 1000);
+    stm->user_output_rate * stm->output_latency_ms / 1000;
 
   return stream_latency_frames + cubeb_resampler_latency(stm->resampler);
 }
