@@ -59,6 +59,8 @@
   X(AAudioStream_getState)                        \
   X(AAudioStream_getFramesWritten)                \
   X(AAudioStream_getFramesPerBurst)               \
+  X(AAudioStreamBuilder_setInputPreset)           \
+  X(AAudioStreamBuilder_setUsage)                 \
 
 
   // not needed or added later on
@@ -72,15 +74,12 @@
   // X(AAudioStream_getFormat)                       \
   // X(AAudioStream_getXRunCount)                    \
   // X(AAudioStream_isMMapUsed)                      \
-  // X(AAudioStreamBuilder_setUsage)                 \
   // X(AAudioStreamBuilder_setContentType)           \
-  // X(AAudioStreamBuilder_setInputPreset)           \
   // X(AAudioStreamBuilder_setSessionId)             \
   // X(AAudioStream_getUsage)                        \
   // X(AAudioStream_getContentType)                  \
   // X(AAudioStream_getInputPreset)                  \
   // X(AAudioStream_getSessionId)                    \
-  //
 
 #define MAKE_TYPEDEF(x) static decltype(x) * cubeb_##x;
 LIBAAUDIO_API_VISIT(MAKE_TYPEDEF)
@@ -132,6 +131,8 @@ struct cubeb_stream {
   unsigned out_frame_size {};
   int64_t latest_output_latency = 0;
   int64_t latest_input_latency = 0;
+  bool voice_input;
+  bool voice_output;
 };
 
 struct cubeb {
@@ -837,6 +838,9 @@ aaudio_stream_init_impl(
   uint32_t target_sample_rate = 0;
   cubeb_stream_params out_params;
   if (output_stream_params) {
+    int output_preset = stm->voice_output ? AAUDIO_USAGE_VOICE_COMMUNICATION
+                                          : AAUDIO_USAGE_MEDIA;
+    WRAP(AAudioStreamBuilder_setUsage)(sb, output_preset);
     WRAP(AAudioStreamBuilder_setDirection)(sb, AAUDIO_DIRECTION_OUTPUT);
     WRAP(AAudioStreamBuilder_setDataCallback)(sb, out_data_callback, stm);
     int res_err = realize_stream(sb, output_stream_params, &stm->ostream, &frame_size);
@@ -869,6 +873,13 @@ aaudio_stream_init_impl(
   // input
   cubeb_stream_params in_params;
   if (input_stream_params) {
+    // Match what the OpenSL backend does for now, we could use UNPROCESSED and
+    // VOICE_COMMUNICATION here, but we'd need to make it clear that
+    // application-level AEC and other voice processing should be disabled
+    // there.
+    int input_preset = stm->voice_input ? AAUDIO_INPUT_PRESET_VOICE_RECOGNITION
+                                        : AAUDIO_INPUT_PRESET_CAMCORDER;
+    WRAP(AAudioStreamBuilder_setInputPreset)(sb, input_preset);
     WRAP(AAudioStreamBuilder_setDirection)(sb, AAUDIO_DIRECTION_INPUT);
     WRAP(AAudioStreamBuilder_setDataCallback)(sb, in_data_callback, stm);
     int res_err = realize_stream(sb, input_stream_params, &stm->istream, &frame_size);
@@ -896,6 +907,8 @@ aaudio_stream_init_impl(
     in_params.rate = rate;
     stm->in_frame_size = frame_size;
   }
+
+
 
   // initialize resampler
   stm->resampler = cubeb_resampler_create(stm,
@@ -970,6 +983,11 @@ aaudio_stream_init(cubeb * ctx,
   stm->user_ptr = user_ptr;
   stm->data_callback = data_callback;
   stm->state_callback = state_callback;
+  stm->voice_input = !!(input_stream_params->prefs & CUBEB_STREAM_PREF_VOICE);
+  stm->voice_output = !!(output_stream_params->prefs & CUBEB_STREAM_PREF_VOICE);
+
+  LOG("cubeb stream prefs: voice_input: %s voice_output: %s", stm->voice_input ? "true" : "false",
+                                                              stm->voice_output ? "true" : "false");
 
   int err = aaudio_stream_init_impl(stm, input_device, input_stream_params, output_device, output_stream_params, latency_frames);
   if(err != CUBEB_OK) {
