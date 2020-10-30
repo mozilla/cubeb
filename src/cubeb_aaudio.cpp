@@ -772,7 +772,6 @@ aaudio_stream_destroy(cubeb_stream * stm)
 static int
 aaudio_stream_init_impl(
     cubeb_stream * stm,
-    char const * stream_name,
     cubeb_devid input_device,
     cubeb_stream_params * input_stream_params,
     cubeb_devid output_device,
@@ -921,7 +920,7 @@ aaudio_stream_init_impl(
 static int
 aaudio_stream_init(cubeb * ctx,
     cubeb_stream ** stream,
-    char const * stream_name,
+    char const * /* stream_name */,
     cubeb_devid input_device,
     cubeb_stream_params * input_stream_params,
     cubeb_devid output_device,
@@ -933,8 +932,6 @@ aaudio_stream_init(cubeb * ctx,
 {
   assert(!input_device);
   assert(!output_device);
-
-  (void) stream_name;
 
   // atomically find a free stream.
   cubeb_stream * stm = NULL;
@@ -972,8 +969,7 @@ aaudio_stream_init(cubeb * ctx,
   stm->data_callback = data_callback;
   stm->state_callback = state_callback;
 
-  int err = aaudio_stream_init_impl(stm, stream_name, input_device,
-    input_stream_params, output_device, output_stream_params, latency_frames);
+  int err = aaudio_stream_init_impl(stm, input_device, input_stream_params, output_device, output_stream_params, latency_frames);
   if(err != CUBEB_OK) {
     // This is needed since aaudio_stream_destroy will lock the mutex again.
     // It's no problem that there is a gap in between as the stream isn't
@@ -1308,9 +1304,7 @@ const static struct cubeb_ops aaudio_ops = {
 
 
 extern "C" /*static*/ int
-aaudio_init(cubeb ** context, char const * context_name) {
-  (void) context_name;
-
+aaudio_init(cubeb ** context, char const * /* context_name */) {
   // load api
   void * libaaudio = NULL;
 #ifndef DISABLE_LIBAAUDIO_DLOPEN
