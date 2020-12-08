@@ -779,12 +779,6 @@ hns_to_frames(cubeb_stream * stm, REFERENCE_TIME hns)
 }
 
 REFERENCE_TIME
-frames_to_hns(cubeb_stream * stm, uint32_t frames)
-{
-  return std::ceil(frames * 10000000.0 / get_rate(stm));
-}
-
-REFERENCE_TIME
 frames_to_hns(uint32_t rate, uint32_t frames)
 {
   return std::ceil(frames * 10000000.0 / rate);
@@ -2207,6 +2201,9 @@ void wasapi_find_matching_output_device(cubeb_stream * stm) {
   }
 
   int rv = wasapi_enumerate_devices(stm->context, (cubeb_device_type)(CUBEB_DEVICE_TYPE_INPUT|CUBEB_DEVICE_TYPE_OUTPUT), &collection);
+  if (rv != CUBEB_OK) {
+    return;
+  }
 
   // Find the input device, and then find the output device with the same group
   // id and the same rate.
