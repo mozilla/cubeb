@@ -69,7 +69,25 @@ LIBASOUND_API_VISIT(MAKE_TYPEDEF);
 #define CUBEB_STREAM_MAX 16
 #define CUBEB_WATCHDOG_MS 10000
 
-#define CUBEB_ALSA_PCM_NAME "default"
+#define CUBEB_ALSA_PCM_NAME_DEFAULT "default"
+
+#define CUBEB_ALSA_PCM_TYPE_DEFAULT "plug:"
+
+#ifndef CUBEB_ALSA_PCM_TYPE_ENV
+#define CUBEB_ALSA_PCM_TYPE_ENV "ALSA_PCM_TYPE"
+#endif
+
+#ifndef CUBEB_ALSA_PCM_DEVICE_ENV
+#define CUBEB_ALSA_PCM_DEVICE_ENV "ALSA_PCM_DEVICE"
+#endif
+
+#ifndef CUBEB_ALSA_PCM_CARD_ENV
+#define CUBEB_ALSA_PCM_CARD_ENV "ALSA_PCM_CARD"
+#endif
+
+#ifndef CUBEB_ALSA_CARD_ENV
+#define CUBEB_ALSA_CARD_ENV "ALSA_CARD"
+#endif
 
 #define ALSA_PA_PLUGIN "ALSA <-> PulseAudio PCM I/O Plugin"
 
@@ -81,6 +99,12 @@ static pthread_mutex_t cubeb_alsa_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int cubeb_alsa_error_handler_set = 0;
 
 static struct cubeb_ops const alsa_ops;
+
+/* The ALSA device to use is selected from an environment variable if any of 
+   the above CUBEB_ALSA_*_ENV env vars are set. The first one found in the 
+   order listed above is the value which will be used, and if none are set, 
+   we will use the CUBEB_ALSA_PCM_NAME_DEFAULT device by default. */
+char* cubeb_alsa_pcm_name = NULL;
 
 struct cubeb {
   struct cubeb_ops const * ops;
@@ -784,6 +808,88 @@ alsa_unregister_stream(cubeb_stream * stm)
   pthread_mutex_unlock(&ctx->mutex);
 }
 
+/* Get the alsa pcm device's name from the environment, or from 
+   a default value if none of the supported env vars are set,
+   and store it in the alsa_pcm_name variable.
+   
+   Currently supported environment variables are:
+       
+       ALSA_PCM_DEVICE
+       ALSA_PCM_CARD
+       ALSA_CARD
+
+   Falls back to device "default" if none of the above env vars are set.
+
+   Returns 0 on success or non-zero on failure.
+*/
+static int
+get_alsa_pcm_name(char ** alsa_pcm_name) {
+  if (alsa_pcm_name == NULL) {
+    printf("error: The alsa_pcm_name variable passed into get_alsa_pcm_name() is NULL. "
+      "It needs to be an address of a char*.\n");
+    return 1;
+  }
+
+  const char * alsa_pcm_type_env = getenv(CUBEB_ALSA_PCM_TYPE_ENV);
+  const char * alsa_pcm_device_env = getenv(CUBEB_ALSA_PCM_DEVICE_ENV);
+  const char * alsa_pcm_card_env = getenv(CUBEB_ALSA_PCM_CARD_ENV);
+  const char * alsa_card_env = getenv(CUBEB_ALSA_CARD_ENV);
+
+  const char * alsa_pcm_type = 
+    alsa_pcm_type_env != NULL ? 
+      alsa_pcm_type_env :
+      CUBEB_ALSA_PCM_TYPE_DEFAULT;
+
+  /* Choose the device name from an environment variable if any 
+     supported ones are set. */
+  const char * alsa_pcm_name_tmp = 
+    alsa_pcm_device_env != NULL ? alsa_pcm_device_env :
+    alsa_pcm_card_env != NULL ? alsa_pcm_card_env :
+    alsa_card_env != NULL ? alsa_card_env :
+    CUBEB_ALSA_PCM_NAME_DEFAULT;
+
+  const size_t alsa_pcm_type_len = strlen(alsa_pcm_type);
+  const size_t alsa_pcm_name_tmp_len = strlen(alsa_pcm_name_tmp);
+  size_t alsa_pcm_name_len = alsa_pcm_name_tmp_len;
+  
+  /* If using a device from the env vars, make sure we will be
+     allocating enough storage space for the device name string. */
+  if (strcmp(alsa_pcm_name_tmp, CUBEB_ALSA_PCM_NAME_DEFAULT) != 0) {
+    alsa_pcm_name_len = alsa_pcm_type_len + alsa_pcm_name_tmp_len;
+  }
+
+  if ((*alsa_pcm_name) != NULL) {
+    printf("error: Tried to allocate memory for alsa_pcm_name when it was not NULL. "
+      "It's probably a memory leak so we're not going to allow that: (%p)\n", (void *)alsa_pcm_name);
+    return 2;
+  }
+
+  /* Allocate heap space for the variable which holds the device 
+     name string. This gets free'd in alsa_destroy(). */
+  (*alsa_pcm_name) = (char *)malloc(sizeof(char) * (alsa_pcm_name_len + 1));
+
+  if ((*alsa_pcm_name) == NULL) {
+    printf("error: Tried to allocate memory for alsa_pcm_name but we received a NULL response.\n");
+    return 3;
+  }
+
+  sprintf((*alsa_pcm_name), "%s%s",
+    alsa_pcm_name_len == alsa_pcm_name_tmp_len ?
+      /* If using the CUBEB_ALSA_PCM_NAME_DEFAULT device, don't 
+         add "plug:" in front. */
+      "" :
+
+      /* If using a device from the env vars, add "plug:" in front,
+         or whatever value is set in the ALSA_PCM_TYPE env var if 
+         any. */
+      alsa_pcm_type,
+
+    alsa_pcm_name_tmp
+  );
+
+  return 0;
+}
+
 static void
 silent_error_handler(char const * file, int line, char const * function,
                      int err, char const * fmt, ...)
@@ -874,19 +980,27 @@ alsa_init(cubeb ** context, char const * context_name)
   r = pthread_attr_destroy(&attr);
   assert(r == 0);
 
+  /* Get the alsa pcm device's name from the environment or use a default 
+     value. This variable is free'd in alsa_destroy() */
+  r = get_alsa_pcm_name(&cubeb_alsa_pcm_name);
+  assert(r == 0);
+
+  /* Print selected ALSA output device to stdout. */
+  printf("Using ALSA output device: %s\n", cubeb_alsa_pcm_name);
+
   /* Open a dummy PCM to force the configuration space to be evaluated so that
      init_local_config_with_workaround can find and modify the default node. */
-  r = alsa_locked_pcm_open(&dummy, CUBEB_ALSA_PCM_NAME, SND_PCM_STREAM_PLAYBACK, NULL);
+  r = alsa_locked_pcm_open(&dummy, cubeb_alsa_pcm_name, SND_PCM_STREAM_PLAYBACK, NULL);
   if (r >= 0) {
     alsa_locked_pcm_close(dummy);
   }
   ctx->is_pa = 0;
   pthread_mutex_lock(&cubeb_alsa_mutex);
-  ctx->local_config = init_local_config_with_workaround(CUBEB_ALSA_PCM_NAME);
+  ctx->local_config = init_local_config_with_workaround(cubeb_alsa_pcm_name);
   pthread_mutex_unlock(&cubeb_alsa_mutex);
   if (ctx->local_config) {
     ctx->is_pa = 1;
-    r = alsa_locked_pcm_open(&dummy, CUBEB_ALSA_PCM_NAME, SND_PCM_STREAM_PLAYBACK, ctx->local_config);
+    r = alsa_locked_pcm_open(&dummy, cubeb_alsa_pcm_name, SND_PCM_STREAM_PLAYBACK, ctx->local_config);
     /* If we got a local_config, we found a PA PCM.  If opening a PCM with that
        config fails with EINVAL, the PA PCM is too old for this workaround. */
     if (r == -EINVAL) {
@@ -941,6 +1055,10 @@ alsa_destroy(cubeb * ctx)
     dlclose(ctx->libasound);
   }
 
+  /* This variable is allocated in get_alsa_pcm_name()
+     which is called inside alsa_init(). */
+  free((void *)cubeb_alsa_pcm_name);
+
   free(ctx);
 }
 
@@ -962,7 +1080,7 @@ alsa_stream_init_single(cubeb * ctx, cubeb_stream ** stream, char const * stream
   snd_pcm_format_t format;
   snd_pcm_uframes_t period_size;
   int latency_us = 0;
-  char const * pcm_name = deviceid ? (char const *) deviceid : CUBEB_ALSA_PCM_NAME;
+  char const * pcm_name = deviceid ? (char const *) deviceid : cubeb_alsa_pcm_name;
 
   assert(ctx && stream);
 
@@ -1202,7 +1320,7 @@ alsa_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate) {
 
   /* get a pcm, disabling resampling, so we get a rate the
    * hardware/dmix/pulse/etc. supports. */
-  r = WRAP(snd_pcm_open)(&pcm, CUBEB_ALSA_PCM_NAME, SND_PCM_STREAM_PLAYBACK, SND_PCM_NO_AUTO_RESAMPLE);
+  r = WRAP(snd_pcm_open)(&pcm, cubeb_alsa_pcm_name, SND_PCM_STREAM_PLAYBACK, SND_PCM_NO_AUTO_RESAMPLE);
   if (r < 0) {
     return CUBEB_ERROR;
   }
