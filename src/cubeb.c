@@ -14,6 +14,14 @@
 
 #define NELEMS(x) ((int) (sizeof(x) / sizeof(x[0])))
 
+#if defined(USE_ALSA)
+/* An environment variable you can set to always use ALSA 
+   backend when multiple backends are enabled. */
+#ifndef CUBEB_PREFER_ALSA_ENV
+#define CUBEB_PREFER_ALSA_ENV "CUBEB_PREFER_ALSA"
+#endif
+#endif
+
 struct cubeb {
   struct cubeb_ops * ops;
 };
@@ -192,6 +200,18 @@ cubeb_init(cubeb ** context, char const * context_name, char const * backend_nam
       /* Already set */
     }
   }
+
+#if defined(USE_ALSA)
+  /* Use the ALSA backend if the following environment 
+     variable is set, regardless of backend order 
+     precedence. */
+  char * prefer_alsa_env = getenv(CUBEB_PREFER_ALSA_ENV);
+  if (prefer_alsa_env != NULL) {
+    backend_name = "alsa";
+    init_oneshot = alsa_init;
+    printf("Using ALSA audio backend because environment variable %s is set.\n", CUBEB_PREFER_ALSA_ENV);
+  }
+#endif
 
   int (* default_init[])(cubeb **, char const *) = {
     /*
