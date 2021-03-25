@@ -238,11 +238,10 @@ typedef enum {
                                        bluetooth devices. */
   CUBEB_STREAM_PREF_RAW = 0x08, /**< Windows only. Bypass all signal processing
                                      except for always on APO, driver and hardware. */
-  CUBEB_STREAM_PREF_PERSIST = 0x10, /**< Request that the volume and mute settings
-                                         should persist across restarts of the stream
-                                         and/or application. May not be honored for
-                                         all backends and platforms. */
-
+  CUBEB_STREAM_PREF_NOPERSIST = 0x10, /**< Request that volume and mute settings should
+                                           not persist across restarts of the stream
+                                           and/or application. Only affects the WASAPI
+                                           backend. */
   CUBEB_STREAM_PREF_JACK_NO_AUTO_CONNECT = 0x20  /**< Don't automatically try to connect
                                                       ports.  Only affects the jack
                                                       backend. */

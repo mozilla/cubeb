@@ -2072,8 +2072,7 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
 
   DWORD flags = 0;
 
-  bool is_persist = stream_params->prefs & CUBEB_STREAM_PREF_PERSIST;
-  if (!is_persist) {
+  if (stream_params->prefs & CUBEB_STREAM_PREF_NOPERSIST) {
     flags |= AUDCLNT_STREAMFLAGS_NOPERSIST;
   }
 
