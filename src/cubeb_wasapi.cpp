@@ -353,6 +353,9 @@ struct cubeb_stream {
   /* This needs an active audio input stream to be known, and is updated in the
    * first audio input callback. */
   std::atomic<int64_t> input_latency_hns { LATENCY_NOT_AVAILABLE_YET };
+
+  size_t total_input_frames = 0;
+  size_t total_output_frames = 0;
 };
 
 class monitor_device_notifications {
@@ -967,6 +970,8 @@ bool get_input_buffer(cubeb_stream * stm)
       }
     }
 
+    stm->total_input_frames += frames;
+
     UINT32 input_stream_samples = frames * stm->input_stream_params.channels;
     // We do not explicitly handle the AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY
     // flag. There a two primary (non exhaustive) scenarios we anticipate this
@@ -1109,6 +1114,13 @@ refill_callback_duplex(cubeb_stream * stm)
   if (stm->draining) {
     return false;
   }
+
+  stm->total_output_frames += output_frames;
+
+  ALOGV("in: %zu, out: %zu, missing: %ld, ratio: %f",
+        stm->total_input_frames, stm->total_output_frames,
+        static_cast<long>(stm->total_output_frames) - stm->total_input_frames,
+        static_cast<float>(stm->total_output_frames) / stm->total_input_frames);
 
   if (stm->has_dummy_output) {
     ALOGV("Duplex callback (dummy output): input frames: %Iu, output frames: %Iu",
