@@ -2151,22 +2151,17 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
   if (rv == CUBEB_OK) {
     const char* HANDSFREE_TAG = "BTHHFENUM";
     size_t len = sizeof(HANDSFREE_TAG);
-    if (direction == eCapture &&
-        strlen(device_info.group_id) >= len &&
-        strncmp(device_info.group_id, HANDSFREE_TAG, len) == 0) {
-      // Rather high-latency to prevent constant under-runs in this particular
-      // case of an input device using bluetooth handsfree.
+    if (direction == eCapture) {
       uint32_t default_period_frames = hns_to_frames(device_info.default_rate, default_period);
-      latency_frames = default_period_frames * 4;
-      stm->input_bluetooth_handsfree = true;
-      LOG("Input is a bluetooth device in handsfree, latency increased to %u frames from a default of %u", latency_frames, default_period_frames);
-    } else {
-      uint32_t minimum_period_frames = hns_to_frames(device_info.default_rate, minimum_period);
-      latency_frames = std::max(latency_frames, minimum_period_frames);
-      stm->input_bluetooth_handsfree = false;
-      LOG("Input is a not bluetooth handsfree, latency %s to %u frames (minimum %u)", latency_frames < minimum_period_frames ? "increased" : "set", latency_frames, minimum_period_frames);
+      if (strlen(device_info.group_id) >= len &&
+          strncmp(device_info.group_id, HANDSFREE_TAG, len) == 0) {
+        stm->input_bluetooth_handsfree = true;
+      } else {
+        stm->input_bluetooth_handsfree = false;
+      }
+      latency_frames = default_period_frames * 8;
+      LOG("Input: latency increased to %u frames from a default of %u", latency_frames, default_period_frames);
     }
-
     latency_hns = frames_to_hns(device_info.default_rate, latency_frames);
 
     wasapi_destroy_device(&device_info);
@@ -2208,6 +2203,8 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
         " for %s %lx.", DIRECTION_NAME, hr);
     return CUBEB_ERROR;
   }
+
+  LOG("Buffer size is: %d for %s\n", *buffer_frame_count, DIRECTION_NAME);
 
   // Events are used if not looping back
   if (!is_loopback) {
