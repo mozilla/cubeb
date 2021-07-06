@@ -1746,11 +1746,12 @@ wasapi_get_min_latency(cubeb * ctx, cubeb_stream_params params, uint32_t * laten
      synchronizing the stream and the engine.
      http://msdn.microsoft.com/en-us/library/windows/desktop/dd370871%28v=vs.85%29.aspx */
 
-  #ifdef _WIN32_WINNT_WIN10
-    *latency_frames = hns_to_frames(params.rate, minimum_period);
-  #else
+   // #ifdef _WIN32_WINNT_WIN10
+  #if 0
+     *latency_frames = hns_to_frames(params.rate, minimum_period);
+   #else
     *latency_frames = hns_to_frames(params.rate, default_period);
-  #endif
+   #endif
 
   LOG("Minimum latency in frames: %u", *latency_frames);
 
