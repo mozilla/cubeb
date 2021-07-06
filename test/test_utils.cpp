@@ -70,3 +70,21 @@ TEST(cubeb, auto_array)
   ASSERT_EQ(array.capacity(), 20u);
 }
 
+// On debug build this was crashing in PodMove/Zero/Copy() methods
+// used by auto_array
+TEST(cubeb, auto_array_zero_length_crash)
+{
+  auto_array<float> array;
+
+  ASSERT_EQ(array.length(), 0u);
+  ASSERT_EQ(array.capacity(), 0u);
+
+  float data[3] = {};
+  array.push(data, 0);
+  array.push_silence(0);
+  array.push_front_silence(0);
+
+  ASSERT_EQ(array.length(), 0u);
+  ASSERT_EQ(array.capacity(), 0u);
+}
+

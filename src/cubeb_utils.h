@@ -192,6 +192,9 @@ public:
     */
   void push(const T * elements, size_t length)
   {
+    if (!length) {
+      return;
+    }
     if (length_ + length > capacity_) {
       reserve(length_ + length);
     }
@@ -205,6 +208,9 @@ public:
    */
   void push_silence(size_t length)
   {
+    if (!length) {
+      return;
+    }
     if (length_ + length > capacity_) {
       reserve(length + length_);
     }
@@ -218,6 +224,9 @@ public:
    */
   void push_front_silence(size_t length)
   {
+    if (!length) {
+      return;
+    }
     if (length_ + length > capacity_) {
       reserve(length + length_);
     }
