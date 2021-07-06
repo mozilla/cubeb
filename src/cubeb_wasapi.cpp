@@ -911,8 +911,8 @@ int trigger_async_reconfigure(cubeb_stream * stm)
 
 
 /* This helper grabs all the frames available from a capture client, put them in
- * linear_input_buffer. linear_input_buffer should be cleared before the
- * callback exits. This helper does not work with exclusive mode streams. */
+ * the linear_input_buffer.  This helper does not work with exclusive mode
+ * streams. */
 bool get_input_buffer(cubeb_stream * stm)
 {
   XASSERT(has_input(stm));
@@ -1023,6 +1023,8 @@ bool get_input_buffer(cubeb_stream * stm)
     offset += input_stream_samples;
   }
 
+  ALOGV("get_input_buffer: got %d frames", offset);
+
   XASSERT(stm->linear_input_buffer->length() >= offset);
 
   return true;
@@ -1090,11 +1092,6 @@ refill_callback_duplex(cubeb_stream * stm)
   bool rv;
 
   XASSERT(has_input(stm) && has_output(stm));
-
-  rv = get_input_buffer(stm);
-  if (!rv) {
-    return rv;
-  }
 
   input_frames = stm->linear_input_buffer->length() / stm->input_stream_params.channels;
 
@@ -1363,10 +1360,18 @@ wasapi_stream_render_loop(LPVOID stream)
               (!has_input(stm) && has_output(stm)));
       is_playing = stm->refill_callback(stm);
       break;
-    case WAIT_OBJECT_0 + 3: /* input available */
-      if (has_input(stm) && has_output(stm)) { continue; }
-      is_playing = stm->refill_callback(stm);
+    case WAIT_OBJECT_0 + 3: { /* input available */
+      HRESULT rv = get_input_buffer(stm);
+      if (FAILED(rv)) {
+        return rv;
+      }
+
+      if (!has_output(stm)) {
+        is_playing = stm->refill_callback(stm);
+      }
+
       break;
+    }
     case WAIT_TIMEOUT:
       XASSERT(stm->shutdown_event == wait_array[0]);
       if (++timeout_count >= timeout_limit) {
