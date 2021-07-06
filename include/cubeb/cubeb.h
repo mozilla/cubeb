@@ -492,6 +492,21 @@ CUBEB_EXPORT int cubeb_get_preferred_sample_rate(cubeb * context, uint32_t * rat
 CUBEB_EXPORT void cubeb_destroy(cubeb * context);
 
 /** Initialize a stream associated with the supplied application context.
+
+    @note A NULL @p output_device or @p input_device will cause cubeb to use
+    the OS default device for that direction.  In this case, cubeb will
+    automatically switch to a new OS default if a device change is detected.
+    To disable automatic switching, set @ref
+    CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING on @ref
+    cubeb_stream_params.prefs.
+
+    @note If @p output_device or @p input_device is a valid non-NULL @ref
+    cubeb_devid, cubeb will only ever use the specified device and never
+    follow device changes automatically.  In this case, the application may
+    manage device changes using @ref
+    cubeb_stream_register_device_changed_callback or @ref
+    cubeb_register_device_collection_changed.
+
     @param context A pointer to the cubeb context.
     @param stream An out parameter to be filled with the an opaque pointer to a
                   cubeb stream.
