@@ -354,6 +354,8 @@ struct cubeb_stream {
    * first audio input callback. */
   std::atomic<int64_t> input_latency_hns { LATENCY_NOT_AVAILABLE_YET };
 
+  /* Those attributes count the number of frames requested (resp. received) by
+  the OS, to be able to detect drifts. This is only used for logging for now. */
   size_t total_input_frames = 0;
   size_t total_output_frames = 0;
 };
@@ -911,8 +913,7 @@ int trigger_async_reconfigure(cubeb_stream * stm)
 
 
 /* This helper grabs all the frames available from a capture client, put them in
- * the linear_input_buffer.  This helper does not work with exclusive mode
- * streams. */
+ * the linear_input_buffer.  This helper does not work with exclusive mode streams. */
 bool get_input_buffer(cubeb_stream * stm)
 {
   XASSERT(has_input(stm));
@@ -1092,6 +1093,13 @@ refill_callback_duplex(cubeb_stream * stm)
   bool rv;
 
   XASSERT(has_input(stm) && has_output(stm));
+
+  if (stm->input_stream_params.prefs & CUBEB_STREAM_PREF_LOOPBACK) {
+    HRESULT rv = get_input_buffer(stm);
+    if (FAILED(rv)) {
+      return rv;
+    }
+  }
 
   input_frames = stm->linear_input_buffer->length() / stm->input_stream_params.channels;
 
@@ -2164,6 +2172,7 @@ int setup_wasapi_stream_one_side(cubeb_stream * stm,
       } else {
         stm->input_bluetooth_handsfree = false;
       }
+      // This multiplicator has been found empirically.
       latency_frames = default_period_frames * 8;
       LOG("Input: latency increased to %u frames from a default of %u", latency_frames, default_period_frames);
     }
@@ -2637,6 +2646,9 @@ void close_wasapi_stream(cubeb_stream * stm)
   stm->output_mixer.reset();
   stm->input_mixer.reset();
   stm->mix_buffer.clear();
+  if (stm->linear_input_buffer) {
+    stm->linear_input_buffer->clear();
+  }
 }
 
 void wasapi_stream_destroy(cubeb_stream * stm)
