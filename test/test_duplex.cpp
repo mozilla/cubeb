@@ -217,7 +217,7 @@ std::vector<cubeb_devid> get_devices(cubeb * ctx, cubeb_device_type type) {
   int r = cubeb_enumerate_devices(ctx, type, &collection);
 
   if (r != CUBEB_OK) {
-    fprintf(stderr, "Fail to enumerat devices\n");
+    fprintf(stderr, "Failed to enumerate devices\n");
     return devices;
   }
 
@@ -264,7 +264,7 @@ TEST(cubeb, one_duplex_one_input)
   cubeb_devid duplex_output = nullptr; // default device
   cubeb_devid input_only = input_devices.back();
 
-  /* typical user-case: mono voice input, stereo output, low latency. */
+  /* typical use-case: mono voice input, stereo output, low latency. */
   input_params.format = STREAM_FORMAT;
   input_params.rate = SAMPLE_FREQUENCY;
   input_params.channels = INPUT_CHANNELS;
@@ -297,6 +297,10 @@ TEST(cubeb, one_duplex_one_input)
                         input_only, &input_params, NULL, NULL,
                         latency_frames, data_cb_input, state_cb_input, nullptr);
   ASSERT_EQ(r, CUBEB_OK) << "Error initializing input-only cubeb stream";
+
+  std::unique_ptr<cubeb_stream, decltype(&cubeb_stream_destroy)>
+    cleanup_input_stream_at_exit(input_stream, cubeb_stream_destroy);
+  
   r = cubeb_stream_start(input_stream);
   ASSERT_EQ(r, CUBEB_OK) << "Could not start input stream";
   delay(500);
