@@ -19,8 +19,8 @@
 
 /* clang-format off */
 /* These need to be included after windows.h */
-#include <mmsystem.h>
 #include <mmreg.h>
+#include <mmsystem.h>
 /* clang-format on */
 
 /* This is missing from the MinGW headers. Use a safe fallback. */
