@@ -367,3 +367,15 @@ if(BUILD_TOOLS)
   add_sanitizers(cubeb-test)
   install(TARGETS cubeb-test DESTINATION ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
 endif()
+
+add_custom_target(clang-format-check
+  find
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    -type f (-name "*.cpp" -o -name "*.c" -o -name "*.h")
+    -not -path "*/src/speex/*"
+    -print0
+  | xargs -0 clang-format -Werror -n
+  COMMENT "Check formatting with clang-format"
+  VERBATIM)
+
