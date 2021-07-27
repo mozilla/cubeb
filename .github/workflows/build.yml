@@ -38,3 +38,18 @@ jobs:
       run: (cd build && ctest -V)
       if: ${{ matrix.os == 'ubuntu-20.04' || matrix.os == 'macos-10.15' }}
 
+  check_format:
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+
+    - name: Configure CMake
+      shell: bash
+      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=$BUILD_TYPE
+
+    - name: Check format
+      shell: bash
+      run: cmake --build build --target clang-format-check
+
