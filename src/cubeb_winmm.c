@@ -757,16 +757,16 @@ update_64bit_position(cubeb_stream * stm, DWORD pos_lo_dword)
 {
   /* Caller should be holding stm->lock. */
   if (pos_lo_dword < stm->prev_pos_lo_dword) {
-  	stm->pos_hi_dword++;
+    stm->pos_hi_dword++;
     LOG("waveOutGetPosition() has wrapped around: %#lx -> %#lx",
         stm->prev_pos_lo_dword, pos_lo_dword);
     LOG("Wrap-around count = %#lx", stm->pos_hi_dword);
     LOG("Current 64-bit position = %#llx",
-        (((uint64_t) stm->pos_hi_dword)<<32) | ((uint64_t) pos_lo_dword));
+        (((uint64_t)stm->pos_hi_dword) << 32) | ((uint64_t)pos_lo_dword));
   }
   stm->prev_pos_lo_dword = pos_lo_dword;
 
-  return (((uint64_t) stm->pos_hi_dword)<<32) | ((uint64_t) pos_lo_dword);
+  return (((uint64_t)stm->pos_hi_dword) << 32) | ((uint64_t)pos_lo_dword);
 }
 
 static int
@@ -813,7 +813,7 @@ winmm_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
   LeaveCriticalSection(&stm->lock);
 
   XASSERT((written - (position / stm->frame_size)) <= UINT32_MAX);
-  *latency = (uint32_t) (written - (position / stm->frame_size));
+  *latency = (uint32_t)(written - (position / stm->frame_size));
 
   return CUBEB_OK;
 }
