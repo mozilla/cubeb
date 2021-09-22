@@ -66,22 +66,34 @@ else()
   string(REPLACE "/EHsc" "" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS}) # Disable Exceptions
 endif()
 
+find_package(PkgConfig)
+pkg_check_modules(speex    IMPORTED_TARGET speex)
+pkg_check_modules(speexdsp IMPORTED_TARGET speexdsp)
+if(speex_FOUND AND speexdsp_FOUND)
+  # Create a "speex" library that is composed by both speex and speexdsp
+  target_link_libraries(PkgConfig::speex INTERFACE PkgConfig::speexdsp)
+  add_library(speex ALIAS PkgConfig::speex)
+else()
+  add_library(speex STATIC src/speex/resample.c)
+  set_target_properties(speex PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
+  target_include_directories(speex INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/speex>)
+  target_compile_definitions(speex PRIVATE OUTSIDE_SPEEX)
+  target_compile_definitions(speex PRIVATE FLOATING_POINT)
+  target_compile_definitions(speex PRIVATE EXPORT=)
+  target_compile_definitions(speex PRIVATE RANDOM_PREFIX=speex)
+endif()
+
 add_library(cubeb
   src/cubeb.c
   src/cubeb_mixer.cpp
   src/cubeb_resampler.cpp
   src/cubeb_log.cpp
   src/cubeb_strings.c
-  src/cubeb_utils.cpp
-   $<TARGET_OBJECTS:speex>)
+  src/cubeb_utils.cpp)
+target_link_libraries(cubeb PRIVATE speex)
 target_include_directories(cubeb
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>
 )
-target_include_directories(cubeb PRIVATE src)
-target_compile_definitions(cubeb PRIVATE OUTSIDE_SPEEX)
-target_compile_definitions(cubeb PRIVATE FLOATING_POINT)
-target_compile_definitions(cubeb PRIVATE EXPORT=)
-target_compile_definitions(cubeb PRIVATE RANDOM_PREFIX=speex)
 
 add_sanitizers(cubeb)
 
@@ -133,14 +145,6 @@ install(
   NAMESPACE "${PROJECT_NAME}::"
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}"
 )
-
-add_library(speex OBJECT
-  src/speex/resample.c)
-set_target_properties(speex PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
-target_compile_definitions(speex PRIVATE OUTSIDE_SPEEX)
-target_compile_definitions(speex PRIVATE FLOATING_POINT)
-target_compile_definitions(speex PRIVATE EXPORT=)
-target_compile_definitions(speex PRIVATE RANDOM_PREFIX=speex)
 
 include(CheckIncludeFiles)
 
@@ -333,14 +337,14 @@ if(BUILD_TESTS)
   cubeb_add_test(devices)
   cubeb_add_test(callback_ret)
 
-  add_executable(test_resampler test/test_resampler.cpp src/cubeb_resampler.cpp $<TARGET_OBJECTS:speex>)
+  add_executable(test_resampler test/test_resampler.cpp src/cubeb_resampler.cpp)
   target_include_directories(test_resampler PRIVATE ${gtest_SOURCE_DIR}/include)
   target_include_directories(test_resampler PRIVATE src)
   target_compile_definitions(test_resampler PRIVATE OUTSIDE_SPEEX)
   target_compile_definitions(test_resampler PRIVATE FLOATING_POINT)
   target_compile_definitions(test_resampler PRIVATE EXPORT=)
   target_compile_definitions(test_resampler PRIVATE RANDOM_PREFIX=speex)
-  target_link_libraries(test_resampler PRIVATE cubeb gtest_main)
+  target_link_libraries(test_resampler PRIVATE cubeb speex gtest_main)
   add_test(resampler test_resampler)
   add_sanitizers(test_resampler)
   install(TARGETS test_resampler DESTINATION ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
@@ -378,4 +382,3 @@ add_custom_target(clang-format-check
   | xargs -0 clang-format -Werror -n
   COMMENT "Check formatting with clang-format"
   VERBATIM)
-
