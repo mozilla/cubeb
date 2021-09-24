@@ -82,6 +82,10 @@ target_compile_definitions(cubeb PRIVATE OUTSIDE_SPEEX)
 target_compile_definitions(cubeb PRIVATE FLOATING_POINT)
 target_compile_definitions(cubeb PRIVATE EXPORT=)
 target_compile_definitions(cubeb PRIVATE RANDOM_PREFIX=speex)
+set_target_properties(cubeb PROPERTIES
+  VERSION ${cubeb_VERSION}
+  SOVERSION ${cubeb_VERSION_MAJOR}
+)
 
 add_sanitizers(cubeb)
 
