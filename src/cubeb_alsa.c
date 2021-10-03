@@ -660,6 +660,7 @@ init_local_config_with_workaround(char const * pcm_name)
 
   lconf = NULL;
 
+#ifndef DISABLE_LIBASOUND_DLOPEN
   if (*WRAP(snd_config) == NULL) {
     return NULL;
   }
@@ -668,6 +669,16 @@ init_local_config_with_workaround(char const * pcm_name)
   if (r < 0) {
     return NULL;
   }
+#else
+  if (WRAP(snd_config) == NULL) {
+    return NULL;
+  }
+
+  r = WRAP(snd_config_copy)(&lconf, WRAP(snd_config));
+  if (r < 0) {
+    return NULL;
+  }
+#endif
 
   do {
     r = WRAP(snd_config_search_definition)(lconf, "pcm", pcm_name, &pcm_node);
