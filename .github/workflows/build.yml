@@ -18,7 +18,7 @@ jobs:
         submodules: true
 
     - name: Install Dependencies (Linux)
-      run: sudo apt-get install libpulse-dev pulseaudio
+      run: sudo apt-get update && sudo apt-get install libpulse-dev pulseaudio
       if: matrix.os == 'ubuntu-20.04'
 
     - name: Start Sound Server (Linux)
