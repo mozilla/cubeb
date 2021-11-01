@@ -660,11 +660,19 @@ init_local_config_with_workaround(char const * pcm_name)
 
   lconf = NULL;
 
-  if (*WRAP(snd_config) == NULL) {
+  snd_config_t * gconf;
+
+#ifndef DISABLE_LIBASOUND_DLOPEN
+  gconf = *WRAP(snd_config);
+#else
+  gconf = WRAP(snd_config);
+#endif
+
+  if (gconf == NULL) {
     return NULL;
   }
 
-  r = WRAP(snd_config_copy)(&lconf, *WRAP(snd_config));
+  r = WRAP(snd_config_copy)(&lconf, gconf);
   if (r < 0) {
     return NULL;
   }
