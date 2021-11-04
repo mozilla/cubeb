@@ -19,7 +19,7 @@
 #ifdef DISABLE_LIBPULSE_DLOPEN
 #define WRAP(x) x
 #else
-#define WRAP(x) cubeb_##x
+#define WRAP(x) (*cubeb_##x)
 #define LIBPULSE_API_VISIT(X)                                                  \
   X(pa_channel_map_can_balance)                                                \
   X(pa_channel_map_init)                                                       \

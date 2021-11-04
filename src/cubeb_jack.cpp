@@ -29,7 +29,7 @@
 #ifdef DISABLE_LIBJACK_DLOPEN
 #define WRAP(x) x
 #else
-#define WRAP(x) api_##x
+#define WRAP(x) (*api_##x)
 #define JACK_API_VISIT(X)                                                      \
   X(jack_activate)                                                             \
   X(jack_client_close)                                                         \
