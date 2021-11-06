@@ -9,6 +9,7 @@ option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
 option(BUILD_TESTS "Build tests" ON)
 option(BUILD_RUST_LIBS "Build rust backends" OFF)
 option(BUILD_TOOLS "Build tools" ON)
+option(BUNDLE_SPEEX "Bundle the speex library" OFF)
 option(LAZY_LOAD_LIBS "Lazily load shared libraries" ON)
 
 if(NOT CMAKE_BUILD_TYPE)
@@ -75,15 +76,10 @@ add_library(cubeb
   src/cubeb_log.cpp
   src/cubeb_strings.c
   src/cubeb_utils.cpp
-   $<TARGET_OBJECTS:speex>)
+)
 target_include_directories(cubeb
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>
 )
-target_include_directories(cubeb PRIVATE src)
-target_compile_definitions(cubeb PRIVATE OUTSIDE_SPEEX)
-target_compile_definitions(cubeb PRIVATE FLOATING_POINT)
-target_compile_definitions(cubeb PRIVATE EXPORT=)
-target_compile_definitions(cubeb PRIVATE RANDOM_PREFIX=speex)
 set_target_properties(cubeb PROPERTIES
   VERSION ${cubeb_VERSION}
   SOVERSION ${cubeb_VERSION_MAJOR}
@@ -140,13 +136,30 @@ install(
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}"
 )
 
-add_library(speex OBJECT
-  src/speex/resample.c)
-set_target_properties(speex PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
-target_compile_definitions(speex PRIVATE OUTSIDE_SPEEX)
-target_compile_definitions(speex PRIVATE FLOATING_POINT)
-target_compile_definitions(speex PRIVATE EXPORT=)
-target_compile_definitions(speex PRIVATE RANDOM_PREFIX=speex)
+if(NOT BUNDLE_SPEEX)
+  find_package(PkgConfig)
+  if(PKG_CONFIG_FOUND)
+    pkg_check_modules(speexdsp IMPORTED_TARGET speexdsp)
+    if(speexdsp_FOUND)
+      add_library(speex ALIAS PkgConfig::speexdsp)
+    endif()
+  endif()
+endif()
+
+if(NOT TARGET speex)
+  add_library(speex STATIC subprojects/speex/resample.c)
+  set_target_properties(speex PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
+  target_include_directories(speex INTERFACE subprojects)
+  target_compile_definitions(speex PUBLIC
+    OUTSIDE_SPEEX
+    FLOATING_POINT
+    EXPORT=
+    RANDOM_PREFIX=speex
+  )
+endif()
+
+# $<BUILD_INTERFACE:> required because of https://gitlab.kitware.com/cmake/cmake/-/issues/15415
+target_link_libraries(cubeb PRIVATE $<BUILD_INTERFACE:speex>)
 
 include(CheckIncludeFiles)
 
@@ -360,8 +373,7 @@ if(BUILD_TESTS)
 
   macro(cubeb_add_test NAME)
     add_executable(test_${NAME} test/test_${NAME}.cpp)
-    target_include_directories(test_${NAME} PRIVATE ${gtest_SOURCE_DIR}/include)
-    target_include_directories(test_${NAME} PRIVATE src)
+    target_include_directories(test_${NAME} PRIVATE ${gtest_SOURCE_DIR}/include src)
     target_link_libraries(test_${NAME} PRIVATE cubeb gtest_main)
     add_test(${NAME} test_${NAME})
     add_sanitizers(test_${NAME})
@@ -375,14 +387,9 @@ if(BUILD_TESTS)
   cubeb_add_test(devices)
   cubeb_add_test(callback_ret)
 
-  add_executable(test_resampler test/test_resampler.cpp src/cubeb_resampler.cpp $<TARGET_OBJECTS:speex>)
-  target_include_directories(test_resampler PRIVATE ${gtest_SOURCE_DIR}/include)
-  target_include_directories(test_resampler PRIVATE src)
-  target_compile_definitions(test_resampler PRIVATE OUTSIDE_SPEEX)
-  target_compile_definitions(test_resampler PRIVATE FLOATING_POINT)
-  target_compile_definitions(test_resampler PRIVATE EXPORT=)
-  target_compile_definitions(test_resampler PRIVATE RANDOM_PREFIX=speex)
-  target_link_libraries(test_resampler PRIVATE cubeb gtest_main)
+  add_executable(test_resampler test/test_resampler.cpp src/cubeb_resampler.cpp src/cubeb_log.cpp)
+  target_include_directories(test_resampler PRIVATE ${gtest_SOURCE_DIR}/include src)
+  target_link_libraries(test_resampler PRIVATE cubeb gtest_main speex)
   add_test(resampler test_resampler)
   add_sanitizers(test_resampler)
   install(TARGETS test_resampler DESTINATION ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
@@ -415,7 +422,7 @@ add_custom_target(clang-format-check
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     -type f (-name "*.cpp" -o -name "*.c" -o -name "*.h")
-    -not -path "*/src/speex/*"
+    -not -path "*/subprojects/speex/*"
     -print0
   | xargs -0 clang-format -Werror -n
   COMMENT "Check formatting with clang-format"
