@@ -1696,5 +1696,6 @@ static struct cubeb_ops const pulse_ops = {
     .stream_get_current_device = pulse_stream_get_current_device,
     .stream_device_destroy = pulse_stream_device_destroy,
     .stream_register_device_changed_callback = NULL,
+    .stream_get_max_request_size = NULL,
     .register_device_collection_changed =
         pulse_register_device_collection_changed};
