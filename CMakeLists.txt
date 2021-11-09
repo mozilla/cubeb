@@ -99,17 +99,9 @@ target_include_directories(cubeb
   PUBLIC $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/exports>
 )
 
-if(UNIX)
-  include(GNUInstallDirs)
-else()
-  set(CMAKE_INSTALL_LIBDIR "lib")
-  set(CMAKE_INSTALL_BINDIR "bin")
-  set(CMAKE_INSTALL_DATADIR "share")
-  set(CMAKE_INSTALL_DOCDIR "${CMAKE_INSTALL_DATADIR}/doc")
-  set(CMAKE_INSTALL_INCLUDEDIR "include")
-endif()
+include(GNUInstallDirs)
 
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/include/${PROJECT_NAME} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/include/${PROJECT_NAME} TYPE INCLUDE)
 install(DIRECTORY ${CMAKE_BINARY_DIR}/exports/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME})
 
 include(CMakePackageConfigHelpers)
@@ -124,18 +116,12 @@ configure_package_config_file(
   INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}"
 )
 
-install(TARGETS cubeb
-  EXPORT "${PROJECT_NAME}Targets"
-  DESTINATION ${CMAKE_INSTALL_PREFIX}
-  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-  INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
 install(
   FILES "${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake" "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}"
 )
+
+install(TARGETS cubeb EXPORT "${PROJECT_NAME}Targets")
 install(
   EXPORT "${PROJECT_NAME}Targets"
   NAMESPACE "${PROJECT_NAME}::"
@@ -383,7 +369,7 @@ if(BUILD_TESTS)
     target_link_libraries(test_${NAME} PRIVATE cubeb gtest_main)
     add_test(${NAME} test_${NAME})
     add_sanitizers(test_${NAME})
-    install(TARGETS test_${NAME} DESTINATION ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
+    install(TARGETS test_${NAME})
   endmacro(cubeb_add_test)
 
   cubeb_add_test(sanity)
@@ -398,7 +384,7 @@ if(BUILD_TESTS)
   target_link_libraries(test_resampler PRIVATE cubeb gtest_main speex)
   add_test(resampler test_resampler)
   add_sanitizers(test_resampler)
-  install(TARGETS test_resampler DESTINATION ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
+  install(TARGETS test_resampler)
 
   cubeb_add_test(duplex)
 
@@ -420,7 +406,7 @@ if(BUILD_TOOLS)
   target_include_directories(cubeb-test PRIVATE src)
   target_link_libraries(cubeb-test PRIVATE cubeb)
   add_sanitizers(cubeb-test)
-  install(TARGETS cubeb-test DESTINATION ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
+  install(TARGETS cubeb-test)
 endif()
 
 add_custom_target(clang-format-check
