@@ -786,7 +786,7 @@ oss_put_play_frames(cubeb_stream * s, unsigned int nframes)
 }
 
 static int
-oss_wait_fds_for_space(cubeb_stream * s, long *nfrp)
+oss_wait_fds_for_space(cubeb_stream * s, long * nfrp)
 {
   audio_buf_info bi;
   struct pollfd pfds[2];
@@ -1116,10 +1116,10 @@ oss_stream_init(cubeb * context, cubeb_stream ** stream,
       s->play.nfrags = latency_frames / minnfr;
     }
     s->play.bufframes = s->play.nfrags * s->play.nfr;
-
   }
   if (s->play.fd != -1) {
-    int frag = oss_get_frag_params(oss_calc_frag_shift(s->play.nfr, s->play.frame_size));
+    int frag = oss_get_frag_params(
+        oss_calc_frag_shift(s->play.nfr, s->play.frame_size));
     if (ioctl(s->play.fd, SNDCTL_DSP_SETFRAGMENT, &frag))
       LOG("Failed to set play fd with SNDCTL_DSP_SETFRAGMENT. frag: 0x%x",
           frag);
@@ -1138,7 +1138,8 @@ oss_stream_init(cubeb * context, cubeb_stream ** stream,
           s->play.name);
   }
   if (s->record.fd != -1) {
-    int frag = oss_get_frag_params(oss_calc_frag_shift(s->record.nfr, s->record.frame_size));
+    int frag = oss_get_frag_params(
+        oss_calc_frag_shift(s->record.nfr, s->record.frame_size));
     if (ioctl(s->record.fd, SNDCTL_DSP_SETFRAGMENT, &frag))
       LOG("Failed to set record fd with SNDCTL_DSP_SETFRAGMENT. frag: 0x%x",
           frag);
@@ -1183,7 +1184,8 @@ oss_stream_init(cubeb * context, cubeb_stream ** stream,
     }
   }
   if (s->record.fd != -1) {
-    if ((s->record.buf = calloc(s->record.bufframes, s->record.frame_size)) == NULL) {
+    if ((s->record.buf = calloc(s->record.bufframes, s->record.frame_size)) ==
+        NULL) {
       ret = CUBEB_ERROR;
       goto error;
     }
