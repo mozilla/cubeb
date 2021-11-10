@@ -1071,7 +1071,7 @@ oss_stream_init(cubeb * context, cubeb_stream ** stream,
     s->record.nfrags = OSS_NFRAGS;
     s->record.nfr = latency_frames / OSS_NFRAGS;
     s->record.bufframes = s->record.nfrags * s->record.nfr;
-    int minnfr;
+    uint32_t minnfr;
     oss_get_min_latency(context, *input_stream_params, &minnfr);
     if (s->record.nfr < minnfr) {
       s->record.nfr = minnfr;
@@ -1109,7 +1109,7 @@ oss_stream_init(cubeb * context, cubeb_stream ** stream,
     s->play.frame_size = s->play.info.channels * (s->play.info.precision / 8);
     s->play.nfrags = OSS_NFRAGS;
     s->play.nfr = latency_frames / OSS_NFRAGS;
-    int minnfr;
+    uint32_t minnfr;
     oss_get_min_latency(context, *output_stream_params, &minnfr);
     if (s->play.nfr < minnfr) {
       s->play.nfr = minnfr;
