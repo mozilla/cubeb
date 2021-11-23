@@ -62,7 +62,7 @@
   X(AAudioStreamBuilder_setUsage)
 
 // not needed or added later on
-// X(AAudioStreamBuilder_setFramesPerDataCallback) \
+  // X(AAudioStreamBuilder_setFramesPerDataCallback) \
   // X(AAudioStreamBuilder_setDeviceId)              \
   // X(AAudioStreamBuilder_setSamplesPerFrame)       \
   // X(AAudioStream_getSamplesPerFrame)              \
@@ -78,6 +78,7 @@
   // X(AAudioStream_getContentType)                  \
   // X(AAudioStream_getInputPreset)                  \
   // X(AAudioStream_getSessionId)                    \
+// END: not needed or added later on
 
 #define MAKE_TYPEDEF(x) static decltype(x) * cubeb_##x;
 LIBAAUDIO_API_VISIT(MAKE_TYPEDEF)
@@ -1475,7 +1476,7 @@ aaudio_init(cubeb ** context, char const * /* context_name */)
 
 #define LOAD(x)                                                                \
   {                                                                            \
-    WRAP(x) = (decltype(WRAP(x)))(dlsym(libaaudio, #x));                       \
+    cubeb_##x = (decltype(x) *)(dlsym(libaaudio, #x));                         \
     if (!WRAP(x)) {                                                            \
       LOG("AAudio: Failed to load %s", #x);                                    \
       dlclose(libaaudio);                                                      \
