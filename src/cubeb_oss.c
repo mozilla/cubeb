@@ -790,8 +790,8 @@ oss_wait_fds_for_space(cubeb_stream * s, long * nfrp)
 {
   audio_buf_info bi;
   struct pollfd pfds[2];
-  long nfr = LONG_MAX, tnfr;
-  int i = 0;
+  long nfr, tnfr;
+  int i;
 
   assert(s->play.fd != -1 || s->record.fd != -1);
   pfds[0].events = POLLOUT | POLLHUP;
@@ -800,6 +800,9 @@ oss_wait_fds_for_space(cubeb_stream * s, long * nfrp)
   pfds[1].events = POLLIN | POLLHUP;
   pfds[1].revents = 0;
   pfds[1].fd = s->record.fd;
+
+retry:
+  nfr = LONG_MAX;
 
   if (poll(pfds, 2, 1000) == -1) {
     return CUBEB_ERROR;
@@ -816,6 +819,15 @@ oss_wait_fds_for_space(cubeb_stream * s, long * nfrp)
       return CUBEB_STATE_ERROR;
     }
     tnfr = bi.bytes / s->play.frame_size;
+    if (tnfr <= 0) {
+      /* too little space - stop polling record, if any */
+      pfds[0].fd = s->play.fd;
+      pfds[1].fd = -1;
+      goto retry;
+    } else if (tnfr > (long)s->play.bufframes) {
+      /* too many frames available - limit */
+      tnfr = (long)s->play.bufframes;
+    }
     if (nfr > tnfr) {
       nfr = tnfr;
     }
@@ -825,6 +837,15 @@ oss_wait_fds_for_space(cubeb_stream * s, long * nfrp)
       return CUBEB_STATE_ERROR;
     }
     tnfr = bi.bytes / s->record.frame_size;
+    if (tnfr <= 0) {
+      /* too little space - stop polling playback, if any */
+      pfds[0].fd = -1;
+      pfds[1].fd = s->record.fd;
+      goto retry;
+    } else if (tnfr > (long)s->record.bufframes) {
+      /* too many frames available - limit */
+      tnfr = (long)s->record.bufframes;
+    }
     if (nfr > tnfr) {
       nfr = tnfr;
     }
