@@ -284,9 +284,22 @@ if(HAVE_SYS_SOUNDCARD_H)
   try_compile(USE_OSS "${PROJECT_BINARY_DIR}/compile_tests"
     ${PROJECT_SOURCE_DIR}/cmake/compile_tests/oss_is_v4.c)
   if(USE_OSS)
-    target_sources(cubeb PRIVATE
-      src/cubeb_oss.c)
-    target_compile_definitions(cubeb PRIVATE USE_OSS)
+    # strlcpy is not available on BSD systems that use glibc,
+    # like Debian kfreebsd, so try using libbsd if available
+    include(CheckSymbolExists)
+    check_symbol_exists(strlcpy string.h HAVE_STRLCPY)
+    if(NOT HAVE_STRLCPY)
+      pkg_check_modules(libbsd-overlay IMPORTED_TARGET libbsd-overlay)
+      if(libbsd-overlay_FOUND)
+        target_link_libraries(cubeb PRIVATE PkgConfig::libbsd-overlay)
+        set(HAVE_STRLCPY true)
+      endif()
+    endif()
+    if (HAVE_STRLCPY)
+      target_sources(cubeb PRIVATE
+        src/cubeb_oss.c)
+      target_compile_definitions(cubeb PRIVATE USE_OSS)
+    endif()
   endif()
 endif()
 
