@@ -103,7 +103,9 @@ struct com_heap_ptr_deleter {
 template <typename T>
 using com_heap_ptr = std::unique_ptr<T, com_heap_ptr_deleter>;
 
-template <typename T, size_t N> constexpr size_t ARRAY_LENGTH(T (&)[N])
+template <typename T, size_t N>
+constexpr size_t
+ARRAY_LENGTH(T (&)[N])
 {
   return N;
 }
@@ -2509,7 +2511,8 @@ setup_wasapi_stream(cubeb_stream * stm)
       has_output(stm) && !stm->has_dummy_output ? &output_params : nullptr,
       target_sample_rate, stm->data_callback, stm->user_ptr,
       stm->voice ? CUBEB_RESAMPLER_QUALITY_VOIP
-                 : CUBEB_RESAMPLER_QUALITY_DESKTOP));
+                 : CUBEB_RESAMPLER_QUALITY_DESKTOP,
+      CUBEB_RESAMPLER_RECLOCK_NONE));
   if (!stm->resampler) {
     LOG("Could not get a resampler");
     return CUBEB_ERROR;
