@@ -107,8 +107,7 @@ private:
 };
 
 /** Bidirectional resampler, can resample an input and an output stream, or just
- * an input stream or output stream. In this case a delay is inserted in the
- * opposite direction to keep the streams synchronized. */
+ * an input stream or output stream. */
 template <typename T, typename InputProcessing, typename OutputProcessing>
 class cubeb_resampler_speex : public cubeb_resampler {
 public:
@@ -374,118 +373,85 @@ private:
   uint32_t leftover_samples;
 };
 
-/** This class allows delaying an audio stream by `frames` frames. */
-template <typename T> class delay_line : public processor {
+/* A processor that passes the audio through without modification. */
+template <typename T> class passthrough : public processor {
 public:
-  /** Constructor
-   * @parameter frames the number of frames of delay.
-   * @parameter channels the number of channels of this delay line.
-   * @parameter sample_rate sample-rate of the audio going through this delay
-   * line */
-  delay_line(uint32_t frames, uint32_t channels, uint32_t sample_rate)
-      : processor(channels), length(frames), leftover_samples(0),
-        sample_rate(sample_rate)
-  {
-    /* Fill the delay line with some silent frames to add latency. */
-    delay_input_buffer.push_silence(frames * channels);
-  }
-  /** Push some frames into the delay line.
-   * @parameter buffer the frames to push.
-   * @parameter frame_count the number of frames in #buffer. */
-  void input(T * buffer, uint32_t frame_count)
-  {
-    delay_input_buffer.push(buffer, frames_to_samples(frame_count));
-  }
-  /** Pop some frames from the internal buffer, into a internal output buffer.
-   * @parameter frames_needed the number of frames to be returned.
-   * @return a buffer containing the delayed frames. The consumer should not
-   * hold onto the pointer. */
-  T * output(uint32_t frames_needed, size_t * input_frames_used)
-  {
-    if (delay_output_buffer.capacity() < frames_to_samples(frames_needed)) {
-      delay_output_buffer.reserve(frames_to_samples(frames_needed));
-    }
+  typedef T sample_type;
+  passthrough(uint32_t channels) : processor(channels) {}
+  virtual ~passthrough() = default;
 
-    delay_output_buffer.clear();
-    delay_output_buffer.push(delay_input_buffer.data(),
-                             frames_to_samples(frames_needed));
-    delay_input_buffer.pop(nullptr, frames_to_samples(frames_needed));
-    *input_frames_used = frames_needed;
-
-    return delay_output_buffer.data();
-  }
-  /** Get a pointer to the first writable location in the input buffer>
-   * @parameter frames_needed the number of frames the user needs to write into
-   * the buffer.
-   * @returns a pointer to a location in the input buffer where #frames_needed
-   * can be writen. */
-  T * input_buffer(uint32_t frames_needed)
+  /* Fill the resampler with `input_frame_count` frames. */
+  void input(T * input_buffer, size_t input_frame_count)
   {
-    leftover_samples = delay_input_buffer.length();
-    delay_input_buffer.reserve(leftover_samples +
-                               frames_to_samples(frames_needed));
-    return delay_input_buffer.data() + leftover_samples;
+    internal_input_buffer.push(input_buffer,
+                               frames_to_samples(input_frame_count));
   }
+
+  /** Outputs exactly `output_frame_count` into `output_buffer`.
+   * `output_buffer` has to be at least `output_frame_count` long. */
+  size_t output(T * output_buffer, size_t output_frame_count)
+  {
+    assert(samples_to_frames(internal_input_buffer.length()) >=
+           output_frame_count);
+
+    PodCopy(output_buffer, internal_input_buffer.data(),
+            frames_to_samples(output_frame_count));
+
+    /* This shifts back any unresampled samples to the beginning of the input
+       buffer. */
+    internal_input_buffer.pop(nullptr, frames_to_samples(output_frame_count));
+
+    return output_frame_count;
+  }
+
+  T * output(size_t output_frame_count, size_t * input_frames_used)
+  {
+    size_t sample_count = frames_to_samples(output_frame_count);
+    internal_output_buffer.reserve(sample_count);
+    PodCopy(internal_input_buffer.data(), internal_input_buffer.data(),
+            sample_count);
+
+    internal_input_buffer.pop(nullptr, sample_count);
+    *input_frames_used = output_frame_count;
+
+    return internal_output_buffer.data();
+  }
+
+  size_t output_for_input(uint32_t input_frames) { return input_frames; }
+
+  uint32_t latency() const { return 0; }
+
+  uint32_t input_needed_for_output(int32_t output_frame_count) const
+  {
+    return output_frame_count;
+  }
+
+  T * input_buffer(size_t frame_count)
+  {
+    // return valid buffer space after the data left in the buffer
+    size_t leftover_samples = internal_input_buffer.length();
+    internal_input_buffer.reserve(leftover_samples +
+                                  frames_to_samples(frame_count));
+    return internal_input_buffer.data() + leftover_samples;
+  }
+
   /** This method works with `input_buffer`, and allows to inform the processor
       how much frames have been written in the provided buffer. */
-  void written(size_t frames_written)
+  void written(size_t written_frames)
   {
-    delay_input_buffer.set_length(leftover_samples +
-                                  frames_to_samples(frames_written));
+    size_t leftover_samples = internal_input_buffer.length();
+    internal_input_buffer.set_length(leftover_samples +
+                                     frames_to_samples(written_frames));
   }
-  /** Drains the delay line, emptying the buffer.
-   * @parameter output_buffer the buffer in which the frames are written.
-   * @parameter frames_needed the maximum number of frames to write.
-   * @return the actual number of frames written. */
-  size_t output(T * output_buffer, uint32_t frames_needed)
-  {
-    uint32_t in_len = samples_to_frames(delay_input_buffer.length());
-    uint32_t out_len = frames_needed;
-
-    uint32_t to_pop = std::min(in_len, out_len);
-
-    delay_input_buffer.pop(output_buffer, frames_to_samples(to_pop));
-
-    return to_pop;
-  }
-  /** Returns the number of frames one needs to input into the delay line to get
-   * #frames_needed frames back.
-   * @parameter frames_needed the number of frames one want to write into the
-   * delay_line
-   * @returns the number of frames one will get. */
-  uint32_t input_needed_for_output(int32_t frames_needed) const
-  {
-    assert(frames_needed >= 0); // Check overflow
-    return frames_needed;
-  }
-  /** Returns the number of frames produces for `input_frames` frames in input
-   */
-  size_t output_for_input(uint32_t input_frames) { return input_frames; }
-  /** The number of frames this delay line delays the stream by.
-   * @returns The number of frames of delay. */
-  size_t latency() { return length; }
 
   void drop_audio_if_needed()
   {
-    size_t available = samples_to_frames(delay_input_buffer.length());
-    uint32_t to_keep = min_buffered_audio_frame(sample_rate);
-    if (available > to_keep) {
-      delay_input_buffer.pop(nullptr, frames_to_samples(available - to_keep));
-    }
   }
 
 private:
-  /** The length, in frames, of this delay line */
-  uint32_t length;
-  /** When `input_buffer` is called, this allows tracking the number of samples
-      that where in the buffer. */
-  uint32_t leftover_samples;
-  /** The input buffer, where the delay is applied. */
-  auto_array<T> delay_input_buffer;
-  /** The output buffer. This is only ever used if using the ::output with a
-   * single argument. */
-  auto_array<T> delay_output_buffer;
-  uint32_t sample_rate;
+  auto_array<T> internal_input_buffer;
+  // Only ever used when using `output` with two arguments.
+  auto_array<T> internal_output_buffer;
 };
 
 /** This sits behind the C API and is more typed. */
@@ -501,8 +467,8 @@ cubeb_resampler_create_internal(cubeb_stream * stream,
 {
   std::unique_ptr<cubeb_resampler_speex_one_way<T>> input_resampler = nullptr;
   std::unique_ptr<cubeb_resampler_speex_one_way<T>> output_resampler = nullptr;
-  std::unique_ptr<delay_line<T>> input_delay = nullptr;
-  std::unique_ptr<delay_line<T>> output_delay = nullptr;
+  std::unique_ptr<passthrough<T>> input_passthrough = nullptr;
+  std::unique_ptr<passthrough<T>> output_passthrough = nullptr;
 
   assert((input_params || output_params) &&
          "need at least one valid parameter pointer.");
@@ -541,22 +507,15 @@ cubeb_resampler_create_internal(cubeb_stream * stream,
     }
   }
 
-  /* If we resample only one direction but we have a duplex stream, insert a
-   * delay line with a length equal to the resampler latency of the
-   * other direction so that the streams are synchronized. */
   if (input_resampler && !output_resampler && input_params && output_params) {
-    output_delay.reset(new delay_line<T>(input_resampler->latency(),
-                                         output_params->channels,
-                                         output_params->rate));
-    if (!output_delay) {
+    output_passthrough.reset(new passthrough<T>(output_params->channels));
+    if (!output_passthrough) {
       return NULL;
     }
   } else if (output_resampler && !input_resampler && input_params &&
              output_params) {
-    input_delay.reset(new delay_line<T>(output_resampler->latency(),
-                                        input_params->channels,
-                                        output_params->rate));
-    if (!input_delay) {
+    input_passthrough.reset(new passthrough<T>(input_params->channels));
+    if (!input_passthrough) {
       return NULL;
     }
   }
@@ -572,15 +531,15 @@ cubeb_resampler_create_internal(cubeb_stream * stream,
     LOG("Resampling input (%d) to target and output rate of %dHz",
         input_params->rate, target_rate);
     return new cubeb_resampler_speex<T, cubeb_resampler_speex_one_way<T>,
-                                     delay_line<T>>(input_resampler.release(),
-                                                    output_delay.release(),
+                                     passthrough<T>>(input_resampler.release(),
+                                                    output_passthrough.release(),
                                                     stream, callback, user_ptr);
   } else {
     LOG("Resampling output (%dHz) to target and input rate of %dHz",
         output_params->rate, target_rate);
-    return new cubeb_resampler_speex<T, delay_line<T>,
+    return new cubeb_resampler_speex<T, passthrough<T>,
                                      cubeb_resampler_speex_one_way<T>>(
-        input_delay.release(), output_resampler.release(), stream, callback,
+        input_passthrough.release(), output_resampler.release(), stream, callback,
         user_ptr);
   }
 }
