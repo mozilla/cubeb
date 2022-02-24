@@ -2499,8 +2499,8 @@ setup_wasapi_stream(cubeb_stream * stm)
 
   stm->resampler.reset(cubeb_resampler_create(
       stm, has_input(stm) ? &input_params : nullptr,
-      has_output(stm) ? &output_params : nullptr, target_sample_rate,
-      stm->data_callback, stm->user_ptr,
+      has_output(stm) && !stm->has_dummy_output ? &output_params : nullptr,
+      target_sample_rate, stm->data_callback, stm->user_ptr,
       stm->voice ? CUBEB_RESAMPLER_QUALITY_VOIP
                  : CUBEB_RESAMPLER_QUALITY_DESKTOP));
   if (!stm->resampler) {
