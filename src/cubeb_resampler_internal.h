@@ -344,8 +344,10 @@ public:
                                     frames_to_samples(written_frames));
   }
 
-  void set_resampling_ratio(double ratio) {
-    int rv = speex_resampler_set_rate(speex_resampler, source_rate_hz, source_rate_hz / ratio);
+  void set_resampling_ratio(double ratio)
+  {
+    int rv = speex_resampler_set_rate(speex_resampler, source_rate_hz,
+                                      source_rate_hz / ratio);
     resampling_ratio = ratio;
     if (rv != RESAMPLER_ERR_SUCCESS) {
       LOGV("Error when setting the resampling rate: %d", rv);

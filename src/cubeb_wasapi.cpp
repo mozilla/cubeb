@@ -2506,13 +2506,14 @@ setup_wasapi_stream(cubeb_stream * stm)
   cubeb_stream_params output_params = stm->output_mix_params;
   output_params.channels = stm->output_stream_params.channels;
 
-  stm->resampler.reset(cubeb_resampler_create(
-      stm, has_input(stm) ? &input_params : nullptr,
-      has_output(stm) && !stm->has_dummy_output ? &output_params : nullptr,
-      target_sample_rate, stm->data_callback, stm->user_ptr,
-      stm->voice ? CUBEB_RESAMPLER_QUALITY_VOIP
-                 : CUBEB_RESAMPLER_QUALITY_DESKTOP,
-      CUBEB_RESAMPLER_RECLOCK_NONE));
+  stm->resampler.reset(
+      cubeb_resampler_create(
+          stm, has_input(stm) ? &input_params : nullptr,
+          has_output(stm) && !stm->has_dummy_output ? &output_params : nullptr,
+          target_sample_rate, stm->data_callback, stm->user_ptr,
+          stm->voice ? CUBEB_RESAMPLER_QUALITY_VOIP
+                     : CUBEB_RESAMPLER_QUALITY_DESKTOP,
+          CUBEB_RESAMPLER_RECLOCK_NONE));
   if (!stm->resampler) {
     LOG("Could not get a resampler");
     return CUBEB_ERROR;
