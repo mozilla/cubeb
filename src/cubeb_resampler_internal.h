@@ -107,13 +107,16 @@ private:
 };
 
 /** Bidirectional resampler, can resample an input and an output stream, or just
- * an input stream or output stream. */
+ * an input stream or output stream. When doing bidirectional resampling, it can
+ * correct the drift between an input and an output, by reclocking the input
+ * against the output. */
 template <typename T, typename InputProcessing, typename OutputProcessing>
 class cubeb_resampler_speex : public cubeb_resampler {
 public:
   cubeb_resampler_speex(InputProcessing * input_processor,
                         OutputProcessing * output_processor, cubeb_stream * s,
-                        cubeb_data_callback cb, void * ptr);
+                        cubeb_data_callback cb, void * ptr,
+                        cubeb_resampler_reclock reclock);
 
   virtual ~cubeb_resampler_speex();
 
@@ -498,7 +501,11 @@ cubeb_resampler_create_internal(cubeb_stream * stream,
     }
   }
 
-  if (input_params && (input_params->rate != target_rate)) {
+  // If either input reclocking is necessary, or input resampling is necessary,
+  // get an resampler for the audio input.
+  if ((input_params && (input_params->rate != target_rate)) ||
+      (input_params->rate == target_rate &&
+       reclock == CUBEB_RESAMPLER_RECLOCK_INPUT)) {
     input_resampler.reset(new cubeb_resampler_speex_one_way<T>(
         input_params->channels, input_params->rate, target_rate,
         to_speex_quality(quality)));
@@ -526,21 +533,25 @@ cubeb_resampler_create_internal(cubeb_stream * stream,
     return new cubeb_resampler_speex<T, cubeb_resampler_speex_one_way<T>,
                                      cubeb_resampler_speex_one_way<T>>(
         input_resampler.release(), output_resampler.release(), stream, callback,
-        user_ptr);
+        user_ptr, reclock);
   } else if (input_resampler) {
-    LOG("Resampling input (%d) to target and output rate of %dHz",
-        input_params->rate, target_rate);
+    LOG("Resampling input (%d) to target and output rate of %dHz, with%s "
+        "reclocking",
+        input_params->rate, target_rate,
+        reclock == CUBEB_RESAMPLER_RECLOCK_INPUT ? "" : "out");
     return new cubeb_resampler_speex<T, cubeb_resampler_speex_one_way<T>,
-                                     passthrough<T>>(input_resampler.release(),
-                                                    output_passthrough.release(),
-                                                    stream, callback, user_ptr);
+                                     passthrough<T>>(
+        input_resampler.release(), output_passthrough.release(), stream,
+        callback, user_ptr, reclock);
   } else {
-    LOG("Resampling output (%dHz) to target and input rate of %dHz",
-        output_params->rate, target_rate);
+    LOG("Resampling output (%dHz) to target and input rate of %dHz, with%s "
+        "reclocking",
+        output_params->rate, target_rate,
+        reclock == CUBEB_RESAMPLER_RECLOCK_INPUT ? "" : "out");
     return new cubeb_resampler_speex<T, passthrough<T>,
                                      cubeb_resampler_speex_one_way<T>>(
-        input_passthrough.release(), output_resampler.release(), stream, callback,
-        user_ptr);
+        input_passthrough.release(), output_resampler.release(), stream,
+        callback, user_ptr, reclock);
   }
 }
 

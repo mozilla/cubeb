@@ -125,10 +125,15 @@ template <typename T, typename InputProcessor, typename OutputProcessor>
 cubeb_resampler_speex<T, InputProcessor, OutputProcessor>::
     cubeb_resampler_speex(InputProcessor * input_processor,
                           OutputProcessor * output_processor, cubeb_stream * s,
-                          cubeb_data_callback cb, void * ptr)
+                          cubeb_data_callback cb, void * ptr,
+                          cubeb_resampler_reclock reclock)
     : input_processor(input_processor), output_processor(output_processor),
       stream(s), data_callback(cb), user_ptr(ptr)
 {
+  // Reclocking is only useful if there the stream is duplex
+  assert(reclock == CUBEB_RESAMPLER_RECLOCK_INPUT &&
+             (input_processor && output_processor) ||
+         reclock == CUBEB_RESAMPLER_RECLOCK_NONE);
   if (input_processor && output_processor) {
     fill_internal = &cubeb_resampler_speex::fill_internal_duplex;
   } else if (input_processor) {
