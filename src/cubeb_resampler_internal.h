@@ -86,16 +86,6 @@ public:
 
   virtual long latency() { return 0; }
 
-  void drop_audio_if_needed()
-  {
-    uint32_t to_keep = min_buffered_audio_frame(sample_rate);
-    uint32_t available = samples_to_frames(internal_input_buffer.length());
-    if (available > to_keep) {
-      internal_input_buffer.pop(nullptr,
-                                frames_to_samples(available - to_keep));
-    }
-  }
-
 private:
   cubeb_stream * const stream;
   const cubeb_data_callback data_callback;
@@ -354,17 +344,6 @@ public:
                                     frames_to_samples(written_frames));
   }
 
-  void drop_audio_if_needed()
-  {
-    // Keep at most 100ms buffered.
-    uint32_t available = samples_to_frames(resampling_in_buffer.length());
-    uint32_t to_keep = min_buffered_audio_frame(source_rate);
-    if (available > to_keep) {
-      resampling_in_buffer.pop(nullptr, frames_to_samples(available - to_keep));
-    }
-  }
-
-
   void set_resampling_ratio(double ratio) {
     int rv = speex_resampler_set_rate(speex_resampler, source_rate_hz, source_rate_hz / ratio);
     resampling_ratio = ratio;
@@ -373,9 +352,7 @@ public:
     }
   }
 
-  uint32_t source_rate() const {
-    return source_rate_hz;
-  }
+  uint32_t source_rate() const { return source_rate_hz; }
 
   uint32_t target_rate() const { return target_rate_hz; }
 

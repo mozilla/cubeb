@@ -111,7 +111,6 @@ passthrough_resampler<T>::fill(void * input_buffer, long * input_frames_count,
     } else {
       *input_frames_count = output_frames;
     }
-    drop_audio_if_needed();
   }
 
   return rv;
@@ -372,13 +371,9 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>::fill_internal_duplex(
 
   output_processor->written(got);
 
-  input_processor->drop_audio_if_needed();
-
   /* Process the output. If not enough frames have been returned from the
    * callback, drain the processors. */
   got = output_processor->output(out_buffer, output_frames_needed);
-
-  output_processor->drop_audio_if_needed();
 
   return got;
 }
