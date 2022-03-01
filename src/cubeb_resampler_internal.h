@@ -106,6 +106,38 @@ private:
   uint32_t sample_rate;
 };
 
+class clock_drift_estimator {
+public:
+  clock_drift_estimator(uint32_t input_rate, uint32_t output_rate);
+  /*
+   * input_frame_count: the number of (potentially resampled) audio input frame
+   * count received this callback.
+   * output_frame_count: the number of (unresampled) audio output frames to
+   * return this callback.
+   * buffered_input_frames: the number of input frames currently stored in the
+   * input buffer, after potential input resampling. If this is > 0, then some
+   * input frames are buffered.
+   * input_frames_raw: number of audio input frames passed to this callback
+   */
+  double estimate(size_t input_frame_count, size_t output_frame_count,
+                  size_t buffered_input_frames, size_t input_frames_raw);
+
+private:
+  // Number of input and input frames seen so far during this drift estimation
+  // period.
+  size_t total_output_frames = 0;
+  size_t total_input_frames = 0;
+  // The rate at which the frames come.
+  uint32_t source_rate_hz;
+  // The rate to which frames are resampled to
+  uint32_t target_rate_hz;
+  // The drift compensation command that was decided in the previous
+  // estimation period.
+  double compensation_command;
+  // The number of frames that were buffered in the previous estimation call.
+  uint32_t previous_buffered_input_frames = 0;
+};
+
 /** Bidirectional resampler, can resample an input and an output stream, or just
  * an input stream or output stream. When doing bidirectional resampling, it can
  * correct the drift between an input and an output, by reclocking the input
@@ -153,6 +185,7 @@ private:
   cubeb_stream * const stream;
   const cubeb_data_callback data_callback;
   void * const user_ptr;
+  std::unique_ptr<clock_drift_estimator> drift_estimator;
   bool draining = false;
 };
 
@@ -331,6 +364,30 @@ public:
     }
   }
 
+
+  void set_resampling_ratio(double ratio) {
+    int rv = speex_resampler_set_rate(speex_resampler, source_rate_hz, source_rate_hz / ratio);
+    resampling_ratio = ratio;
+    if (rv != RESAMPLER_ERR_SUCCESS) {
+      LOGV("Error when setting the resampling rate: %d", rv);
+    }
+  }
+
+  uint32_t source_rate() const {
+    return source_rate_hz;
+  }
+
+  uint32_t target_rate() const { return target_rate_hz; }
+
+  uint32_t input_buffer_frames() const
+  {
+    return samples_to_frames(resampling_in_buffer.length());
+  }
+  uint32_t output_buffer_frames() const
+  {
+    return samples_to_frames(resampling_out_buffer.length());
+  }
+
 private:
   /** Wrapper for the speex resampling functions to have a typed
    * interface. */
@@ -362,8 +419,9 @@ private:
   /** The state for the speex resampler used internaly. */
   SpeexResamplerState * speex_resampler;
   /** Source rate / target rate. */
-  const float resampling_ratio;
-  const uint32_t source_rate;
+  float resampling_ratio;
+  const uint32_t source_rate_hz;
+  const uint32_t target_rate_hz;
   /** Storage for the input frames, to be resampled. Also contains
    * any unresampled frames after resampling. */
   auto_array<T> resampling_in_buffer;
@@ -450,11 +508,26 @@ public:
   void drop_audio_if_needed()
   {
   }
+  void set_resampling_ratio(double) {
+    assert("need to enable reclocking");
+  }
+
+  uint32_t source_rate() { return sample_rate_hz; }
+  uint32_t target_rate() { return sample_rate_hz; }
+
+  uint32_t input_buffer_frames() const
+  {
+    return samples_to_frames(internal_input_buffer.length());
+  }
+  uint32_t output_buffer_frames() const
+  {
+    return samples_to_frames(internal_output_buffer.length());
 
 private:
   auto_array<T> internal_input_buffer;
   // Only ever used when using `output` with two arguments.
   auto_array<T> internal_output_buffer;
+  uint32_t sample_rate_hz = 0;
 };
 
 /** This sits behind the C API and is more typed. */
@@ -477,10 +550,11 @@ cubeb_resampler_create_internal(cubeb_stream * stream,
          "need at least one valid parameter pointer.");
 
   /* All the streams we have have a sample rate that matches the target
-     sample rate, use a no-op resampler, that simply forwards the buffers to the
-     callback. */
+     sample rate, and no reclocking has been requested, use a no-op resampler,
+     that simply forwards the buffers to the callback. */
   if (((input_params && input_params->rate == target_rate) &&
-       (output_params && output_params->rate == target_rate)) ||
+       (output_params && output_params->rate == target_rate) &&
+       reclock == CUBEB_RESAMPLER_RECLOCK_NONE) ||
       (input_params && !output_params && (input_params->rate == target_rate)) ||
       (output_params && !input_params &&
        (output_params->rate == target_rate))) {

@@ -121,6 +121,60 @@ passthrough_resampler<T>::fill(void * input_buffer, long * input_frames_count,
 template class passthrough_resampler<float>;
 template class passthrough_resampler<short>;
 
+clock_drift_estimator::clock_drift_estimator(uint32_t source_rate,
+                                             uint32_t target_rate)
+    : source_rate_hz(source_rate), target_rate_hz(target_rate),
+      compensation_command(static_cast<double>(source_rate) / target_rate)
+{
+}
+
+double
+clock_drift_estimator::estimate(size_t input_frames_count,
+                                size_t output_frames_count,
+                                size_t buffered_input_frames,
+                                size_t input_frames_raw)
+{
+  total_input_frames += input_frames_raw;
+  total_output_frames += output_frames_count;
+
+  // The ratio between the source and target rate for the input device.
+  double theoretical_ratio =
+      static_cast<float>(source_rate_hz) / target_rate_hz;
+  // The observered rate of increase of input and output frames. If this is
+  // different from the theoretical ratio, then the two devices are not in the
+  // same clock domain.
+  double ratio = static_cast<double>(total_input_frames) / total_output_frames;
+
+  LOGV("in=%zu out=%zu buffered=%zu theoretical=%lf ratio=%lf "
+       "compensation_command=%f",
+       input_frames_raw, output_frames_count, buffered_input_frames,
+       theoretical_ratio, ratio, compensation_command);
+
+  // Correction was too strong. Temporarily stop correction to avoid
+  // under-running. This happens when initially starting estimation, and
+  // periodically in case of jitter in the audio input packet delivery.
+  if (buffered_input_frames < 2 && compensation_command > 1.0) {
+    LOGV("Possible underrun while compensating drift, forcing ratio to be %lf",
+         theoretical_ratio);
+    return theoretical_ratio;
+  }
+
+  // Only reevaluate the drift (for now) when there is a different number of
+  // input and output frames AND we're observing increased buffering. This
+  // happens in the case of double delivery of input packets.
+  if (previous_buffered_input_frames < buffered_input_frames &&
+      total_output_frames != total_input_frames) {
+    LOGV("Reevaluating drift: %lf -> %lf", compensation_command, ratio);
+    total_input_frames = total_output_frames = 0;
+
+    compensation_command = ratio;
+  }
+
+  previous_buffered_input_frames = buffered_input_frames;
+
+  return compensation_command;
+}
+
 template <typename T, typename InputProcessor, typename OutputProcessor>
 cubeb_resampler_speex<T, InputProcessor, OutputProcessor>::
     cubeb_resampler_speex(InputProcessor * input_processor,
@@ -136,6 +190,10 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>::
          reclock == CUBEB_RESAMPLER_RECLOCK_NONE);
   if (input_processor && output_processor) {
     fill_internal = &cubeb_resampler_speex::fill_internal_duplex;
+    if (reclock == CUBEB_RESAMPLER_RECLOCK_INPUT) {
+      drift_estimator.reset(new clock_drift_estimator(
+          input_processor->source_rate(), input_processor->target_rate()));
+    }
   } else if (input_processor) {
     fill_internal = &cubeb_resampler_speex::fill_internal_input;
   } else if (output_processor) {
@@ -278,7 +336,9 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>::fill_internal_duplex(
   out_unprocessed =
       output_processor->input_buffer(output_frames_before_processing);
 
+  size_t input_frames_raw = 0;
   if (in_buffer) {
+    input_frames_raw = *input_frames_count;
     /* process the input, and present exactly `output_frames_needed` in the
      * callback. */
     input_processor->input(in_buffer, *input_frames_count);
@@ -289,6 +349,14 @@ cubeb_resampler_speex<T, InputProcessor, OutputProcessor>::fill_internal_duplex(
     *input_frames_count = frames_resampled;
   } else {
     resampled_input = nullptr;
+  }
+
+  if (drift_estimator) {
+    uint32_t buffered_input_frames = input_processor->input_buffer_frames();
+    double ratio = drift_estimator->estimate(
+        input_frames_count ? *input_frames_count : 0, output_frames_needed,
+        buffered_input_frames, input_frames_raw);
+    input_processor->set_resampling_ratio(ratio);
   }
 
   got = data_callback(stream, user_ptr, resampled_input, out_unprocessed,
