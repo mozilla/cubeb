@@ -209,7 +209,8 @@ public:
                                 uint32_t target_rate, int quality)
       : processor(channels),
         resampling_ratio(static_cast<float>(source_rate) / target_rate),
-        source_rate(source_rate), additional_latency(0), leftover_samples(0)
+        source_rate_hz(source_rate), target_rate_hz(target_rate),
+        leftover_samples(0)
   {
     int r;
     speex_resampler =
@@ -305,8 +306,7 @@ public:
      * only consider a single channel here so it's the same number of frames. */
     int latency = 0;
 
-    latency = speex_resampler_get_output_latency(speex_resampler) +
-              additional_latency;
+    latency = speex_resampler_get_output_latency(speex_resampler);
 
     assert(latency >= 0);
 
@@ -427,8 +427,6 @@ private:
   auto_array<T> resampling_in_buffer;
   /* Storage for the resampled frames, to be passed back to the caller. */
   auto_array<T> resampling_out_buffer;
-  /** Additional latency inserted into the pipeline for synchronisation. */
-  uint32_t additional_latency;
   /** When `input_buffer` is called, this allows tracking the number of samples
       that were in the buffer. */
   uint32_t leftover_samples;
@@ -505,12 +503,7 @@ public:
                                      frames_to_samples(written_frames));
   }
 
-  void drop_audio_if_needed()
-  {
-  }
-  void set_resampling_ratio(double) {
-    assert("need to enable reclocking");
-  }
+  void set_resampling_ratio(double) { assert("need to enable reclocking"); }
 
   uint32_t source_rate() { return sample_rate_hz; }
   uint32_t target_rate() { return sample_rate_hz; }
@@ -522,6 +515,7 @@ public:
   uint32_t output_buffer_frames() const
   {
     return samples_to_frames(internal_output_buffer.length());
+  }
 
 private:
   auto_array<T> internal_input_buffer;
