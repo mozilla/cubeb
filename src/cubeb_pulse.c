@@ -40,6 +40,12 @@
   X(pa_cvolume_set)                                                            \
   X(pa_cvolume_set_balance)                                                    \
   X(pa_frame_size)                                                             \
+  X(pa_mainloop_free)                                                          \
+  X(pa_mainloop_get_api)                                                       \
+  X(pa_mainloop_iterate)                                                       \
+  X(pa_mainloop_new)                                                           \
+  X(pa_mainloop_run)                                                           \
+  X(pa_mainloop_quit)                                                          \
   X(pa_operation_get_state)                                                    \
   X(pa_operation_unref)                                                        \
   X(pa_proplist_gets)                                                          \
@@ -865,9 +871,6 @@ create_pa_stream(cubeb_stream * stm, pa_stream ** pa_stm,
            (stream_params->layout != CUBEB_LAYOUT_UNDEFINED &&
             cubeb_channel_layout_nb_channels(stream_params->layout) ==
                 stream_params->channels))));
-  if (stream_params->prefs & CUBEB_STREAM_PREF_LOOPBACK) {
-    return CUBEB_ERROR_NOT_SUPPORTED;
-  }
   *pa_stm = NULL;
   pa_sample_spec ss;
   ss.format = to_pulse_format(stream_params->format);
@@ -919,6 +922,76 @@ set_buffering_attribute(unsigned int latency_frames,
       battr.fragsize);
 
   return battr;
+}
+
+pa_mainloop *m_pulseaudio_mainloop;
+
+void cb(pa_context *pulseaudio_context,
+    const pa_server_info *i,
+    void *userdata)
+{
+    char *source = userdata;
+    strncpy(source, i->default_sink_name, 1024);
+
+    // appending .monitor suufix
+    source = strncat(source, ".monitor", 1024);
+
+    // quiting mainloop
+    WRAP(pa_context_disconnect)(pulseaudio_context);
+    WRAP(pa_context_unref)(pulseaudio_context);
+    WRAP(pa_mainloop_quit)(m_pulseaudio_mainloop, 0);
+    WRAP(pa_mainloop_free)(m_pulseaudio_mainloop);
+}
+
+void pulseaudio_context_state_callback(pa_context *pulseaudio_context,
+                                                        void *userdata)
+{
+    //make sure loop is ready
+    switch(WRAP(pa_context_get_state)(pulseaudio_context)) {
+        case PA_CONTEXT_READY://extract default sink name
+            WRAP(pa_operation_unref)(
+              WRAP(pa_context_get_server_info)(
+                pulseaudio_context, cb, userdata
+                )
+              );
+            break;
+        case PA_CONTEXT_TERMINATED:
+            WRAP(pa_mainloop_quit)(m_pulseaudio_mainloop, 0);
+            break;
+    }
+}
+
+char* pulse_get_loopback_stream(void) {
+    pa_mainloop_api *mainloop_api;
+    pa_context *pulseaudio_context;
+    int ret;
+
+    char *loopback_name = calloc(1024, sizeof(char));
+
+    // Create a mainloop API and connection to the default server
+    m_pulseaudio_mainloop = WRAP(pa_mainloop_new)();
+
+    mainloop_api = WRAP(pa_mainloop_get_api)(m_pulseaudio_mainloop);
+    pulseaudio_context = WRAP(pa_context_new)(mainloop_api, "cubeb device list");
+
+    // This function connects to the pulse server
+    WRAP(pa_context_connect)(pulseaudio_context, NULL, PA_CONTEXT_NOFLAGS, NULL);
+
+    // This function defines a callback so the server will tell us its state.
+    WRAP(pa_context_set_state_callback)(pulseaudio_context,
+        pulseaudio_context_state_callback, loopback_name);
+
+    // starting a mainloop to get default sink
+
+    // starting with one nonblokng iteration in case pulseaudio is not able to run
+    ret = WRAP(pa_mainloop_iterate)(m_pulseaudio_mainloop, 0, &ret);
+
+    LOG("Could not open PulseAudio mainloop to find device name: %d\n"
+        "Check if PulseAudio is running!\n", ret);
+
+    WRAP(pa_mainloop_run)(m_pulseaudio_mainloop, &ret);
+
+    return loopback_name;
 }
 
 static int
@@ -1000,8 +1073,14 @@ pulse_stream_init(cubeb * context, cubeb_stream ** stream,
     (stm->input_stream, stream_read_callback, stm);
 
     battr = set_buffering_attribute(latency_frames, &stm->input_sample_spec);
+
+    char *input_device_name = (char*)input_device;
+    if (input_stream_params->prefs & CUBEB_STREAM_PREF_LOOPBACK) {
+      input_device_name = pulse_get_loopback_stream();
+    }
+
     WRAP(pa_stream_connect_record)
-    (stm->input_stream, (char const *)input_device, &battr,
+    (stm->input_stream, (char const *)input_device_name, &battr,
      PA_STREAM_AUTO_TIMING_UPDATE | PA_STREAM_INTERPOLATE_TIMING |
          PA_STREAM_START_CORKED | PA_STREAM_ADJUST_LATENCY);
   }
