@@ -936,7 +936,7 @@ cbjack_stream_init(cubeb * context, cubeb_stream ** stream,
     stm->resampler = cubeb_resampler_create(
         stm, nullptr, &stm->out_params, stream_actual_rate, stm->data_callback,
         stm->user_ptr,
-        CUBEB_RESAMPLER_QUALITY_DESKTOP CUBEB_RESAMPLER_RECLOCK_NONE);
+        CUBEB_RESAMPLER_QUALITY_DESKTOP, CUBEB_RESAMPLER_RECLOCK_NONE);
   }
 
   if (!stm->resampler) {
