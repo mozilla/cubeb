@@ -139,7 +139,7 @@ if(NOT BUNDLE_SPEEX)
 endif()
 
 if(NOT TARGET speex)
-  add_library(speex STATIC subprojects/speex/resample.c)
+  add_library(speex OBJECT subprojects/speex/resample.c)
   set_target_properties(speex PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
   target_include_directories(speex INTERFACE subprojects)
   target_compile_definitions(speex PUBLIC
