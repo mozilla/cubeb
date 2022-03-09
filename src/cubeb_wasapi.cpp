@@ -103,9 +103,7 @@ struct com_heap_ptr_deleter {
 template <typename T>
 using com_heap_ptr = std::unique_ptr<T, com_heap_ptr_deleter>;
 
-template <typename T, size_t N>
-constexpr size_t
-ARRAY_LENGTH(T (&)[N])
+template <typename T, size_t N> constexpr size_t ARRAY_LENGTH(T (&)[N])
 {
   return N;
 }
