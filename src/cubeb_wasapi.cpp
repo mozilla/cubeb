@@ -946,16 +946,15 @@ refill(cubeb_stream * stm, void * input_buffer, long input_frames_count,
   return out_frames;
 }
 
-int
+bool
 trigger_async_reconfigure(cubeb_stream * stm)
 {
   XASSERT(stm && stm->reconfigure_event);
   BOOL ok = SetEvent(stm->reconfigure_event);
   if (!ok) {
     LOG("SetEvent on reconfigure_event failed: %lx", GetLastError());
-    return CUBEB_ERROR;
   }
-  return CUBEB_OK;
+  return static_cast<bool>(ok);
 }
 
 /* This helper grabs all the frames available from a capture client, put them in
@@ -985,7 +984,10 @@ get_input_buffer(cubeb_stream * stm)
       // Application can recover from this error. More info
       // https://msdn.microsoft.com/en-us/library/windows/desktop/dd316605(v=vs.85).aspx
       LOG("Device invalidated error, reset default device");
-      trigger_async_reconfigure(stm);
+      if (!trigger_async_reconfigure(stm)) {
+        stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
+        return false;
+      }
       return true;
     }
 
@@ -1091,7 +1093,10 @@ get_output_buffer(cubeb_stream * stm, void *& buffer, size_t & frame_count)
     // Application can recover from this error. More info
     // https://msdn.microsoft.com/en-us/library/windows/desktop/dd316605(v=vs.85).aspx
     LOG("Device invalidated error, reset default device");
-    trigger_async_reconfigure(stm);
+    if (!trigger_async_reconfigure(stm)) {
+      stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
+      return false;
+    }
     return true;
   }
 
