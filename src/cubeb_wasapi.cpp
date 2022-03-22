@@ -2704,12 +2704,15 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
     return rv;
   }
 
-  if (!((input_stream_params ? (input_stream_params->prefs &
-                                CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING)
-                             : 0) ||
-        (output_stream_params ? (output_stream_params->prefs &
-                                 CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING)
-                              : 0))) {
+  // Follow the system default devices when specifying default devices
+  // explicitly and CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING is not set.
+  if ((!input_device && input_stream_params &&
+       !(input_stream_params->prefs &
+         CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING)) ||
+      (!output_device && output_stream_params &&
+       !(output_stream_params->prefs &
+         CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING))) {
+    LOG("Follow the system default input or/and output devices");
     HRESULT hr = register_notification_client(stm.get());
     if (FAILED(hr)) {
       /* this is not fatal, we can still play audio, but we won't be able
