@@ -2248,15 +2248,16 @@ setup_wasapi_stream_one_side(cubeb_stream * stm,
 
       uint32_t default_period_frames =
           hns_to_frames(device_info.default_rate, default_period);
-      if (strlen(device_info.group_id) >= len &&
-          strncmp(device_info.group_id, HANDSFREE_TAG, len) == 0) {
-        stm->input_bluetooth_handsfree = true;
-      }
       // This multiplicator has been found empirically.
       uint32_t latency_frames = default_period_frames * 8;
       LOG("Input: latency increased to %u frames from a default of %u",
           latency_frames, default_period_frames);
       latency_hns = frames_to_hns(device_info.default_rate, latency_frames);
+
+      if (strlen(device_info.group_id) >= len &&
+          strncmp(device_info.group_id, HANDSFREE_TAG, len) == 0) {
+        stm->input_bluetooth_handsfree = true;
+      }
     }
     wasapi_destroy_device(&device_info);
   } else {
