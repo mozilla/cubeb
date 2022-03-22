@@ -2226,7 +2226,6 @@ setup_wasapi_stream_one_side(cubeb_stream * stm,
   }
 
   REFERENCE_TIME latency_hns = frames_to_hns(stream_params->rate, stm->latency);
-  stm->input_bluetooth_handsfree = false;
 
   wasapi_default_devices default_devices(stm->device_enumerator.get());
 
@@ -2254,6 +2253,7 @@ setup_wasapi_stream_one_side(cubeb_stream * stm,
           latency_frames, default_period_frames);
       latency_hns = frames_to_hns(device_info.default_rate, latency_frames);
 
+      stm->input_bluetooth_handsfree = false;
       if (strlen(device_info.group_id) >= len &&
           strncmp(device_info.group_id, HANDSFREE_TAG, len) == 0) {
         stm->input_bluetooth_handsfree = true;
