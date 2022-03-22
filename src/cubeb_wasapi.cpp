@@ -2225,15 +2225,6 @@ setup_wasapi_stream_one_side(cubeb_stream * stm,
     flags |= AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
   }
 
-  // Sanity check the latency, it may be that the device doesn't support it.
-  REFERENCE_TIME minimum_period;
-  REFERENCE_TIME default_period;
-  hr = audio_client->GetDevicePeriod(&default_period, &minimum_period);
-  if (FAILED(hr)) {
-    LOG("Could not get device period: %lx", hr);
-    return CUBEB_ERROR;
-  }
-
   REFERENCE_TIME latency_hns = frames_to_hns(stream_params->rate, stm->latency);
   stm->input_bluetooth_handsfree = false;
 
@@ -2246,6 +2237,15 @@ setup_wasapi_stream_one_side(cubeb_stream * stm,
     const char * HANDSFREE_TAG = "BTHHFENUM";
     size_t len = sizeof(HANDSFREE_TAG);
     if (direction == eCapture) {
+      // Sanity check the latency, it may be that the device doesn't support it.
+      REFERENCE_TIME minimum_period;
+      REFERENCE_TIME default_period;
+      hr = audio_client->GetDevicePeriod(&default_period, &minimum_period);
+      if (FAILED(hr)) {
+        LOG("Could not get device period: %lx", hr);
+        return CUBEB_ERROR;
+      }
+
       uint32_t default_period_frames =
           hns_to_frames(device_info.default_rate, default_period);
       if (strlen(device_info.group_id) >= len &&
