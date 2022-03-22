@@ -2227,15 +2227,16 @@ setup_wasapi_stream_one_side(cubeb_stream * stm,
 
   REFERENCE_TIME latency_hns = frames_to_hns(stream_params->rate, stm->latency);
 
-  wasapi_default_devices default_devices(stm->device_enumerator.get());
+  // Adjust input latency and check if input is using bluetooth handsfree
+  // protocol.
+  if (direction == eCapture) {
+    stm->input_bluetooth_handsfree = false;
 
-  cubeb_device_info device_info;
-  if (wasapi_create_device(stm->context, device_info,
-                           stm->device_enumerator.get(), device.get(),
-                           &default_devices) == CUBEB_OK) {
-    const char * HANDSFREE_TAG = "BTHHFENUM";
-    size_t len = sizeof(HANDSFREE_TAG);
-    if (direction == eCapture) {
+    wasapi_default_devices default_devices(stm->device_enumerator.get());
+    cubeb_device_info device_info;
+    if (wasapi_create_device(stm->context, device_info,
+                             stm->device_enumerator.get(), device.get(),
+                             &default_devices) == CUBEB_OK) {
       // Sanity check the latency, it may be that the device doesn't support it.
       REFERENCE_TIME minimum_period;
       REFERENCE_TIME default_period;
@@ -2253,15 +2254,18 @@ setup_wasapi_stream_one_side(cubeb_stream * stm,
           latency_frames, default_period_frames);
       latency_hns = frames_to_hns(device_info.default_rate, latency_frames);
 
-      stm->input_bluetooth_handsfree = false;
+      const char * HANDSFREE_TAG = "BTHHFENUM";
+      size_t len = sizeof(HANDSFREE_TAG);
       if (strlen(device_info.group_id) >= len &&
           strncmp(device_info.group_id, HANDSFREE_TAG, len) == 0) {
+        LOG("Input device is using bluetooth handsfree protocol");
         stm->input_bluetooth_handsfree = true;
       }
+
+      wasapi_destroy_device(&device_info);
+    } else {
+      LOG("Could not get cubeb_device_info. Skip customizing input settings");
     }
-    wasapi_destroy_device(&device_info);
-  } else {
-    LOG("Could not get cubeb_device_info.");
   }
 
   if (stream_params->prefs & CUBEB_STREAM_PREF_RAW) {
