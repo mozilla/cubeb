@@ -983,8 +983,11 @@ get_input_buffer(cubeb_stream * stm)
     if (hr == AUDCLNT_E_DEVICE_INVALIDATED) {
       // Application can recover from this error. More info
       // https://msdn.microsoft.com/en-us/library/windows/desktop/dd316605(v=vs.85).aspx
-      LOG("Device invalidated error, reset default device");
-      if (!trigger_async_reconfigure(stm)) {
+      LOG("Input device invalidated error");
+      // No need to reset device if switching is disabled.
+      if ((stm->input_stream_params.prefs &
+           CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING) ||
+          !trigger_async_reconfigure(stm)) {
         stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
         return false;
       }
@@ -1092,8 +1095,11 @@ get_output_buffer(cubeb_stream * stm, void *& buffer, size_t & frame_count)
   if (hr == AUDCLNT_E_DEVICE_INVALIDATED) {
     // Application can recover from this error. More info
     // https://msdn.microsoft.com/en-us/library/windows/desktop/dd316605(v=vs.85).aspx
-    LOG("Device invalidated error, reset default device");
-    if (!trigger_async_reconfigure(stm)) {
+    LOG("Output device invalidated error");
+    // No need to reset device if switching is disabled.
+    if ((stm->output_stream_params.prefs &
+         CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING) ||
+        !trigger_async_reconfigure(stm)) {
       stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
       return false;
     }
