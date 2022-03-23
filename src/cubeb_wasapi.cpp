@@ -2311,7 +2311,7 @@ setup_wasapi_stream_one_side(cubeb_stream * stm,
 #undef DIRECTION_NAME
 
 void
-wasapi_find_matching_output_device(cubeb_stream * stm)
+wasapi_find_bt_handsfree_output_device(cubeb_stream * stm)
 {
   HRESULT hr;
   cubeb_device_info * input_device = nullptr;
@@ -2326,7 +2326,8 @@ wasapi_find_matching_output_device(cubeb_stream * stm)
   wchar_t * tmp = nullptr;
   hr = stm->input_device->GetId(&tmp);
   if (FAILED(hr)) {
-    LOG("Couldn't get input device id in wasapi_find_matching_output_device");
+    LOG("Couldn't get input device id in "
+        "wasapi_find_bt_handsfree_output_device");
     return;
   }
   com_heap_ptr<wchar_t> device_id(tmp);
@@ -2410,7 +2411,7 @@ setup_wasapi_stream(cubeb_stream * stm)
     // right output device, running at the same rate and with the same protocol
     // as the input.
     if (!stm->output_device_id) {
-      wasapi_find_matching_output_device(stm);
+      wasapi_find_bt_handsfree_output_device(stm);
     }
   }
 
