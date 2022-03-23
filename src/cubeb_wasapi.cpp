@@ -2102,6 +2102,8 @@ setup_wasapi_stream_one_side(cubeb_stream * stm,
                              cubeb_stream_params * mix_params,
                              com_ptr<IMMDevice> & device)
 {
+  XASSERT(direction == eCapture || direction == eRender);
+
   HRESULT hr;
   bool is_loopback = stream_params->prefs & CUBEB_STREAM_PREF_LOOPBACK;
   if (is_loopback && direction != eCapture) {
@@ -2110,6 +2112,10 @@ setup_wasapi_stream_one_side(cubeb_stream * stm,
   }
 
   stm->stream_reset_lock.assert_current_thread_owns();
+  // If user doesn't specify a particular device, we can choose another one when
+  // the given devid is unavailable.
+  bool fallbackable =
+      direction == eCapture ? !stm->input_device_id : !stm->output_device_id;
   bool try_again = false;
   // This loops until we find a device that works, or we've exhausted all
   // possibilities.
@@ -2159,7 +2165,7 @@ setup_wasapi_stream_one_side(cubeb_stream * stm,
           DIRECTION_NAME, hr);
       // A particular device can't be activated because it has been
       // unplugged, try fall back to the default audio device.
-      if (devid && hr == AUDCLNT_E_DEVICE_INVALIDATED) {
+      if (devid && hr == AUDCLNT_E_DEVICE_INVALIDATED && fallbackable) {
         LOG("Trying again with the default %s audio device.", DIRECTION_NAME);
         devid = nullptr;
         device = nullptr;
