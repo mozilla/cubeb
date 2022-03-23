@@ -2330,7 +2330,8 @@ wasapi_find_matching_output_device(cubeb_stream * stm)
     return;
   }
   com_heap_ptr<wchar_t> device_id(tmp);
-  cubeb_devid input_device_id = intern_device_id(stm->context, device_id.get());
+  cubeb_devid input_device_id = reinterpret_cast<cubeb_devid>(
+      intern_device_id(stm->context, device_id.get()));
   if (!input_device_id) {
     return;
   }
