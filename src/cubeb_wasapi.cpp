@@ -950,6 +950,7 @@ bool
 trigger_async_reconfigure(cubeb_stream * stm)
 {
   XASSERT(stm && stm->reconfigure_event);
+  LOG("Try reconfiguring the stream");
   BOOL ok = SetEvent(stm->reconfigure_event);
   if (!ok) {
     LOG("SetEvent on reconfigure_event failed: %lx", GetLastError());
@@ -984,8 +985,10 @@ get_input_buffer(cubeb_stream * stm)
       // Application can recover from this error. More info
       // https://msdn.microsoft.com/en-us/library/windows/desktop/dd316605(v=vs.85).aspx
       LOG("Input device invalidated error");
-      // No need to reset device if switching is disabled.
-      if ((stm->input_stream_params.prefs &
+      // No need to reset device if user asks to use particular device, or
+      // switching is disabled.
+      if (stm->input_device_id ||
+          (stm->input_stream_params.prefs &
            CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING) ||
           !trigger_async_reconfigure(stm)) {
         stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
@@ -1096,8 +1099,10 @@ get_output_buffer(cubeb_stream * stm, void *& buffer, size_t & frame_count)
     // Application can recover from this error. More info
     // https://msdn.microsoft.com/en-us/library/windows/desktop/dd316605(v=vs.85).aspx
     LOG("Output device invalidated error");
-    // No need to reset device if switching is disabled.
-    if ((stm->output_stream_params.prefs &
+    // No need to reset device if user asks to use particular device, or
+    // switching is disabled.
+    if (stm->output_device_id ||
+        (stm->output_stream_params.prefs &
          CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING) ||
         !trigger_async_reconfigure(stm)) {
       stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
