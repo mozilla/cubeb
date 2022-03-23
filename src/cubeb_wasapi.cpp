@@ -2238,6 +2238,7 @@ setup_wasapi_stream_one_side(cubeb_stream * stm,
                              stm->device_enumerator.get(), device.get(),
                              &default_devices) == CUBEB_OK) {
       // This multiplicator has been found empirically.
+      XASSERT(device_info.latency_hi > 0);
       uint32_t latency_frames = device_info.latency_hi * 8;
       LOG("Input: latency increased to %u frames from a default of %u",
           latency_frames, device_info.latency_hi);
