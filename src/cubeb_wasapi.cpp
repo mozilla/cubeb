@@ -2310,7 +2310,9 @@ setup_wasapi_stream_one_side(cubeb_stream * stm,
 
 #undef DIRECTION_NAME
 
-void
+// Returns a non-null cubeb_devid if we find a matched device, or nullptr
+// otherwise.
+cubeb_devid
 wasapi_find_bt_handsfree_output_device(cubeb_stream * stm)
 {
   HRESULT hr;
@@ -2320,7 +2322,7 @@ wasapi_find_bt_handsfree_output_device(cubeb_stream * stm)
   // Only try to match to an output device if the input device is a bluetooth
   // device that is using the handsfree protocol
   if (!stm->input_bluetooth_handsfree) {
-    return;
+    return nullptr;
   }
 
   wchar_t * tmp = nullptr;
@@ -2328,13 +2330,13 @@ wasapi_find_bt_handsfree_output_device(cubeb_stream * stm)
   if (FAILED(hr)) {
     LOG("Couldn't get input device id in "
         "wasapi_find_bt_handsfree_output_device");
-    return;
+    return nullptr;
   }
   com_heap_ptr<wchar_t> device_id(tmp);
   cubeb_devid input_device_id = reinterpret_cast<cubeb_devid>(
       intern_device_id(stm->context, device_id.get()));
   if (!input_device_id) {
-    return;
+    return nullptr;
   }
 
   int rv = wasapi_enumerate_devices(
@@ -2342,7 +2344,7 @@ wasapi_find_bt_handsfree_output_device(cubeb_stream * stm)
       (cubeb_device_type)(CUBEB_DEVICE_TYPE_INPUT | CUBEB_DEVICE_TYPE_OUTPUT),
       &collection);
   if (rv != CUBEB_OK) {
-    return;
+    return nullptr;
   }
 
   // Find the input device, and then find the output device with the same group
@@ -2354,19 +2356,24 @@ wasapi_find_bt_handsfree_output_device(cubeb_stream * stm)
     }
   }
 
-  for (uint32_t i = 0; i < collection.count; i++) {
-    cubeb_device_info & dev = collection.device[i];
-    if (dev.type == CUBEB_DEVICE_TYPE_OUTPUT && dev.group_id && input_device &&
-        !strcmp(dev.group_id, input_device->group_id) &&
-        dev.default_rate == input_device->default_rate) {
-      LOG("Found matching device for %s: %s", input_device->friendly_name,
-          dev.friendly_name);
-      stm->output_device_id =
-          utf8_to_wstr(reinterpret_cast<char const *>(dev.devid));
+  cubeb_devid matched_output = nullptr;
+
+  if (input_device) {
+    for (uint32_t i = 0; i < collection.count; i++) {
+      cubeb_device_info & dev = collection.device[i];
+      if (dev.type == CUBEB_DEVICE_TYPE_OUTPUT && dev.group_id &&
+          !strcmp(dev.group_id, input_device->group_id) &&
+          dev.default_rate == input_device->default_rate) {
+        LOG("Found matching device for %s: %s", input_device->friendly_name,
+            dev.friendly_name);
+        matched_output = dev.devid;
+        break;
+      }
     }
   }
 
   wasapi_device_collection_destroy(stm->context, &collection);
+  return matched_output;
 }
 
 int
@@ -2411,7 +2418,11 @@ setup_wasapi_stream(cubeb_stream * stm)
     // right output device, running at the same rate and with the same protocol
     // as the input.
     if (!stm->output_device_id) {
-      wasapi_find_bt_handsfree_output_device(stm);
+      cubeb_devid matched = wasapi_find_bt_handsfree_output_device(stm);
+      if (matched) {
+        stm->output_device_id =
+            utf8_to_wstr(reinterpret_cast<char const *>(matched));
+      }
     }
   }
 
