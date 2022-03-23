@@ -2237,21 +2237,10 @@ setup_wasapi_stream_one_side(cubeb_stream * stm,
     if (wasapi_create_device(stm->context, device_info,
                              stm->device_enumerator.get(), device.get(),
                              &default_devices) == CUBEB_OK) {
-      // Sanity check the latency, it may be that the device doesn't support it.
-      REFERENCE_TIME minimum_period;
-      REFERENCE_TIME default_period;
-      hr = audio_client->GetDevicePeriod(&default_period, &minimum_period);
-      if (FAILED(hr)) {
-        LOG("Could not get device period: %lx", hr);
-        return CUBEB_ERROR;
-      }
-
-      uint32_t default_period_frames =
-          hns_to_frames(device_info.default_rate, default_period);
       // This multiplicator has been found empirically.
-      uint32_t latency_frames = default_period_frames * 8;
+      uint32_t latency_frames = device_info.latency_hi * 8;
       LOG("Input: latency increased to %u frames from a default of %u",
-          latency_frames, default_period_frames);
+          latency_frames, device_info.latency_hi);
       latency_hns = frames_to_hns(device_info.default_rate, latency_frames);
 
       const char * HANDSFREE_TAG = "BTHHFENUM";
