@@ -2467,7 +2467,7 @@ setup_wasapi_stream(cubeb_stream * stm)
       cubeb_devid matched = wasapi_find_bt_handsfree_output_device(stm);
       if (matched) {
         selected_output_device_id =
-            utf8_to_wstr(reinterpret_cast<char const *>(matched));
+            move(utf8_to_wstr(reinterpret_cast<char const *>(matched)));
       }
     }
   }
