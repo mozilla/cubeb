@@ -2709,8 +2709,8 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
     return rv;
   }
 
-  // Follow the system default devices when specifying default devices
-  // explicitly and CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING is not set.
+  // Follow the system default devices when not specifying devices explicitly
+  // and CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING is not set.
   if ((!input_device && input_stream_params &&
        !(input_stream_params->prefs &
          CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING)) ||
