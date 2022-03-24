@@ -2409,8 +2409,16 @@ setup_wasapi_stream(cubeb_stream * stm)
   XASSERT((!stm->output_client || !stm->input_client) &&
           "WASAPI stream already setup, close it first.");
 
-  std::unique_ptr<const wchar_t[]> selected_output_device_id(
-      stm->output_device_id.get());
+  std::unique_ptr<const wchar_t[]> selected_output_device_id;
+  if (stm->output_device_id) {
+    size_t len = wcslen(stm->output_device_id.get());
+    std::unique_ptr<wchar_t[]> tmp(new wchar_t[len + 1]);
+    if (wcsncpy_s(tmp.get(), len + 1, stm->output_device_id.get(), len) != 0) {
+      LOG("Failed to copy output device identifier");
+      return CUBEB_ERROR;
+    }
+    selected_output_device_id = move(tmp);
+  }
 
   if (has_input(stm)) {
     LOG("(%p) Setup capture: device=%p", stm, stm->input_device_id.get());
