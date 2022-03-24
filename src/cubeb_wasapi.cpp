@@ -2399,6 +2399,18 @@ wasapi_find_bt_handsfree_output_device(cubeb_stream * stm)
   return matched_output;
 }
 
+std::unique_ptr<wchar_t[]>
+copy_wide_string(const wchar_t * src)
+{
+  XASSERT(src);
+  size_t len = wcslen(src);
+  std::unique_ptr<wchar_t[]> copy(new wchar_t[len + 1]);
+  if (wcsncpy_s(copy.get(), len + 1, src, len) != 0) {
+    return nullptr;
+  }
+  return copy;
+}
+
 int
 setup_wasapi_stream(cubeb_stream * stm)
 {
@@ -2411,13 +2423,13 @@ setup_wasapi_stream(cubeb_stream * stm)
 
   std::unique_ptr<const wchar_t[]> selected_output_device_id;
   if (stm->output_device_id) {
-    size_t len = wcslen(stm->output_device_id.get());
-    std::unique_ptr<wchar_t[]> tmp(new wchar_t[len + 1]);
-    if (wcsncpy_s(tmp.get(), len + 1, stm->output_device_id.get(), len) != 0) {
-      LOG("Failed to copy output device identifier");
+    if (std::unique_ptr<wchar_t[]> tmp =
+            move(copy_wide_string(stm->output_device_id.get()))) {
+      selected_output_device_id = move(tmp);
+    } else {
+      LOG("Failed to copy output device identifier.");
       return CUBEB_ERROR;
     }
-    selected_output_device_id = move(tmp);
   }
 
   if (has_input(stm)) {
@@ -2470,15 +2482,15 @@ setup_wasapi_stream(cubeb_stream * stm)
     stm->output_stream_params.channels = stm->input_stream_params.channels;
     stm->output_stream_params.layout = stm->input_stream_params.layout;
     if (stm->input_device_id) {
-      size_t len = wcslen(stm->input_device_id.get());
-      std::unique_ptr<wchar_t[]> tmp(new wchar_t[len + 1]);
-      if (wcsncpy_s(tmp.get(), len + 1, stm->input_device_id.get(), len) != 0) {
-        LOG("Failed to copy device identifier while copying input stream"
-            " configuration to output stream configuration to drive loopback.");
+      if (std::unique_ptr<wchar_t[]> tmp =
+              move(copy_wide_string(stm->input_device_id.get()))) {
+        XASSERT(!selected_output_device_id);
+        selected_output_device_id = move(tmp);
+      } else {
+        LOG("Failed to copy device identifier while copying input stream "
+            "configuration to output stream configuration to drive loopback.");
         return CUBEB_ERROR;
       }
-      XASSERT(!selected_output_device_id);
-      selected_output_device_id = move(tmp);
     }
     stm->has_dummy_output = true;
   }
