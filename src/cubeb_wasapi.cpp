@@ -2409,7 +2409,7 @@ setup_wasapi_stream(cubeb_stream * stm)
   XASSERT((!stm->output_client || !stm->input_client) &&
           "WASAPI stream already setup, close it first.");
 
-  std::unique_ptr<const wchar_t[]> picked_output_device_id(
+  std::unique_ptr<const wchar_t[]> selected_output_device_id(
       stm->output_device_id.get());
 
   if (has_input(stm)) {
@@ -2443,10 +2443,10 @@ setup_wasapi_stream(cubeb_stream * stm)
     // device, and the default device is the same bluetooth device, pick the
     // right output device, running at the same rate and with the same protocol
     // as the input.
-    if (!picked_output_device_id) {
+    if (!selected_output_device_id) {
       cubeb_devid matched = wasapi_find_bt_handsfree_output_device(stm);
       if (matched) {
-        picked_output_device_id =
+        selected_output_device_id =
             utf8_to_wstr(reinterpret_cast<char const *>(matched));
       }
     }
@@ -2469,17 +2469,17 @@ setup_wasapi_stream(cubeb_stream * stm)
             " configuration to output stream configuration to drive loopback.");
         return CUBEB_ERROR;
       }
-      XASSERT(!picked_output_device_id);
-      picked_output_device_id = move(tmp);
+      XASSERT(!selected_output_device_id);
+      selected_output_device_id = move(tmp);
     }
     stm->has_dummy_output = true;
   }
 
   if (has_output(stm)) {
-    LOG("(%p) Setup render: device=%p", stm, picked_output_device_id.get());
+    LOG("(%p) Setup render: device=%p", stm, selected_output_device_id.get());
     rv = setup_wasapi_stream_one_side(
-        stm, &stm->output_stream_params, picked_output_device_id.get(), eRender,
-        __uuidof(IAudioRenderClient), stm->output_client,
+        stm, &stm->output_stream_params, selected_output_device_id.get(),
+        eRender, __uuidof(IAudioRenderClient), stm->output_client,
         &stm->output_buffer_frame_count, stm->refill_event, stm->render_client,
         &stm->output_mix_params, stm->output_device);
     if (rv != CUBEB_OK) {
