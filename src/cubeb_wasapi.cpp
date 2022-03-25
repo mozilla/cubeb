@@ -950,6 +950,7 @@ bool
 trigger_async_reconfigure(cubeb_stream * stm)
 {
   XASSERT(stm && stm->reconfigure_event);
+  LOG("Try reconfiguring the stream");
   BOOL ok = SetEvent(stm->reconfigure_event);
   if (!ok) {
     LOG("SetEvent on reconfigure_event failed: %lx", GetLastError());
@@ -984,8 +985,10 @@ get_input_buffer(cubeb_stream * stm)
       // Application can recover from this error. More info
       // https://msdn.microsoft.com/en-us/library/windows/desktop/dd316605(v=vs.85).aspx
       LOG("Input device invalidated error");
-      // No need to reset device if switching is disabled.
-      if ((stm->input_stream_params.prefs &
+      // No need to reset device if user asks to use particular device, or
+      // switching is disabled.
+      if (stm->input_device_id ||
+          (stm->input_stream_params.prefs &
            CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING) ||
           !trigger_async_reconfigure(stm)) {
         stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
@@ -1096,8 +1099,10 @@ get_output_buffer(cubeb_stream * stm, void *& buffer, size_t & frame_count)
     // Application can recover from this error. More info
     // https://msdn.microsoft.com/en-us/library/windows/desktop/dd316605(v=vs.85).aspx
     LOG("Output device invalidated error");
-    // No need to reset device if switching is disabled.
-    if ((stm->output_stream_params.prefs &
+    // No need to reset device if user asks to use particular device, or
+    // switching is disabled.
+    if (stm->output_device_id ||
+        (stm->output_stream_params.prefs &
          CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING) ||
         !trigger_async_reconfigure(stm)) {
       stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
@@ -2102,6 +2107,8 @@ setup_wasapi_stream_one_side(cubeb_stream * stm,
                              cubeb_stream_params * mix_params,
                              com_ptr<IMMDevice> & device)
 {
+  XASSERT(direction == eCapture || direction == eRender);
+
   HRESULT hr;
   bool is_loopback = stream_params->prefs & CUBEB_STREAM_PREF_LOOPBACK;
   if (is_loopback && direction != eCapture) {
@@ -2110,6 +2117,10 @@ setup_wasapi_stream_one_side(cubeb_stream * stm,
   }
 
   stm->stream_reset_lock.assert_current_thread_owns();
+  // If user doesn't specify a particular device, we can choose another one when
+  // the given devid is unavailable.
+  bool allow_fallback =
+      direction == eCapture ? !stm->input_device_id : !stm->output_device_id;
   bool try_again = false;
   // This loops until we find a device that works, or we've exhausted all
   // possibilities.
@@ -2159,7 +2170,7 @@ setup_wasapi_stream_one_side(cubeb_stream * stm,
           DIRECTION_NAME, hr);
       // A particular device can't be activated because it has been
       // unplugged, try fall back to the default audio device.
-      if (devid && hr == AUDCLNT_E_DEVICE_INVALIDATED) {
+      if (devid && hr == AUDCLNT_E_DEVICE_INVALIDATED && allow_fallback) {
         LOG("Trying again with the default %s audio device.", DIRECTION_NAME);
         devid = nullptr;
         device = nullptr;
@@ -2388,6 +2399,18 @@ wasapi_find_bt_handsfree_output_device(cubeb_stream * stm)
   return matched_output;
 }
 
+std::unique_ptr<wchar_t[]>
+copy_wide_string(const wchar_t * src)
+{
+  XASSERT(src);
+  size_t len = wcslen(src);
+  std::unique_ptr<wchar_t[]> copy(new wchar_t[len + 1]);
+  if (wcsncpy_s(copy.get(), len + 1, src, len) != 0) {
+    return nullptr;
+  }
+  return copy;
+}
+
 int
 setup_wasapi_stream(cubeb_stream * stm)
 {
@@ -2397,6 +2420,17 @@ setup_wasapi_stream(cubeb_stream * stm)
 
   XASSERT((!stm->output_client || !stm->input_client) &&
           "WASAPI stream already setup, close it first.");
+
+  std::unique_ptr<const wchar_t[]> selected_output_device_id;
+  if (stm->output_device_id) {
+    if (std::unique_ptr<wchar_t[]> tmp =
+            move(copy_wide_string(stm->output_device_id.get()))) {
+      selected_output_device_id = move(tmp);
+    } else {
+      LOG("Failed to copy output device identifier.");
+      return CUBEB_ERROR;
+    }
+  }
 
   if (has_input(stm)) {
     LOG("(%p) Setup capture: device=%p", stm, stm->input_device_id.get());
@@ -2429,11 +2463,11 @@ setup_wasapi_stream(cubeb_stream * stm)
     // device, and the default device is the same bluetooth device, pick the
     // right output device, running at the same rate and with the same protocol
     // as the input.
-    if (!stm->output_device_id) {
+    if (!selected_output_device_id) {
       cubeb_devid matched = wasapi_find_bt_handsfree_output_device(stm);
       if (matched) {
-        stm->output_device_id =
-            utf8_to_wstr(reinterpret_cast<char const *>(matched));
+        selected_output_device_id =
+            move(utf8_to_wstr(reinterpret_cast<char const *>(matched)));
       }
     }
   }
@@ -2448,23 +2482,24 @@ setup_wasapi_stream(cubeb_stream * stm)
     stm->output_stream_params.channels = stm->input_stream_params.channels;
     stm->output_stream_params.layout = stm->input_stream_params.layout;
     if (stm->input_device_id) {
-      size_t len = wcslen(stm->input_device_id.get());
-      std::unique_ptr<wchar_t[]> tmp(new wchar_t[len + 1]);
-      if (wcsncpy_s(tmp.get(), len + 1, stm->input_device_id.get(), len) != 0) {
-        LOG("Failed to copy device identifier while copying input stream"
-            " configuration to output stream configuration to drive loopback.");
+      if (std::unique_ptr<wchar_t[]> tmp =
+              move(copy_wide_string(stm->input_device_id.get()))) {
+        XASSERT(!selected_output_device_id);
+        selected_output_device_id = move(tmp);
+      } else {
+        LOG("Failed to copy device identifier while copying input stream "
+            "configuration to output stream configuration to drive loopback.");
         return CUBEB_ERROR;
       }
-      stm->output_device_id = move(tmp);
     }
     stm->has_dummy_output = true;
   }
 
   if (has_output(stm)) {
-    LOG("(%p) Setup render: device=%p", stm, stm->output_device_id.get());
+    LOG("(%p) Setup render: device=%p", stm, selected_output_device_id.get());
     rv = setup_wasapi_stream_one_side(
-        stm, &stm->output_stream_params, stm->output_device_id.get(), eRender,
-        __uuidof(IAudioRenderClient), stm->output_client,
+        stm, &stm->output_stream_params, selected_output_device_id.get(),
+        eRender, __uuidof(IAudioRenderClient), stm->output_client,
         &stm->output_buffer_frame_count, stm->refill_event, stm->render_client,
         &stm->output_mix_params, stm->output_device);
     if (rv != CUBEB_OK) {
@@ -2694,12 +2729,15 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
     return rv;
   }
 
-  if (!((input_stream_params ? (input_stream_params->prefs &
-                                CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING)
-                             : 0) ||
-        (output_stream_params ? (output_stream_params->prefs &
-                                 CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING)
-                              : 0))) {
+  // Follow the system default devices when not specifying devices explicitly
+  // and CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING is not set.
+  if ((!input_device && input_stream_params &&
+       !(input_stream_params->prefs &
+         CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING)) ||
+      (!output_device && output_stream_params &&
+       !(output_stream_params->prefs &
+         CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING))) {
+    LOG("Follow the system default input or/and output devices");
     HRESULT hr = register_notification_client(stm.get());
     if (FAILED(hr)) {
       /* this is not fatal, we can still play audio, but we won't be able
