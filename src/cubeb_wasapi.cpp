@@ -3359,8 +3359,10 @@ wasapi_enumerate_devices(cubeb * context, cubeb_device_type type,
     return CUBEB_ERROR;
   }
 
-  hr = enumerator->EnumAudioEndpoints(flow, DEVICE_STATEMASK_ALL,
-                                      collection.receive());
+  hr = enumerator->EnumAudioEndpoints(
+      flow,
+      DEVICE_STATE_ACTIVE | DEVICE_STATE_DISABLED | DEVICE_STATE_UNPLUGGED,
+      collection.receive());
   if (FAILED(hr)) {
     LOG("Could not enumerate audio endpoints: %lx", hr);
     return CUBEB_ERROR;
