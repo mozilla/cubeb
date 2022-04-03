@@ -240,8 +240,9 @@ wasapi_create_device(cubeb * ctx, cubeb_device_info & ret,
 void
 wasapi_destroy_device(cubeb_device_info * device_info);
 static int
-wasapi_enumerate_devices(cubeb * context, cubeb_device_type type,
-                         cubeb_device_collection * out);
+wasapi_enumerate_devices_internal(cubeb * context, cubeb_device_type type,
+                                  cubeb_device_collection * out,
+                                  DWORD state_mask);
 static int
 wasapi_device_collection_destroy(cubeb * ctx,
                                  cubeb_device_collection * collection);
@@ -2393,10 +2394,10 @@ wasapi_find_bt_handsfree_output_device(cubeb_stream * stm)
     return nullptr;
   }
 
-  int rv = wasapi_enumerate_devices(
+  int rv = wasapi_enumerate_devices_internal(
       stm->context,
       (cubeb_device_type)(CUBEB_DEVICE_TYPE_INPUT | CUBEB_DEVICE_TYPE_OUTPUT),
-      &collection);
+      &collection, DEVICE_STATE_ACTIVE);
   if (rv != CUBEB_OK) {
     return nullptr;
   }
@@ -3330,8 +3331,9 @@ wasapi_destroy_device(cubeb_device_info * device)
 }
 
 static int
-wasapi_enumerate_devices(cubeb * context, cubeb_device_type type,
-                         cubeb_device_collection * out)
+wasapi_enumerate_devices_internal(cubeb * context, cubeb_device_type type,
+                                  cubeb_device_collection * out,
+                                  DWORD state_mask)
 {
   com_ptr<IMMDeviceEnumerator> enumerator;
   com_ptr<IMMDeviceCollection> collection;
@@ -3359,10 +3361,7 @@ wasapi_enumerate_devices(cubeb * context, cubeb_device_type type,
     return CUBEB_ERROR;
   }
 
-  hr = enumerator->EnumAudioEndpoints(
-      flow,
-      DEVICE_STATE_ACTIVE | DEVICE_STATE_DISABLED | DEVICE_STATE_UNPLUGGED,
-      collection.receive());
+  hr = enumerator->EnumAudioEndpoints(flow, state_mask, collection.receive());
   if (FAILED(hr)) {
     LOG("Could not enumerate audio endpoints: %lx", hr);
     return CUBEB_ERROR;
@@ -3394,6 +3393,15 @@ wasapi_enumerate_devices(cubeb * context, cubeb_device_type type,
 
   out->device = devices;
   return CUBEB_OK;
+}
+
+static int
+wasapi_enumerate_devices(cubeb * context, cubeb_device_type type,
+                         cubeb_device_collection * out)
+{
+  return wasapi_enumerate_devices_internal(
+      context, type, out,
+      DEVICE_STATE_ACTIVE | DEVICE_STATE_DISABLED | DEVICE_STATE_UNPLUGGED);
 }
 
 static int
