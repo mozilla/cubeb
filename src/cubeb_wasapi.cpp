@@ -1469,6 +1469,15 @@ static unsigned int __stdcall wasapi_stream_render_loop(LPVOID stream)
     }
   }
 
+  // Stop audio clients since this thread will no longer service
+  // the events.
+  if (stm->output_client) {
+    stm->output_client->Stop();
+  }
+  if (stm->input_client) {
+    stm->input_client->Stop();
+  }
+
   if (mmcss_handle) {
     AvRevertMmThreadCharacteristics(mmcss_handle);
   }
