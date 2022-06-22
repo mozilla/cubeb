@@ -32,6 +32,11 @@ extern "C" {
     If you receive "Could not open the stream", you likely do not have a
     microphone. In that case, change PIPE_INPUT_TO_OUTPUT from true to false.
 
+    On Windows: "g++ example.c -lcubeb -lavrt -luuid -lksuser -lole32 -lwinmm"
+    Visual Studio will also work on Windows, just add the above libraries.
+
+    On Linux: "g++ example.c -lcubeb"
+
     @code
     #include "cubeb/cubeb.h"
     #include "stdio.h"
