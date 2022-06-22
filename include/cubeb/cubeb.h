@@ -74,7 +74,7 @@ extern "C" {
 
     int main() {
     #if _WIN32
-      CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+      CoInitializeEx(NULL, COINIT_MULTITHREADED);
     #endif
     cubeb * app_ctx;
       cubeb_init(&app_ctx, "Example Application", NULL);
