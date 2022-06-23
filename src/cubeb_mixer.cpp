@@ -17,6 +17,7 @@
 #include <climits>
 #include <cmath>
 #include <cstdlib>
+#include <emmintrin.h>
 #include <memory>
 #include <type_traits>
 
@@ -377,22 +378,24 @@ MixerContext::init()
 
       for (uint32_t j = 0; j < _in_ch_count; j++) {
         double target = _matrix[i][j] * 32768 + rem;
-        int value = lrintf(target);
+        int value = _mm_cvtsd_si32(_mm_set_sd(target)); // round double to int
         rem += target - value;
         sum += std::abs(value);
       }
       maxsum = std::max(maxsum, sum);
     }
-    if (maxsum > 32768) {
+    if (maxsum > 32768) { //> or >=?
       _clipping = true;
     }
   }
 
   // FIXME quantize for integers
+  // June 23, 2022: I made a change but have no idea what was wanted
   for (uint32_t i = 0; i < CHANNELS_MAX; i++) {
     int ch_in = 0;
     for (uint32_t j = 0; j < CHANNELS_MAX; j++) {
-      _matrix32[i][j] = lrintf(_matrix[i][j] * 32768);
+      // round double to int
+      _matrix32[i][j] = _mm_cvtsd_si32(_mm_set_sd(_matrix[i][j] * 32768));
       if (_matrix[i][j]) {
         _matrix_ch[i][++ch_in] = j;
       }
