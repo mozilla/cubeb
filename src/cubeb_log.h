@@ -52,11 +52,16 @@ cubeb_async_log_reset_threads(void);
     }                                                                          \
   } while (0)
 
-/* Asynchronous verbose logging, to log in real-time callbacks. */
-/* Should not be used on android due to the use of global/static variables. */
-#define ALOGV(fmt, ...)                                                        \
+#define ASYNC_LOG_INTERNAL(level, fmt, ...)                                    \
   do {                                                                         \
-    cubeb_async_log(fmt, ##__VA_ARGS__);                                       \
+    if (level <= g_cubeb_log_level) {                                          \
+      cubeb_async_log(fmt, ##__VA_ARGS__);                                     \
+    }                                                                          \
   } while (0)
+
+/* Asynchronous logging macros to log in real-time callbacks. */
+/* Should not be used on android due to the use of global/static variables. */
+#define ALOGV(msg, ...) ASYNC_LOG_INTERNAL(CUBEB_LOG_VERBOSE, msg, ##__VA_ARGS__)
+#define ALOG(msg, ...)  ASYNC_LOG_INTERNAL(CUBEB_LOG_NORMAL, msg, ##__VA_ARGS__)
 
 #endif // CUBEB_LOG
