@@ -44,6 +44,13 @@ cubeb_async_log_reset_threads(void);
 #define LOGV(msg, ...) LOG_INTERNAL(CUBEB_LOG_VERBOSE, msg, ##__VA_ARGS__)
 #define LOG(msg, ...) LOG_INTERNAL(CUBEB_LOG_NORMAL, msg, ##__VA_ARGS__)
 
+#define LOG_INTERNAL_NO_FORMAT(level, fmt, ...)                                \
+  do {                                                                         \
+    if (g_cubeb_log_callback && level <= g_cubeb_log_level) {                  \
+      g_cubeb_log_callback(fmt, __VA_ARGS__);                                  \
+    }                                                                          \
+  } while (0)
+
 #define LOG_INTERNAL(level, fmt, ...)                                          \
   do {                                                                         \
     if (g_cubeb_log_callback && level <= g_cubeb_log_level) {                  \
