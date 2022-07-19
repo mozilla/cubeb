@@ -72,7 +72,7 @@ public:
       while (true) {
         cubeb_log_message msg;
         while (msg_queue.dequeue(&msg, 1)) {
-          LOGV("%s", msg.get());
+          LOG_INTERNAL_NO_FORMAT(CUBEB_LOG_NORMAL, "%s", msg.get());
         }
 #ifdef _WIN32
         Sleep(CUBEB_LOG_BATCH_PRINT_INTERVAL_MS);
