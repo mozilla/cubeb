@@ -804,10 +804,11 @@ pulse_destroy(cubeb * ctx)
   if (ctx->device_ids) {
     cubeb_strings_destroy(ctx->device_ids);
   }
-
+#ifndef DISABLE_LIBPULSE_DLOPEN
   if (ctx->libpulse) {
     dlclose(ctx->libpulse);
   }
+#endif  // DISABLE_LIBPULSE_DLOPEN
   free(ctx->default_sink_info);
   free(ctx);
 }
