@@ -961,7 +961,7 @@ alsa_destroy(cubeb * ctx)
   if (ctx->libasound) {
     dlclose(ctx->libasound);
   }
-#endif  // DISABLE_LIBASOUND_DLOPEN
+#endif
   free(ctx);
 }
 

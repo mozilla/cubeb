@@ -467,7 +467,7 @@ aaudio_destroy(cubeb * ctx)
   if (ctx->libaaudio) {
     dlclose(ctx->libaaudio);
   }
-#endif  // #ifndef DISABLE_LIBAAUDIO_DLOPEN
+#endif
   delete ctx;
 }
 

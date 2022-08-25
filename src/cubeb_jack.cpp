@@ -791,7 +791,7 @@ cbjack_destroy(cubeb * context)
 #ifndef DISABLE_LIBJACK_DLOPEN
   if (context->libjack)
     dlclose(context->libjack);
-#endif  // DISABLE_LIBJACK_DLOPEN
+#endif
   free(context);
 }
 

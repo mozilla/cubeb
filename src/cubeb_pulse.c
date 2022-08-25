@@ -808,7 +808,7 @@ pulse_destroy(cubeb * ctx)
   if (ctx->libpulse) {
     dlclose(ctx->libpulse);
   }
-#endif  // DISABLE_LIBPULSE_DLOPEN
+#endif
   free(ctx->default_sink_info);
   free(ctx);
 }
