@@ -365,7 +365,7 @@ sndio_destroy(cubeb * context)
 #ifndef DISABLE_LIBSNDIO_DLOPEN
   if (context->libsndio)
     dlclose(context->libsndio);
-#endif  // DISABLE_LIBSNDIO_DLOPEN
+#endif
   free(context);
 }
 
