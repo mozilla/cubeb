@@ -366,12 +366,19 @@ endif()
 
 find_package(Doxygen)
 if(DOXYGEN_FOUND)
-  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/docs/Doxyfile.in ${CMAKE_CURRENT_BINARY_DIR}/docs/Doxyfile @ONLY)
-  add_custom_target(doc ALL
-    ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/docs/Doxyfile
-    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/docs
-    COMMENT "Generating API documentation with Doxygen" VERBATIM)
-  install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/docs/html/ TYPE DOC)
+  set(DOXYGEN_JAVADOC_AUTOBRIEF YES)
+  set(DOXYGEN_OPTIMIZE_OUTPUT_FOR_C YES)
+  set(DOXYGEN_CASE_SENSE_NAMES NO)
+  set(DOXYGEN_SORT_MEMBER_DOCS NO)
+  set(DOXYGEN_QUIET YES)
+  set(DOXYGEN_WARN_NO_PARAMDOC YES)
+  set(DOXYGEN_GENERATE_HTML YES)
+
+  doxygen_add_docs(doc "include/cubeb/" ALL
+    COMMENT "Generating API documentation with Doxygen"
+  )
+
+  install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/html/ TYPE DOC COMPONENT Documentation)
 endif()
 
 if(BUILD_TESTS)
