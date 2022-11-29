@@ -399,6 +399,7 @@ if(BUILD_TESTS)
   add_sanitizers(test_resampler)
 
   cubeb_add_test(duplex)
+  cubeb_add_test(logging)
 
   if (USE_WASAPI)
     cubeb_add_test(overload_callback)
