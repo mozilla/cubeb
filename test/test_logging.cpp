@@ -21,11 +21,6 @@
 
 #define PRINT_LOGS_TO_STDERR 0
 
-#define SAMPLE_FREQUENCY 48000
-#define STREAM_FORMAT CUBEB_SAMPLE_FLOAT32LE
-#define OUTPUT_CHANNELS 2
-#define OUTPUT_LAYOUT CUBEB_LAYOUT_STEREO
-
 std::atomic<uint32_t> log_statements_received = {0};
 std::atomic<uint32_t> data_callback_call_count = {0};
 
@@ -100,10 +95,10 @@ TEST(cubeb, logging)
   std::unique_ptr<cubeb, decltype(&cubeb_destroy)> cleanup_cubeb_at_exit(
       ctx, cubeb_destroy);
 
-  output_params.format = STREAM_FORMAT;
-  output_params.rate = SAMPLE_FREQUENCY;
-  output_params.channels = OUTPUT_CHANNELS;
-  output_params.layout = OUTPUT_LAYOUT;
+  output_params.format = CUBEB_SAMPLE_FLOAT32LE;
+  output_params.rate = 48000;
+  output_params.channels = 2;
+  output_params.layout = CUBEB_LAYOUT_STEREO;
   output_params.prefs = CUBEB_STREAM_PREF_NONE;
 
   r = cubeb_get_min_latency(ctx, &output_params, &latency_frames);
