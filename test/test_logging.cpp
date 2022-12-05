@@ -75,7 +75,7 @@ void wait_for_audio_callback() {
     data_callback_call_count.load(std::memory_order_acquire);
   while (audio_callback_index ==
          data_callback_call_count.load(std::memory_order_acquire)) {
-    delay(10);
+    delay(100);
   }
 }
 
@@ -146,7 +146,6 @@ TEST(cubeb, logging)
       log_statements_received.store(0, std::memory_order_release);
       // Disabling logging should flush any log message -- wait a bit and check
       // that this is true.
-      // delay(100);
       ASSERT_EQ(log_statements_received.load(std::memory_order_acquire), 0u);
       log_callback_set = false;
     }
