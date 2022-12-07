@@ -97,6 +97,8 @@ namespace {
 
 const int64_t LATENCY_NOT_AVAILABLE_YET = -1;
 
+const DWORD DEVICE_CHANGE_DEBOUNCE_MS = 250;
+
 struct com_heap_ptr_deleter {
   void operator()(void * ptr) const noexcept { CoTaskMemFree(ptr); }
 };
@@ -696,7 +698,8 @@ public:
   }
 
   wasapi_endpoint_notification_client(HANDLE event, ERole role)
-      : ref_count(1), reconfigure_event(event), role(role)
+      : ref_count(1), reconfigure_event(event), role(role),
+        last_device_change(timeGetTime())
   {
   }
 
@@ -705,17 +708,32 @@ public:
   HRESULT STDMETHODCALLTYPE OnDefaultDeviceChanged(EDataFlow flow, ERole role,
                                                    LPCWSTR device_id)
   {
-    LOG("endpoint: Audio device default changed.");
+    LOG("endpoint: Audio device default changed flow=%d role=%d "
+        "new_device_id=%ws.",
+        flow, role, device_id);
 
     /* we only support a single stream type for now. */
     if (flow != eRender || role != this->role) {
       return S_OK;
     }
 
-    BOOL ok = SetEvent(reconfigure_event);
-    if (!ok) {
-      LOG("endpoint: SetEvent on reconfigure_event failed: %lx",
-          GetLastError());
+    DWORD last_change_ms = timeGetTime() - last_device_change;
+    bool same_device = default_device_id && device_id &&
+                       wcscmp(default_device_id.get(), device_id) == 0;
+    LOG("endpoint: Audio device default changed last_change=%u same_device=%d",
+        last_change_ms, same_device);
+    if (last_change_ms > DEVICE_CHANGE_DEBOUNCE_MS || !same_device) {
+      if (device_id) {
+        default_device_id.reset(_wcsdup(device_id));
+      } else {
+        default_device_id.reset();
+      }
+      BOOL ok = SetEvent(reconfigure_event);
+      LOG("endpoint: Audio device default changed: trigger reconfig");
+      if (!ok) {
+        LOG("endpoint: SetEvent on reconfigure_event failed: %lx",
+            GetLastError());
+      }
     }
 
     return S_OK;
@@ -754,6 +772,8 @@ private:
   LONG ref_count;
   HANDLE reconfigure_event;
   ERole role;
+  std::unique_ptr<const wchar_t[]> default_device_id;
+  DWORD last_device_change;
 };
 
 namespace {
