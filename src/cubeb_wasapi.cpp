@@ -2813,20 +2813,18 @@ close_wasapi_stream(cubeb_stream * stm)
 
   stm->stream_reset_lock.assert_current_thread_owns();
 
-  stm->output_client = nullptr;
-  stm->render_client = nullptr;
-
-  stm->input_client = nullptr;
-  stm->capture_client = nullptr;
-
-  stm->output_device = nullptr;
-  stm->input_device = nullptr;
-
 #ifdef CUBEB_WASAPI_USE_IAUDIOSTREAMVOLUME
   stm->audio_stream_volume = nullptr;
 #endif
-
   stm->audio_clock = nullptr;
+  stm->render_client = nullptr;
+  stm->output_client = nullptr;
+  stm->output_device = nullptr;
+
+  stm->capture_client = nullptr;
+  stm->input_client = nullptr;
+  stm->input_device = nullptr;
+
   stm->total_frames_written += static_cast<UINT64>(
       round(stm->frames_written *
             stream_to_mix_samplerate_ratio(stm->output_stream_params,
