@@ -2802,7 +2802,7 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
 
   *stream = stm.release();
 
-  LOG("Stream init succesfull (%p)", *stream);
+  LOG("Stream init successful (%p)", *stream);
   return CUBEB_OK;
 }
 
