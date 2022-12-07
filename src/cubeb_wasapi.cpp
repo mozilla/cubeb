@@ -708,7 +708,7 @@ public:
     LOG("endpoint: Audio device default changed.");
 
     /* we only support a single stream type for now. */
-    if (flow != eRender && role != this->role) {
+    if (flow != eRender || role != this->role) {
       return S_OK;
     }
 
