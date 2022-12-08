@@ -11,11 +11,13 @@
 #define _XOPEN_SOURCE 600
 #endif
 #include "cubeb/cubeb.h"
+#include "cubeb_log.h"
 #include <atomic>
 #include <math.h>
 #include <memory>
 #include <stdio.h>
 #include <stdlib.h>
+#include <thread>
 
 #include "common.h"
 
@@ -70,9 +72,11 @@ state_cb(cubeb_stream * stream, void * /*user*/, cubeb_state state)
 }
 
 // Waits for at least one audio callback to have occured.
-void wait_for_audio_callback() {
+void
+wait_for_audio_callback()
+{
   uint32_t audio_callback_index =
-    data_callback_call_count.load(std::memory_order_acquire);
+      data_callback_call_count.load(std::memory_order_acquire);
   while (audio_callback_index ==
          data_callback_call_count.load(std::memory_order_acquire)) {
     delay(100);
@@ -152,4 +156,38 @@ TEST(cubeb, logging)
   }
 
   cubeb_stream_stop(stream);
+}
+
+TEST(cubeb, logging_stress)
+{
+  cubeb_set_log_callback(CUBEB_LOG_NORMAL, test_logging_callback);
+
+  std::atomic<bool> thread_done = {false};
+
+  auto t = std::thread([&thread_done]() {
+    uint32_t count = 0;
+    do {
+      while (rand() % 10) {
+        ALOG("Log message #%d!", count++);
+      }
+    } while (count < 1e4);
+    thread_done.store(true);
+  });
+
+  bool enabled = true;
+  while (!thread_done.load()) {
+    if (enabled) {
+      cubeb_set_log_callback(CUBEB_LOG_DISABLED, nullptr);
+      enabled = false;
+    } else {
+      cubeb_set_log_callback(CUBEB_LOG_NORMAL, test_logging_callback);
+      enabled = true;
+    }
+  }
+
+  cubeb_set_log_callback(CUBEB_LOG_DISABLED, nullptr);
+
+  t.join();
+
+  ASSERT_TRUE(true);
 }
