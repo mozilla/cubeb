@@ -2499,8 +2499,8 @@ setup_wasapi_stream(cubeb_stream * stm)
   std::unique_ptr<const wchar_t[]> selected_output_device_id;
   if (stm->output_device_id) {
     if (std::unique_ptr<wchar_t[]> tmp =
-            move(copy_wide_string(stm->output_device_id.get()))) {
-      selected_output_device_id = move(tmp);
+            copy_wide_string(stm->output_device_id.get())) {
+      selected_output_device_id = std::move(tmp);
     } else {
       LOG("Failed to copy output device identifier.");
       return CUBEB_ERROR;
@@ -2542,7 +2542,7 @@ setup_wasapi_stream(cubeb_stream * stm)
       cubeb_devid matched = wasapi_find_bt_handsfree_output_device(stm);
       if (matched) {
         selected_output_device_id =
-            move(utf8_to_wstr(reinterpret_cast<char const *>(matched)));
+            utf8_to_wstr(reinterpret_cast<char const *>(matched));
       }
     }
   }
@@ -2558,9 +2558,9 @@ setup_wasapi_stream(cubeb_stream * stm)
     stm->output_stream_params.layout = stm->input_stream_params.layout;
     if (stm->input_device_id) {
       if (std::unique_ptr<wchar_t[]> tmp =
-              move(copy_wide_string(stm->input_device_id.get()))) {
+              copy_wide_string(stm->input_device_id.get())) {
         XASSERT(!selected_output_device_id);
-        selected_output_device_id = move(tmp);
+        selected_output_device_id = std::move(tmp);
       } else {
         LOG("Failed to copy device identifier while copying input stream "
             "configuration to output stream configuration to drive loopback.");
