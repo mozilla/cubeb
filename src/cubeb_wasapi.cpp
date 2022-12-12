@@ -21,6 +21,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <timeapi.h>
 #include <vector>
 #include <windef.h>
 #include <windows.h>
