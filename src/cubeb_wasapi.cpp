@@ -25,6 +25,7 @@
 #include <vector>
 #include <windef.h>
 #include <windows.h>
+#include <xmmintrin.h>
 
 #include "cubeb-internal.h"
 #include "cubeb/cubeb.h"
@@ -966,7 +967,8 @@ refill(cubeb_stream * stm, void * input_buffer, long input_frames_count,
       case CUBEB_SAMPLE_S16NE: {
         short * buf = static_cast<short *>(dest);
         for (long i = 0; i < out_samples; ++i) {
-          buf[i] = static_cast<short>(static_cast<float>(buf[i]) * volume);
+          // round float to int
+          buf[i] = _mm_cvt_ss2si(_mm_set_ss(buf[i] * volume));
         }
         break;
       }

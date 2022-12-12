@@ -17,6 +17,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <xmmintrin.h>
 
 #if defined(CUBEB_SNDIO_DEBUG)
 #define DPR(...) fprintf(stderr, __VA_ARGS__);
@@ -107,7 +108,8 @@ float_to_s16(void * ptr, long nsamp, float volume)
   int s;
 
   while (nsamp-- > 0) {
-    s = lrintf(*(src++) * mult);
+    // round float to int
+    s = _mm_cvt_ss2si(_mm_set_ss(*(src++) * mult));
     if (s < -32768)
       s = -32768;
     else if (s > 32767)
