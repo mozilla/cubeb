@@ -9,6 +9,7 @@
 #include "cubeb_android.h"
 #include "cubeb_log.h"
 #include "cubeb_resampler.h"
+#include "cubeb_triple_buffer.h"
 #include <aaudio/AAudio.h>
 #include <atomic>
 #include <cassert>
@@ -114,6 +115,15 @@ enum class stream_state {
   SHUTDOWN,
 };
 
+struct AAudioTimingInfo {
+  // The number of frames sent to the engine.
+  uint64_t frame_index;
+  // The timestamp at which the audio engine last called the calback.
+  uint64_t tstamp;
+  // The current output latency in frames.
+  uint32_t latency;
+};
+
 struct cubeb_stream {
   /* Note: Must match cubeb_stream layout in cubeb.c. */
   cubeb * context{};
@@ -121,6 +131,7 @@ struct cubeb_stream {
 
   std::atomic<bool> in_use{false};
   std::atomic<stream_state> state{stream_state::INIT};
+  triple_buffer<AAudioTimingInfo> timing_info;
 
   AAudioStream * ostream{};
   AAudioStream * istream{};
@@ -593,6 +604,55 @@ aaudio_duplex_data_cb(AAudioStream * astream, void * user_data,
   return AAUDIO_CALLBACK_RESULT_CONTINUE;
 }
 
+uint64_t
+now_ns()
+{
+  using namespace std::chrono;
+  return duration_cast<nanoseconds>(steady_clock::now().time_since_epoch())
+      .count();
+}
+
+// To be called from the real-time audio callback
+uint64_t
+aaudio_get_latency(cubeb_stream * stm, aaudio_direction_t direction,
+                   uint64_t tstamp_ns)
+{
+  bool is_output = direction == AAUDIO_DIRECTION_OUTPUT;
+  int64_t hw_frame_index;
+  int64_t hw_tstamp;
+  AAudioStream * stream = is_output ? stm->ostream : stm->istream;
+  // For an output stream (resp. input stream), get the number of frames
+  // written to (resp read from) the hardware.
+  int64_t app_frame_index = is_output
+                                ? WRAP(AAudioStream_getFramesWritten)(stream)
+                                : WRAP(AAudioStream_getFramesRead)(stream);
+
+  // Get a timestamp for a particular frame index written to or read from the
+  // hardware.
+  auto result = WRAP(AAudioStream_getTimestamp)(stream, CLOCK_MONOTONIC,
+                                                &hw_frame_index, &hw_tstamp);
+  if (result != AAUDIO_OK) {
+    LOG("AAudioStream_getTimestamp failure.");
+    return 0;
+  }
+
+  // Compute the difference between the app and the hardware indices.
+  int64_t frame_index_delta = app_frame_index - hw_frame_index;
+  // Convert to ns
+  int64_t frame_time_delta = (frame_index_delta * 1e9) / stm->sample_rate;
+  // Extrapolate from the known timestamp for a particular frame presented.
+  int64_t app_frame_hw_time = hw_tstamp + frame_time_delta;
+  // For an output stream, the latency is positive, for an input stream, it's
+  // negative.
+  int64_t latency_ns =
+      is_output ? app_frame_hw_time - tstamp_ns : tstamp_ns - app_frame_hw_time;
+  int64_t latency_frames = stm->sample_rate * latency_ns / 1e9;
+
+  LOGV("Latency in frames: %d (%dms)", latency_frames, latency_ns / 1e6);
+
+  return latency_frames;
+}
+
 static aaudio_data_callback_result_t
 aaudio_output_data_cb(AAudioStream * astream, void * user_data,
                       void * audio_data, int32_t num_frames)
@@ -617,6 +677,17 @@ aaudio_output_data_cb(AAudioStream * astream, void * user_data,
   if (state == stream_state::DRAINING) {
     std::memset(audio_data, 0x0, num_frames * stm->out_frame_size);
     return AAUDIO_CALLBACK_RESULT_CONTINUE;
+  }
+
+  uint64_t tstamp_ns = now_ns();
+  uint64_t latency_frames =
+      aaudio_get_latency(stm, AAUDIO_DIRECTION_OUTPUT, tstamp_ns);
+  if (latency_frames != 0) {
+    AAudioTimingInfo info;
+    info.tstamp = tstamp_ns;
+    info.latency = latency_frames;
+    info.frame_index = WRAP(AAudioStream_getFramesWritten)(stm->ostream);
+    stm->timing_info.write(info);
   }
 
   long done_frames =
