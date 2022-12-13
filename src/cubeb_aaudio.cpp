@@ -21,6 +21,19 @@
 #include <thread>
 #include <time.h>
 
+#if defined(__ANDROID__)
+#ifdef LOG
+#undef LOG
+#endif
+// #define LOGGING_ENABLED
+#ifdef LOGGING_ENABLED
+#define LOG(args...)                                                           \
+  __android_log_print(ANDROID_LOG_INFO, "Cubeb_AAudio", ##args)
+#else
+#define LOG(...)
+#endif
+#endif
+
 #ifdef DISABLE_LIBAAUDIO_DLOPEN
 #define WRAP(x) x
 #else
