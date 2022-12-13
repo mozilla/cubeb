@@ -1342,33 +1342,27 @@ aaudio_stream_get_position(cubeb_stream * stm, uint64_t * position)
     break;
   }
 
-  int64_t pos;
-  int64_t ns;
-  aaudio_result_t res;
-  res = WRAP(AAudioStream_getTimestamp)(stream, CLOCK_MONOTONIC, &pos, &ns);
-  if (res != AAUDIO_OK) {
-    // When the audio stream is not running, invalid_state is returned and we
-    // simply fall back to the method we use for non-playing streams.
-    if (res == AAUDIO_ERROR_INVALID_STATE) {
-      *position = WRAP(AAudioStream_getFramesRead)(stream);
-      if (*position < stm->previous_clock) {
-        *position = stm->previous_clock;
-      } else {
-        stm->previous_clock = *position;
-      }
-      return CUBEB_OK;
-    }
-
-    LOG("AAudioStream_getTimestamp: %s", WRAP(AAudio_convertResultToText)(res));
-    return CUBEB_ERROR;
+  // No callback yet, the stream hasn't really started.
+  if (stm->previous_clock == 0 && !stm->timing_info.updated()) {
+    LOG("Not timing info yet");
+    *position = 0;
+    return CUBEB_OK;
   }
 
-  *position = pos;
+  AAudioTimingInfo info = stm->timing_info.read();
+  LOGV("AAudioTimingInfo idx:%lu tstamp:%lu latency:%u", info.frame_index,
+       info.tstamp, info.latency);
+  // Interpolate client side since the last callback.
+  int64_t interpolation = stm->sample_rate * (now_ns() - info.tstamp) / 1e9;
+  *position = info.frame_index + interpolation - info.latency;
   if (*position < stm->previous_clock) {
     *position = stm->previous_clock;
   } else {
     stm->previous_clock = *position;
   }
+
+  LOG("aaudio_stream_get_position: %ld", *position);
+
   return CUBEB_OK;
 }
 
