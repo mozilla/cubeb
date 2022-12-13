@@ -400,6 +400,7 @@ if(BUILD_TESTS)
 
   cubeb_add_test(duplex)
   cubeb_add_test(logging)
+  cubeb_add_test(triple_buffer)
 
   if (USE_WASAPI)
     cubeb_add_test(overload_callback)
