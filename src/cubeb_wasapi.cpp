@@ -21,10 +21,13 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <timeapi.h>
 #include <vector>
 #include <windef.h>
 #include <windows.h>
+/* clang-format off */
+/* These need to be included after windows.h */
+#include <mmsystem.h>
+/* clang-format on */
 
 #include "cubeb-internal.h"
 #include "cubeb/cubeb.h"
