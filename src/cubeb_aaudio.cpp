@@ -137,6 +137,7 @@ struct cubeb_stream {
   unsigned in_frame_size{}; // size of one input frame
 
   cubeb_sample_format out_format{};
+  uint32_t sample_rate;
   std::atomic<float> volume{1.f};
   unsigned out_channels{};
   unsigned out_frame_size{};
@@ -867,7 +868,6 @@ aaudio_stream_init_impl(cubeb_stream * stm, cubeb_devid input_device,
 
   // initialize streams
   // output
-  uint32_t target_sample_rate = 0;
   cubeb_stream_params out_params;
   if (output_stream_params) {
     int output_preset = stm->voice_output ? AAUDIO_USAGE_VOICE_COMMUNICATION
@@ -894,7 +894,7 @@ aaudio_stream_init_impl(cubeb_stream * stm, cubeb_devid input_device,
     LOG("AAudio output stream buffer size: %d", bsize);
     LOG("AAudio output stream buffer rate: %d", rate);
 
-    target_sample_rate = output_stream_params->rate;
+    stm->sample_rate = output_stream_params->rate;
     out_params = *output_stream_params;
     out_params.rate = rate;
 
@@ -936,10 +936,9 @@ aaudio_stream_init_impl(cubeb_stream * stm, cubeb_devid input_device,
     LOG("AAudio input stream buffer rate: %d", rate);
 
     stm->in_buf.reset(new char[bcap * frame_size]());
-    assert(!target_sample_rate ||
-           target_sample_rate == input_stream_params->rate);
+    assert(!stm->sample_rate || stm->sample_rate == input_stream_params->rate);
 
-    target_sample_rate = input_stream_params->rate;
+    stm->sample_rate = input_stream_params->rate;
     in_params = *input_stream_params;
     in_params.rate = rate;
     stm->in_frame_size = frame_size;
@@ -948,7 +947,7 @@ aaudio_stream_init_impl(cubeb_stream * stm, cubeb_devid input_device,
   // initialize resampler
   stm->resampler = cubeb_resampler_create(
       stm, input_stream_params ? &in_params : NULL,
-      output_stream_params ? &out_params : NULL, target_sample_rate,
+      output_stream_params ? &out_params : NULL, stm->sample_rate,
       stm->data_callback, stm->user_ptr, CUBEB_RESAMPLER_QUALITY_DEFAULT,
       CUBEB_RESAMPLER_RECLOCK_NONE);
 
