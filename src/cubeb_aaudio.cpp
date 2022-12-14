@@ -290,8 +290,8 @@ update_state(cubeb_stream * stm)
         istate == AAUDIO_STREAM_STATE_FLUSHED ||
         istate == AAUDIO_STREAM_STATE_UNKNOWN ||
         istate == AAUDIO_STREAM_STATE_DISCONNECTED) {
-      const char * name = WRAP(AAudio_convertStreamStateToText)(istate);
-      LOG("Unexpected android input stream state %s", name);
+      LOG("Unexpected android input stream state %s",
+          WRAP(AAudio_convertStreamStateToText)(istate));
       shutdown(stm);
       return;
     }
@@ -302,8 +302,8 @@ update_state(cubeb_stream * stm)
         ostate == AAUDIO_STREAM_STATE_FLUSHED ||
         ostate == AAUDIO_STREAM_STATE_UNKNOWN ||
         ostate == AAUDIO_STREAM_STATE_DISCONNECTED) {
-      const char * name = WRAP(AAudio_convertStreamStateToText)(istate);
-      LOG("Unexpected android output stream state %s", name);
+      LOG("Unexpected android output stream state %s",
+          WRAP(AAudio_convertStreamStateToText)(istate));
       shutdown(stm);
       return;
     }
@@ -980,18 +980,16 @@ aaudio_stream_init_impl(cubeb_stream * stm, cubeb_devid input_device,
       return res_err;
     }
 
-    // output debug information
-    aaudio_sharing_mode_t sm = WRAP(AAudioStream_getSharingMode)(stm->ostream);
-    aaudio_performance_mode_t pm =
-        WRAP(AAudioStream_getPerformanceMode)(stm->ostream);
-    int bcap = WRAP(AAudioStream_getBufferCapacityInFrames)(stm->ostream);
-    int bsize = WRAP(AAudioStream_getBufferSizeInFrames)(stm->ostream);
     int rate = WRAP(AAudioStream_getSampleRate)(stm->ostream);
-    LOG("AAudio output stream sharing mode: %d", sm);
-    LOG("AAudio output stream performance mode: %d", pm);
-    LOG("AAudio output stream buffer capacity: %d", bcap);
-    LOG("AAudio output stream buffer size: %d", bsize);
-    LOG("AAudio output stream buffer rate: %d", rate);
+    LOG("AAudio output stream sharing mode: %d",
+        WRAP(AAudioStream_getSharingMode)(stm->ostream));
+    LOG("AAudio output stream performance mode: %d",
+        WRAP(AAudioStream_getPerformanceMode)(stm->ostream));
+    LOG("AAudio output stream buffer capacity: %d",
+        WRAP(AAudioStream_getBufferCapacityInFrames)(stm->ostream));
+    LOG("AAudio output stream buffer size: %d",
+        WRAP(AAudioStream_getBufferSizeInFrames)(stm->ostream));
+    LOG("AAudio output stream sample-rate: %d", rate);
 
     stm->sample_rate = output_stream_params->rate;
     out_params = *output_stream_params;
@@ -1021,17 +1019,15 @@ aaudio_stream_init_impl(cubeb_stream * stm, cubeb_devid input_device,
       return res_err;
     }
 
-    // output debug information
-    aaudio_sharing_mode_t sm = WRAP(AAudioStream_getSharingMode)(stm->istream);
-    aaudio_performance_mode_t pm =
-        WRAP(AAudioStream_getPerformanceMode)(stm->istream);
     int bcap = WRAP(AAudioStream_getBufferCapacityInFrames)(stm->istream);
-    int bsize = WRAP(AAudioStream_getBufferSizeInFrames)(stm->istream);
     int rate = WRAP(AAudioStream_getSampleRate)(stm->istream);
-    LOG("AAudio input stream sharing mode: %d", sm);
-    LOG("AAudio input stream performance mode: %d", pm);
+    LOG("AAudio input stream sharing mode: %d",
+        WRAP(AAudioStream_getSharingMode)(stm->istream));
+    LOG("AAudio input stream performance mode: %d",
+        WRAP(AAudioStream_getPerformanceMode)(stm->istream));
     LOG("AAudio input stream buffer capacity: %d", bcap);
-    LOG("AAudio input stream buffer size: %d", bsize);
+    LOG("AAudio input stream buffer size: %d",
+        WRAP(AAudioStream_getBufferSizeInFrames)(stm->istream));
     LOG("AAudio input stream buffer rate: %d", rate);
 
     stm->in_buf.reset(new char[bcap * frame_size]());
