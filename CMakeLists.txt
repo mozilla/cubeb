@@ -169,6 +169,10 @@ if(LAZY_LOAD_LIBS)
 
   if(USE_PULSE OR USE_ALSA OR USE_JACK OR USE_SNDIO OR USE_AAUDIO)
     target_link_libraries(cubeb PRIVATE ${CMAKE_DL_LIBS})
+
+    if(ANDROID)
+      target_compile_definitions(cubeb PRIVATE __ANDROID_UNAVAILABLE_SYMBOLS_ARE_WEAK__)
+    endif()
   endif()
 
 else()
