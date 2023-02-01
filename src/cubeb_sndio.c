@@ -459,7 +459,8 @@ sndio_stream_init(cubeb * context, cubeb_stream ** stream,
     goto err;
   }
   if (rpar.bits != wpar.bits || rpar.le != wpar.le || rpar.sig != wpar.sig ||
-      rpar.bps != wpar.bps || (wpar.bits < 8 * wpar.bps && rpar.msb != wpar.msb) ||
+      rpar.bps != wpar.bps ||
+      (wpar.bits < 8 * wpar.bps && rpar.msb != wpar.msb) ||
       rpar.rate != wpar.rate ||
       ((s->mode & SIO_REC) && rpar.rchan != wpar.rchan) ||
       ((s->mode & SIO_PLAY) && rpar.pchan != wpar.pchan)) {
