@@ -17,6 +17,7 @@
 #include <condition_variable>
 #include <cstring>
 #include <dlfcn.h>
+#include <inttypes.h>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -1385,7 +1386,7 @@ aaudio_stream_get_position(cubeb_stream * stm, uint64_t * position)
     stm->previous_clock = *position;
   }
 
-  LOG("aaudio_stream_get_position: %ld", *position);
+  LOG("aaudio_stream_get_position: %" PRIu64 " frames", *position);
 
   return CUBEB_OK;
 }
