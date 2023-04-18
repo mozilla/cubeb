@@ -190,6 +190,28 @@ struct AutoInCallback {
   cubeb_stream * stm;
 };
 
+// Returns when aaudio_stream's state is equal to desired_state
+static int
+wait_for_state_change(AAudioStream * aaudio_stream,
+                      aaudio_stream_state_t desired_state)
+{
+  aaudio_stream_state_t new_state;
+  do {
+    aaudio_result_t res = WRAP(AAudioStream_waitForStateChange)(
+        aaudio_stream, AAUDIO_STREAM_STATE_UNKNOWN, &new_state, 0);
+    if (res != AAUDIO_OK) {
+      LOG("AAudioStream_waitForStateChanged: %s",
+          WRAP(AAudio_convertResultToText)(res));
+      return CUBEB_ERROR;
+    }
+  } while (new_state != desired_state);
+
+  LOG("wait_for_state_change: current state now: %s",
+      cubeb_AAudio_convertStreamStateToText(new_state));
+
+  return CUBEB_OK;
+}
+
 // Only allowed from state thread, while mutex on stm is locked
 static void
 shutdown_with_error(cubeb_stream * stm)
@@ -201,6 +223,14 @@ shutdown_with_error(cubeb_stream * stm)
     WRAP(AAudioStream_requestStop)(stm->ostream);
   }
 
+  if (stm->istream) {
+    wait_for_state_change(stm->istream, AAUDIO_STREAM_STATE_STOPPED);
+  }
+  if (stm->ostream) {
+    wait_for_state_change(stm->ostream, AAUDIO_STREAM_STATE_STOPPED);
+  }
+
+  assert(!stm->in_data_callback.load());
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
   stm->state.store(stream_state::SHUTDOWN);
 }
