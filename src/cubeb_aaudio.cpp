@@ -181,7 +181,7 @@ struct cubeb {
 
 // Only allowed from state thread, while mutex on stm is locked
 static void
-shutdown(cubeb_stream * stm)
+shutdown_with_error(cubeb_stream * stm)
 {
   if (stm->istream) {
     WRAP(AAudioStream_requestStop)(stm->istream);
@@ -247,7 +247,7 @@ update_state(cubeb_stream * stm)
     }
 
     if (old_state == stream_state::ERROR) {
-      shutdown(stm);
+      shutdown_with_error(stm);
       return;
     }
 
@@ -292,7 +292,7 @@ update_state(cubeb_stream * stm)
         istate == AAUDIO_STREAM_STATE_DISCONNECTED) {
       LOG("Unexpected android input stream state %s",
           WRAP(AAudio_convertStreamStateToText)(istate));
-      shutdown(stm);
+      shutdown_with_error(stm);
       return;
     }
 
@@ -304,7 +304,7 @@ update_state(cubeb_stream * stm)
         ostate == AAUDIO_STREAM_STATE_DISCONNECTED) {
       LOG("Unexpected android output stream state %s",
           WRAP(AAudio_convertStreamStateToText)(istate));
-      shutdown(stm);
+      shutdown_with_error(stm);
       return;
     }
 
