@@ -15,6 +15,7 @@
 #include <cassert>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <cstring>
 #include <dlfcn.h>
 #include <inttypes.h>
@@ -101,6 +102,7 @@ LIBAAUDIO_API_VISIT(MAKE_TYPEDEF)
 #endif
 
 const uint8_t MAX_STREAMS = 16;
+const int64_t NS_PER_S = static_cast<int64_t>(1e9);
 
 using unique_lock = std::unique_lock<std::mutex>;
 using lock_guard = std::lock_guard<std::mutex>;
@@ -190,15 +192,22 @@ struct AutoInCallback {
   cubeb_stream * stm;
 };
 
-// Returns when aaudio_stream's state is equal to desired_state
+// Returns when aaudio_stream's state is equal to desired_state.
+// poll_frequency_ns is the duration that is slept in between asking for
+// state updates and getting the new state.
+// When waiting for a stream to stop, it is best to pick a value similar
+// to the callback time because STOPPED will happen after
+// draining.
 static int
 wait_for_state_change(AAudioStream * aaudio_stream,
-                      aaudio_stream_state_t desired_state)
+                      aaudio_stream_state_t desired_state,
+                      int64_t poll_frequency_ns)
 {
   aaudio_stream_state_t new_state;
   do {
     aaudio_result_t res = WRAP(AAudioStream_waitForStateChange)(
-        aaudio_stream, AAUDIO_STREAM_STATE_UNKNOWN, &new_state, 0);
+        aaudio_stream, AAUDIO_STREAM_STATE_UNKNOWN, &new_state,
+        poll_frequency_ns);
     if (res != AAUDIO_OK) {
       LOG("AAudioStream_waitForStateChanged: %s",
           WRAP(AAudio_convertResultToText)(res));
@@ -223,11 +232,14 @@ shutdown_with_error(cubeb_stream * stm)
     WRAP(AAudioStream_requestStop)(stm->ostream);
   }
 
+  int64_t poll_frequency_ns = NS_PER_S * stm->out_frame_size / stm->sample_rate;
   if (stm->istream) {
-    wait_for_state_change(stm->istream, AAUDIO_STREAM_STATE_STOPPED);
+    wait_for_state_change(stm->istream, AAUDIO_STREAM_STATE_STOPPED,
+                          poll_frequency_ns);
   }
   if (stm->ostream) {
-    wait_for_state_change(stm->ostream, AAUDIO_STREAM_STATE_STOPPED);
+    wait_for_state_change(stm->ostream, AAUDIO_STREAM_STATE_STOPPED,
+                          poll_frequency_ns);
   }
 
   assert(!stm->in_data_callback.load());
@@ -1250,8 +1262,8 @@ aaudio_stream_start(cubeb_stream * stm)
       break;
 
     // If the state switched [DRAINING -> STOPPING] or [DRAINING/STOPPING ->
-    // STOPPED] in the meantime, we can simply overwrite that since we restarted
-    // the stream.
+    // STOPPED] in the meantime, we can simply overwrite that since we
+    // restarted the stream.
     case stream_state::STOPPING:
     case stream_state::STOPPED:
       continue;
