@@ -36,7 +36,11 @@ jobs:
     - name: Test
       shell: bash
       run: (cd build && ctest -V)
-      if: ${{ matrix.os == 'ubuntu-20.04' || matrix.os == 'macos-11' }}
+
+    - name: Test winmm
+      shell: bash
+      run: (cd build && CUBEB_BACKEND=winmm ctest -V)
+      if: ${{ matrix.os == 'windows-2019' }}
 
   build-android:
     runs-on: ubuntu-20.04
