@@ -25,6 +25,17 @@ jobs:
       run: pulseaudio -D --start
       if: matrix.os == 'ubuntu-20.04'
 
+    - name: Install virtual audio devices (Windows)
+      run: git clone https://github.com/LABSN/sound-ci-helpers && powershell sound-ci-helpers/windows/setup_sound.ps1
+      if: ${{ matrix.os == 'windows-2019' }}
+
+    - name: Allow microphone access to all apps (Windows)
+      shell: pwsh
+      run: |
+        New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy\"
+        New-ItemProperty -Path "HKLM:\SOFTWARE\policies\microsoft\windows\appprivacy" -Name "LetAppsAccessMicrophone" -Value "0x00000001"  -PropertyType "dword"
+      if: ${{ matrix.os == 'windows-2019' }}
+
     - name: Configure CMake
       shell: bash
       run: cmake -S . -B build -DCMAKE_BUILD_TYPE=$BUILD_TYPE
