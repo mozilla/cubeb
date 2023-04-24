@@ -167,6 +167,8 @@ winmm_refill_stream(cubeb_stream * stm)
   long wanted;
   MMRESULT r;
 
+  ALOG("winmm_refill_stream");
+
   EnterCriticalSection(&stm->lock);
   stm->free_buffers += 1;
   XASSERT(stm->free_buffers > 0 && stm->free_buffers <= NBUFS);
@@ -174,6 +176,7 @@ winmm_refill_stream(cubeb_stream * stm)
   if (stm->draining) {
     LeaveCriticalSection(&stm->lock);
     if (stm->free_buffers == NBUFS) {
+      ALOG("winmm_refill_stream draining");
       stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
     }
     SetEvent(stm->event);
@@ -231,6 +234,8 @@ winmm_refill_stream(cubeb_stream * stm)
     stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
     return;
   }
+
+  ALOG("winmm_refill_stream %ld frames", got);
 
   LeaveCriticalSection(&stm->lock);
 }
@@ -574,6 +579,8 @@ winmm_stream_init(cubeb * context, cubeb_stream ** stream,
   stm->written = 0;
 
   *stream = stm;
+
+  LOG("winmm_stream_init OK");
 
   return CUBEB_OK;
 }
