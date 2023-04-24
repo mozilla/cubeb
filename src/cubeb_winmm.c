@@ -153,9 +153,10 @@ winmm_get_next_buffer(cubeb_stream * stm)
 }
 
 static long
-preroll_callback(cubeb_stream * stream, void * user, const void * inputbuffer, void * outputbuffer, long nframes)
+preroll_callback(cubeb_stream * stream, void * user, const void * inputbuffer,
+                 void * outputbuffer, long nframes)
 {
-  memset((uint8_t*)outputbuffer, 0, nframes * bytes_per_frame(stream->params));
+  memset((uint8_t *)outputbuffer, 0, nframes * bytes_per_frame(stream->params));
   return nframes;
 }
 
@@ -800,9 +801,11 @@ winmm_stream_get_position(cubeb_stream * stm, uint64_t * position)
     return CUBEB_ERROR;
   }
 
-  uint64_t position_not_adjusted = update_64bit_position(stm, time.u.cb) / stm->frame_size;
+  uint64_t position_not_adjusted =
+      update_64bit_position(stm, time.u.cb) / stm->frame_size;
 
-  // Subtract the number of frames that were written while prerolling, during initialization.
+  // Subtract the number of frames that were written while prerolling, during
+  // initialization.
   if (position_not_adjusted < stm->position_base) {
     *position = 0;
   } else {
