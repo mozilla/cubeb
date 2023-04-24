@@ -197,8 +197,7 @@ winmm_refill_stream(cubeb_stream * stm)
   EnterCriticalSection(&stm->lock);
   if (got < 0) {
     LeaveCriticalSection(&stm->lock);
-    /* XXX handle this case */
-    XASSERT(0);
+    stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
     return;
   } else if (got < wanted) {
     stm->draining = 1;
