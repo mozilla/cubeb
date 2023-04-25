@@ -105,6 +105,7 @@ struct cubeb_stream {
   int free_buffers;
   int shutdown;
   int draining;
+  int error;
   HANDLE event;
   HWAVEOUT waveout;
   CRITICAL_SECTION lock;
@@ -171,6 +172,10 @@ winmm_refill_stream(cubeb_stream * stm)
   ALOG("winmm_refill_stream");
 
   EnterCriticalSection(&stm->lock);
+  if (stm->error) {
+    LeaveCriticalSection(&stm->lock);
+    return;
+  }
   stm->free_buffers += 1;
   XASSERT(stm->free_buffers > 0 && stm->free_buffers <= NBUFS);
 
@@ -200,8 +205,8 @@ winmm_refill_stream(cubeb_stream * stm)
   got = stm->data_callback(stm, stm->user_ptr, NULL, hdr->lpData, wanted);
   EnterCriticalSection(&stm->lock);
   if (got < 0) {
+    stm->error = 1;
     LeaveCriticalSection(&stm->lock);
-    stm->shutdown = 1;
     SetEvent(stm->event);
     stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
     return;
@@ -614,7 +619,7 @@ winmm_stream_destroy(cubeb_stream * stm)
     LeaveCriticalSection(&stm->lock);
 
     /* Wait for all blocks to complete. */
-    while (device_valid && enqueued > 0) {
+    while (device_valid && enqueued > 0 && !stm->error) {
       DWORD rv = WaitForSingleObject(stm->event, INFINITE);
       XASSERT(rv == WAIT_OBJECT_0);
 
