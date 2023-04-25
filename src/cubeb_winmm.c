@@ -201,6 +201,8 @@ winmm_refill_stream(cubeb_stream * stm)
   EnterCriticalSection(&stm->lock);
   if (got < 0) {
     LeaveCriticalSection(&stm->lock);
+    stm->shutdown = 1;
+    SetEvent(stm->event);
     stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
     return;
   } else if (got < wanted) {
