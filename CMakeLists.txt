@@ -427,6 +427,10 @@ if(BUILD_TOOLS)
   install(TARGETS cubeb-test)
 endif()
 
+if(NOT CLANG_FORMAT_BINARY)
+set(CLANG_FORMAT_BINARY clang-format)
+endif()
+
 add_custom_target(clang-format-check
   find
     ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -434,7 +438,7 @@ add_custom_target(clang-format-check
     -type f (-name "*.cpp" -o -name "*.c" -o -name "*.h")
     -not -path "*/subprojects/speex/*"
     -print0
-  | xargs -0 clang-format -Werror -n
+  | xargs -0 ${CLANG_FORMAT_BINARY} -Werror -n
   COMMENT "Check formatting with clang-format"
   VERBATIM)
 
