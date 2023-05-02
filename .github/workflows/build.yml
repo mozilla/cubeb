@@ -74,15 +74,18 @@ jobs:
       run: cmake --build build
 
   check_format:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v3
       with:
         submodules: true
 
+    - name: Install Dependencies (Linux)
+      run: sudo apt-get update && sudo apt-get install clang-format-15
+
     - name: Configure CMake
       shell: bash
-      run: cmake -S . -B build
+      run: cmake -S . -B build -DCLANG_FORMAT_BINARY=clang-format-15
 
     - name: Check format
       shell: bash
