@@ -32,7 +32,7 @@
 #ifdef LOG
 #undef LOG
 #endif
-//#define LOGGING_ENABLED
+// #define LOGGING_ENABLED
 #ifdef LOGGING_ENABLED
 #define LOG(args...)                                                           \
   __android_log_print(ANDROID_LOG_INFO, "Cubeb_OpenSL", ##args)
@@ -40,7 +40,7 @@
 #define LOG(...)
 #endif
 
-//#define TIMESTAMP_ENABLED
+// #define TIMESTAMP_ENABLED
 #ifdef TIMESTAMP_ENABLED
 #define FILENAME                                                               \
   (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
