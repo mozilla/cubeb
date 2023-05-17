@@ -3139,6 +3139,23 @@ wasapi_stream_set_volume(cubeb_stream * stm, float volume)
   return CUBEB_OK;
 }
 
+// TODO: Need to implement stream_register_device_changed_callback.
+int
+wasapi_stream_get_max_request_size(cubeb_stream * stm,
+                                   uint32_t * max_request_size)
+{
+  auto_lock lock(stm->stream_reset_lock);
+
+  if (!stm->output_client && !stm->input_client) {
+    return CUBEB_ERROR;
+  }
+
+  *max_request_size =
+      std::max(stm->output_buffer_frame_count, stm->input_buffer_frame_count);
+
+  return CUBEB_OK;
+}
+
 static char const *
 wstr_to_utf8(LPCWSTR str)
 {
@@ -3566,6 +3583,7 @@ cubeb_ops const wasapi_ops = {
     /*.stream_get_current_device =*/NULL,
     /*.stream_device_destroy =*/NULL,
     /*.stream_register_device_changed_callback =*/NULL,
+    /*.stream_get_max_request_size =*/wasapi_stream_get_max_request_size,
     /*.register_device_collection_changed =*/
     wasapi_register_device_collection_changed,
 };

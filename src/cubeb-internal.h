@@ -66,6 +66,8 @@ struct cubeb_ops {
   int (*stream_register_device_changed_callback)(
       cubeb_stream * stream,
       cubeb_device_changed_callback device_changed_callback);
+  int (*stream_get_max_request_size)(cubeb_stream * stream,
+                                     uint32_t * max_request_size);
   int (*register_device_collection_changed)(
       cubeb * context, cubeb_device_type devtype,
       cubeb_device_collection_changed_callback callback, void * user_ptr);

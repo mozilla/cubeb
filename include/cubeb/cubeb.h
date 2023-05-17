@@ -607,6 +607,7 @@ cubeb_stream_get_latency(cubeb_stream * stream, uint32_t * latency);
     @retval CUBEB_ERROR */
 CUBEB_EXPORT int
 cubeb_stream_get_input_latency(cubeb_stream * stream, uint32_t * latency);
+
 /** Set the volume for a stream.
     @param stream the stream for which to adjust the volume.
     @param volume a float between 0.0 (muted) and 1.0 (maximum volume)
@@ -636,6 +637,20 @@ cubeb_stream_set_name(cubeb_stream * stream, char const * stream_name);
 CUBEB_EXPORT int
 cubeb_stream_get_current_device(cubeb_stream * stm,
                                 cubeb_device ** const device);
+
+/** Get the maximum request size for this stream in frames.  This is the largest
+    value that will be presented or requested via `data_callback`'s `nframes`
+   parameter. Note: This value may change if the stream is automatically
+   reconfigured due to device changes. Callers of this API should use
+   cubeb_stream_register_device_changed_callback to monitor device changes and
+   requery this API after a device change.
+    @param stream the stream for which to retrieve max request size.
+    @param max_request_size the max request size in frames.
+    @retval CUBEB_OK
+    @retval CUBEB_ERROR_NOT_SUPPORTED */
+CUBEB_EXPORT int
+cubeb_stream_get_max_request_size(cubeb_stream * stream,
+                                  uint32_t * max_request_size);
 
 /** Destroy a cubeb_device structure.
     @param stream the stream passed in cubeb_stream_get_current_device

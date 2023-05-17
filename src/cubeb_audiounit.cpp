@@ -3681,5 +3681,6 @@ cubeb_ops const audiounit_ops = {
     /*.stream_device_destroy =*/audiounit_stream_device_destroy,
     /*.stream_register_device_changed_callback =*/
     audiounit_stream_register_device_changed_callback,
+    /*.stream_get_max_request_size = */ NULL,
     /*.register_device_collection_changed =*/
     audiounit_register_device_collection_changed};

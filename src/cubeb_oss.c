@@ -1350,4 +1350,5 @@ static struct cubeb_ops const oss_ops = {
     .stream_get_current_device = oss_get_current_device,
     .stream_device_destroy = oss_stream_device_destroy,
     .stream_register_device_changed_callback = NULL,
+    .stream_get_max_request_size = NULL,
     .register_device_collection_changed = NULL};

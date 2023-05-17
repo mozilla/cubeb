@@ -501,6 +501,22 @@ cubeb_stream_get_current_device(cubeb_stream * stream,
 }
 
 int
+cubeb_stream_get_max_request_size(cubeb_stream * stream,
+                                  uint32_t * max_request_size)
+{
+  if (!stream || !max_request_size) {
+    return CUBEB_ERROR_INVALID_PARAMETER;
+  }
+
+  if (!stream->context->ops->stream_get_max_request_size) {
+    return CUBEB_ERROR_NOT_SUPPORTED;
+  }
+
+  return stream->context->ops->stream_get_max_request_size(stream,
+                                                           max_request_size);
+}
+
+int
 cubeb_stream_device_destroy(cubeb_stream * stream, cubeb_device * device)
 {
   if (!stream || !device) {

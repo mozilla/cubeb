@@ -1600,6 +1600,7 @@ const static struct cubeb_ops aaudio_ops = {
     /*.stream_get_current_device =*/NULL,
     /*.stream_device_destroy =*/NULL,
     /*.stream_register_device_changed_callback =*/NULL,
+    /*.stream_get_max_request_size =*/NULL,
     /*.register_device_collection_changed =*/NULL};
 
 extern "C" /*static*/ int
