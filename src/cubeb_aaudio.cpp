@@ -145,6 +145,8 @@ struct cubeb_stream {
   // mutex synchronizes access to the stream from the state thread
   // and user-called functions. Everything that is accessed in the
   // aaudio data (or error) callback is synchronized only via atomics.
+  // This lock is acquired for the entirety of the reinitialization period, when
+  // changing device.
   std::mutex mutex;
 
   std::unique_ptr<char[]> in_buf;
@@ -848,10 +850,58 @@ aaudio_input_data_cb(AAudioStream * astream, void * user_data,
 }
 
 static void
+reinitialize_stream(cubeb_stream * stm) {
+  // This cannot be done from within the error callback, bounce to another
+  // thread.
+  // In this situation, the lock is acquired for the entire duration of the
+  // function, so that this reinitialization period is atomic.
+  std::thread([stm] {
+    lock_guard lock(stm->mutex);
+    stream_state state = stm->state.load();
+    bool was_playing = state == stream_state::STARTED ||
+                       state == stream_state::STARTING ||
+                       state == stream_state::DRAINING;
+    int err = aaudio_stream_stop_locked(stm, lock);
+    // error ignored.
+    aaudio_stream_destroy_locked(stm, lock);
+    err = aaudio_stream_init_impl(stm, lock);
+
+    assert(stm->in_use.load());
+
+    if (err != CUBEB_OK) {
+      aaudio_stream_destroy_locked(stm, lock);
+      LOG("aaudio_stream_init_impl error while reiniting: %s",
+          WRAP(AAudio_convertResultToText)(err));
+      stm->state.store(stream_state::ERROR);
+      return;
+    }
+
+    if (was_playing) {
+      err = aaudio_stream_start_locked(stm, lock);
+      if (err != CUBEB_OK) {
+        aaudio_stream_destroy_locked(stm, lock);
+        LOG("aaudio_stream_start error while reiniting: %s",
+            WRAP(AAudio_convertResultToText)(err));
+        stm->state.store(stream_state::ERROR);
+        return;
+      }
+    }
+  }).detach();
+}
+
+static void
 aaudio_error_cb(AAudioStream * astream, void * user_data, aaudio_result_t error)
 {
   cubeb_stream * stm = static_cast<cubeb_stream *>(user_data);
   assert(stm->ostream == astream || stm->istream == astream);
+
+  // Device change -- reinitialize on the new default device.
+  if (error == AAUDIO_ERROR_DISCONNECTED) {
+    LOG("Audio device change, reinitializing stream");
+    reinitialize_stream(stm);
+    return;
+  }
+
   LOG("AAudio error callback: %s", WRAP(AAudio_convertResultToText)(error));
   stm->state.store(stream_state::ERROR);
 }
