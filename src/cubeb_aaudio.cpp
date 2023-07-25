@@ -25,19 +25,6 @@
 #include <thread>
 #include <time.h>
 
-#if defined(__ANDROID__)
-#ifdef LOG
-#undef LOG
-#endif
-// #define LOGGING_ENABLED
-#ifdef LOGGING_ENABLED
-#define LOG(args...)                                                           \
-  __android_log_print(ANDROID_LOG_INFO, "Cubeb_AAudio", ##args)
-#else
-#define LOG(...)
-#endif
-#endif
-
 #ifdef DISABLE_LIBAAUDIO_DLOPEN
 #define WRAP(x) x
 #else
@@ -677,11 +664,12 @@ aaudio_duplex_data_cb(AAudioStream * astream, void * user_data,
   assert(num_frames >= 0);
 
   stream_state state = atomic_load(&stm->state);
-  // int istate = WRAP(AAudioStream_getState)(stm->istream);
-  // int ostate = WRAP(AAudioStream_getState)(stm->ostream);
-  // ALOGV("aaudio duplex data cb on stream %p: state %ld (in: %d, out: %d),
-  // num_frames: %ld",
-  //     (void*) stm, state, istate, ostate, num_frames);
+  int istate = WRAP(AAudioStream_getState)(stm->istream);
+  int ostate = WRAP(AAudioStream_getState)(stm->ostream);
+  ALOGV(
+      "aaudio duplex data cb on stream %p: state %ld (in: %d, out: %d), "
+      "num_frames: %ld",
+      (void*)stm, state, istate, ostate, num_frames);
 
   // all other states may happen since the callback might be called
   // from within requestStart
@@ -760,10 +748,9 @@ aaudio_output_data_cb(AAudioStream * astream, void * user_data,
   assert(num_frames >= 0);
 
   stream_state state = stm->state.load();
-  // int ostate = WRAP(AAudioStream_getState)(stm->ostream);
-  // ALOGV("aaudio output data cb on stream %p: state %ld (%d), num_frames:
-  // %ld",
-  //     (void*) stm, state, ostate, num_frames);
+  int ostate = WRAP(AAudioStream_getState)(stm->ostream);
+  ALOGV("aaudio output data cb on stream %p: state %ld (%d), num_frames: %ld",
+        stm, state, ostate, num_frames);
 
   // all other states may happen since the callback might be called
   // from within requestStart
@@ -811,9 +798,9 @@ aaudio_input_data_cb(AAudioStream * astream, void * user_data,
   assert(num_frames >= 0);
 
   stream_state state = stm->state.load();
-  // int istate = WRAP(AAudioStream_getState)(stm->istream);
-  // ALOGV("aaudio input data cb on stream %p: state %ld (%d), num_frames: %ld",
-  //     (void*) stm, state, istate, num_frames);
+  int istate = WRAP(AAudioStream_getState)(stm->istream);
+  ALOGV("aaudio input data cb on stream %p: state %ld (%d), num_frames: %ld",
+        stm, state, istate, num_frames);
 
   // all other states may happen since the callback might be called
   // from within requestStart
