@@ -1385,7 +1385,7 @@ aaudio_stream_stop_locked(cubeb_stream * stm, lock_guard<mutex>& lock)
   stream_state state = stm->state.load();
   int istate = stm->istream ? WRAP(AAudioStream_getState)(stm->istream) : 0;
   int ostate = stm->ostream ? WRAP(AAudioStream_getState)(stm->ostream) : 0;
-  LOGV("STOPPING stream %p: %d (%d %d)", (void *)stm, state, istate, ostate);
+  LOG("STOPPING stream %p: %d (%d %d)", (void *)stm, state, istate, ostate);
 
   switch (state) {
   case stream_state::STOPPED:
