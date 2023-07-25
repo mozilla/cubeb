@@ -25,6 +25,8 @@
 #include <thread>
 #include <time.h>
 
+using namespace std;
+
 #ifdef DISABLE_LIBAAUDIO_DLOPEN
 #define WRAP(x) x
 #else
@@ -92,8 +94,14 @@ LIBAAUDIO_API_VISIT(MAKE_TYPEDEF)
 const uint8_t MAX_STREAMS = 16;
 const int64_t NS_PER_S = static_cast<int64_t>(1e9);
 
-using unique_lock = std::unique_lock<std::mutex>;
-using lock_guard = std::lock_guard<std::mutex>;
+static int
+aaudio_stream_init_impl(cubeb_stream * stm, lock_guard<mutex> & lock);
+static int
+aaudio_stream_stop_locked(cubeb_stream * stm, lock_guard<mutex> & lock);
+static void
+aaudio_stream_destroy_locked(cubeb_stream * stm, lock_guard<mutex>& lock);
+static int
+aaudio_stream_start_locked(cubeb_stream * stm, lock_guard<mutex>& lock);
 
 enum class stream_state {
   INIT = 0,
@@ -142,6 +150,9 @@ struct cubeb_stream {
   std::unique_ptr<char[]> in_buf;
   unsigned in_frame_size{}; // size of one input frame
 
+  unique_ptr<cubeb_stream_params> output_stream_params;
+  unique_ptr<cubeb_stream_params> input_stream_params;
+  uint32_t latency_frames{};
   cubeb_sample_format out_format{};
   uint32_t sample_rate{};
   std::atomic<float> volume{1.f};
@@ -902,6 +913,13 @@ static void
 aaudio_stream_destroy(cubeb_stream * stm)
 {
   lock_guard lock(stm->mutex);
+  stm->in_use.store(false);
+  aaudio_stream_destroy_locked(stm, lock);
+}
+
+static void
+aaudio_stream_destroy_locked(cubeb_stream * stm, lock_guard<mutex>& lock)
+{
   assert(stm->state == stream_state::STOPPED ||
          stm->state == stream_state::STOPPING ||
          stm->state == stream_state::INIT ||
@@ -956,18 +974,12 @@ aaudio_stream_destroy(cubeb_stream * stm)
   stm->out_frame_size = {};
 
   stm->state.store(stream_state::INIT);
-  stm->in_use.store(false);
 }
 
 static int
-aaudio_stream_init_impl(cubeb_stream * stm, cubeb_devid input_device,
-                        cubeb_stream_params * input_stream_params,
-                        cubeb_devid output_device,
-                        cubeb_stream_params * output_stream_params,
-                        unsigned int latency_frames)
+aaudio_stream_init_impl(cubeb_stream * stm, lock_guard<mutex>& lock)
 {
   assert(stm->state.load() == stream_state::INIT);
-  stm->in_use.store(true);
 
   aaudio_result_t res;
   AAudioStreamBuilder * sb;
@@ -989,16 +1001,16 @@ aaudio_stream_init_impl(cubeb_stream * stm, cubeb_devid input_device,
   std::unique_ptr<AAudioStreamBuilder, StreamBuilderDestructor> sbPtr(sb);
 
   WRAP(AAudioStreamBuilder_setErrorCallback)(sb, aaudio_error_cb, stm);
-  WRAP(AAudioStreamBuilder_setBufferCapacityInFrames)(sb, static_cast<int32_t>(latency_frames));
+  WRAP(AAudioStreamBuilder_setBufferCapacityInFrames)(sb, static_cast<int32_t>(stm->latency_frames));
 
   AAudioStream_dataCallback in_data_callback{};
   AAudioStream_dataCallback out_data_callback{};
-  if (output_stream_params && input_stream_params) {
+  if (stm->output_stream_params && stm->input_stream_params) {
     out_data_callback = aaudio_duplex_data_cb;
     in_data_callback = nullptr;
-  } else if (input_stream_params) {
+  } else if (stm->input_stream_params) {
     in_data_callback = aaudio_input_data_cb;
-  } else if (output_stream_params) {
+  } else if (stm->output_stream_params) {
     out_data_callback = aaudio_output_data_cb;
   } else {
     LOG("Tried to open stream without input or output parameters");
@@ -1010,7 +1022,7 @@ aaudio_stream_init_impl(cubeb_stream * stm, cubeb_devid input_device,
   WRAP(AAudioStreamBuilder_setSharingMode)(sb, AAUDIO_SHARING_MODE_EXCLUSIVE);
 #endif
 
-  if (latency_frames <= POWERSAVE_LATENCY_FRAMES_THRESHOLD) {
+  if (stm->latency_frames <= POWERSAVE_LATENCY_FRAMES_THRESHOLD) {
     LOG("AAudio setting low latency mode for stream");
     WRAP(AAudioStreamBuilder_setPerformanceMode)
     (sb, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
@@ -1025,14 +1037,14 @@ aaudio_stream_init_impl(cubeb_stream * stm, cubeb_devid input_device,
   // initialize streams
   // output
   cubeb_stream_params out_params;
-  if (output_stream_params) {
+  if (stm->output_stream_params) {
     int output_preset = stm->voice_output ? AAUDIO_USAGE_VOICE_COMMUNICATION
                                           : AAUDIO_USAGE_MEDIA;
     WRAP(AAudioStreamBuilder_setUsage)(sb, output_preset);
     WRAP(AAudioStreamBuilder_setDirection)(sb, AAUDIO_DIRECTION_OUTPUT);
     WRAP(AAudioStreamBuilder_setDataCallback)(sb, out_data_callback, stm);
     int res_err =
-        realize_stream(sb, output_stream_params, &stm->ostream, &frame_size);
+        realize_stream(sb, stm->output_stream_params.get(), &stm->ostream, &frame_size);
     if (res_err) {
       return res_err;
     }
@@ -1048,19 +1060,19 @@ aaudio_stream_init_impl(cubeb_stream * stm, cubeb_devid input_device,
         WRAP(AAudioStream_getBufferSizeInFrames)(stm->ostream));
     LOG("AAudio output stream sample-rate: %d", rate);
 
-    stm->sample_rate = output_stream_params->rate;
-    out_params = *output_stream_params;
+    stm->sample_rate = stm->output_stream_params->rate;
+    out_params = *stm->output_stream_params;
     out_params.rate = rate;
 
-    stm->out_channels = output_stream_params->channels;
-    stm->out_format = output_stream_params->format;
+    stm->out_channels = stm->output_stream_params->channels;
+    stm->out_format = stm->output_stream_params->format;
     stm->out_frame_size = frame_size;
     stm->volume.store(1.f);
   }
 
   // input
   cubeb_stream_params in_params;
-  if (input_stream_params) {
+  if (stm->input_stream_params) {
     // Match what the OpenSL backend does for now, we could use UNPROCESSED and
     // VOICE_COMMUNICATION here, but we'd need to make it clear that
     // application-level AEC and other voice processing should be disabled
@@ -1071,7 +1083,7 @@ aaudio_stream_init_impl(cubeb_stream * stm, cubeb_devid input_device,
     WRAP(AAudioStreamBuilder_setDirection)(sb, AAUDIO_DIRECTION_INPUT);
     WRAP(AAudioStreamBuilder_setDataCallback)(sb, in_data_callback, stm);
     int res_err =
-        realize_stream(sb, input_stream_params, &stm->istream, &frame_size);
+        realize_stream(sb, stm->input_stream_params.get(), &stm->istream, &frame_size);
     if (res_err) {
       return res_err;
     }
@@ -1088,18 +1100,18 @@ aaudio_stream_init_impl(cubeb_stream * stm, cubeb_devid input_device,
     LOG("AAudio input stream buffer rate: %d", rate);
 
     stm->in_buf.reset(new char[bcap * frame_size]());
-    assert(!stm->sample_rate || stm->sample_rate == input_stream_params->rate);
+    assert(!stm->sample_rate || stm->sample_rate == stm->input_stream_params->rate);
 
-    stm->sample_rate = input_stream_params->rate;
-    in_params = *input_stream_params;
+    stm->sample_rate = stm->input_stream_params->rate;
+    in_params = *stm->input_stream_params;
     in_params.rate = rate;
     stm->in_frame_size = frame_size;
   }
 
   // initialize resampler
   stm->resampler = cubeb_resampler_create(
-      stm, input_stream_params ? &in_params : nullptr,
-      output_stream_params ? &out_params : nullptr, stm->sample_rate,
+      stm, stm->input_stream_params ? &in_params : nullptr,
+      stm->output_stream_params ? &out_params : nullptr, stm->sample_rate,
       stm->data_callback, stm->user_ptr, CUBEB_RESAMPLER_QUALITY_DEFAULT,
       CUBEB_RESAMPLER_RECLOCK_NONE);
 
@@ -1131,7 +1143,7 @@ aaudio_stream_init(cubeb * ctx, cubeb_stream ** stream,
 
   // atomically find a free stream.
   cubeb_stream * stm = nullptr;
-  unique_lock lock;
+  unique_lock<mutex> lock;
   for (auto & stream : ctx->streams) {
     // This check is only an optimization, we don't strictly need it
     // since we check again after locking the mutex.
@@ -1155,6 +1167,8 @@ aaudio_stream_init(cubeb * ctx, cubeb_stream ** stream,
     break;
   }
 
+  stm->in_use.store(true);
+
   if (!stm) {
     LOG("Error: maximum number of streams reached");
     return CUBEB_ERROR;
@@ -1169,18 +1183,29 @@ aaudio_stream_init(cubeb * ctx, cubeb_stream ** stream,
   stm->voice_output = output_stream_params &&
                       !!(output_stream_params->prefs & CUBEB_STREAM_PREF_VOICE);
   stm->previous_clock = 0;
+  stm->latency_frames = latency_frames;
+  if (output_stream_params) {
+    stm->output_stream_params = std::make_unique<cubeb_stream_params>();
+    *(stm->output_stream_params) = *output_stream_params;
+  }
+  if (input_stream_params) {
+    stm->input_stream_params = std::make_unique<cubeb_stream_params>();
+    *(stm->input_stream_params) = *input_stream_params;
+  }
 
   LOG("cubeb stream prefs: voice_input: %s voice_output: %s",
       stm->voice_input ? "true" : "false",
       stm->voice_output ? "true" : "false");
 
-  int err = aaudio_stream_init_impl(stm, input_device, input_stream_params,
-                                    output_device, output_stream_params,
-                                    latency_frames);
+  // This is ok: the thread is marked as being in use
+  lock.unlock();
+  lock_guard guard(stm->mutex);
+
+  int err = aaudio_stream_init_impl(stm, guard);
   if (err != CUBEB_OK) {
     // This is needed since aaudio_stream_destroy will lock the mutex again.
     // It's no problem that there is a gap in between as the stream isn't
-    // actually in u se.
+    // actually in use.
     lock.unlock();
     aaudio_stream_destroy(stm);
     return err;
@@ -1191,11 +1216,15 @@ aaudio_stream_init(cubeb * ctx, cubeb_stream ** stream,
 }
 
 static int
-aaudio_stream_start(cubeb_stream * stm)
+aaudio_stream_start(cubeb_stream * stm) {
+  lock_guard lock(stm->mutex);
+  return aaudio_stream_start_locked(stm, lock);
+}
+
+static int
+aaudio_stream_start_locked(cubeb_stream * stm, lock_guard<mutex>& lock)
 {
   assert(stm && stm->in_use.load());
-  lock_guard lock(stm->mutex);
-
   stream_state state = stm->state.load();
   int istate = stm->istream ? WRAP(AAudioStream_getState)(stm->istream) : 0;
   int ostate = stm->ostream ? WRAP(AAudioStream_getState)(stm->ostream) : 0;
@@ -1295,6 +1324,13 @@ aaudio_stream_stop(cubeb_stream * stm)
 {
   assert(stm && stm->in_use.load());
   lock_guard lock(stm->mutex);
+  return aaudio_stream_stop_locked(stm, lock);
+}
+
+static int
+aaudio_stream_stop_locked(cubeb_stream * stm, lock_guard<mutex>& lock)
+{
+  assert(stm && stm->in_use.load());
 
   stream_state state = stm->state.load();
   int istate = stm->istream ? WRAP(AAudioStream_getState)(stm->istream) : 0;
