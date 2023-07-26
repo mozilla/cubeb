@@ -452,6 +452,9 @@ struct cubeb_stream {
    * called and the render loop thread has exited, destroy this stream object.
    */
   LONG ref_count = 0;
+
+  /* True if the stream is active, false if inactive. */
+  bool active = false;
 };
 
 class monitor_device_notifications {
@@ -1420,6 +1423,11 @@ static unsigned int __stdcall wasapi_stream_render_loop(LPVOID stream)
     }
     case WAIT_OBJECT_0 + 1: { /* reconfigure */
       auto_lock lock(stm->stream_reset_lock);
+      if (!stm->active) {
+        /* Avoid reconfiguring, stream start will handle it. */
+        LOG("Stream is not active, ignoring reconfigure.");
+        continue;
+      }
       XASSERT(stm->output_client || stm->input_client);
       LOG("Reconfiguring the stream");
       /* Close the stream */
@@ -2985,6 +2993,8 @@ wasapi_stream_start(cubeb_stream * stm)
     }
   }
 
+  stm->active = true;
+
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STARTED);
 
   return CUBEB_OK;
@@ -3014,6 +3024,8 @@ wasapi_stream_stop(cubeb_stream * stm)
         return CUBEB_ERROR;
       }
     }
+
+    stm->active = false;
 
     wasapi_state_callback(stm, stm->user_ptr, CUBEB_STATE_STOPPED);
   }
