@@ -1228,13 +1228,12 @@ aaudio_stream_init(cubeb * ctx, cubeb_stream ** stream,
     break;
   }
 
-  stm->in_use.store(true);
-
   if (!stm) {
     LOG("Error: maximum number of streams reached");
     return CUBEB_ERROR;
   }
 
+  stm->in_use.store(true);
   stm->context = ctx;
   stm->user_ptr = user_ptr;
   stm->data_callback = data_callback;
