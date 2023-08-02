@@ -1259,14 +1259,14 @@ aaudio_stream_init(cubeb * ctx, cubeb_stream ** stream,
 
   // This is ok: the thread is marked as being in use
   lock.unlock();
-  lock_guard guard(stm->mutex);
+  int err;
 
-  int err = aaudio_stream_init_impl(stm, guard);
+  {
+    lock_guard guard(stm->mutex);
+    err = aaudio_stream_init_impl(stm, guard);
+  }
+
   if (err != CUBEB_OK) {
-    // This is needed since aaudio_stream_destroy will lock the mutex again.
-    // It's no problem that there is a gap in between as the stream isn't
-    // actually in use.
-    lock.unlock();
     aaudio_stream_destroy(stm);
     return err;
   }
