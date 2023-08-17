@@ -28,48 +28,11 @@
 #include "cubeb_array_queue.h"
 #include "cubeb_resampler.h"
 
-#if defined(__ANDROID__)
-#ifdef LOG
-#undef LOG
-#endif
-// #define LOGGING_ENABLED
-#ifdef LOGGING_ENABLED
-#define LOG(args...)                                                           \
-  __android_log_print(ANDROID_LOG_INFO, "Cubeb_OpenSL", ##args)
-#else
-#define LOG(...)
-#endif
-
-// #define TIMESTAMP_ENABLED
-#ifdef TIMESTAMP_ENABLED
-#define FILENAME                                                               \
-  (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
-#define LOG_TS(args...)                                                        \
-  __android_log_print(ANDROID_LOG_INFO, "Cubeb_OpenSL ES: Timestamp(usec)",    \
-                      ##args)
-#define TIMESTAMP(msg)                                                         \
-  do {                                                                         \
-    struct timeval timestamp;                                                  \
-    int ts_ret = gettimeofday(&timestamp, NULL);                               \
-    if (ts_ret == 0) {                                                         \
-      LOG_TS("%lld: %s (%s %s:%d)",                                            \
-             timestamp.tv_sec * 1000000LL + timestamp.tv_usec, msg,            \
-             __FUNCTION__, FILENAME, __LINE__);                                \
-    } else {                                                                   \
-      LOG_TS("Error: %s (%s %s:%d) - %s", msg, __FUNCTION__, FILENAME,         \
-             __LINE__);                                                        \
-    }                                                                          \
-  } while (0)
-#else
-#define TIMESTAMP(...)
-#endif
-
 #define ANDROID_VERSION_GINGERBREAD_MR1 10
 #define ANDROID_VERSION_JELLY_BEAN 18
 #define ANDROID_VERSION_LOLLIPOP 21
 #define ANDROID_VERSION_MARSHMALLOW 23
 #define ANDROID_VERSION_N_MR1 25
-#endif
 
 #define DEFAULT_SAMPLE_RATE 48000
 #define DEFAULT_NUM_OF_FRAMES 480
@@ -516,7 +479,6 @@ recorder_fullduplex_callback(SLAndroidSimpleBufferQueueItf bq, void * context)
 static void
 player_fullduplex_callback(SLBufferQueueItf caller, void * user_ptr)
 {
-  TIMESTAMP("ENTER");
   cubeb_stream * stm = static_cast<cubeb_stream*>(user_ptr);
   assert(stm);
   SLresult res;
@@ -614,7 +576,6 @@ player_fullduplex_callback(SLBufferQueueItf caller, void * user_ptr)
   // Enqueue data in player buffer queue
   res = (*stm->bufq)->Enqueue(stm->bufq, output_buffer, stm->queuebuf_len);
   assert(res == SL_RESULT_SUCCESS);
-  TIMESTAMP("EXIT");
 }
 
 static void
