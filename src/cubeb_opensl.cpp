@@ -13,6 +13,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <time.h>
+#include <vector>
 #if defined(__ANDROID__)
 #include "android/sles_definitions.h"
 #include <SLES/OpenSLES_Android.h>
@@ -136,6 +137,10 @@ struct cubeb_stream {
   int64_t lastCompensativePosition;
   int voice_input;
   int voice_output;
+  std::unique_ptr<cubeb_stream_params> input_params;
+  std::unique_ptr<cubeb_stream_params> output_params;
+  // A non-empty buffer means that f32 -> int16 conversion need to happen
+  std::vector<float> conversion_buffer_output;
 };
 
 /* Forward declaration. */
@@ -272,6 +277,8 @@ bufferqueue_callback(SLBufferQueueItf caller, void * user_ptr)
   }
 
   uint8_t * buf = reinterpret_cast<uint8_t*>(stm->queuebuf[stm->queuebuf_idx]);
+  uint8_t * buf_back = buf;
+  uint32_t sample_count = 0;
   written = 0;
   int r = pthread_mutex_lock(&stm->mutex);
   assert(r == 0);
@@ -280,10 +287,29 @@ bufferqueue_callback(SLBufferQueueItf caller, void * user_ptr)
   r = pthread_mutex_unlock(&stm->mutex);
   assert(r == 0);
   if (!draining && !shutdown) {
+    if (!stm->conversion_buffer_output.empty()) {
+      sample_count =
+        stm->output_params->channels * stm->queuebuf_len / stm->framesize;
+      if (stm->conversion_buffer_output.size() < sample_count) {
+        stm->conversion_buffer_output.resize(sample_count);
+      }
+      buf = reinterpret_cast<uint8_t*>(stm->conversion_buffer_output.data());
+    }
+
     written = cubeb_resampler_fill(stm->resampler, NULL, NULL, buf,
                                    stm->queuebuf_len / stm->framesize);
 
-    LOG("bufferqueue_callback: resampler fill returned %ld frames", written);
+    if (!stm->conversion_buffer_output.empty()) {
+      int16_t* buf_int16 = reinterpret_cast<int16_t*>(buf_back);
+      for (uint32_t i = 0; i < sample_count; i++) {
+        float v = stm->conversion_buffer_output[i] * 32768.0f;
+        float clamped = std::max(-32768.0f, std::min(32767.0f, v));
+        buf_int16[i] = clamped;
+      }
+      buf = buf_back;
+    }
+
+    ALOGV("bufferqueue_callback: resampler fill returned %ld frames", written);
     if (written < 0 || written * stm->framesize > stm->queuebuf_len) {
       r = pthread_mutex_lock(&stm->mutex);
       assert(r == 0);
@@ -828,6 +854,11 @@ opensl_set_format(SLDataFormat_PCM * format, cubeb_stream_params * params)
   assert(format);
   assert(params);
 
+  // If this function is called, this backend has been compiled with an older
+  // version of Android, that doesn't support floating point audio IO.
+  // The stream is configured with int16 of the proper endianess, and conversion
+  // will happen during playback.
+
   format->formatType = SL_DATAFORMAT_PCM;
   format->numChannels = params->channels;
   // samplesPerSec is in milliHertz
@@ -840,13 +871,13 @@ opensl_set_format(SLDataFormat_PCM * format, cubeb_stream_params * params)
 
   switch (params->format) {
   case CUBEB_SAMPLE_S16LE:
+  case CUBEB_SAMPLE_FLOAT32LE:
     format->endianness = SL_BYTEORDER_LITTLEENDIAN;
     break;
   case CUBEB_SAMPLE_S16BE:
+  case CUBEB_SAMPLE_FLOAT32BE:
     format->endianness = SL_BYTEORDER_BIGENDIAN;
     break;
-  default:
-    return CUBEB_ERROR_INVALID_FORMAT;
   }
   return CUBEB_OK;
 }
@@ -1058,19 +1089,13 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params)
   assert(params);
 
   stm->user_output_rate = params->rate;
-  if (params->format == CUBEB_SAMPLE_S16NE ||
-      params->format == CUBEB_SAMPLE_S16BE) {
-    stm->framesize = params->channels * sizeof(int16_t);
-  } else if (params->format == CUBEB_SAMPLE_FLOAT32NE ||
-             params->format == CUBEB_SAMPLE_FLOAT32BE) {
-    stm->framesize = params->channels * sizeof(float);
-  }
   stm->lastPosition = -1;
   stm->lastPositionTimeStamp = 0;
   stm->lastCompensativePosition = -1;
 
   void * format = NULL;
   SLuint32 * format_sample_rate = NULL;
+  bool using_floats = false;
 
 #if defined(__ANDROID__) && (__ANDROID_API__ >= ANDROID_VERSION_LOLLIPOP)
   SLAndroidDataFormat_PCM_EX pcm_ext_format;
@@ -1080,6 +1105,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params)
     }
     format = &pcm_ext_format;
     format_sample_rate = &pcm_ext_format.sampleRate;
+    using_floats = pcm_ext_format.representation == SL_ANDROID_PCM_REPRESENTATION_FLOAT;
   }
 #endif
 
@@ -1090,6 +1116,23 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params)
     }
     format = &pcm_format;
     format_sample_rate = &pcm_format.samplesPerSec;
+  }
+
+  // It's always possible to use int16 regardless of the Android version.
+  // However if compiling for older Android version, it's possible to request
+  // f32 audio, but Android only supports int16, in which case a conversion need
+  // to happen.
+  if ((params->format == CUBEB_SAMPLE_FLOAT32NE ||
+       params->format == CUBEB_SAMPLE_FLOAT32BE) &&
+      !using_floats) {
+    // setup conversion from f32 to int16
+    stm->conversion_buffer_output.resize(1);
+  }
+
+  if (!using_floats) {
+    stm->framesize = params->channels * sizeof(int16_t);
+  } else {
+    stm->framesize = params->channels * sizeof(float);
   }
 
   SLDataLocator_BufferQueue loc_bufq;
@@ -1361,6 +1404,13 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream,
 
   stm = reinterpret_cast<cubeb_stream*>(calloc(1, sizeof(*stm)));
   assert(stm);
+
+  if (input_stream_params) {
+    stm->input_params = std::make_unique<cubeb_stream_params>(*input_stream_params);
+  }
+  if (output_stream_params) {
+    stm->output_params = std::make_unique<cubeb_stream_params>(*output_stream_params);
+  }
 
   stm->context = ctx;
   stm->data_callback = data_callback;
