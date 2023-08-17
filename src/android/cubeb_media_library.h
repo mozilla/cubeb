@@ -1,7 +1,7 @@
-#include <dlfcn.h>
-#include <stdlib.h>
 #include <cassert>
 #include <cstdint>
+#include <dlfcn.h>
+#include <stdlib.h>
 #ifndef _CUBEB_MEDIA_LIBRARY_H_
 #define _CUBEB_MEDIA_LIBRARY_H_
 
@@ -32,15 +32,15 @@ cubeb_load_media_library()
   if (!ml.get_output_latency) {
     // In case of failure, try the signature from legacy version.
     // status_t AudioSystem::getOutputLatency(uint32_t* latency, int streamType)
-    ml.get_output_latency =
-        (get_output_latency_ptr)dlsym(ml.libmedia, "_ZN7android11AudioSystem16getOutputLatencyEPji");
+    ml.get_output_latency = (get_output_latency_ptr)dlsym(
+        ml.libmedia, "_ZN7android11AudioSystem16getOutputLatencyEPji");
     if (!ml.get_output_latency) {
       return nullptr;
     }
   }
 
   media_lib * rv = nullptr;
-  rv = (media_lib*) calloc(1, sizeof(media_lib));
+  rv = (media_lib *)calloc(1, sizeof(media_lib));
   assert(rv);
   *rv = ml;
   return rv;
