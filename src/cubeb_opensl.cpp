@@ -57,7 +57,7 @@ struct cubeb {
   output_latency_function * p_output_latency_function;
 };
 
-#define NELEMS(A) (sizeof(A) / sizeof (A)[0])
+#define NELEMS(A) (sizeof(A) / sizeof(A)[0])
 #define NBUFS 2
 
 struct cubeb_stream {
@@ -223,7 +223,7 @@ opensl_set_shutdown(cubeb_stream * stm, uint32_t value)
 static void
 play_callback(SLPlayItf caller, void * user_ptr, SLuint32 event)
 {
-  cubeb_stream * stm = static_cast<cubeb_stream*>(user_ptr);
+  cubeb_stream * stm = static_cast<cubeb_stream *>(user_ptr);
   assert(stm);
   switch (event) {
   case SL_PLAYEVENT_HEADATMARKER:
@@ -237,7 +237,7 @@ play_callback(SLPlayItf caller, void * user_ptr, SLuint32 event)
 static void
 recorder_marker_callback(SLRecordItf caller, void * pContext, SLuint32 event)
 {
-  cubeb_stream * stm = static_cast<cubeb_stream*>(pContext);
+  cubeb_stream * stm = static_cast<cubeb_stream *>(pContext);
   assert(stm);
 
   if (event == SL_RECORDEVENT_HEADATMARKER) {
@@ -263,7 +263,7 @@ recorder_marker_callback(SLRecordItf caller, void * pContext, SLuint32 event)
 static void
 bufferqueue_callback(SLBufferQueueItf caller, void * user_ptr)
 {
-  cubeb_stream * stm = static_cast<cubeb_stream*>(user_ptr);
+  cubeb_stream * stm = static_cast<cubeb_stream *>(user_ptr);
   assert(stm);
   SLBufferQueueState state;
   SLresult res;
@@ -276,7 +276,7 @@ bufferqueue_callback(SLBufferQueueItf caller, void * user_ptr)
     return;
   }
 
-  uint8_t * buf = reinterpret_cast<uint8_t*>(stm->queuebuf[stm->queuebuf_idx]);
+  uint8_t * buf = reinterpret_cast<uint8_t *>(stm->queuebuf[stm->queuebuf_idx]);
   uint8_t * buf_back = buf;
   uint32_t sample_count = 0;
   written = 0;
@@ -289,18 +289,18 @@ bufferqueue_callback(SLBufferQueueItf caller, void * user_ptr)
   if (!draining && !shutdown) {
     if (!stm->conversion_buffer_output.empty()) {
       sample_count =
-        stm->output_params->channels * stm->queuebuf_len / stm->framesize;
+          stm->output_params->channels * stm->queuebuf_len / stm->framesize;
       if (stm->conversion_buffer_output.size() < sample_count) {
         stm->conversion_buffer_output.resize(sample_count);
       }
-      buf = reinterpret_cast<uint8_t*>(stm->conversion_buffer_output.data());
+      buf = reinterpret_cast<uint8_t *>(stm->conversion_buffer_output.data());
     }
 
     written = cubeb_resampler_fill(stm->resampler, nullptr, nullptr, buf,
                                    stm->queuebuf_len / stm->framesize);
 
     if (!stm->conversion_buffer_output.empty()) {
-      int16_t* buf_int16 = reinterpret_cast<int16_t*>(buf_back);
+      int16_t * buf_int16 = reinterpret_cast<int16_t *>(buf_back);
       for (uint32_t i = 0; i < sample_count; i++) {
         float v = stm->conversion_buffer_output[i] * 32768.0f;
         float clamped = std::max(-32768.0f, std::min(32767.0f, v));
@@ -338,7 +338,8 @@ bufferqueue_callback(SLBufferQueueItf caller, void * user_ptr)
     pthread_mutex_unlock(&stm->mutex);
   }
 
-  if (!draining && written * stm->framesize < static_cast<uint32_t>(stm->queuebuf_len)) {
+  if (!draining &&
+      written * stm->framesize < static_cast<uint32_t>(stm->queuebuf_len)) {
     LOG("bufferqueue_callback draining");
     r = pthread_mutex_lock(&stm->mutex);
     assert(r == 0);
@@ -378,7 +379,8 @@ opensl_enqueue_recorder(cubeb_stream * stm, void ** last_filled_buffer)
     // index.
     last_buffer = stm->input_buffer_array[current_index];
     // Advance to get next available buffer
-    current_index = static_cast<int>((current_index + 1) % stm->input_array_capacity);
+    current_index =
+        static_cast<int>((current_index + 1) % stm->input_array_capacity);
   }
   // enqueue next empty buffer to be filled by the recorder
   SLresult res = (*stm->recorderBufferQueueItf)
@@ -402,7 +404,7 @@ void
 recorder_callback(SLAndroidSimpleBufferQueueItf bq, void * context)
 {
   assert(context);
-  cubeb_stream * stm = static_cast<cubeb_stream*>(context);
+  cubeb_stream * stm = static_cast<cubeb_stream *>(context);
   assert(stm->recorderBufferQueueItf);
 
   int r = pthread_mutex_lock(&stm->mutex);
@@ -464,7 +466,7 @@ void
 recorder_fullduplex_callback(SLAndroidSimpleBufferQueueItf bq, void * context)
 {
   assert(context);
-  cubeb_stream * stm = static_cast<cubeb_stream*>(context);
+  cubeb_stream * stm = static_cast<cubeb_stream *>(context);
   assert(stm->recorderBufferQueueItf);
 
   int r = pthread_mutex_lock(&stm->mutex);
@@ -506,7 +508,7 @@ recorder_fullduplex_callback(SLAndroidSimpleBufferQueueItf bq, void * context)
 static void
 player_fullduplex_callback(SLBufferQueueItf caller, void * user_ptr)
 {
-  cubeb_stream * stm = static_cast<cubeb_stream*>(user_ptr);
+  cubeb_stream * stm = static_cast<cubeb_stream *>(user_ptr);
   assert(stm);
   SLresult res;
 
@@ -610,7 +612,7 @@ opensl_destroy(cubeb * ctx);
 
 #if defined(__ANDROID__)
 #if (__ANDROID_API__ >= ANDROID_VERSION_LOLLIPOP)
-using system_property_get = int (const char *, char *);
+using system_property_get = int(const char *, char *);
 
 static int
 wrap_system_property_get(const char * name, char * value)
@@ -665,19 +667,21 @@ opensl_init(cubeb ** context, char const * context_name)
   if (android_version > 0 &&
       android_version <= ANDROID_VERSION_GINGERBREAD_MR1) {
     // Don't even attempt to run on Gingerbread and lower
+    LOG("Error: Android version too old, exiting.");
     return CUBEB_ERROR;
   }
 #endif
 
   *context = nullptr;
 
-  ctx = static_cast<cubeb*>(calloc(1, sizeof(*ctx)));
+  ctx = static_cast<cubeb *>(calloc(1, sizeof(*ctx)));
   assert(ctx);
 
   ctx->ops = &opensl_ops;
 
   ctx->lib = dlopen("libOpenSLES.so", RTLD_LAZY);
   if (!ctx->lib) {
+    LOG("Error: Couldn't find libOpenSLES.so, exiting");
     free(ctx);
     return CUBEB_ERROR;
   }
@@ -710,6 +714,7 @@ opensl_init(cubeb ** context, char const * context_name)
       !ctx->SL_IID_ANDROIDSIMPLEBUFFERQUEUE ||
 #endif
       !ctx->SL_IID_PLAY || !ctx->SL_IID_RECORD) {
+    LOG("Error: didn't find required symbols, exiting.");
     opensl_destroy(ctx);
     return CUBEB_ERROR;
   }
@@ -720,18 +725,21 @@ opensl_init(cubeb ** context, char const * context_name)
   res = f_slCreateEngine(&ctx->engObj, 1, opt, 0, nullptr, nullptr);
 
   if (res != SL_RESULT_SUCCESS) {
+    LOG("Error: slCreateEngine failure, exiting.");
     opensl_destroy(ctx);
     return CUBEB_ERROR;
   }
 
   res = (*ctx->engObj)->Realize(ctx->engObj, SL_BOOLEAN_FALSE);
   if (res != SL_RESULT_SUCCESS) {
+    LOG("Error: engine realization failure, exiting.");
     opensl_destroy(ctx);
     return CUBEB_ERROR;
   }
 
   res = (*ctx->engObj)->GetInterface(ctx->engObj, SL_IID_ENGINE, &ctx->eng);
   if (res != SL_RESULT_SUCCESS) {
+    LOG("Error: GetInterface(..., SL_IID_ENGINE, ...), exiting.");
     opensl_destroy(ctx);
     return CUBEB_ERROR;
   }
@@ -741,12 +749,14 @@ opensl_init(cubeb ** context, char const * context_name)
   res =
       (*ctx->eng)->CreateOutputMix(ctx->eng, &ctx->outmixObj, 1, idsom, reqom);
   if (res != SL_RESULT_SUCCESS) {
+    LOG("Error: CreateOutputMix failure, exiting.");
     opensl_destroy(ctx);
     return CUBEB_ERROR;
   }
 
   res = (*ctx->outmixObj)->Realize(ctx->outmixObj, SL_BOOLEAN_FALSE);
   if (res != SL_RESULT_SUCCESS) {
+    LOG("Error: Output mix object failure, exiting.");
     opensl_destroy(ctx);
     return CUBEB_ERROR;
   }
@@ -1025,7 +1035,8 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
                            &stm->recorderBufferQueueItf);
   if (res != SL_RESULT_SUCCESS) {
     LOG("Failed to get recorder (android) buffer queue interface. Error code: "
-        "%lu", res);
+        "%lu",
+        res);
     return CUBEB_ERROR;
   }
 
@@ -1102,17 +1113,20 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params)
   SLAndroidDataFormat_PCM_EX pcm_ext_format;
   if (get_android_version() >= ANDROID_VERSION_LOLLIPOP) {
     if (opensl_set_format_ext(&pcm_ext_format, params) != CUBEB_OK) {
+      LOG("opensl_set_format_ext: error, exiting");
       return CUBEB_ERROR_INVALID_FORMAT;
     }
     format = &pcm_ext_format;
     format_sample_rate = &pcm_ext_format.sampleRate;
-    using_floats = pcm_ext_format.representation == SL_ANDROID_PCM_REPRESENTATION_FLOAT;
+    using_floats =
+        pcm_ext_format.representation == SL_ANDROID_PCM_REPRESENTATION_FLOAT;
   }
 #endif
 
   SLDataFormat_PCM pcm_format;
   if (!format) {
     if (opensl_set_format(&pcm_format, params) != CUBEB_OK) {
+      LOG("opensl_set_format: error, exiting");
       return CUBEB_ERROR_INVALID_FORMAT;
     }
     format = &pcm_format;
@@ -1127,6 +1141,8 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params)
        params->format == CUBEB_SAMPLE_FLOAT32BE) &&
       !using_floats) {
     // setup conversion from f32 to int16
+    LOG("Output stream configured for using float, but not supported: a "
+        "conversion will be performed");
     stm->conversion_buffer_output.resize(1);
   }
 
@@ -1224,6 +1240,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params)
 
     SLuint32 performanceMode = SL_ANDROID_PERFORMANCE_LATENCY;
     if (stm->buffer_size_frames > POWERSAVE_LATENCY_FRAMES_THRESHOLD) {
+      LOG("Audio stream configured for power saving");
       performanceMode = SL_ANDROID_PERFORMANCE_POWER_SAVING;
     }
 
@@ -1232,8 +1249,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params)
                                  &performanceMode, sizeof(performanceMode));
     if (res != SL_RESULT_SUCCESS) {
       LOG("Failed to set Android performance mode to %d Error code: %lu. This "
-          "is"
-          " not fatal",
+          "is not fatal.",
           performanceMode, res);
     }
   }
@@ -1340,7 +1356,8 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params)
     // will be consumed and kick off the buffer queue callback.
     // Note the duration of a single frame is less than 1ms. We don't bother
     // adjusting the playback position.
-    uint8_t * buf = reinterpret_cast<uint8_t*>(stm->queuebuf[stm->queuebuf_idx++]);
+    uint8_t * buf =
+        reinterpret_cast<uint8_t *>(stm->queuebuf[stm->queuebuf_idx++]);
     memset(buf, 0, stm->framesize);
     res = (*stm->bufq)->Enqueue(stm->bufq, buf, stm->framesize);
     assert(res == SL_RESULT_SUCCESS);
@@ -1403,14 +1420,16 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream,
     return r;
   }
 
-  stm = reinterpret_cast<cubeb_stream*>(calloc(1, sizeof(*stm)));
+  stm = reinterpret_cast<cubeb_stream *>(calloc(1, sizeof(*stm)));
   assert(stm);
 
   if (input_stream_params) {
-    stm->input_params = std::make_unique<cubeb_stream_params>(*input_stream_params);
+    stm->input_params =
+        std::make_unique<cubeb_stream_params>(*input_stream_params);
   }
   if (output_stream_params) {
-    stm->output_params = std::make_unique<cubeb_stream_params>(*output_stream_params);
+    stm->output_params =
+        std::make_unique<cubeb_stream_params>(*output_stream_params);
   }
 
   stm->context = ctx;
@@ -1448,6 +1467,7 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream,
         output_stream_params->format, stm->buffer_size_frames);
     r = opensl_configure_playback(stm, output_stream_params);
     if (r != CUBEB_OK) {
+      LOG("Error: playback-side configuration error, exiting.");
       opensl_stream_destroy(stm);
       return r;
     }
@@ -1460,6 +1480,7 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream,
         input_stream_params->format, stm->buffer_size_frames);
     r = opensl_configure_capture(stm, input_stream_params);
     if (r != CUBEB_OK) {
+      LOG("Error: record-side configuration error, exiting.");
       opensl_stream_destroy(stm);
       return r;
     }
