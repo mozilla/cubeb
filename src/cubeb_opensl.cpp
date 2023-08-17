@@ -74,7 +74,7 @@
 #define DEFAULT_SAMPLE_RATE 48000
 #define DEFAULT_NUM_OF_FRAMES 480
 
-static struct cubeb_ops const opensl_ops;
+extern cubeb_ops const opensl_ops;
 
 struct cubeb {
   struct cubeb_ops const * ops;
@@ -255,7 +255,7 @@ opensl_set_shutdown(cubeb_stream * stm, uint32_t value)
 static void
 play_callback(SLPlayItf caller, void * user_ptr, SLuint32 event)
 {
-  cubeb_stream * stm = user_ptr;
+  cubeb_stream * stm = static_cast<cubeb_stream*>(user_ptr);
   assert(stm);
   switch (event) {
   case SL_PLAYEVENT_HEADATMARKER:
@@ -269,7 +269,7 @@ play_callback(SLPlayItf caller, void * user_ptr, SLuint32 event)
 static void
 recorder_marker_callback(SLRecordItf caller, void * pContext, SLuint32 event)
 {
-  cubeb_stream * stm = pContext;
+  cubeb_stream * stm = static_cast<cubeb_stream*>(pContext);
   assert(stm);
 
   if (event == SL_RECORDEVENT_HEADATMARKER) {
@@ -295,7 +295,7 @@ recorder_marker_callback(SLRecordItf caller, void * pContext, SLuint32 event)
 static void
 bufferqueue_callback(SLBufferQueueItf caller, void * user_ptr)
 {
-  cubeb_stream * stm = user_ptr;
+  cubeb_stream * stm = static_cast<cubeb_stream*>(user_ptr);
   assert(stm);
   SLBufferQueueState state;
   SLresult res;
@@ -308,7 +308,7 @@ bufferqueue_callback(SLBufferQueueItf caller, void * user_ptr)
     return;
   }
 
-  uint8_t * buf = stm->queuebuf[stm->queuebuf_idx];
+  uint8_t * buf = reinterpret_cast<uint8_t*>(stm->queuebuf[stm->queuebuf_idx]);
   written = 0;
   int r = pthread_mutex_lock(&stm->mutex);
   assert(r == 0);
@@ -319,6 +319,7 @@ bufferqueue_callback(SLBufferQueueItf caller, void * user_ptr)
   if (!draining && !shutdown) {
     written = cubeb_resampler_fill(stm->resampler, NULL, NULL, buf,
                                    stm->queuebuf_len / stm->framesize);
+
     LOG("bufferqueue_callback: resampler fill returned %ld frames", written);
     if (written < 0 || written * stm->framesize > stm->queuebuf_len) {
       r = pthread_mutex_lock(&stm->mutex);
@@ -411,7 +412,7 @@ void
 recorder_callback(SLAndroidSimpleBufferQueueItf bq, void * context)
 {
   assert(context);
-  cubeb_stream * stm = context;
+  cubeb_stream * stm = static_cast<cubeb_stream*>(context);
   assert(stm->recorderBufferQueueItf);
 
   int r = pthread_mutex_lock(&stm->mutex);
@@ -473,7 +474,7 @@ void
 recorder_fullduplex_callback(SLAndroidSimpleBufferQueueItf bq, void * context)
 {
   assert(context);
-  cubeb_stream * stm = context;
+  cubeb_stream * stm = static_cast<cubeb_stream*>(context);
   assert(stm->recorderBufferQueueItf);
 
   int r = pthread_mutex_lock(&stm->mutex);
@@ -516,7 +517,7 @@ static void
 player_fullduplex_callback(SLBufferQueueItf caller, void * user_ptr)
 {
   TIMESTAMP("ENTER");
-  cubeb_stream * stm = user_ptr;
+  cubeb_stream * stm = static_cast<cubeb_stream*>(user_ptr);
   assert(stm);
   SLresult res;
 
@@ -665,7 +666,8 @@ get_android_version(void)
 }
 #endif
 
-/*static*/ int
+extern "C" {
+int
 opensl_init(cubeb ** context, char const * context_name)
 {
   cubeb * ctx;
@@ -681,7 +683,7 @@ opensl_init(cubeb ** context, char const * context_name)
 
   *context = NULL;
 
-  ctx = calloc(1, sizeof(*ctx));
+  ctx = static_cast<cubeb*>(calloc(1, sizeof(*ctx)));
   assert(ctx);
 
   ctx->ops = &opensl_ops;
@@ -772,6 +774,7 @@ opensl_init(cubeb ** context, char const * context_name)
 
   LOG("Cubeb init (%p) success", ctx);
   return CUBEB_OK;
+}
 }
 
 static char const *
@@ -1332,7 +1335,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params)
     // will be consumed and kick off the buffer queue callback.
     // Note the duration of a single frame is less than 1ms. We don't bother
     // adjusting the playback position.
-    uint8_t * buf = stm->queuebuf[stm->queuebuf_idx++];
+    uint8_t * buf = reinterpret_cast<uint8_t*>(stm->queuebuf[stm->queuebuf_idx++]);
     memset(buf, 0, stm->framesize);
     res = (*stm->bufq)->Enqueue(stm->bufq, buf, stm->framesize);
     assert(res == SL_RESULT_SUCCESS);
@@ -1374,7 +1377,7 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream,
                    cubeb_data_callback data_callback,
                    cubeb_state_callback state_callback, void * user_ptr)
 {
-  cubeb_stream * stm;
+  cubeb_stream * stm = nullptr;
 
   assert(ctx);
   if (input_device || output_device) {
@@ -1395,7 +1398,7 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream,
     return r;
   }
 
-  stm = calloc(1, sizeof(*stm));
+  stm = reinterpret_cast<cubeb_stream*>(calloc(1, sizeof(*stm)));
   assert(stm);
 
   stm->context = ctx;
@@ -1778,7 +1781,7 @@ opensl_stream_set_volume(cubeb_stream * stm, float volume)
   return CUBEB_OK;
 }
 
-static struct cubeb_ops const opensl_ops = {
+struct cubeb_ops const opensl_ops = {
     .init = opensl_init,
     .get_backend_id = opensl_get_backend_id,
     .get_max_channel_count = opensl_get_max_channel_count,
