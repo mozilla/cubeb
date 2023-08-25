@@ -141,6 +141,7 @@ struct cubeb_stream {
   std::unique_ptr<cubeb_stream_params> output_params;
   // A non-empty buffer means that f32 -> int16 conversion need to happen
   std::vector<float> conversion_buffer_output;
+  std::vector<float> conversion_buffer_input;
 };
 
 /* Forward declaration. */
@@ -417,6 +418,27 @@ opensl_enqueue_recorder(cubeb_stream * stm, void ** last_filled_buffer)
   return CUBEB_OK;
 }
 
+// If necessary, convert and returns an input buffer.
+// Otherwise, just returns the pointer that has been passed in.
+void *
+convert_input_buffer_if_needed(cubeb_stream * stm, void * input_buffer,
+                               uint32_t sample_count)
+{
+  // Perform conversion if needed
+  if (stm->conversion_buffer_input.empty()) {
+    return input_buffer;
+  }
+  if (stm->conversion_buffer_input.size() < sample_count) {
+    stm->conversion_buffer_input.resize(sample_count);
+  }
+  int16_t * int16_buf = reinterpret_cast<int16_t *>(input_buffer);
+  for (uint32_t i = 0; i < sample_count; i++) {
+    stm->conversion_buffer_input[i] =
+        static_cast<float>(int16_buf[i]) / 32768.f;
+  }
+  return stm->conversion_buffer_input.data();
+}
+
 // input data callback
 void
 recorder_callback(SLAndroidSimpleBufferQueueItf bq, void * context)
@@ -447,8 +469,14 @@ recorder_callback(SLAndroidSimpleBufferQueueItf bq, void * context)
   r = opensl_enqueue_recorder(stm, &input_buffer);
   assert(r == CUBEB_OK);
   assert(input_buffer);
-  // Fill resampler with last input
+
   long input_frame_count = stm->input_buffer_length / stm->input_frame_size;
+  uint32_t sample_count = input_frame_count * stm->input_params->channels;
+
+  input_buffer =
+      convert_input_buffer_if_needed(stm, input_buffer, sample_count);
+
+  // Fill resampler with last input
   long got = cubeb_resampler_fill(stm->resampler, input_buffer,
                                   &input_frame_count, nullptr, 0);
   // Error case
@@ -542,6 +570,7 @@ player_fullduplex_callback(SLBufferQueueItf caller, void * user_ptr)
   r = pthread_mutex_lock(&stm->mutex);
   assert(r == 0);
   output_buffer = stm->queuebuf[stm->queuebuf_idx];
+  void * output_buffer_original_ptr = output_buffer;
   // Advance the output buffer queue index
   stm->queuebuf_idx = (stm->queuebuf_idx + 1) % stm->queuebuf_capacity;
   r = pthread_mutex_unlock(&stm->mutex);
@@ -561,17 +590,27 @@ player_fullduplex_callback(SLBufferQueueItf caller, void * user_ptr)
   // Get input.
   void * input_buffer = array_queue_pop(stm->input_queue);
   long input_frame_count = stm->input_buffer_length / stm->input_frame_size;
+  long sample_count = input_frame_count * stm->input_params->channels;
   long frames_needed = stm->queuebuf_len / stm->framesize;
+
   if (!input_buffer) {
     LOG("Input hole set silent input buffer");
     input_buffer = stm->input_silent_buffer;
   }
+
+  input_buffer =
+      convert_input_buffer_if_needed(stm, input_buffer, sample_count);
+
+  output_buffer = get_output_buffer(stm, output_buffer, sample_count);
 
   long written = 0;
   // Trigger user callback through resampler
   written =
       cubeb_resampler_fill(stm->resampler, input_buffer, &input_frame_count,
                            output_buffer, frames_needed);
+
+  output_buffer =
+      release_output_buffer(stm, output_buffer_original_ptr, sample_count);
 
   LOG("Fill: written %ld, frames_needed %ld, input array size %zu", written,
       frames_needed, array_queue_get_size(stm->input_queue));
@@ -804,8 +843,8 @@ opensl_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
 {
   assert(ctx && max_channels);
   /* The android mixer handles up to two channels, see
-     http://androidxref.com/4.2.2_r1/xref/frameworks/av/services/audioflinger/AudioFlinger.h#67
-   */
+    http://androidxref.com/4.2.2_r1/xref/frameworks/av/services/audioflinger/AudioFlinger.h#67
+  */
   *max_channels = 2;
 
   return CUBEB_OK;
@@ -957,70 +996,90 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
   assert(stm);
   assert(params);
 
-  SLDataLocator_AndroidSimpleBufferQueue lDataLocatorOut;
-  lDataLocatorOut.locatorType = SL_DATALOCATOR_ANDROIDSIMPLEBUFFERQUEUE;
-  lDataLocatorOut.numBuffers = NBUFS;
-
-  SLDataFormat_PCM lDataFormat;
-  int r = opensl_set_format(&lDataFormat, params);
-  if (r != CUBEB_OK) {
-    return CUBEB_ERROR_INVALID_FORMAT;
-  }
-
   /* For now set device rate to params rate. */
   stm->input_device_rate = params->rate;
 
-  SLDataSink lDataSink;
-  lDataSink.pLocator = &lDataLocatorOut;
-  lDataSink.pFormat = &lDataFormat;
+  int rv = initialize_with_format(
+      stm, params,
+      [=](void * format, uint32_t * format_sample_rate,
+          bool using_floats) -> int {
+        SLDataLocator_AndroidSimpleBufferQueue lDataLocatorOut;
+        lDataLocatorOut.locatorType = SL_DATALOCATOR_ANDROIDSIMPLEBUFFERQUEUE;
+        lDataLocatorOut.numBuffers = NBUFS;
 
-  SLDataLocator_IODevice lDataLocatorIn;
-  lDataLocatorIn.locatorType = SL_DATALOCATOR_IODEVICE;
-  lDataLocatorIn.deviceType = SL_IODEVICE_AUDIOINPUT;
-  lDataLocatorIn.deviceID = SL_DEFAULTDEVICEID_AUDIOINPUT;
-  lDataLocatorIn.device = NULL;
+        SLDataSink dataSink;
+        dataSink.pLocator = &lDataLocatorOut;
+        dataSink.pFormat = format;
 
-  SLDataSource lDataSource;
-  lDataSource.pLocator = &lDataLocatorIn;
-  lDataSource.pFormat = NULL;
+        SLDataLocator_IODevice dataLocatorIn;
+        dataLocatorIn.locatorType = SL_DATALOCATOR_IODEVICE;
+        dataLocatorIn.deviceType = SL_IODEVICE_AUDIOINPUT;
+        dataLocatorIn.deviceID = SL_DEFAULTDEVICEID_AUDIOINPUT;
+        dataLocatorIn.device = nullptr;
 
-  const SLInterfaceID lSoundRecorderIIDs[] = {
-      stm->context->SL_IID_RECORD,
-      stm->context->SL_IID_ANDROIDSIMPLEBUFFERQUEUE,
-      stm->context->SL_IID_ANDROIDCONFIGURATION};
+        SLDataSource dataSource;
+        dataSource.pLocator = &dataLocatorIn;
+        dataSource.pFormat = nullptr;
 
-  const SLboolean lSoundRecorderReqs[] = {SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE,
-                                          SL_BOOLEAN_TRUE};
-  // create the audio recorder abstract object
-  SLresult res = (*stm->context->eng)
-                     ->CreateAudioRecorder(
-                         stm->context->eng, &stm->recorderObj, &lDataSource,
-                         &lDataSink, NELEMS(lSoundRecorderIIDs),
-                         lSoundRecorderIIDs, lSoundRecorderReqs);
-  // Sample rate not supported. Try again with default sample rate!
-  if (res == SL_RESULT_CONTENT_UNSUPPORTED) {
-    if (stm->output_enabled && stm->output_configured_rate != 0) {
-      // Set the same with the player. Since there is no
-      // api for input device this is a safe choice.
-      stm->input_device_rate = stm->output_configured_rate;
-    } else {
-      // The output preferred rate is used for an input only scenario.
-      // The default rate expected to be supported from all android devices.
-      stm->input_device_rate = DEFAULT_SAMPLE_RATE;
-    }
-    lDataFormat.samplesPerSec = stm->input_device_rate * 1000;
-    res = (*stm->context->eng)
-              ->CreateAudioRecorder(stm->context->eng, &stm->recorderObj,
-                                    &lDataSource, &lDataSink,
-                                    NELEMS(lSoundRecorderIIDs),
-                                    lSoundRecorderIIDs, lSoundRecorderReqs);
+        const SLInterfaceID lSoundRecorderIIDs[] = {
+            stm->context->SL_IID_RECORD,
+            stm->context->SL_IID_ANDROIDSIMPLEBUFFERQUEUE,
+            stm->context->SL_IID_ANDROIDCONFIGURATION};
 
-    if (res != SL_RESULT_SUCCESS) {
-      LOG("Failed to create recorder. Error code: %lu", res);
-      return CUBEB_ERROR;
-    }
+        const SLboolean lSoundRecorderReqs[] = {
+            SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE};
+        // create the audio recorder abstract object
+        SLresult res =
+            (*stm->context->eng)
+                ->CreateAudioRecorder(stm->context->eng, &stm->recorderObj,
+                                      &dataSource, &dataSink,
+                                      NELEMS(lSoundRecorderIIDs),
+                                      lSoundRecorderIIDs, lSoundRecorderReqs);
+        // Sample rate not supported. Try again with default sample rate!
+        if (res == SL_RESULT_CONTENT_UNSUPPORTED) {
+          if (stm->output_enabled && stm->output_configured_rate != 0) {
+            // Set the same with the player. Since there is no
+            // api for input device this is a safe choice.
+            stm->input_device_rate = stm->output_configured_rate;
+          } else {
+            // The output preferred rate is used for an input only scenario.
+            // The default rate expected to be supported from all android
+            // devices.
+            stm->input_device_rate = DEFAULT_SAMPLE_RATE;
+          }
+          *format_sample_rate = stm->input_device_rate * 1000;
+          res = (*stm->context->eng)
+                    ->CreateAudioRecorder(
+                        stm->context->eng, &stm->recorderObj, &dataSource,
+                        &dataSink, NELEMS(lSoundRecorderIIDs),
+                        lSoundRecorderIIDs, lSoundRecorderReqs);
+
+          if (res != SL_RESULT_SUCCESS) {
+            LOG("Failed to create recorder. Error code: %lu", res);
+            return CUBEB_ERROR;
+          }
+        }
+        // It's always possible to use int16 regardless of the Android version.
+        // However if compiling for older Android version, it's possible to
+        // request f32 audio, but Android only supports int16, in which case a
+        // conversion need to happen.
+        if ((params->format == CUBEB_SAMPLE_FLOAT32NE ||
+             params->format == CUBEB_SAMPLE_FLOAT32BE) &&
+            !using_floats) {
+          // setup conversion from f32 to int16
+          LOG("Input stream configured for using float, but not supported: a "
+              "conversion will be performed");
+          stm->conversion_buffer_input.resize(1);
+        }
+        return CUBEB_OK;
+      });
+
+  if (rv != CUBEB_OK) {
+    LOG("Could not initialize recorder.");
+    return rv;
   }
 
+  SLresult res;
   if (get_android_version() > ANDROID_VERSION_JELLY_BEAN) {
     SLAndroidConfigurationItf recorderConfig;
     res = (*stm->recorderObj)
@@ -1112,7 +1171,14 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
   }
 
   // Calculate length of input buffer according to requested latency
-  stm->input_frame_size = params->channels * sizeof(int16_t);
+  uint32_t sample_size = 0;
+  if (params->format == CUBEB_SAMPLE_FLOAT32BE ||
+      params->format == CUBEB_SAMPLE_FLOAT32NE) {
+    sample_size = sizeof(float);
+  } else {
+    sample_size = sizeof(int16_t);
+  }
+  stm->input_frame_size = params->channels * sample_size;
   stm->input_buffer_length = (stm->input_frame_size * stm->buffer_size_frames);
 
   // Calculate the capacity of input array
@@ -1141,9 +1207,9 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
   }
 
   // Enqueue buffer to start rolling once recorder started
-  res = opensl_enqueue_recorder(stm, NULL);
-  if (res != CUBEB_OK) {
-    return res;
+  rv = opensl_enqueue_recorder(stm, nullptr);
+  if (rv != CUBEB_OK) {
+    return rv;
   }
 
   LOG("Cubeb stream init recorder success");
