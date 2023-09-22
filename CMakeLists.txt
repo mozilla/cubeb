@@ -78,6 +78,7 @@ endif()
 
 add_library(cubeb
   src/cubeb.c
+  src/cubeb_audio_dump.cpp
   src/cubeb_mixer.cpp
   src/cubeb_resampler.cpp
   src/cubeb_log.cpp
@@ -406,6 +407,7 @@ if(BUILD_TESTS)
   cubeb_add_test(duplex)
   cubeb_add_test(logging)
   cubeb_add_test(triple_buffer)
+  cubeb_add_test(audio_dump)
 
   if (USE_WASAPI)
     cubeb_add_test(overload_callback)
