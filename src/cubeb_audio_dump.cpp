@@ -64,13 +64,10 @@ public:
 
   size_t write_all()
   {
-    int available = ringbuffer.available_read();
     size_t written = 0;
-    while (available) {
-      const int buf_sz = 16 * 1024;
-      uint8_t buf[buf_sz];
-      int rv = ringbuffer.dequeue(buf, buf_sz);
-      available -= rv;
+    const int buf_sz = 16 * 1024;
+    uint8_t buf[buf_sz];
+    while (int rv = ringbuffer.dequeue(buf, buf_sz)) {
       written += fwrite(buf, rv, 1, file);
     }
     return written;
