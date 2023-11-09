@@ -620,7 +620,9 @@ aaudio_get_latency(cubeb_stream * stm, aaudio_direction_t direction,
   auto result = WRAP(AAudioStream_getTimestamp)(stream, CLOCK_MONOTONIC,
                                                 &hw_frame_index, &hw_tstamp);
   if (result != AAUDIO_OK) {
-    LOG("AAudioStream_getTimestamp failure.");
+    LOG("AAudioStream_getTimestamp failure for %s: %s",
+        is_output ? "output" : "input",
+        WRAP(AAudio_convertResultToText)(result));
     return 0;
   }
 
@@ -689,9 +691,6 @@ aaudio_duplex_data_cb(AAudioStream * astream, void * user_data,
   stream_state state = atomic_load(&stm->state);
   int istate = WRAP(AAudioStream_getState)(stm->istream);
   int ostate = WRAP(AAudioStream_getState)(stm->ostream);
-  ALOGV("aaudio duplex data cb on stream %p: state %ld (in: %d, out: %d), "
-        "num_frames: %ld",
-        (void *)stm, state, istate, ostate, num_frames);
 
   // all other states may happen since the callback might be called
   // from within requestStart
@@ -700,11 +699,13 @@ aaudio_duplex_data_cb(AAudioStream * astream, void * user_data,
   // This might happen when we started draining but not yet actually
   // stopped the stream from the state thread.
   if (state == stream_state::DRAINING) {
+    LOG("Draining in duplex callback");
     std::memset(audio_data, 0x0, num_frames * stm->out_frame_size);
     return AAUDIO_CALLBACK_RESULT_CONTINUE;
   }
 
   if (num_frames * stm->in_frame_size > stm->in_buf.size()) {
+    LOG("Resizing input buffer in duplex callback");
     stm->in_buf.resize(num_frames * stm->in_frame_size);
   }
   // The aaudio docs state that AAudioStream_read must not be called on
@@ -726,6 +727,10 @@ aaudio_duplex_data_cb(AAudioStream * astream, void * user_data,
         WRAP(AAudio_convertResultToText)(in_num_frames));
     return AAUDIO_CALLBACK_RESULT_STOP;
   }
+
+  ALOGV("aaudio duplex data cb on stream %p: state %ld (in: %d, out: %d), "
+        "num_frames: %ld, read: %ld",
+        (void *)stm, state, istate, ostate, num_frames, in_num_frames);
 
   compute_and_report_latency_metrics(stm);
 
