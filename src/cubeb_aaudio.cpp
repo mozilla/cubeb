@@ -1057,6 +1057,8 @@ aaudio_stream_init_impl(cubeb_stream * stm, lock_guard<mutex> & lock)
 {
   assert(stm->state.load() == stream_state::INIT);
 
+  cubeb_async_log_reset_threads();
+
   aaudio_result_t res;
   AAudioStreamBuilder * sb;
   res = WRAP(AAudio_createStreamBuilder)(&sb);
