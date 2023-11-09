@@ -1509,6 +1509,7 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream,
                    cubeb_state_callback state_callback, void * user_ptr)
 {
   cubeb_stream * stm = nullptr;
+  cubeb_async_log_reset_threads();
 
   assert(ctx);
   if (input_device || output_device) {
