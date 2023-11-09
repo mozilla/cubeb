@@ -110,6 +110,9 @@ aaudio_stream_destroy_locked(cubeb_stream * stm, lock_guard<mutex> & lock);
 static int
 aaudio_stream_start_locked(cubeb_stream * stm, lock_guard<mutex> & lock);
 
+static void
+reinitialize_stream(cubeb_stream * stm);
+
 enum class stream_state {
   INIT = 0,
   STOPPED,
@@ -712,7 +715,13 @@ aaudio_duplex_data_cb(AAudioStream * astream, void * user_data,
   long in_num_frames =
       WRAP(AAudioStream_read)(stm->istream, stm->in_buf.data(), num_frames, 0);
   if (in_num_frames < 0) { // error
-    stm->state.store(stream_state::ERROR);
+    if (in_num_frames == AAUDIO_STREAM_STATE_DISCONNECTED) {
+      LOG("AAudioStream_read: %s (reinitializing)",
+          WRAP(AAudio_convertResultToText)(in_num_frames));
+      reinitialize_stream(stm);
+    } else {
+      stm->state.store(stream_state::ERROR);
+    }
     LOG("AAudioStream_read: %s",
         WRAP(AAudio_convertResultToText)(in_num_frames));
     return AAUDIO_CALLBACK_RESULT_STOP;
