@@ -65,10 +65,10 @@ using namespace std;
   X(AAudioStream_getFramesWritten)                                             \
   X(AAudioStream_getFramesPerBurst)                                            \
   X(AAudioStreamBuilder_setInputPreset)                                        \
-  X(AAudioStreamBuilder_setUsage)
+  X(AAudioStreamBuilder_setUsage)                                              \
+  X(AAudioStreamBuilder_setFramesPerDataCallback)
 
 // not needed or added later on
-// X(AAudioStreamBuilder_setFramesPerDataCallback) \
   // X(AAudioStreamBuilder_setDeviceId)              \
   // X(AAudioStreamBuilder_setSamplesPerFrame)       \
   // X(AAudioStream_getSamplesPerFrame)              \
@@ -1120,10 +1120,26 @@ aaudio_stream_init_impl(cubeb_stream * stm, lock_guard<mutex> & lock)
     WRAP(AAudioStreamBuilder_setUsage)(sb, output_preset);
     WRAP(AAudioStreamBuilder_setDirection)(sb, AAUDIO_DIRECTION_OUTPUT);
     WRAP(AAudioStreamBuilder_setDataCallback)(sb, out_data_callback, stm);
+    assert(stm->latency_frames < std::numeric_limits<int32_t>::max());
+    LOG("Frames per callback set to %d for output", stm->latency_frames);
+    WRAP(AAudioStreamBuilder_setFramesPerDataCallback)(sb, static_cast<int>(stm->latency_frames));
+
     int res_err = realize_stream(sb, stm->output_stream_params.get(),
                                  &stm->ostream, &frame_size);
     if (res_err) {
       return res_err;
+    }
+
+    int32_t output_burst_size =
+        WRAP(AAudioStream_getFramesPerBurst)(stm->ostream);
+    LOG("AAudio output burst size: %d", output_burst_size);
+    // 3 times the burst size seems to be robust.
+    res = WRAP(AAudioStream_setBufferSizeInFrames)(stm->ostream,
+                                                   output_burst_size * 3);
+    if (res < 0) {
+      LOG("AAudioStream_setBufferSizeInFrames error (ostream): %s",
+          WRAP(AAudio_convertResultToText)(res));
+      // Not fatal
     }
 
     int rate = WRAP(AAudioStream_getSampleRate)(stm->ostream);
@@ -1159,10 +1175,24 @@ aaudio_stream_init_impl(cubeb_stream * stm, lock_guard<mutex> & lock)
     WRAP(AAudioStreamBuilder_setInputPreset)(sb, input_preset);
     WRAP(AAudioStreamBuilder_setDirection)(sb, AAUDIO_DIRECTION_INPUT);
     WRAP(AAudioStreamBuilder_setDataCallback)(sb, in_data_callback, stm);
+    assert(stm->latency_frames < std::numeric_limits<int32_t>::max());
+    LOG("Frames per callback set to %d for input", stm->latency_frames);
+    WRAP(AAudioStreamBuilder_setFramesPerDataCallback) (sb, static_cast<int>(stm->latency_frames));
     int res_err = realize_stream(sb, stm->input_stream_params.get(),
                                  &stm->istream, &frame_size);
     if (res_err) {
       return res_err;
+    }
+
+    int32_t input_burst_size = WRAP(AAudioStream_getFramesPerBurst)(stm->istream);
+    LOG("AAudio input burst size: %d", input_burst_size);
+    // 3 times the burst size seems to be robust.
+    res = WRAP(AAudioStream_setBufferSizeInFrames)(stm->istream,
+                                                   input_burst_size * 3);
+    if (res < AAUDIO_OK) {
+      LOG("AAudioStream_setBufferSizeInFrames error (istream): %s",
+          WRAP(AAudio_convertResultToText)(res));
+      // Not fatal
     }
 
     int bcap = WRAP(AAudioStream_getBufferCapacityInFrames)(stm->istream);
