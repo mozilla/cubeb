@@ -23,7 +23,6 @@
 #include <memory>
 #include <mutex>
 #include <thread>
-#include <time.h>
 #include <vector>
 
 using namespace std;
