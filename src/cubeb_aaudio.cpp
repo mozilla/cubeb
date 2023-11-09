@@ -69,7 +69,7 @@ using namespace std;
   X(AAudioStreamBuilder_setFramesPerDataCallback)
 
 // not needed or added later on
-  // X(AAudioStreamBuilder_setDeviceId)              \
+// X(AAudioStreamBuilder_setDeviceId)              \
   // X(AAudioStreamBuilder_setSamplesPerFrame)       \
   // X(AAudioStream_getSamplesPerFrame)              \
   // X(AAudioStream_getDeviceId)                     \
@@ -1124,7 +1124,8 @@ aaudio_stream_init_impl(cubeb_stream * stm, lock_guard<mutex> & lock)
     WRAP(AAudioStreamBuilder_setDataCallback)(sb, out_data_callback, stm);
     assert(stm->latency_frames < std::numeric_limits<int32_t>::max());
     LOG("Frames per callback set to %d for output", stm->latency_frames);
-    WRAP(AAudioStreamBuilder_setFramesPerDataCallback)(sb, static_cast<int>(stm->latency_frames));
+    WRAP(AAudioStreamBuilder_setFramesPerDataCallback)
+    (sb, static_cast<int32_t>(stm->latency_frames));
 
     int res_err = realize_stream(sb, stm->output_stream_params.get(),
                                  &stm->ostream, &frame_size);
@@ -1179,14 +1180,16 @@ aaudio_stream_init_impl(cubeb_stream * stm, lock_guard<mutex> & lock)
     WRAP(AAudioStreamBuilder_setDataCallback)(sb, in_data_callback, stm);
     assert(stm->latency_frames < std::numeric_limits<int32_t>::max());
     LOG("Frames per callback set to %d for input", stm->latency_frames);
-    WRAP(AAudioStreamBuilder_setFramesPerDataCallback) (sb, static_cast<int>(stm->latency_frames));
+    WRAP(AAudioStreamBuilder_setFramesPerDataCallback)
+    (sb, static_cast<int32_t>(stm->latency_frames));
     int res_err = realize_stream(sb, stm->input_stream_params.get(),
                                  &stm->istream, &frame_size);
     if (res_err) {
       return res_err;
     }
 
-    int32_t input_burst_size = WRAP(AAudioStream_getFramesPerBurst)(stm->istream);
+    int32_t input_burst_size =
+        WRAP(AAudioStream_getFramesPerBurst)(stm->istream);
     LOG("AAudio input burst size: %d", input_burst_size);
     // 3 times the burst size seems to be robust.
     res = WRAP(AAudioStream_setBufferSizeInFrames)(stm->istream,
