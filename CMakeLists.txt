@@ -436,6 +436,7 @@ add_custom_target(clang-format-check
   find
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/test
     -type f (-name "*.cpp" -o -name "*.c" -o -name "*.h")
     -not -path "*/subprojects/speex/*"
     -print0
