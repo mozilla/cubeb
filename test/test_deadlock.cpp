@@ -43,18 +43,18 @@
  */
 
 #include "gtest/gtest.h"
-//#define ENABLE_NORMAL_LOG
-//#define ENABLE_VERBOSE_LOG
-#include "common.h"       // for layout_infos
-#include "cubeb/cubeb.h"  // for cubeb utils
-#include "cubeb_utils.h"  // for owned_critical_section, auto_lock
-#include <iostream>       // for fprintf
-#include <pthread.h>      // for pthread
-#include <signal.h>       // for signal
-#include <stdexcept>      // for std::logic_error
-#include <string>         // for std::string
-#include <unistd.h>       // for sleep, usleep
-#include <atomic>         // for std::atomic
+// #define ENABLE_NORMAL_LOG
+// #define ENABLE_VERBOSE_LOG
+#include "common.h"      // for layout_infos
+#include "cubeb/cubeb.h" // for cubeb utils
+#include "cubeb_utils.h" // for owned_critical_section, auto_lock
+#include <atomic>        // for std::atomic
+#include <iostream>      // for fprintf
+#include <pthread.h>     // for pthread
+#include <signal.h>      // for signal
+#include <stdexcept>     // for std::logic_error
+#include <string>        // for std::string
+#include <unistd.h>      // for sleep, usleep
 
 // The signal alias for calling our thread killer.
 #define CALL_THREAD_KILLER SIGUSR1
@@ -64,7 +64,7 @@
 bool killed = false;
 
 // This indicator will become true when the assigned task is done.
-std::atomic<bool> task_done{ false };
+std::atomic<bool> task_done{false};
 
 // Indicating the data callback is fired or not.
 bool called = false;
@@ -72,12 +72,13 @@ bool called = false;
 // Toggle to true when running data callback. Before data callback gets
 // the mutex for cubeb context, it toggles back to false.
 // The task to get channel layout should be executed when this is true.
-std::atomic<bool> callbacking_before_getting_context{ false };
+std::atomic<bool> callbacking_before_getting_context{false};
 
 owned_critical_section context_mutex;
 cubeb * context = nullptr;
 
-cubeb * get_cubeb_context_unlocked()
+cubeb *
+get_cubeb_context_unlocked()
 {
   if (context) {
     return context;
@@ -92,21 +93,25 @@ cubeb * get_cubeb_context_unlocked()
   return context;
 }
 
-cubeb * get_cubeb_context()
+cubeb *
+get_cubeb_context()
 {
   auto_lock lock(context_mutex);
   return get_cubeb_context_unlocked();
 }
 
-void state_cb_audio(cubeb_stream * /*stream*/, void * /*user*/, cubeb_state /*state*/)
+void
+state_cb_audio(cubeb_stream * /*stream*/, void * /*user*/,
+               cubeb_state /*state*/)
 {
 }
 
 // Fired by coreaudio's rendering mechanism. It holds a mutex shared with the
 // current used AudioUnit.
-template<typename T>
-long data_cb(cubeb_stream * /*stream*/, void * /*user*/,
-             const void * /*inputbuffer*/, void * outputbuffer, long nframes)
+template <typename T>
+long
+data_cb(cubeb_stream * /*stream*/, void * /*user*/,
+        const void * /*inputbuffer*/, void * outputbuffer, long nframes)
 {
   called = true;
 
@@ -137,7 +142,8 @@ long data_cb(cubeb_stream * /*stream*/, void * /*user*/,
 }
 
 // Called by wait_to_get_layout, which is run out of main thread.
-void get_preferred_channel_layout()
+void
+get_preferred_channel_layout()
 {
   auto_lock lock(context_mutex);
   cubeb * context = get_cubeb_context_unlocked();
@@ -151,12 +157,13 @@ void get_preferred_channel_layout()
   fprintf(stderr, "layout is %s\n", layout_infos[layout].name);
 }
 
-void * wait_to_get_layout(void *)
+void *
+wait_to_get_layout(void *)
 {
   uint64_t tid; // Current thread id.
   pthread_threadid_np(NULL, &tid);
 
-  while(!callbacking_before_getting_context) {
+  while (!callbacking_before_getting_context) {
     fprintf(stderr, "[%llu] waiting for data callback ...\n", tid);
     usleep(1000); // Force to switch threads by sleeping 1 ms.
   }
@@ -168,17 +175,20 @@ void * wait_to_get_layout(void *)
   return NULL;
 }
 
-void * watchdog(void * s)
+void *
+watchdog(void * s)
 {
   uint64_t tid; // Current thread id.
   pthread_threadid_np(NULL, &tid);
 
-  pthread_t subject = *((pthread_t *) s);
+  pthread_t subject = *((pthread_t *)s);
   uint64_t stid; // task thread id.
   pthread_threadid_np(subject, &stid);
 
   unsigned int sec = 2;
-  fprintf(stderr, "[%llu] sleep %d seconds before checking task for thread %llu\n", tid, sec, stid);
+  fprintf(stderr,
+          "[%llu] sleep %d seconds before checking task for thread %llu\n", tid,
+          sec, stid);
   sleep(sec); // Force to switch threads.
 
   fprintf(stderr, "[%llu] check task for thread %llu now\n", tid, stid);
@@ -190,12 +200,14 @@ void * watchdog(void * s)
     // so we need to unlock it manually.
     context_mutex.unlock();
   }
-  fprintf(stderr, "[%llu] the assigned task for thread %llu is %sdone\n", tid, stid, (task_done) ? "" : "not ");
+  fprintf(stderr, "[%llu] the assigned task for thread %llu is %sdone\n", tid,
+          stid, (task_done) ? "" : "not ");
 
   return NULL;
 }
 
-void thread_killer(int signal)
+void
+thread_killer(int signal)
 {
   ASSERT_EQ(signal, CALL_THREAD_KILLER);
   fprintf(stderr, "task thread is killed!\n");
@@ -211,8 +223,8 @@ TEST(cubeb, run_deadlock_test)
   cubeb * ctx = get_cubeb_context();
   ASSERT_TRUE(!!ctx);
 
-  std::unique_ptr<cubeb, decltype(&cubeb_destroy)>
-    cleanup_cubeb_at_exit(ctx, cubeb_destroy);
+  std::unique_ptr<cubeb, decltype(&cubeb_destroy)> cleanup_cubeb_at_exit(
+      ctx, cubeb_destroy);
 
   cubeb_stream_params params;
   params.format = CUBEB_SAMPLE_FLOAT32NE;
@@ -222,24 +234,26 @@ TEST(cubeb, run_deadlock_test)
   params.prefs = CUBEB_STREAM_PREF_NONE;
 
   cubeb_stream * stream = NULL;
-  int r = cubeb_stream_init(ctx, &stream, "test deadlock", NULL, NULL, NULL,
-                            &params, 512, &data_cb<float>, state_cb_audio, NULL);
+  int r =
+      cubeb_stream_init(ctx, &stream, "test deadlock", NULL, NULL, NULL,
+                        &params, 512, &data_cb<float>, state_cb_audio, NULL);
   ASSERT_EQ(r, CUBEB_OK);
 
   std::unique_ptr<cubeb_stream, decltype(&cubeb_stream_destroy)>
-    cleanup_stream_at_exit(stream, cubeb_stream_destroy);
+      cleanup_stream_at_exit(stream, cubeb_stream_destroy);
 
   // Install signal handler.
   signal(CALL_THREAD_KILLER, thread_killer);
 
   pthread_t subject, detector;
   pthread_create(&subject, NULL, wait_to_get_layout, NULL);
-  pthread_create(&detector, NULL, watchdog, (void *) &subject);
+  pthread_create(&detector, NULL, watchdog, (void *)&subject);
 
   uint64_t stid, dtid;
   pthread_threadid_np(subject, &stid);
   pthread_threadid_np(detector, &dtid);
-  fprintf(stderr, "task thread %llu, monitor thread %llu are created\n", stid, dtid);
+  fprintf(stderr, "task thread %llu, monitor thread %llu are created\n", stid,
+          dtid);
 
   cubeb_stream_start(stream);
 
@@ -248,7 +262,8 @@ TEST(cubeb, run_deadlock_test)
 
   ASSERT_TRUE(called);
 
-  fprintf(stderr, "\n%sDeadlock detected!\n", (called && !task_done.load()) ? "" : "No ");
+  fprintf(stderr, "\n%sDeadlock detected!\n",
+          (called && !task_done.load()) ? "" : "No ");
 
   // Check the task is killed by ourselves if deadlock happends.
   // Otherwise, thread_killer should not be triggered.
