@@ -18,13 +18,15 @@
 //#define ENABLE_VERBOSE_LOG
 #include "common.h"
 
-long data_cb_duplex(cubeb_stream * stream, void * user, const void * inputbuffer, void * outputbuffer, long nframes)
+static long
+data_cb_duplex(cubeb_stream * stream, void * user, const void * inputbuffer, void * outputbuffer, long nframes)
 {
   // noop, unused
   return 0;
 }
 
-void state_cb_duplex(cubeb_stream * stream, void * /*user*/, cubeb_state state)
+static void
+state_cb_duplex(cubeb_stream * stream, void * /*user*/, cubeb_state state)
 {
   // noop, unused
 }

@@ -5,7 +5,9 @@
  * accompanying file LICENSE for details.
  */
 
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 
 #include "gtest/gtest.h"
 #include "cubeb_ringbuffer.h"

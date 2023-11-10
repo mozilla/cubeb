@@ -24,7 +24,8 @@
 
 std::atomic<bool> load_callback{ false };
 
-long data_cb(cubeb_stream * stream, void * user, const void * inputbuffer, void * outputbuffer, long nframes)
+static long
+data_cb(cubeb_stream * stream, void * user, const void * inputbuffer, void * outputbuffer, long nframes)
 {
   if (load_callback) {
     fprintf(stderr, "Sleeping...\n");
@@ -34,7 +35,8 @@ long data_cb(cubeb_stream * stream, void * user, const void * inputbuffer, void 
   return nframes;
 }
 
-void state_cb(cubeb_stream * stream, void * /*user*/, cubeb_state state)
+static void
+state_cb(cubeb_stream * stream, void * /*user*/, cubeb_state state)
 {
   ASSERT_TRUE(!!stream);
 
