@@ -20,6 +20,8 @@
 #include "cubeb/cubeb.h"
 #include "cubeb_mixer.h"
 #include <cstdarg>
+#include <cstdio>
+#include <cstring>
 
 template <typename T, size_t N>
 constexpr size_t
