@@ -19,6 +19,7 @@
 
 #include "cubeb/cubeb.h"
 #include "cubeb_mixer.h"
+#include "gtest/gtest.h"
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
