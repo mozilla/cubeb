@@ -931,7 +931,7 @@ aaudio_error_cb(AAudioStream * astream, void * user_data, aaudio_result_t error)
   assert(stm->ostream == astream || stm->istream == astream);
 
   // Device change -- reinitialize on the new default device.
-  if (error == AAUDIO_ERROR_DISCONNECTED) {
+  if (error == AAUDIO_ERROR_DISCONNECTED || error == AAUDIO_ERROR_TIMEOUT) {
     LOG("Audio device change, reinitializing stream");
     reinitialize_stream(stm);
     return;
