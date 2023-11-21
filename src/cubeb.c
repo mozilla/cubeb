@@ -516,6 +516,20 @@ cubeb_stream_get_current_device(cubeb_stream * stream,
 }
 
 int
+cubeb_stream_set_input_mute(cubeb_stream * stream, int mute)
+{
+  if (!stream) {
+    return CUBEB_ERROR_INVALID_PARAMETER;
+  }
+
+  if (!stream->context->ops->stream_set_input_mute) {
+    return CUBEB_ERROR_NOT_SUPPORTED;
+  }
+
+  return stream->context->ops->stream_set_input_mute(stream, mute);
+}
+
+int
 cubeb_stream_set_input_processing_params(cubeb_stream * stream,
                                          cubeb_input_processing_params params)
 {
