@@ -1750,6 +1750,7 @@ const static struct cubeb_ops aaudio_ops = {
     /*.stream_set_volume =*/aaudio_stream_set_volume,
     /*.stream_set_name =*/nullptr,
     /*.stream_get_current_device =*/nullptr,
+    /*.stream_set_input_mute =*/nullptr,
     /*.stream_set_input_processing_params =*/nullptr,
     /*.stream_device_destroy =*/nullptr,
     /*.stream_register_device_changed_callback =*/nullptr,

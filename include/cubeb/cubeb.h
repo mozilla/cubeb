@@ -665,6 +665,18 @@ CUBEB_EXPORT int
 cubeb_stream_get_current_device(cubeb_stream * stm,
                                 cubeb_device ** const device);
 
+/** Set input mute state for this stream. Some platforms notify the user when an
+    application is accessing audio input. When all inputs are muted they can
+    prove to the user that the application is not actively capturing any input.
+    @param stream the stream for which to set input mute state
+    @param muted whether the input should mute or not
+    @retval CUBEB_OK
+    @retval CUBEB_ERROR_INVALID_PARAMETER if this stream does not have an input
+            device
+    @retval CUBEB_ERROR_NOT_SUPPORTED */
+CUBEB_EXPORT int
+cubeb_stream_set_input_mute(cubeb_stream * stream, int mute);
+
 /** Set what input processing features to enable for this stream.
     @param stream the stream for which to set input processing features.
     @param params what input processing features to use

@@ -3679,6 +3679,7 @@ cubeb_ops const audiounit_ops = {
     /*.stream_set_volume =*/audiounit_stream_set_volume,
     /*.stream_set_name =*/NULL,
     /*.stream_get_current_device =*/audiounit_stream_get_current_device,
+    /*.stream_set_input_mute =*/NULL,
     /*.stream_set_input_processing_params =*/NULL,
     /*.stream_device_destroy =*/audiounit_stream_device_destroy,
     /*.stream_register_device_changed_callback =*/
