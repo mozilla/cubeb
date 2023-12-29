@@ -431,8 +431,10 @@ cbjack_process(jack_nframes_t nframes, void * arg)
       if (stm->devs & OUT_ONLY) {
         for (unsigned int c = 0; c < stm->out_params.channels; c++) {
           float * buffer_out = bufs_out[c];
-          for (long f = 0; f < nframes; f++) {
-            buffer_out[f] = 0.f;
+          if (buffer_out) {
+            for (long f = 0; f < nframes; f++) {
+              buffer_out[f] = 0.f;
+            }
           }
         }
       }
@@ -440,8 +442,10 @@ cbjack_process(jack_nframes_t nframes, void * arg)
         // paused, capture silence
         for (unsigned int c = 0; c < stm->in_params.channels; c++) {
           float * buffer_in = bufs_in[c];
-          for (long f = 0; f < nframes; f++) {
-            buffer_in[f] = 0.f;
+          if (buffer_in) {
+            for (long f = 0; f < nframes; f++) {
+              buffer_in[f] = 0.f;
+            }
           }
         }
       }
@@ -493,8 +497,10 @@ cbjack_process(jack_nframes_t nframes, void * arg)
         if (stm->devs & OUT_ONLY) {
           for (unsigned int c = 0; c < stm->out_params.channels; c++) {
             float * buffer_out = bufs_out[c];
-            for (long f = 0; f < nframes; f++) {
-              buffer_out[f] = 0.f;
+            if (buffer_out) {
+              for (long f = 0; f < nframes; f++) {
+                buffer_out[f] = 0.f;
+              }
             }
           }
         }
@@ -502,8 +508,10 @@ cbjack_process(jack_nframes_t nframes, void * arg)
           // capture silence
           for (unsigned int c = 0; c < stm->in_params.channels; c++) {
             float * buffer_in = bufs_in[c];
-            for (long f = 0; f < nframes; f++) {
-              buffer_in[f] = 0.f;
+            if (buffer_in) {
+              for (long f = 0; f < nframes; f++) {
+                buffer_in[f] = 0.f;
+              }
             }
           }
         }
@@ -542,20 +550,26 @@ cbjack_deinterleave_playback_refill_float(cubeb_stream * stream, float ** in,
     for (unsigned int c = 0; c < stream->out_params.channels; c++) {
       float * buffer = bufs_out[c];
       for (long f = 0; f < done_frames; f++) {
-        buffer[f] =
-            out_interleaved_buffer[(f * stream->out_params.channels) + c] *
-            stream->volume;
+        if (buffer) {
+          buffer[f] =
+              out_interleaved_buffer[(f * stream->out_params.channels) + c] *
+              stream->volume;
+        }
       }
       if (done_frames < needed_frames) {
         // draining
         for (long f = done_frames; f < needed_frames; f++) {
-          buffer[f] = 0.f;
+          if (buffer) {
+            buffer[f] = 0.f;
+          }
         }
       }
       if (done_frames == 0) {
         // stop, but first zero out the existing buffer
         for (long f = 0; f < needed_frames; f++) {
-          buffer[f] = 0.f;
+          if (buffer) {
+            buffer[f] = 0.f;
+          }
         }
       }
     }
