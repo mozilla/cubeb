@@ -1466,6 +1466,15 @@ alsa_device_collection_destroy(cubeb * context,
   return CUBEB_OK;
 }
 
+static int
+alsa_stream_set_name_dummy(cubeb_stream * stm, char const * stream_name) {
+	if (!stm) {
+		return CUBEB_ERROR;
+	}
+	/* Nothing to do. */
+	return CUBEB_OK;
+}
+
 static struct cubeb_ops const alsa_ops = {
     .init = alsa_init,
     .get_backend_id = alsa_get_backend_id,
@@ -1484,7 +1493,7 @@ static struct cubeb_ops const alsa_ops = {
     .stream_get_latency = alsa_stream_get_latency,
     .stream_get_input_latency = NULL,
     .stream_set_volume = alsa_stream_set_volume,
-    .stream_set_name = NULL,
+    .stream_set_name = alsa_stream_set_name_dummy,
     .stream_get_current_device = NULL,
     .stream_set_input_mute = NULL,
     .stream_set_input_processing_params = NULL,
