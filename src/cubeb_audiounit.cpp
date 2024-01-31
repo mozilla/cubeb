@@ -377,10 +377,11 @@ cubeb_channel_to_channel_label(cubeb_channel channel)
   }
 }
 
-bool is_common_sample_rate(Float64 sample_rate)
+bool
+is_common_sample_rate(Float64 sample_rate)
 {
   /* Some commonly used sample rates and their multiples and divisors. */
-  return sample_rate == 8000  || sample_rate == 16000 || sample_rate == 22050 ||
+  return sample_rate == 8000 || sample_rate == 16000 || sample_rate == 22050 ||
          sample_rate == 32000 || sample_rate == 44100 || sample_rate == 48000 ||
          sample_rate == 88200 || sample_rate == 96000;
 }
