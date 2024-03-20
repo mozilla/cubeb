@@ -205,7 +205,7 @@ struct auto_stream_ref {
 };
 
 using set_mm_thread_characteristics_function =
-    decltype(&AvSetMmThreadCharacteristicsA);
+    decltype(&AvSetMmThreadCharacteristicsW);
 using revert_mm_thread_characteristics_function =
     decltype(&AvRevertMmThreadCharacteristics);
 
@@ -1414,7 +1414,7 @@ static unsigned int __stdcall wasapi_stream_render_loop(LPVOID stream)
   /* We could consider using "Pro Audio" here for WebAudio and
      maybe WebRTC. */
   mmcss_handle =
-      stm->context->set_mm_thread_characteristics("Audio", &mmcss_task_index);
+      stm->context->set_mm_thread_characteristics(L"Audio", &mmcss_task_index);
   if (!mmcss_handle) {
     /* This is not fatal, but we might glitch under heavy load. */
     LOG("Unable to use mmcss to bump the render thread priority: %lx",
@@ -1536,7 +1536,7 @@ void
 wasapi_destroy(cubeb * context);
 
 HANDLE WINAPI
-set_mm_thread_characteristics_noop(const char *, LPDWORD mmcss_task_index)
+set_mm_thread_characteristics_noop(LPCWSTR, LPDWORD mmcss_task_index)
 {
   return (HANDLE)1;
 }
