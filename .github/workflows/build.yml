@@ -9,7 +9,7 @@ jobs:
       BUILD_TYPE: ${{ matrix.type }}
     strategy:
       matrix:
-        os: [ubuntu-20.04, windows-2019, macos-11]
+        os: [ubuntu-20.04, windows-2019, macos-13, macos-14]
         type: [Release, Debug]
 
     steps:
@@ -35,6 +35,20 @@ jobs:
         New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy\"
         New-ItemProperty -Path "HKLM:\SOFTWARE\policies\microsoft\windows\appprivacy" -Name "LetAppsAccessMicrophone" -Value "0x00000001"  -PropertyType "dword"
       if: ${{ matrix.os == 'windows-2019' }}
+
+    - name: Install virtual audio devices (macOS)
+      if: ${{ matrix.os == 'macos-13' || matrix.os == 'macos-14' }}
+      run: |
+        brew install switchaudio-osx
+        brew install blackhole-2ch
+        SwitchAudioSource -s "BlackHole 2ch" -t input
+        SwitchAudioSource -s "BlackHole 2ch" -t output
+
+    - name: Allow microphone access to all apps (macOS)
+      if: ${{ matrix.os == 'macos-13' || matrix.os == 'macos-14' }}
+      env:
+        tcc_extra_columns: ${{ matrix.os == 'macos-14' && ',NULL,NULL,''UNUSED'',1687786159' || '' }}
+      run: sqlite3 $HOME/Library/Application\ Support/com.apple.TCC/TCC.db "INSERT OR IGNORE INTO access VALUES ('kTCCServiceMicrophone','/usr/local/opt/runner/provisioner/provisioner',1,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,1687786159${{ env.tcc_extra_columns }});"
 
     - name: Configure CMake
       shell: bash
