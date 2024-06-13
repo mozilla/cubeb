@@ -13,6 +13,7 @@
  *
  * opensl: cubeb_stream_get_position()
  * aaudio: cubeb_get_supported_input_processing_params()
+ * aaudio: cubeb_stream_set_input_processing_params()
  *
  * Users that want to use that cubeb API method must "override"
  * the methods below to return a valid instance of JavaVM
@@ -43,6 +44,21 @@ cubeb_jni_get_context_instance()
  */
 inline int
 cubeb_jni_acoustic_echo_canceller_is_available(bool * available)
+{
+  return CUBEB_ERROR_NOT_SUPPORTED;
+}
+
+/**
+ * Sets communication mode system-wide. Communication mode is requested from the
+ * system when any client has set it.
+ * This function must be thread-safe and idempotent.
+ * The key is used as identifier for the client requesting the mode to be set,
+ * as a way to handle multiple clients requesting communication mode
+ * independently.
+ * Returns CUBEB_ok if communication mode was set, an error otherwise.
+ */
+inline int
+cubeb_jni_set_communication_mode(void * key, bool enabled)
 {
   return CUBEB_ERROR_NOT_SUPPORTED;
 }
