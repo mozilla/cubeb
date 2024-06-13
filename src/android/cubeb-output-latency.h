@@ -15,7 +15,7 @@ typedef struct output_latency_function output_latency_function;
 
 const int ANDROID_JELLY_BEAN_MR1_4_2 = 17;
 
-output_latency_function *
+inline output_latency_function *
 cubeb_output_latency_load_method(int version)
 {
   output_latency_function * ol = NULL;
@@ -32,7 +32,7 @@ cubeb_output_latency_load_method(int version)
   return ol;
 }
 
-bool
+inline bool
 cubeb_output_latency_method_is_loaded(output_latency_function * ol)
 {
   assert(ol);
@@ -43,7 +43,7 @@ cubeb_output_latency_method_is_loaded(output_latency_function * ol)
   return !!ol->from_lib;
 }
 
-void
+inline void
 cubeb_output_latency_unload_method(output_latency_function * ol)
 {
   if (!ol) {
@@ -63,7 +63,7 @@ cubeb_output_latency_unload_method(output_latency_function * ol)
 
 extern "C" {
 
-uint32_t
+inline uint32_t
 cubeb_get_output_latency(output_latency_function * ol)
 {
   assert(cubeb_output_latency_method_is_loaded(ol));
