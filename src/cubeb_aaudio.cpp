@@ -23,6 +23,7 @@
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <vector>
 
@@ -64,6 +65,7 @@ using namespace std;
   X(AAudioStream_getState)                                                     \
   X(AAudioStream_getFramesWritten)                                             \
   X(AAudioStream_getFramesPerBurst)                                            \
+  X(AAudioStream_getInputPreset)                                               \
   X(AAudioStreamBuilder_setInputPreset)                                        \
   X(AAudioStreamBuilder_setUsage)                                              \
   X(AAudioStreamBuilder_setFramesPerDataCallback)
@@ -82,7 +84,6 @@ using namespace std;
   // X(AAudioStreamBuilder_setSessionId)             \
   // X(AAudioStream_getUsage)                        \
   // X(AAudioStream_getContentType)                  \
-  // X(AAudioStream_getInputPreset)                  \
   // X(AAudioStream_getSessionId)                    \
   // X(AAudioStream_setBufferSizeInFrames)           \
 // END: not needed or added later on
@@ -136,6 +137,72 @@ struct AAudioTimingInfo {
   uint32_t input_latency;
 };
 
+static std::optional<aaudio_input_preset_t>
+input_processing_params_to_input_preset(cubeb_input_processing_params params)
+{
+  // Mapping based on
+  // https://source.android.com/docs/core/audio/implement-pre-processing.
+  switch (static_cast<int>(params)) {
+  case CUBEB_INPUT_PROCESSING_PARAM_NONE:
+    return AAUDIO_INPUT_PRESET_CAMCORDER;
+  case (CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION |
+        CUBEB_INPUT_PROCESSING_PARAM_AUTOMATIC_GAIN_CONTROL |
+        CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION):
+    return AAUDIO_INPUT_PRESET_VOICE_COMMUNICATION;
+  default:
+    return std::nullopt;
+  }
+}
+
+static const char *
+input_preset_to_str(aaudio_input_preset_t preset)
+{
+  switch (preset) {
+  case AAUDIO_INPUT_PRESET_GENERIC:
+    return "GENERIC";
+  case AAUDIO_INPUT_PRESET_CAMCORDER:
+    return "CAMCORDER";
+  case AAUDIO_INPUT_PRESET_VOICE_RECOGNITION:
+    return "VOICE_RECOGNITION";
+  case AAUDIO_INPUT_PRESET_VOICE_COMMUNICATION:
+    return "VOICE_COMMUNICATION";
+  case AAUDIO_INPUT_PRESET_UNPROCESSED:
+    return "UNPROCESSED";
+  case AAUDIO_INPUT_PRESET_VOICE_PERFORMANCE:
+    return "VOICE_PERFORMANCE";
+  }
+  return "UNKNOWN";
+}
+
+static const char *
+input_processing_params_to_str(cubeb_input_processing_params params)
+{
+  switch (static_cast<int>(params)) {
+  case CUBEB_INPUT_PROCESSING_PARAM_NONE:
+    return "None";
+  case CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION:
+    return "AEC";
+  case CUBEB_INPUT_PROCESSING_PARAM_AUTOMATIC_GAIN_CONTROL:
+    return "AGC";
+  case CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION:
+    return "NS";
+  case CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION |
+      CUBEB_INPUT_PROCESSING_PARAM_AUTOMATIC_GAIN_CONTROL:
+    return "AEC | AGC";
+  case CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION |
+      CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION:
+    return "AEC | NS";
+  case CUBEB_INPUT_PROCESSING_PARAM_AUTOMATIC_GAIN_CONTROL |
+      CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION:
+    return "AGC | NS";
+  case CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION |
+      CUBEB_INPUT_PROCESSING_PARAM_AUTOMATIC_GAIN_CONTROL |
+      CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION:
+    return "AEC | AGC | NS";
+  }
+  return "Unknown";
+}
+
 struct cubeb_stream {
   /* Note: Must match cubeb_stream layout in cubeb.c. */
   cubeb * context{};
@@ -173,6 +240,7 @@ struct cubeb_stream {
   unsigned out_frame_size{};
   bool voice_input{};
   bool voice_output{};
+  cubeb_input_processing_params input_processing_params{};
   uint64_t previous_clock{};
 };
 
@@ -887,7 +955,7 @@ aaudio_input_data_cb(AAudioStream * astream, void * user_data,
   return AAUDIO_CALLBACK_RESULT_CONTINUE;
 }
 
-static void
+static int
 reinitialize_stream_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
 {
   stream_state state = stm->state.load();
@@ -906,7 +974,7 @@ reinitialize_stream_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
     LOG("aaudio_stream_init_impl error while reiniting: %s",
         WRAP(AAudio_convertResultToText)(err));
     stm->state.store(stream_state::ERROR);
-    return;
+    return err;
   }
 
   if (was_playing) {
@@ -916,9 +984,11 @@ reinitialize_stream_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
       LOG("aaudio_stream_start error while reiniting: %s",
           WRAP(AAudio_convertResultToText)(err));
       stm->state.store(stream_state::ERROR);
-      return;
+      return err;
     }
   }
+
+  return CUBEB_OK;
 }
 
 static void
@@ -1009,6 +1079,8 @@ realize_stream(AAudioStreamBuilder * sb, const cubeb_stream_params * params,
 static void
 aaudio_stream_destroy(cubeb_stream * stm)
 {
+  constexpr bool DISABLED = false;
+  cubeb_jni_set_communication_mode(stm, DISABLED);
   lock_guard lock(stm->mutex);
   stm->in_use.store(false);
   aaudio_stream_destroy_locked(stm, lock);
@@ -1182,13 +1254,14 @@ aaudio_stream_init_impl(cubeb_stream * stm, lock_guard<mutex> & lock)
   // input
   cubeb_stream_params in_params;
   if (stm->input_stream_params) {
-    // Match what the OpenSL backend does for now, we could use UNPROCESSED and
-    // VOICE_COMMUNICATION here, but we'd need to make it clear that
-    // application-level AEC and other voice processing should be disabled
-    // there.
-    int input_preset = stm->voice_input ? AAUDIO_INPUT_PRESET_VOICE_RECOGNITION
-                                        : AAUDIO_INPUT_PRESET_CAMCORDER;
-    WRAP(AAudioStreamBuilder_setInputPreset)(sb, input_preset);
+    aaudio_input_preset_t preset = AAUDIO_INPUT_PRESET_CAMCORDER;
+    constexpr bool ENABLED = true;
+    if (stm->voice_input &&
+        cubeb_jni_set_communication_mode(stm, ENABLED) == CUBEB_OK) {
+      preset = *input_processing_params_to_input_preset(
+          stm->input_processing_params);
+    }
+    WRAP(AAudioStreamBuilder_setInputPreset)(sb, preset);
     WRAP(AAudioStreamBuilder_setDirection)(sb, AAUDIO_DIRECTION_INPUT);
     WRAP(AAudioStreamBuilder_setDataCallback)(sb, in_data_callback, stm);
     assert(stm->latency_frames < std::numeric_limits<int32_t>::max());
@@ -1295,6 +1368,7 @@ aaudio_stream_init(cubeb * ctx, cubeb_stream ** stream,
                      !!(input_stream_params->prefs & CUBEB_STREAM_PREF_VOICE);
   stm->voice_output = output_stream_params &&
                       !!(output_stream_params->prefs & CUBEB_STREAM_PREF_VOICE);
+  stm->input_processing_params = CUBEB_INPUT_PROCESSING_PARAM_NONE;
   stm->previous_clock = 0;
   stm->latency_frames = latency_frames;
   if (output_stream_params) {
@@ -1652,6 +1726,69 @@ aaudio_stream_set_volume(cubeb_stream * stm, float volume)
   return CUBEB_OK;
 }
 
+static int
+aaudio_set_input_processing_params(cubeb_stream * stm,
+                                   cubeb_input_processing_params params)
+{
+  assert(stm);
+
+  LOG("%s(stm=%p, params=%s)", __func__, stm,
+      input_processing_params_to_str(params));
+
+  if (!stm->istream) {
+    LOG("%s: no input stream", __func__);
+    return CUBEB_ERROR_INVALID_PARAMETER;
+  }
+
+  if (!stm->voice_input) {
+    LOG("%s: input stream is not a voice stream", __func__);
+    return CUBEB_ERROR_INVALID_PARAMETER;
+  }
+
+  const auto preset = input_processing_params_to_input_preset(params);
+  if (!preset) {
+    LOG("%s: attempted to set unsupported params %s", __func__,
+        input_processing_params_to_str(params));
+    return CUBEB_ERROR_INVALID_PARAMETER;
+  }
+
+  const auto current = WRAP(AAudioStream_getInputPreset)(stm->istream);
+  if (*preset == current) {
+    LOG("%s: no change in preset: %s", __func__, input_preset_to_str(current));
+    return CUBEB_OK;
+  }
+
+  lock_guard lock(stm->mutex);
+  LOG("%s: reinitializing stream due to preset change. %s->%s", __func__,
+      input_preset_to_str(current), input_preset_to_str(*preset));
+  cubeb_input_processing_params current_params = stm->input_processing_params;
+  stm->input_processing_params = params;
+  int err = reinitialize_stream_locked(stm, lock);
+  if (err == CUBEB_OK) {
+    LOG("%s: stream %p successfully set params %s (preset %s).", __func__, stm,
+        input_processing_params_to_str(params), input_preset_to_str(*preset));
+    return CUBEB_OK;
+  }
+
+  stm->input_processing_params = current_params;
+  err = reinitialize_stream_locked(stm, lock);
+  if (err == CUBEB_OK) {
+    LOG("%s: stream %p failed to set params %s (preset %s), current params "
+        "%s have been restored.",
+        __func__, stm, input_processing_params_to_str(params),
+        input_preset_to_str(*preset),
+        input_processing_params_to_str(current_params));
+  } else {
+    LOG("%s: stream %p failed to set params %s (preset %s), and restoring "
+        "current params %s failed also. e=%d.",
+        __func__, stm, input_processing_params_to_str(params),
+        input_preset_to_str(*preset),
+        input_processing_params_to_str(current_params), err);
+    stm->state.store(stream_state::ERROR);
+  }
+  return CUBEB_ERROR;
+}
+
 aaudio_data_callback_result_t
 dummy_callback(AAudioStream * stream, void * userData, void * audioData,
                int32_t numFrames)
@@ -1780,7 +1917,7 @@ const static struct cubeb_ops aaudio_ops = {
     /*.stream_set_name =*/nullptr,
     /*.stream_get_current_device =*/nullptr,
     /*.stream_set_input_mute =*/nullptr,
-    /*.stream_set_input_processing_params =*/nullptr,
+    /*.stream_set_input_processing_params =*/aaudio_set_input_processing_params,
     /*.stream_device_destroy =*/nullptr,
     /*.stream_register_device_changed_callback =*/nullptr,
     /*.register_device_collection_changed =*/nullptr};
