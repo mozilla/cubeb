@@ -14,7 +14,7 @@ struct media_lib {
 
 typedef struct media_lib media_lib;
 
-media_lib *
+inline media_lib *
 cubeb_load_media_library()
 {
   media_lib ml = {};
@@ -46,7 +46,7 @@ cubeb_load_media_library()
   return rv;
 }
 
-void
+inline void
 cubeb_close_media_library(media_lib * ml)
 {
   dlclose(ml->libmedia);
@@ -55,7 +55,7 @@ cubeb_close_media_library(media_lib * ml)
   free(ml);
 }
 
-uint32_t
+inline uint32_t
 cubeb_get_output_latency_from_media_library(media_lib * ml)
 {
   uint32_t latency = 0;

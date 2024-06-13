@@ -1,6 +1,8 @@
 #ifndef _CUBEB_JNI_INSTANCES_H_
 #define _CUBEB_JNI_INSTANCES_H_
 
+#include <jni.h>
+
 /*
  * The methods in this file offer a way to pass in the required
  * JNI instances in the cubeb library. By default they return NULL.
@@ -15,13 +17,13 @@
  * and application's Context object.
  * */
 
-JNIEnv *
+inline JNIEnv *
 cubeb_get_jni_env_for_thread()
 {
   return nullptr;
 }
 
-jobject
+inline jobject
 cubeb_jni_get_context_instance()
 {
   return nullptr;
