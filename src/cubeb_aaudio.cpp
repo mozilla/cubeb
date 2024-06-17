@@ -112,7 +112,7 @@ static int
 aaudio_stream_start_locked(cubeb_stream * stm, lock_guard<mutex> & lock);
 
 static void
-reinitialize_stream(cubeb_stream * stm);
+reinitialize_stream_async(cubeb_stream * stm);
 
 enum class stream_state {
   INIT = 0,
@@ -734,7 +734,7 @@ aaudio_duplex_data_cb(AAudioStream * astream, void * user_data,
     if (in_num_frames == AAUDIO_STREAM_STATE_DISCONNECTED) {
       LOG("AAudioStream_read: %s (reinitializing)",
           WRAP(AAudio_convertResultToText)(in_num_frames));
-      reinitialize_stream(stm);
+      reinitialize_stream_async(stm);
     } else {
       stm->state.store(stream_state::ERROR);
     }
@@ -888,7 +888,41 @@ aaudio_input_data_cb(AAudioStream * astream, void * user_data,
 }
 
 static void
-reinitialize_stream(cubeb_stream * stm)
+reinitialize_stream_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
+{
+  stream_state state = stm->state.load();
+  bool was_playing = state == stream_state::STARTED ||
+                     state == stream_state::STARTING ||
+                     state == stream_state::DRAINING;
+  int err = aaudio_stream_stop_locked(stm, lock);
+  // error ignored.
+  aaudio_stream_destroy_locked(stm, lock);
+  err = aaudio_stream_init_impl(stm, lock);
+
+  assert(stm->in_use.load());
+
+  if (err != CUBEB_OK) {
+    aaudio_stream_destroy_locked(stm, lock);
+    LOG("aaudio_stream_init_impl error while reiniting: %s",
+        WRAP(AAudio_convertResultToText)(err));
+    stm->state.store(stream_state::ERROR);
+    return;
+  }
+
+  if (was_playing) {
+    err = aaudio_stream_start_locked(stm, lock);
+    if (err != CUBEB_OK) {
+      aaudio_stream_destroy_locked(stm, lock);
+      LOG("aaudio_stream_start error while reiniting: %s",
+          WRAP(AAudio_convertResultToText)(err));
+      stm->state.store(stream_state::ERROR);
+      return;
+    }
+  }
+}
+
+static void
+reinitialize_stream_async(cubeb_stream * stm)
 {
   // This cannot be done from within the error callback, bounce to another
   // thread.
@@ -896,35 +930,7 @@ reinitialize_stream(cubeb_stream * stm)
   // function, so that this reinitialization period is atomic.
   std::thread([stm] {
     lock_guard lock(stm->mutex);
-    stream_state state = stm->state.load();
-    bool was_playing = state == stream_state::STARTED ||
-                       state == stream_state::STARTING ||
-                       state == stream_state::DRAINING;
-    int err = aaudio_stream_stop_locked(stm, lock);
-    // error ignored.
-    aaudio_stream_destroy_locked(stm, lock);
-    err = aaudio_stream_init_impl(stm, lock);
-
-    assert(stm->in_use.load());
-
-    if (err != CUBEB_OK) {
-      aaudio_stream_destroy_locked(stm, lock);
-      LOG("aaudio_stream_init_impl error while reiniting: %s",
-          WRAP(AAudio_convertResultToText)(err));
-      stm->state.store(stream_state::ERROR);
-      return;
-    }
-
-    if (was_playing) {
-      err = aaudio_stream_start_locked(stm, lock);
-      if (err != CUBEB_OK) {
-        aaudio_stream_destroy_locked(stm, lock);
-        LOG("aaudio_stream_start error while reiniting: %s",
-            WRAP(AAudio_convertResultToText)(err));
-        stm->state.store(stream_state::ERROR);
-        return;
-      }
-    }
+    reinitialize_stream_locked(stm, lock);
   }).detach();
 }
 
@@ -937,7 +943,7 @@ aaudio_error_cb(AAudioStream * astream, void * user_data, aaudio_result_t error)
   // Device change -- reinitialize on the new default device.
   if (error == AAUDIO_ERROR_DISCONNECTED || error == AAUDIO_ERROR_TIMEOUT) {
     LOG("Audio device change, reinitializing stream");
-    reinitialize_stream(stm);
+    reinitialize_stream_async(stm);
     return;
   }
 
