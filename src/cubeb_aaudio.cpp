@@ -23,6 +23,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <variant>
 #include <vector>
 
 using namespace std;
@@ -135,6 +136,66 @@ struct AAudioTimingInfo {
   uint32_t input_latency;
 };
 
+class position_interpolator {
+public:
+  void stop(uint64_t timestamp)
+  {
+    assert(time.index() == 1 || (time.index() == 0 && std::get<0>(time) == 0));
+    uint64_t prev = 0;
+    if (time.index() == 1) {
+      // Offset timestamp by the last elasped time if stream stops again before
+      // any callback clears it.
+      prev = std::get<1>(time);
+    }
+    time.emplace<0>(timestamp - prev);
+  }
+
+  void start(uint64_t timestamp)
+  {
+    assert(time.index() == 0 && (std::get<0>(time) > 0 /* stopped */ ||
+                                 callback_timestamp == 0 /* inited */));
+    if (std::get<0>(time) > 0) {
+      // Has been stopped: calculate elipsed time.
+      time.emplace<1>(timestamp - std::get<0>(time));
+    }
+  }
+
+  uint64_t compute(uint64_t now, uint64_t last_callback_timestamp)
+  {
+    if (callback_timestamp != last_callback_timestamp) {
+      assert(time.index() == 1 /* started */ ||
+             std::get<0>(time) == 0 /* no record */);
+      // Callback emitted: update callback timestamp and clear stop record.
+      callback_timestamp = last_callback_timestamp;
+      time.emplace<0>(0);
+      return now - last_callback_timestamp;
+    } else if (time.index() == 1) {
+      // Started: exclude elipsed time.
+      return now - last_callback_timestamp - std::get<1>(time);
+    } else {
+      uint64_t stop_timestamp = std::get<0>(time);
+      if (stop_timestamp > 0) {
+        // Stopped: use recorded timestamps.
+        return stop_timestamp - callback_timestamp;
+      } else {
+        return now - last_callback_timestamp;
+      }
+    }
+  }
+
+private:
+  // Union value to keep track of time elapsed in stop state.
+  // <0>: timestamp when entering stop state, or 0 (zero) when not in use.
+  // <1>: elapsed time between stop and start states.
+  // Valid states:
+  // index == 0 && get<0> == 0: stream has no stop record
+  // index == 0 && get<0> > 0: stream stopped
+  // index == 1: stream stopped and then started
+  std::variant<uint64_t, uint64_t> time;
+  // Keep track to detect callback emission.
+  uint64_t callback_timestamp{0};
+};
+
 struct cubeb_stream {
   /* Note: Must match cubeb_stream layout in cubeb.c. */
   cubeb * context{};
@@ -173,6 +234,7 @@ struct cubeb_stream {
   bool voice_input{};
   bool voice_output{};
   uint64_t previous_clock{};
+  position_interpolator interpolator;
 };
 
 struct cubeb {
@@ -1053,6 +1115,7 @@ aaudio_stream_destroy_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
   }
 
   stm->timing_info.invalidate();
+  stm->interpolator = {};
 
   if (stm->resampler) {
     cubeb_resampler_destroy(stm->resampler);
@@ -1441,6 +1504,7 @@ aaudio_stream_start_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
   }
 
   if (success) {
+    stm->interpolator.start(now_ns());
     stm->context->state.waiting.store(true);
     stm->context->state.cond.notify_one();
   }
@@ -1549,6 +1613,7 @@ aaudio_stream_stop_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
   }
 
   if (success) {
+    stm->interpolator.stop(now_ns());
     stm->context->state.waiting.store(true);
     stm->context->state.cond.notify_one();
   }
@@ -1599,8 +1664,9 @@ aaudio_stream_get_position(cubeb_stream * stm, uint64_t * position)
   LOGV("AAudioTimingInfo idx:%lu tstamp:%lu latency:%u",
        info.output_frame_index, info.tstamp, info.output_latency);
   // Interpolate client side since the last callback.
-  uint64_t interpolation =
-      stm->sample_rate * (now_ns() - info.tstamp) / NS_PER_S;
+  uint64_t interpolation = stm->sample_rate *
+                           stm->interpolator.compute(now_ns(), info.tstamp) /
+                           NS_PER_S;
   *position = info.output_frame_index + interpolation - info.output_latency;
   if (*position < stm->previous_clock) {
     *position = stm->previous_clock;
