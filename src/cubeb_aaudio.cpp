@@ -1109,8 +1109,7 @@ reinitialize_stream_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
 
   if (err != CUBEB_OK) {
     aaudio_stream_destroy_locked(stm, lock);
-    LOG("aaudio_stream_init_impl error while reiniting: %s",
-        WRAP(AAudio_convertResultToText)(err));
+    LOG("aaudio_stream_init_impl error while reiniting");
     stm->state.store(stream_state::ERROR);
     return err;
   }
@@ -1119,8 +1118,7 @@ reinitialize_stream_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
     err = aaudio_stream_start_locked(stm, lock);
     if (err != CUBEB_OK) {
       aaudio_stream_destroy_locked(stm, lock);
-      LOG("aaudio_stream_start error while reiniting: %s",
-          WRAP(AAudio_convertResultToText)(err));
+      LOG("aaudio_stream_start error while reiniting");
       stm->state.store(stream_state::ERROR);
       return err;
     }
