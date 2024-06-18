@@ -23,6 +23,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <variant>
 #include <vector>
 
 using namespace std;
@@ -135,6 +136,128 @@ struct AAudioTimingInfo {
   uint32_t input_latency;
 };
 
+/* To guess the current position of the stream when it's playing, the elapsed
+ * time between the last callback and now is used. However, when the stream was
+ * stopped and there was no new callback after playing restarted yet, the time
+ * spent in stopped state should be excluded.
+ * This class defines an internal state machine that takes the stream state
+ * changes and callback emissions as events to changes it own statesm and
+ * calculates played time accordingly.
+ *
+ * A simplified |stream_state| transitions of playing looks like:
+ * INIT -> [STARTING/STARTED -> callback* -> STOPPING/STOPPED]* -> SHUTDOWN|INIT
+ *
+ * Internal states:
+ * - None: the initial state.
+ * - Play: stream is playing.
+ * - Pause: stream is not playing. Holds stop timestamp.
+ * - Resume: stream is playing after stopping and no callback emitted yet. Holds
+ *           time elapsed in the previous Pause state.
+ * Transitions:
+ * - None -(STARTING)-> Play
+ * - Play -(STOPPING)-> Pause
+ * - Pause -(STARTING)-> Resume
+ * - Resume -(callback)-> Play
+ * - Resume -(STARTING)-> Resume
+ * - Pause -(INIT)-> None
+ */
+class position_interpolator {
+public:
+  // Called with the current time when stopping the stream.
+  void stop(uint64_t timestamp)
+  {
+    assert(in_state<Play>() || in_state<Resume>());
+    // Change to Pause and save the current time in it. Timestamp offset by the
+    // elapsed time in previous Pause if stream stops again before any callback
+    // clears it.
+    set_pause_timestamp(in_state<Play>() ? timestamp
+                                         : timestamp - get_pause_time());
+  }
+
+  // Called with the current time when starting the stream.
+  void start(uint64_t timestamp)
+  {
+    assert(in_state<None>() || in_state<Pause>());
+    if (in_state<Pause>()) {
+      // Change to Resume and record elapsed time in it.
+      set_pause_time(timestamp - get_pause_timestamp());
+    } else {
+      set_state<Play>();
+    }
+  }
+
+  // Calculate how much time the stream bas been playing since last callback.
+  uint64_t compute(uint64_t now, uint64_t last_callback_timestamp)
+  {
+    if (in_state<Play>()) {
+      if (callback_timestamp != last_callback_timestamp) {
+        callback_timestamp = last_callback_timestamp;
+      }
+      return now - last_callback_timestamp;
+    } else if (in_state<Resume>()) {
+      if (callback_timestamp == last_callback_timestamp) {
+        // Stream was stopped and no callback emited yet: exclude elapsed time
+        // in Pause state.
+        return now - last_callback_timestamp - get_pause_time();
+      }
+      // Callback emitted: update callback timestamp and change to Play.
+      callback_timestamp = last_callback_timestamp;
+      set_state<Play>();
+      return now - last_callback_timestamp;
+    } else if (in_state<Pause>()) {
+      assert(callback_timestamp == last_callback_timestamp);
+      // Use recorded timestamps when Paused.
+      return get_pause_timestamp() - callback_timestamp;
+    } else {
+      assert(in_state<None>());
+      return 0;
+    }
+  }
+
+private:
+  template <typename T> void set_state() { state.emplace<T>(); }
+
+  template <typename T> bool in_state()
+  {
+    return std::holds_alternative<T>(state);
+  }
+
+  void set_pause_time(uint64_t time) { state.emplace<Resume>(time); }
+
+  uint64_t get_pause_time()
+  {
+    assert(in_state<Resume>());
+    return std::get<Resume>(state).pause_time;
+  }
+
+  void set_pause_timestamp(uint64_t timestamp)
+  {
+    state.emplace<Pause>(timestamp);
+  }
+
+  uint64_t get_pause_timestamp()
+  {
+    assert(in_state<Pause>());
+    return std::get<Pause>(state).timestamp;
+  }
+
+  struct None {};
+  struct Play {};
+  struct Pause {
+    Pause() = delete;
+    explicit Pause(uint64_t timestamp) : timestamp(timestamp) {}
+    uint64_t timestamp; // The time when stopping stream.
+  };
+  struct Resume {
+    Resume() = delete;
+    explicit Resume(uint64_t time) : pause_time(time) {}
+    uint64_t pause_time; // Elapsed time from stopping to starting stream.
+  };
+  std::variant<None, Play, Pause, Resume> state;
+  // Keep track input callback timestamp to detect callback emission.
+  uint64_t callback_timestamp{0};
+};
+
 struct cubeb_stream {
   /* Note: Must match cubeb_stream layout in cubeb.c. */
   cubeb * context{};
@@ -173,6 +296,7 @@ struct cubeb_stream {
   bool voice_input{};
   bool voice_output{};
   uint64_t previous_clock{};
+  position_interpolator interpolator;
 };
 
 struct cubeb {
@@ -1053,6 +1177,7 @@ aaudio_stream_destroy_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
   }
 
   stm->timing_info.invalidate();
+  stm->interpolator = {};
 
   if (stm->resampler) {
     cubeb_resampler_destroy(stm->resampler);
@@ -1419,6 +1544,7 @@ aaudio_stream_start_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
   }
 
   if (success) {
+    stm->interpolator.start(now_ns());
     stm->context->state.waiting.store(true);
     stm->context->state.cond.notify_one();
   }
@@ -1527,6 +1653,7 @@ aaudio_stream_stop_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
   }
 
   if (success) {
+    stm->interpolator.stop(now_ns());
     stm->context->state.waiting.store(true);
     stm->context->state.cond.notify_one();
   }
@@ -1577,8 +1704,9 @@ aaudio_stream_get_position(cubeb_stream * stm, uint64_t * position)
   LOGV("AAudioTimingInfo idx:%lu tstamp:%lu latency:%u",
        info.output_frame_index, info.tstamp, info.output_latency);
   // Interpolate client side since the last callback.
-  uint64_t interpolation =
-      stm->sample_rate * (now_ns() - info.tstamp) / NS_PER_S;
+  uint64_t interpolation = stm->sample_rate *
+                           stm->interpolator.compute(now_ns(), info.tstamp) /
+                           NS_PER_S;
   *position = info.output_frame_index + interpolation - info.output_latency;
   if (*position < stm->previous_clock) {
     *position = stm->previous_clock;
