@@ -483,9 +483,7 @@ update_state(cubeb_stream * stm)
     }
 
     // handle invalid stream states
-    if (istate == AAUDIO_STREAM_STATE_PAUSING ||
-        istate == AAUDIO_STREAM_STATE_PAUSED ||
-        istate == AAUDIO_STREAM_STATE_FLUSHING ||
+    if (istate == AAUDIO_STREAM_STATE_FLUSHING ||
         istate == AAUDIO_STREAM_STATE_FLUSHED ||
         istate == AAUDIO_STREAM_STATE_UNKNOWN ||
         istate == AAUDIO_STREAM_STATE_DISCONNECTED) {
@@ -495,9 +493,7 @@ update_state(cubeb_stream * stm)
       return;
     }
 
-    if (ostate == AAUDIO_STREAM_STATE_PAUSING ||
-        ostate == AAUDIO_STREAM_STATE_PAUSED ||
-        ostate == AAUDIO_STREAM_STATE_FLUSHING ||
+    if (ostate == AAUDIO_STREAM_STATE_FLUSHING ||
         ostate == AAUDIO_STREAM_STATE_FLUSHED ||
         ostate == AAUDIO_STREAM_STATE_UNKNOWN ||
         ostate == AAUDIO_STREAM_STATE_DISCONNECTED) {
@@ -556,12 +552,12 @@ update_state(cubeb_stream * stm)
       }
       break;
     case stream_state::STOPPING:
-      assert(!istate || istate == AAUDIO_STREAM_STATE_STOPPING ||
-             istate == AAUDIO_STREAM_STATE_STOPPED);
-      assert(!ostate || ostate == AAUDIO_STREAM_STATE_STOPPING ||
-             ostate == AAUDIO_STREAM_STATE_STOPPED);
-      if ((!istate || istate == AAUDIO_STREAM_STATE_STOPPED) &&
-          (!ostate || ostate == AAUDIO_STREAM_STATE_STOPPED)) {
+      assert(!istate || istate == AAUDIO_STREAM_STATE_PAUSING ||
+             istate == AAUDIO_STREAM_STATE_PAUSED);
+      assert(!ostate || ostate == AAUDIO_STREAM_STATE_PAUSING ||
+             ostate == AAUDIO_STREAM_STATE_PAUSED);
+      if ((!istate || istate == AAUDIO_STREAM_STATE_PAUSED) &&
+          (!ostate || ostate == AAUDIO_STREAM_STATE_PAUSED)) {
         stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STOPPED);
         new_state = stream_state::STOPPED;
       }
@@ -1589,16 +1585,16 @@ aaudio_stream_stop_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
 
   aaudio_result_t res;
 
-  // No callbacks are triggered anymore when requestStop returns.
+  // No callbacks are triggered anymore when requestPause returns.
   // That is important as we otherwise might read from a closed istream
   // for a duplex stream.
   // Therefor it is important to close ostream first.
   if (stm->ostream) {
     // Could use pause + flush here as well, the public cubeb interface
     // doesn't state behavior.
-    res = WRAP(AAudioStream_requestStop)(stm->ostream);
+    res = WRAP(AAudioStream_requestPause)(stm->ostream);
     if (res != AAUDIO_OK) {
-      LOG("AAudioStream_requestStop (ostream): %s",
+      LOG("AAudioStream_requestPause (ostream): %s",
           WRAP(AAudio_convertResultToText)(res));
       stm->state.store(stream_state::ERROR);
       return CUBEB_ERROR;
@@ -1606,9 +1602,9 @@ aaudio_stream_stop_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
   }
 
   if (stm->istream) {
-    res = WRAP(AAudioStream_requestStop)(stm->istream);
+    res = WRAP(AAudioStream_requestPause)(stm->istream);
     if (res != AAUDIO_OK) {
-      LOG("AAudioStream_requestStop (istream): %s",
+      LOG("AAudioStream_requestPause (istream): %s",
           WRAP(AAudio_convertResultToText)(res));
       stm->state.store(stream_state::ERROR);
       return CUBEB_ERROR;
