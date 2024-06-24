@@ -48,6 +48,7 @@ using namespace std;
   X(AAudioStreamBuilder_delete)                                                \
   X(AAudioStreamBuilder_setDataCallback)                                       \
   X(AAudioStreamBuilder_setErrorCallback)                                      \
+  X(AAudioStreamBuilder_setSessionId)                                          \
   X(AAudioStream_close)                                                        \
   X(AAudioStream_read)                                                         \
   X(AAudioStream_requestStart)                                                 \
@@ -66,6 +67,7 @@ using namespace std;
   X(AAudioStream_getFramesWritten)                                             \
   X(AAudioStream_getFramesPerBurst)                                            \
   X(AAudioStream_getInputPreset)                                               \
+  X(AAudioStream_getSessionId)                                                 \
   X(AAudioStreamBuilder_setInputPreset)                                        \
   X(AAudioStreamBuilder_setUsage)                                              \
   X(AAudioStreamBuilder_setFramesPerDataCallback)
@@ -81,10 +83,8 @@ using namespace std;
   // X(AAudioStream_getXRunCount)                    \
   // X(AAudioStream_isMMapUsed)                      \
   // X(AAudioStreamBuilder_setContentType)           \
-  // X(AAudioStreamBuilder_setSessionId)             \
   // X(AAudioStream_getUsage)                        \
   // X(AAudioStream_getContentType)                  \
-  // X(AAudioStream_getSessionId)                    \
   // X(AAudioStream_setBufferSizeInFrames)           \
 // END: not needed or added later on
 
@@ -174,6 +174,7 @@ struct cubeb_stream {
   unsigned out_frame_size{};
   bool voice_input{};
   bool voice_output{};
+  bool using_shared_session_id{};
   cubeb_input_processing_params input_processing_params{};
   uint64_t previous_clock{};
 };
@@ -195,6 +196,9 @@ struct cubeb {
 
   // streams[i].in_use signals whether a stream is used
   struct cubeb_stream streams[MAX_STREAMS];
+  std::atomic<aaudio_session_id_t> shared_input_session_id{
+      AAUDIO_SESSION_ID_NONE};
+  std::atomic<int8_t> shared_input_session_id_user_count{0};
 };
 
 struct AutoInCallback {
@@ -1017,6 +1021,9 @@ aaudio_stream_destroy(cubeb_stream * stm)
   cubeb_jni_set_communication_mode(stm, DISABLED);
   lock_guard lock(stm->mutex);
   stm->in_use.store(false);
+  if (stm->using_shared_session_id) {
+    --stm->context->shared_input_session_id_user_count;
+  }
   aaudio_stream_destroy_locked(stm, lock);
 }
 
@@ -1211,11 +1218,37 @@ aaudio_stream_init_impl(cubeb_stream * stm, lock_guard<mutex> & lock)
   cubeb_stream_params in_params;
   if (stm->input_stream_params) {
     aaudio_input_preset_t preset = AAUDIO_INPUT_PRESET_CAMCORDER;
+    aaudio_session_id_t session_id = AAUDIO_SESSION_ID_NONE;
     constexpr bool ENABLED = true;
     if (stm->voice_input &&
         cubeb_jni_set_communication_mode(stm, ENABLED) == CUBEB_OK) {
       preset = *input_processing_params_to_input_preset(
           stm->input_processing_params);
+
+      // Always use a session id with voice input to have effects available.
+      if (stm->using_shared_session_id) {
+        // We're already registered as a user of the shared session id.
+        session_id = stm->context->shared_input_session_id;
+        assert(session_id > 0);
+      } else {
+        stm->using_shared_session_id = true;
+        if (++stm->context->shared_input_session_id_user_count == 1) {
+          // We are the first user of the shared session id, so are responsible
+          // for allocating it. First ensure the shared id is unset.
+          stm->context->shared_input_session_id = AAUDIO_SESSION_ID_NONE;
+          session_id = AAUDIO_SESSION_ID_ALLOCATE;
+        }
+      }
+      while (session_id == AAUDIO_SESSION_ID_NONE) {
+        session_id = stm->context->shared_input_session_id.load();
+        assert(session_id != AAUDIO_SESSION_ID_ALLOCATE);
+        if (session_id == AAUDIO_SESSION_ID_NONE) {
+          // Another stream is in the process of allocating a session id. Poll
+          // it again soon.
+          std::this_thread::sleep_for(1ms);
+        }
+      }
+      WRAP(AAudioStreamBuilder_setSessionId)(sb, session_id);
     }
     WRAP(AAudioStreamBuilder_setInputPreset)(sb, preset);
     WRAP(AAudioStreamBuilder_setDirection)(sb, AAUDIO_DIRECTION_INPUT);
@@ -1228,6 +1261,12 @@ aaudio_stream_init_impl(cubeb_stream * stm, lock_guard<mutex> & lock)
                                  &stm->istream, &frame_size);
     if (res_err) {
       return res_err;
+    }
+
+    if (session_id == AAUDIO_SESSION_ID_ALLOCATE) {
+      aaudio_session_id_t old = stm->context->shared_input_session_id.exchange(
+          WRAP(AAudioStream_getSessionId)(stm->istream));
+      assert(old == AAUDIO_SESSION_ID_NONE);
     }
 
     int bcap = WRAP(AAudioStream_getBufferCapacityInFrames)(stm->istream);
@@ -1324,6 +1363,7 @@ aaudio_stream_init(cubeb * ctx, cubeb_stream ** stream,
                      !!(input_stream_params->prefs & CUBEB_STREAM_PREF_VOICE);
   stm->voice_output = output_stream_params &&
                       !!(output_stream_params->prefs & CUBEB_STREAM_PREF_VOICE);
+  stm->using_shared_session_id = false;
   stm->input_processing_params = CUBEB_INPUT_PROCESSING_PARAM_NONE;
   stm->previous_clock = 0;
   stm->latency_frames = latency_frames;
