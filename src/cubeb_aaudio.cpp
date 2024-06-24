@@ -5,6 +5,7 @@
  * accompanying file LICENSE for details.
  */
 #include "cubeb-internal.h"
+#include "cubeb-jni-instances.h"
 #include "cubeb/cubeb.h"
 #include "cubeb_android.h"
 #include "cubeb_log.h"
@@ -1725,6 +1726,29 @@ aaudio_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
   return CUBEB_OK;
 }
 
+int
+aaudio_get_supported_input_processing_params(
+    cubeb * ctx, cubeb_input_processing_params * params)
+{
+  bool available = false;
+  int rv = cubeb_jni_acoustic_echo_canceller_is_available(&available);
+  if (rv != CUBEB_OK) {
+    return rv;
+  }
+  if (available) {
+    *params = static_cast<cubeb_input_processing_params>(
+        CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION |
+        CUBEB_INPUT_PROCESSING_PARAM_AUTOMATIC_GAIN_CONTROL |
+        CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION);
+  } else {
+    *params = CUBEB_INPUT_PROCESSING_PARAM_NONE;
+  }
+
+  LOG("%s: Supported params are %s (%d)", __func__,
+      input_processing_params_to_str(*params), *params);
+  return CUBEB_OK;
+}
+
 extern "C" int
 aaudio_init(cubeb ** context, char const * context_name);
 
@@ -1732,9 +1756,10 @@ const static struct cubeb_ops aaudio_ops = {
     /*.init =*/aaudio_init,
     /*.get_backend_id =*/aaudio_get_backend_id,
     /*.get_max_channel_count =*/aaudio_get_max_channel_count,
-    /* .get_min_latency =*/aaudio_get_min_latency,
+    /*.get_min_latency =*/aaudio_get_min_latency,
     /*.get_preferred_sample_rate =*/aaudio_get_preferred_sample_rate,
-    /*.get_supported_input_processing_params =*/nullptr,
+    /*.get_supported_input_processing_params =*/
+    aaudio_get_supported_input_processing_params,
     /*.enumerate_devices =*/nullptr,
     /*.device_collection_destroy =*/nullptr,
     /*.destroy =*/aaudio_destroy,
