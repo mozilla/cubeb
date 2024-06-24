@@ -48,6 +48,7 @@ using namespace std;
   X(AAudioStreamBuilder_delete)                                                \
   X(AAudioStreamBuilder_setDataCallback)                                       \
   X(AAudioStreamBuilder_setErrorCallback)                                      \
+  X(AAudioStreamBuilder_setSessionId)                                          \
   X(AAudioStream_close)                                                        \
   X(AAudioStream_read)                                                         \
   X(AAudioStream_requestStart)                                                 \
@@ -66,6 +67,7 @@ using namespace std;
   X(AAudioStream_getFramesWritten)                                             \
   X(AAudioStream_getFramesPerBurst)                                            \
   X(AAudioStream_getInputPreset)                                               \
+  X(AAudioStream_getSessionId)                                                 \
   X(AAudioStreamBuilder_setInputPreset)                                        \
   X(AAudioStreamBuilder_setUsage)                                              \
   X(AAudioStreamBuilder_setFramesPerDataCallback)
@@ -81,10 +83,8 @@ using namespace std;
   // X(AAudioStream_getXRunCount)                    \
   // X(AAudioStream_isMMapUsed)                      \
   // X(AAudioStreamBuilder_setContentType)           \
-  // X(AAudioStreamBuilder_setSessionId)             \
   // X(AAudioStream_getUsage)                        \
   // X(AAudioStream_getContentType)                  \
-  // X(AAudioStream_getSessionId)                    \
   // X(AAudioStream_setBufferSizeInFrames)           \
 // END: not needed or added later on
 
@@ -203,6 +203,142 @@ input_processing_params_to_str(cubeb_input_processing_params params)
   return "Unknown";
 }
 
+template <typename T> struct no_delete {
+  void operator()(T *) {}
+};
+
+struct AAudioInputConfigHandle;
+
+struct AAudioSharedInputConfig {
+  AAudioInputConfigHandle acquire(aaudio_input_preset_t preset);
+  void release();
+  unique_lock<mutex> set_preset(aaudio_input_preset_t p);
+  mutex mutex;
+  aaudio_input_preset_t preset{};
+  aaudio_session_id_t session_id{AAUDIO_SESSION_ID_NONE};
+  int8_t user_count{};
+};
+
+struct AAudioInputConfigHandle {
+  AAudioInputConfigHandle(AAudioSharedInputConfig * cfg,
+                          aaudio_input_preset_t preset,
+                          aaudio_session_id_t session_id,
+                          unique_lock<mutex> alloc_lock)
+      : shared_config(cfg), preset(preset), session_id(session_id),
+        allocation_lock(std::move(alloc_lock))
+  {
+#ifndef NDEBUG
+    assert(cfg);
+#endif
+  }
+  AAudioInputConfigHandle(const AAudioInputConfigHandle &) = delete;
+  AAudioInputConfigHandle(AAudioInputConfigHandle &&) = default;
+  AAudioInputConfigHandle & operator=(const AAudioInputConfigHandle &) = delete;
+  AAudioInputConfigHandle & operator=(AAudioInputConfigHandle &&) = default;
+  ~AAudioInputConfigHandle()
+  {
+    if (shared_config) {
+      shared_config->release();
+    }
+  }
+
+  aaudio_input_preset_t get_preset() const
+  {
+#ifndef NDEBUG
+    assert(shared_config);
+#endif
+    return preset;
+  }
+
+  // If successful, is the only user and has to update the session id as the
+  // allocation lock will be held.
+  bool set_preset(aaudio_input_preset_t p)
+  {
+#ifndef NDEBUG
+    assert(shared_config);
+#endif
+    allocation_lock = shared_config->set_preset(p);
+    if (allocation_lock.owns_lock()) {
+      preset = shared_config->preset;
+      session_id = shared_config->session_id;
+      return true;
+    }
+    return false;
+  }
+
+  aaudio_session_id_t get_session_id() const
+  {
+#ifndef NDEBUG
+    assert(shared_config);
+#endif
+    return session_id;
+  }
+
+  void update_session_id(aaudio_session_id_t id)
+  {
+#ifndef NDEBUG
+    assert(shared_config);
+    assert(session_id == AAUDIO_SESSION_ID_ALLOCATE);
+    assert(id > 0);
+    assert(allocation_lock.owns_lock());
+#endif
+    session_id = shared_config->session_id = id;
+    allocation_lock = {};
+  }
+
+private:
+  // This could be a rawptr, but we use a unique_ptr with a noop deleter as it
+  // is not copyable -- it simplifies constructors and assignment operators.
+  unique_ptr<AAudioSharedInputConfig, no_delete<AAudioSharedInputConfig>>
+      shared_config;
+  aaudio_input_preset_t preset;
+  aaudio_session_id_t session_id;
+  unique_lock<mutex> allocation_lock;
+};
+
+AAudioInputConfigHandle
+AAudioSharedInputConfig::acquire(aaudio_input_preset_t p)
+{
+  unique_lock lock(mutex);
+  if (++user_count == 1) {
+    LOG("First input stream set preset to %s", input_preset_to_str(p));
+    preset = p;
+    session_id = AAUDIO_SESSION_ID_ALLOCATE;
+    return {this, preset, session_id, std::move(lock)};
+  }
+#ifndef NDEBUG
+  assert(session_id != AAUDIO_SESSION_ID_ALLOCATE);
+#endif
+  return {this, preset, session_id, unique_lock<std::mutex>()};
+}
+
+void
+AAudioSharedInputConfig::release()
+{
+  std::unique_lock lock(mutex);
+  if (--user_count == 0) {
+    LOG("Last active input stream released");
+    session_id = AAUDIO_SESSION_ID_ALLOCATE;
+    preset = AAUDIO_INPUT_PRESET_CAMCORDER;
+  }
+  assert(user_count >= 0);
+}
+
+unique_lock<mutex>
+AAudioSharedInputConfig::set_preset(aaudio_input_preset_t p)
+{
+  unique_lock lock(mutex);
+  if (user_count != 1) {
+    return {};
+  }
+
+  LOG("The only active input stream changed preset from %s to %s",
+      input_preset_to_str(preset), input_preset_to_str(p));
+  preset = p;
+  session_id = AAUDIO_SESSION_ID_ALLOCATE;
+  return lock;
+}
+
 struct cubeb_stream {
   /* Note: Must match cubeb_stream layout in cubeb.c. */
   cubeb * context{};
@@ -240,6 +376,7 @@ struct cubeb_stream {
   unsigned out_frame_size{};
   bool voice_input{};
   bool voice_output{};
+  std::optional<AAudioInputConfigHandle> in_config{};
   cubeb_input_processing_params input_processing_params{};
   uint64_t previous_clock{};
 };
@@ -261,6 +398,7 @@ struct cubeb {
 
   // streams[i].in_use signals whether a stream is used
   struct cubeb_stream streams[MAX_STREAMS];
+  AAudioSharedInputConfig shared_input_config{};
 };
 
 struct AutoInCallback {
@@ -1079,11 +1217,15 @@ realize_stream(AAudioStreamBuilder * sb, const cubeb_stream_params * params,
 static void
 aaudio_stream_destroy(cubeb_stream * stm)
 {
+  {
+    lock_guard lock(stm->mutex);
+    stm->in_use.store(false);
+    stm->in_config = nullopt;
+    aaudio_stream_destroy_locked(stm, lock);
+  }
+
   constexpr bool DISABLED = false;
   cubeb_jni_set_communication_mode(stm, DISABLED);
-  lock_guard lock(stm->mutex);
-  stm->in_use.store(false);
-  aaudio_stream_destroy_locked(stm, lock);
 }
 
 static void
@@ -1254,13 +1396,40 @@ aaudio_stream_init_impl(cubeb_stream * stm, lock_guard<mutex> & lock)
   // input
   cubeb_stream_params in_params;
   if (stm->input_stream_params) {
-    aaudio_input_preset_t preset = AAUDIO_INPUT_PRESET_CAMCORDER;
+    cubeb_input_processing_params processing_params =
+        stm->voice_input ? stm->input_processing_params
+                         : CUBEB_INPUT_PROCESSING_PARAM_NONE;
+    aaudio_input_preset_t preset =
+        *input_processing_params_to_input_preset(processing_params);
+
+    if (stm->in_config && stm->in_config->get_preset() != preset &&
+        !stm->in_config->set_preset(preset)) {
+      LOG("Stream %p has in_config but failed to change preset from %s to %s",
+          input_preset_to_str(stm->in_config->get_preset()),
+          input_preset_to_str(preset));
+      return CUBEB_ERROR;
+    }
+    AAudioInputConfigHandle handle =
+        stm->in_config ? *std::move(stm->in_config)
+                       : stm->context->shared_input_config.acquire(preset);
+    if (handle.get_preset() != preset) {
+      // Reject the stream if we couldn't acquire the requested preset.
+      LOG("Acquired preset %s does not match requested preset %s.",
+          input_preset_to_str(handle.get_preset()),
+          input_preset_to_str(preset));
+      return CUBEB_ERROR;
+    }
     constexpr bool ENABLED = true;
     if (stm->voice_input &&
-        cubeb_jni_set_communication_mode(stm, ENABLED) == CUBEB_OK) {
-      preset = *input_processing_params_to_input_preset(
-          stm->input_processing_params);
+        cubeb_jni_set_communication_mode(stm, ENABLED) != CUBEB_OK) {
+      // If we cannot enter COMMUNICATION mode, reject a voice stream.
+      // Note that the VOICE_COMMUNICATION preset requires COMMUNICATION mode
+      // for hw AEC to work. Other presets don't but we'll reject with voice
+      // anyway for consistency.
+      LOG("Setting communication mode failed with voice input.");
+      return CUBEB_ERROR;
     }
+    WRAP(AAudioStreamBuilder_setSessionId)(sb, handle.get_session_id());
     WRAP(AAudioStreamBuilder_setInputPreset)(sb, preset);
     WRAP(AAudioStreamBuilder_setDirection)(sb, AAUDIO_DIRECTION_INPUT);
     WRAP(AAudioStreamBuilder_setDataCallback)(sb, in_data_callback, stm);
@@ -1272,6 +1441,10 @@ aaudio_stream_init_impl(cubeb_stream * stm, lock_guard<mutex> & lock)
                                  &stm->istream, &frame_size);
     if (res_err) {
       return res_err;
+    }
+
+    if (handle.get_session_id() == AAUDIO_SESSION_ID_ALLOCATE) {
+      handle.update_session_id(WRAP(AAudioStream_getSessionId)(stm->istream));
     }
 
     int bcap = WRAP(AAudioStream_getBufferCapacityInFrames)(stm->istream);
@@ -1293,6 +1466,7 @@ aaudio_stream_init_impl(cubeb_stream * stm, lock_guard<mutex> & lock)
     in_params = *stm->input_stream_params;
     in_params.rate = rate;
     stm->in_frame_size = frame_size;
+    stm->in_config = std::move(handle);
   }
 
   // initialize resampler
