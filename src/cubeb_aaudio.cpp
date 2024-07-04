@@ -1293,10 +1293,14 @@ aaudio_stream_init(cubeb * ctx, cubeb_stream ** stream,
   if (output_stream_params) {
     stm->output_stream_params = std::make_unique<cubeb_stream_params>();
     *(stm->output_stream_params) = *output_stream_params;
+  } else {
+    stm->output_stream_params = nullptr;
   }
   if (input_stream_params) {
     stm->input_stream_params = std::make_unique<cubeb_stream_params>();
     *(stm->input_stream_params) = *input_stream_params;
+  } else {
+    stm->input_stream_params = nullptr;
   }
 
   LOG("cubeb stream prefs: voice_input: %s voice_output: %s",
