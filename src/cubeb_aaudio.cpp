@@ -139,10 +139,14 @@ struct AAudioTimingInfo {
 /* To guess the current position of the stream when it's playing, the elapsed
  * time between the last callback and now is used. However, when the stream was
  * stopped and there was no new callback after playing restarted yet, the time
- * spent in stopped state should be excluded.
+ * spent in stopped state should be excluded. It's also necessary to track the
+ * number of audio frames written to stream before reinitialization so it can be
+ * used to offset the position later, because
+ * `AAudioTimingInfo.output_frame_index` will restart from zero after
+ * reinitializing.
  * This class defines an internal state machine that takes the stream state
- * changes and callback emissions as events to changes it own statesm and
- * calculates played time accordingly.
+ * changes and callback emissions as events to changes it own states and
+ * estimates played time accordingly.
  *
  * A simplified |stream_state| transitions of playing looks like:
  * INIT -> [STARTING/STARTED -> callback* -> STOPPING/STOPPED]* -> SHUTDOWN|INIT
@@ -161,7 +165,7 @@ struct AAudioTimingInfo {
  * - Resume -(STARTING)-> Resume
  * - Pause -(INIT)-> None
  */
-class position_interpolator {
+class position_estimate {
 public:
   // Called with the current time when stopping the stream.
   void stop(uint64_t timestamp)
@@ -187,7 +191,8 @@ public:
   }
 
   // Calculate how much time the stream bas been playing since last callback.
-  uint64_t compute(uint64_t now, uint64_t last_callback_timestamp)
+  uint64_t elapsed_time_since_callback(uint64_t now,
+                                       uint64_t last_callback_timestamp)
   {
     if (in_state<Play>()) {
       if (callback_timestamp != last_callback_timestamp) {
@@ -213,6 +218,18 @@ public:
       return 0;
     }
   }
+
+  // Called when reinitializing stream. The input parameter is how many frames
+  // have already been written to AAudio since the first initialization.
+  void reinit(uint64_t position)
+  {
+    init_position = position;
+    state = None{};
+    callback_timestamp = 0;
+  }
+
+  // Frame index when last reinitialized.
+  uint64_t initial_position() { return init_position; }
 
 private:
   template <typename T> void set_state() { state.emplace<T>(); }
@@ -254,8 +271,10 @@ private:
     uint64_t pause_time; // Elapsed time from stopping to starting stream.
   };
   std::variant<None, Play, Pause, Resume> state;
-  // Keep track input callback timestamp to detect callback emission.
+  // Track input callback timestamp to detect callback emission.
   uint64_t callback_timestamp{0};
+  // Track number of written frames to adjust position after reinitialization.
+  uint64_t init_position{0};
 };
 
 struct cubeb_stream {
@@ -296,7 +315,7 @@ struct cubeb_stream {
   bool voice_input{};
   bool voice_output{};
   uint64_t previous_clock{};
-  position_interpolator interpolator;
+  position_estimate pos_estimate;
 };
 
 struct cubeb {
@@ -1020,11 +1039,17 @@ reinitialize_stream(cubeb_stream * stm)
                        state == stream_state::STARTING ||
                        state == stream_state::DRAINING;
     int err = aaudio_stream_stop_locked(stm, lock);
+    // get total number of written frames before destroying the stream.
+    uint64_t total_frames = stm->pos_estimate.initial_position() +
+                            WRAP(AAudioStream_getFramesWritten)(stm->ostream);
     // error ignored.
     aaudio_stream_destroy_locked(stm, lock);
     err = aaudio_stream_init_impl(stm, lock);
 
     assert(stm->in_use.load());
+
+    // set the new initial position.
+    stm->pos_estimate.reinit(total_frames);
 
     if (err != CUBEB_OK) {
       aaudio_stream_destroy_locked(stm, lock);
@@ -1173,7 +1198,8 @@ aaudio_stream_destroy_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
   }
 
   stm->timing_info.invalidate();
-  stm->interpolator = {};
+  stm->previous_clock = 0;
+  stm->pos_estimate = {};
 
   if (stm->resampler) {
     cubeb_resampler_destroy(stm->resampler);
@@ -1544,7 +1570,7 @@ aaudio_stream_start_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
   }
 
   if (success) {
-    stm->interpolator.start(now_ns());
+    stm->pos_estimate.start(now_ns());
     stm->context->state.waiting.store(true);
     stm->context->state.cond.notify_one();
   }
@@ -1653,7 +1679,7 @@ aaudio_stream_stop_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
   }
 
   if (success) {
-    stm->interpolator.stop(now_ns());
+    stm->pos_estimate.stop(now_ns());
     stm->context->state.waiting.store(true);
     stm->context->state.cond.notify_one();
   }
@@ -1668,6 +1694,7 @@ aaudio_stream_get_position(cubeb_stream * stm, uint64_t * position)
   lock_guard lock(stm->mutex);
 
   stream_state state = stm->state.load();
+  uint64_t init_position = stm->pos_estimate.initial_position();
   AAudioStream * stream = stm->ostream ? stm->ostream : stm->istream;
   switch (state) {
   case stream_state::ERROR:
@@ -1678,7 +1705,7 @@ aaudio_stream_get_position(cubeb_stream * stm, uint64_t * position)
   case stream_state::STOPPING:
     // getTimestamp is only valid when the stream is playing.
     // Simply return the number of frames passed to aaudio
-    *position = WRAP(AAudioStream_getFramesRead)(stream);
+    *position = init_position + WRAP(AAudioStream_getFramesRead)(stream);
     if (*position < stm->previous_clock) {
       *position = stm->previous_clock;
     } else {
@@ -1696,7 +1723,7 @@ aaudio_stream_get_position(cubeb_stream * stm, uint64_t * position)
   // No callback yet, the stream hasn't really started.
   if (stm->previous_clock == 0 && !stm->timing_info.updated()) {
     LOG("Not timing info yet");
-    *position = 0;
+    *position = init_position;
     return CUBEB_OK;
   }
 
@@ -1704,10 +1731,12 @@ aaudio_stream_get_position(cubeb_stream * stm, uint64_t * position)
   LOGV("AAudioTimingInfo idx:%lu tstamp:%lu latency:%u",
        info.output_frame_index, info.tstamp, info.output_latency);
   // Interpolate client side since the last callback.
-  uint64_t interpolation = stm->sample_rate *
-                           stm->interpolator.compute(now_ns(), info.tstamp) /
-                           NS_PER_S;
-  *position = info.output_frame_index + interpolation - info.output_latency;
+  uint64_t interpolation =
+      (stm->sample_rate *
+       stm->pos_estimate.elapsed_time_since_callback(now_ns(), info.tstamp) /
+       NS_PER_S);
+  *position = init_position + info.output_frame_index + interpolation -
+              info.output_latency;
   if (*position < stm->previous_clock) {
     *position = stm->previous_clock;
   } else {
