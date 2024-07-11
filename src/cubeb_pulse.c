@@ -1217,27 +1217,8 @@ pulse_stream_set_volume(cubeb_stream * stm, float volume)
 
   WRAP(pa_threaded_mainloop_lock)(stm->context->mainloop);
 
-  /* if the pulse daemon is configured to use flat volumes,
-   * apply our own gain instead of changing the input volume on the sink. */
   ctx = stm->context;
-  if (ctx->default_sink_info &&
-      (ctx->default_sink_info->flags & PA_SINK_FLAT_VOLUME)) {
-    stm->volume = volume;
-  } else {
-    ss = WRAP(pa_stream_get_sample_spec)(stm->output_stream);
-
-    vol = WRAP(pa_sw_volume_from_linear)(volume);
-    WRAP(pa_cvolume_set)(&cvol, ss->channels, vol);
-
-    index = WRAP(pa_stream_get_index)(stm->output_stream);
-
-    op = WRAP(pa_context_set_sink_input_volume)(ctx->context, index, &cvol,
-                                                volume_success, stm);
-    if (op) {
-      operation_wait(ctx, stm->output_stream, op);
-      WRAP(pa_operation_unref)(op);
-    }
-  }
+  stm->volume = volume;
 
   WRAP(pa_threaded_mainloop_unlock)(ctx->mainloop);
 
