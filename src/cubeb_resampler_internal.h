@@ -291,8 +291,8 @@ public:
     int32_t resampled_frames_left =
         samples_to_frames(resampling_out_buffer.length());
     float input_frames_needed =
-        (output_frame_count - unresampled_frames_left) * resampling_ratio -
-        resampled_frames_left;
+        (output_frame_count - resampled_frames_left) * resampling_ratio -
+        unresampled_frames_left;
     if (input_frames_needed < 0) {
       return 0;
     }
