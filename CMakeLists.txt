@@ -1,7 +1,8 @@
 # TODO
 # - backend selection via command line, rather than simply detecting headers.
 
-cmake_minimum_required(VERSION 3.14 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.15 FATAL_ERROR)
+cmake_policy(SET CMP0091 NEW)
 project(cubeb
   VERSION 0.0.0)
 
@@ -85,6 +86,12 @@ add_library(cubeb
   src/cubeb_strings.c
   src/cubeb_utils.cpp
 )
+# Set debugging for runtime libraries if requested.
+if (MSVC)
+  set_property(TARGET cubeb PROPERTY
+               MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 target_include_directories(cubeb
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>
 )
