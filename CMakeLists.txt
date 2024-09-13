@@ -89,7 +89,7 @@ add_library(cubeb
 # Set debugging for runtime libraries if requested.
 if (MSVC)
   set_property(TARGET cubeb PROPERTY
-               MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+               MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>$<$<BOOL:${BUILD_SHARED_LIBS}>:DLL>")
 endif()
 
 target_include_directories(cubeb
