@@ -88,7 +88,6 @@ add_library(cubeb
   src/cubeb_strings.c
   src/cubeb_utils.cpp
 )
-
 target_include_directories(cubeb
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>
 )
