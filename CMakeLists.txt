@@ -14,7 +14,7 @@ option(BUNDLE_SPEEX "Bundle the speex library" OFF)
 option(LAZY_LOAD_LIBS "Lazily load shared libraries" ON)
 option(USE_SANITIZERS "Use sanitizers" ON)
 # Set debugging for runtime libraries if requested.
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>$<$<BOOL:${BUILD_SHARED_LIBS}>:DLL>")
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING
