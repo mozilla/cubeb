@@ -4,3 +4,11 @@
 [submodule "cmake/sanitizers-cmake"]
 	path = cmake/sanitizers-cmake
 	url = https://github.com/arsenm/sanitizers-cmake
+[submodule "src/cubeb-coreaudio-rs"]
+	path = src/cubeb-coreaudio-rs
+	url = https://github.com/mozilla/cubeb-coreaudio-rs
+	branch = trailblazer
+[submodule "src/cubeb-pulse-rs"]
+	path = src/cubeb-pulse-rs
+	url = https://github.com/mozilla/cubeb-pulse-rs
+	branch = dev
