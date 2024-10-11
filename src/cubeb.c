@@ -754,3 +754,24 @@ cubeb_set_log_callback(cubeb_log_level log_level,
 
   return CUBEB_OK;
 }
+
+int
+cubeb_set_log_callback_string(cubeb_log_level log_level,
+                              cubeb_log_callback_string log_callback)
+{
+  if (log_level < CUBEB_LOG_DISABLED || log_level > CUBEB_LOG_VERBOSE) {
+    return CUBEB_ERROR_INVALID_FORMAT;
+  }
+
+  if (!log_callback && log_level != CUBEB_LOG_DISABLED) {
+    return CUBEB_ERROR_INVALID_PARAMETER;
+  }
+
+  if (cubeb_log_get_callback() && log_callback) {
+    return CUBEB_ERROR_NOT_SUPPORTED;
+  }
+
+  cubeb_log_set_string(log_level, log_callback);
+
+  return CUBEB_OK;
+}

@@ -18,6 +18,7 @@
 
 std::atomic<cubeb_log_level> g_cubeb_log_level;
 std::atomic<cubeb_log_callback> g_cubeb_log_callback;
+std::atomic<cubeb_log_callback_string> g_cubeb_log_callback_string;
 
 /** The maximum size of a log message, after having been formatted. */
 const size_t CUBEB_LOG_MESSAGE_MAX_SIZE = 256;
@@ -29,6 +30,11 @@ const size_t CUBEB_LOG_BATCH_PRINT_INTERVAL_MS = 10;
 
 void
 cubeb_noop_log_callback(char const * /* fmt */, ...)
+{
+}
+
+void
+cubeb_noop_log_callback_string(char const * /* s */)
 {
 }
 
@@ -214,6 +220,32 @@ cubeb_log_set(cubeb_log_level log_level, cubeb_log_callback log_callback)
     cubeb_async_logger::get().stop();
   } else {
     assert(false && "Incorrect parameters passed to cubeb_log_set");
+  }
+}
+
+void
+cubeb_format_message_and_pass(char const * fmt, ...)
+{
+  va_list args;
+  va_start(args, fmt);
+  char msg[CUBEB_LOG_MESSAGE_MAX_SIZE];
+  vsnprintf(msg, CUBEB_LOG_MESSAGE_MAX_SIZE, fmt, args);
+  va_end(args);
+  g_cubeb_log_callback_string.load()(msg);
+}
+
+void
+cubeb_log_set_string(cubeb_log_level log_level,
+                     cubeb_log_callback_string log_callback)
+{
+  // Once a callback has a been set, `g_cubeb_log_callback_string` is never set
+  // back to nullptr, to prevent a TOCTOU race between checking the pointer
+  if (!log_callback && g_cubeb_log_callback_string) {
+    g_cubeb_log_callback_string = cubeb_noop_log_callback_string;
+    cubeb_log_set(log_level, nullptr);
+  } else {
+    g_cubeb_log_callback_string = log_callback;
+    cubeb_log_set(log_level, cubeb_format_message_and_pass);
   }
 }
 

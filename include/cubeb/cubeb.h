@@ -463,6 +463,9 @@ typedef void (*cubeb_device_collection_changed_callback)(cubeb * context,
 /** User supplied callback called when a message needs logging. */
 typedef void (*cubeb_log_callback)(char const * fmt, ...);
 
+/** User supplied callback called when a formatted message needs logging. */
+typedef void (*cubeb_log_callback_string)(char const * str);
+
 /** Initialize an application context.  This will perform any library or
     application scoped initialization.
 
@@ -769,6 +772,18 @@ cubeb_register_device_collection_changed(
 CUBEB_EXPORT int
 cubeb_set_log_callback(cubeb_log_level log_level,
                        cubeb_log_callback log_callback);
+
+/** Set a callback to be called with a message.
+    @param log_level CUBEB_LOG_VERBOSE, CUBEB_LOG_NORMAL.
+    @param log_callback_string A function called with a message when there is
+                               something to log. Pass NULL to unregister.
+    @retval CUBEB_OK in case of success.
+    @retval CUBEB_ERROR_INVALID_PARAMETER if either context or log_callback are
+                                          invalid pointers, or if level is not
+                                          in cubeb_log_level. */
+CUBEB_EXPORT int
+cubeb_set_log_callback_string(cubeb_log_level log_level,
+                              cubeb_log_callback_string log_callback);
 
 #if defined(__cplusplus)
 }
