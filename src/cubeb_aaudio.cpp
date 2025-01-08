@@ -1640,9 +1640,15 @@ aaudio_stream_stop_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
   assert(stm && stm->in_use.load());
 
   stream_state state = stm->state.load();
-  int istate = stm->istream ? WRAP(AAudioStream_getState)(stm->istream) : 0;
-  int ostate = stm->ostream ? WRAP(AAudioStream_getState)(stm->ostream) : 0;
-  LOG("STOPPING stream %p: %d (%d %d)", (void *)stm, state, istate, ostate);
+  aaudio_stream_state_t istate = stm->istream
+                                     ? WRAP(AAudioStream_getState)(stm->istream)
+                                     : AAUDIO_STREAM_STATE_UNINITIALIZED;
+  aaudio_stream_state_t ostate = stm->ostream
+                                     ? WRAP(AAudioStream_getState)(stm->ostream)
+                                     : AAUDIO_STREAM_STATE_UNINITIALIZED;
+  LOG("STOPPING stream %p: %d (in: %s out: %s)", (void *)stm, state,
+      cubeb_AAudio_convertStreamStateToText(istate),
+      cubeb_AAudio_convertStreamStateToText(ostate));
 
   switch (state) {
   case stream_state::STOPPED:
