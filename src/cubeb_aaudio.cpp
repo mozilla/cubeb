@@ -284,6 +284,7 @@ struct cubeb_stream {
 
   std::atomic<bool> in_use{false};
   std::atomic<bool> latency_metrics_available{false};
+  std::atomic<int64_t> drain_target{-1};
   std::atomic<stream_state> state{stream_state::INIT};
   std::atomic<bool> in_data_callback{false};
   triple_buffer<AAudioTimingInfo> timing_info;
@@ -529,6 +530,20 @@ update_state(cubeb_stream * stm)
     case stream_state::DRAINING:
       // The DRAINING state means that we want to stop the streams but
       // may not have done so yet.
+      if (ostate && ostate == AAUDIO_STREAM_STATE_STARTED) {
+        int64_t read = WRAP(AAudioStream_getFramesRead)(stm->ostream);
+        int64_t target = stm->drain_target.load();
+        LOGV("Output stream DRAINING. Remaining frames: %" PRId64 ".",
+             target - read);
+        if (read < target) {
+          // requestStop says it will wait for buffered data to be drained.
+          // We have observed the end of the stream's written data getting
+          // truncated however, suggesting there is some buffer that it does
+          // not drain. Wait for all written frames to have been read before
+          // draining.
+          return;
+        }
+      }
       // The aaudio docs state that returning STOP from the callback isn't
       // enough, the stream has to be stopped from another thread
       // afterwards.
@@ -538,7 +553,8 @@ update_state(cubeb_stream * stm)
       // Therefor it is important to close ostream first.
       if (ostate && ostate != AAUDIO_STREAM_STATE_STOPPING &&
           ostate != AAUDIO_STREAM_STATE_STOPPED) {
-        res = WRAP(AAudioStream_requestStop)(stm->ostream);
+        LOGV("Output stream DRAINING. Stopping.");
+        aaudio_result_t res = WRAP(AAudioStream_requestStop)(stm->ostream);
         if (res != AAUDIO_OK) {
           LOG("AAudioStream_requestStop: %s",
               WRAP(AAudio_convertResultToText)(res));
@@ -547,7 +563,8 @@ update_state(cubeb_stream * stm)
       }
       if (istate && istate != AAUDIO_STREAM_STATE_STOPPING &&
           istate != AAUDIO_STREAM_STATE_STOPPED) {
-        res = WRAP(AAudioStream_requestStop)(stm->istream);
+        LOGV("Input stream DRAINING. Stopping");
+        aaudio_result_t res = WRAP(AAudioStream_requestStop)(stm->istream);
         if (res != AAUDIO_OK) {
           LOG("AAudioStream_requestStop: %s",
               WRAP(AAudio_convertResultToText)(res));
@@ -563,6 +580,7 @@ update_state(cubeb_stream * stm)
       if ((!ostate || ostate == AAUDIO_STREAM_STATE_STOPPED) &&
           (!istate || istate == AAUDIO_STREAM_STATE_STOPPED)) {
         new_state = stream_state::STOPPED;
+        stm->drain_target.store(-1);
         stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
       }
       break;
@@ -909,6 +927,8 @@ aaudio_duplex_data_cb(AAudioStream * astream, void * user_data,
     return AAUDIO_CALLBACK_RESULT_STOP;
   }
   if (done_frames < num_frames) {
+    stm->drain_target.store(WRAP(AAudioStream_getFramesWritten)(stm->ostream) +
+                            done_frames);
     stm->state.store(stream_state::DRAINING);
     stm->context->state.waiting.store(true);
     stm->context->state.cond.notify_one();
@@ -959,6 +979,8 @@ aaudio_output_data_cb(AAudioStream * astream, void * user_data,
   }
 
   if (done_frames < num_frames) {
+    stm->drain_target.store(WRAP(AAudioStream_getFramesWritten)(stm->ostream) +
+                            done_frames);
     stm->state.store(stream_state::DRAINING);
     stm->context->state.waiting.store(true);
     stm->context->state.cond.notify_one();
@@ -1065,6 +1087,7 @@ reinitialize_stream(cubeb_stream * stm)
 
     if (was_playing) {
       err = aaudio_stream_start_locked(stm, lock);
+      stm->drain_target.store(-1);
       if (err != CUBEB_OK) {
         aaudio_stream_destroy_locked(stm, lock);
         LOG("aaudio_stream_start error while reiniting: %s",
