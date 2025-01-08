@@ -354,20 +354,25 @@ struct AutoInCallback {
 // draining.
 static int
 wait_for_state_change(AAudioStream * aaudio_stream,
-                      aaudio_stream_state_t desired_state,
+                      aaudio_stream_state_t * desired_state,
                       int64_t poll_frequency_ns)
 {
   aaudio_stream_state_t new_state;
   do {
+    // See the docs of aaudio getState/waitForStateChange for details,
+    // why we are passing STATE_UNKNOWN.
     aaudio_result_t res = WRAP(AAudioStream_waitForStateChange)(
         aaudio_stream, AAUDIO_STREAM_STATE_UNKNOWN, &new_state,
         poll_frequency_ns);
     if (res != AAUDIO_OK) {
-      LOG("AAudioStream_waitForStateChanged: %s",
+      LOG("AAudioStream_waitForStateChange: %s",
           WRAP(AAudio_convertResultToText)(res));
       return CUBEB_ERROR;
     }
-  } while (new_state != desired_state);
+  } while (*desired_state != AAUDIO_STREAM_STATE_UNINITIALIZED &&
+           new_state != *desired_state);
+
+  *desired_state = new_state;
 
   LOG("wait_for_state_change: current state now: %s",
       cubeb_AAudio_convertStreamStateToText(new_state));
@@ -389,8 +394,8 @@ shutdown_with_error(cubeb_stream * stm)
   int64_t poll_frequency_ns = NS_PER_S * stm->out_frame_size / stm->sample_rate;
   int rv;
   if (stm->istream) {
-    rv = wait_for_state_change(stm->istream, AAUDIO_STREAM_STATE_STOPPED,
-                               poll_frequency_ns);
+    aaudio_stream_state_t state = AAUDIO_STREAM_STATE_STOPPED;
+    rv = wait_for_state_change(stm->istream, &state, poll_frequency_ns);
     if (rv != CUBEB_OK) {
       LOG("Failure when waiting for stream change on the input side when "
           "shutting down in error");
@@ -398,8 +403,8 @@ shutdown_with_error(cubeb_stream * stm)
     }
   }
   if (stm->ostream) {
-    rv = wait_for_state_change(stm->ostream, AAUDIO_STREAM_STATE_STOPPED,
-                               poll_frequency_ns);
+    aaudio_stream_state_t state = AAUDIO_STREAM_STATE_STOPPED;
+    rv = wait_for_state_change(stm->ostream, &state, poll_frequency_ns);
     if (rv != CUBEB_OK) {
       LOG("Failure when waiting for stream change on the output side when "
           "shutting down in error");
@@ -471,31 +476,22 @@ update_state(cubeb_stream * stm)
 
     new_state = old_state;
 
-    aaudio_stream_state_t istate = 0;
-    aaudio_stream_state_t ostate = 0;
+    aaudio_stream_state_t istate = AAUDIO_STREAM_STATE_UNINITIALIZED;
+    aaudio_stream_state_t ostate = AAUDIO_STREAM_STATE_UNINITIALIZED;
 
     // We use waitForStateChange (with zero timeout) instead of just
     // getState since only the former internally updates the state.
-    // See the docs of aaudio getState/waitForStateChange for details,
-    // why we are passing STATE_UNKNOWN.
-    aaudio_result_t res;
     if (stm->istream) {
-      res = WRAP(AAudioStream_waitForStateChange)(
-          stm->istream, AAUDIO_STREAM_STATE_UNKNOWN, &istate, 0);
-      if (res != AAUDIO_OK) {
-        LOG("AAudioStream_waitForStateChanged: %s",
-            WRAP(AAudio_convertResultToText)(res));
+      int res = wait_for_state_change(stm->istream, &istate, 0);
+      if (res != CUBEB_OK) {
         return;
       }
       assert(istate);
     }
 
     if (stm->ostream) {
-      res = WRAP(AAudioStream_waitForStateChange)(
-          stm->ostream, AAUDIO_STREAM_STATE_UNKNOWN, &ostate, 0);
-      if (res != AAUDIO_OK) {
-        LOG("AAudioStream_waitForStateChanged: %s",
-            WRAP(AAudio_convertResultToText)(res));
+      int res = wait_for_state_change(stm->ostream, &ostate, 0);
+      if (res != CUBEB_OK) {
         return;
       }
       assert(ostate);
