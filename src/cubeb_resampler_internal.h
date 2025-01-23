@@ -280,9 +280,7 @@ public:
   }
 
   /** Returns the number of frames to pass in the input of the resampler to have
-   * exactly `output_frame_count` resampled frames. This can return a number
-   * slightly bigger than what is strictly necessary, but it guaranteed that the
-   * number of output frames will be exactly equal. */
+   * to at least have `output_frame_count` resampled frames. */
   uint32_t input_needed_for_output(int32_t output_frame_count) const
   {
     assert(output_frame_count >= 0); // Check overflow
@@ -290,13 +288,17 @@ public:
         samples_to_frames(resampling_in_buffer.length());
     int32_t resampled_frames_left =
         samples_to_frames(resampling_out_buffer.length());
-    float input_frames_needed =
-        (output_frame_count - unresampled_frames_left) * resampling_ratio -
-        resampled_frames_left;
-    if (input_frames_needed < 0) {
-      return 0;
-    }
-    return (uint32_t)ceilf(input_frames_needed);
+    output_frame_count -= resampled_frames_left;
+    float input_frames_needed_frac =
+        static_cast<float>(output_frame_count) * resampling_ratio;
+    // speex_resample()` can be irregular in its consumption of input samples.
+    // Provide one more frame than the number that would be required with
+    // regular consumption, to make the speex resampler behave more regularly,
+    // and so predictably.
+    auto input_frame_needed =
+        1 + static_cast<uint32_t>(ceilf(input_frames_needed_frac));
+    input_frame_needed -= unresampled_frames_left;
+    return input_frame_needed;
   }
 
   /** Returns a pointer to the input buffer, that contains empty space for at
