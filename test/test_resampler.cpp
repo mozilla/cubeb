@@ -6,7 +6,12 @@
  */
 #ifndef NOMINMAX
 #define NOMINMAX
+#include "cubeb/cubeb.h"
+#include "cubeb_log.h"
+#include "cubeb_resampler.h"
 #endif // NOMINMAX
+// #define ENABLE_NORMAL_LOG
+// #define ENABLE_VERBOSE_LOG
 #include "common.h"
 #include "cubeb_resampler_internal.h"
 #include "gtest/gtest.h"
@@ -1158,6 +1163,151 @@ TEST(cubeb, individual_methods)
   // without the fix.
   uint32_t frames_needed2 = one_way.input_needed_for_output(0);
   ASSERT_EQ(frames_needed2, 0u);
+}
+
+long
+data_cb(cubeb_stream * stream, void * user_ptr, void const * input_buffer,
+        void * output_buffer, long nframes)
+{
+  LOGV("%ld frames requested\n", nframes);
+  float * out = static_cast<float *>(output_buffer);
+  // never drain, fill with silence
+  for (int i = 0; i < nframes * 2; i++) {
+    out[i] = 0.0;
+  }
+  return nframes;
+}
+
+// This tests checks two things:
+// - Whenever resampling from a source rate to a target rate with a certain
+//  block size, the correct number of frames is provided back from the
+//  resampler, to the backend.
+// - While resampling, internal buffers are kept under control and aren't
+// growing unbounded.
+TEST(cubeb, resampler_typical_uses)
+{
+  // This class tracks the monotonicity of a certain value, and reports if it
+  // increases too much monotonically.
+  struct monotonic_state {
+    explicit monotonic_state(const char * what, int source_rate,
+                             int target_rate, int block_size)
+        : what(what), source_rate(source_rate), target_rate(target_rate),
+          block_size(block_size)
+    {
+    }
+    ~monotonic_state()
+    {
+      float ratio =
+          static_cast<float>(source_rate) / static_cast<float>(target_rate);
+      // Only report if there has been a meaningful increase in buffering. Do
+      // not warn if the buffering was constant and small.
+      if (monotonic && max_value && max_value != max_step) {
+        printf("%s is monotonically increasing, max: %zu, max_step: %zu, "
+               "in: %dHz, out: "
+               "%dHz, block_size: %d, ratio: %lf\n",
+               what, max_value, max_step, source_rate, target_rate, block_size,
+               ratio);
+      }
+      // Arbitrary limit: if more than this number of frames has been buffered,
+      // print a message.
+      constexpr int BUFFER_SIZE_THRESHOLD = 20;
+      if (max_value > BUFFER_SIZE_THRESHOLD) {
+        printf("%s, unexpected large max buffering value, max: %zu, max_step: "
+               "%zu, in: %dHz, out: %dHz, block_size: %d, ratio: %lf\n",
+               what, max_value, max_step, source_rate, target_rate, block_size,
+               ratio);
+      }
+    }
+    void set_new_value(size_t new_value)
+    {
+      if (new_value < value) {
+        monotonic = false;
+      } else {
+        max_step = std::max(max_step, new_value - value);
+      }
+      value = new_value;
+      max_value = std::max(value, max_value);
+    }
+    // Textual representation of this measurement
+    const char * what;
+    // Resampler parameters for this test case
+    int source_rate = 0;
+    int target_rate = 0;
+    int block_size = 0;
+    // Current buffering value
+    size_t value = 0;
+    // Max buffering value increment
+    size_t max_step = 0;
+    // Max buffering value observerd
+    size_t max_value = 0;
+    // Whether the value has only increased or not
+    bool monotonic = true;
+  };
+  // Source and target sample-rates in Hz, typical values.
+  const int rates[] = {16000, 32000, 44100, 48000, 96000, 192000, 384000};
+  // Block size in frames, except the first element, that is in millisecond
+  // Power of two are typical on Windows WASAPI IAudioClient3, macOS,
+  // Linux Pipewire and Jack. 10ms is typical on Windows IAudioClient and
+  // IAudioClient2. 96, 192 are not uncommon on some Android devices.
+  constexpr int WASAPI_MS_BLOCK = 10;
+  const int block_sizes[] = {
+      WASAPI_MS_BLOCK, 96, 128, 192, 256, 512, 1024, 2048};
+  // Enough iterations to catch rounding/drift issues, but not too many to avoid
+  // having a test that is too long to run.
+  constexpr int ITERATION_COUNT = 1000;
+  cubeb * ctx;
+  common_init(&ctx, "Cubeb resampler test");
+  // Cartesian product of all parameters
+  for (int source_rate : rates) {
+    for (int target_rate : rates) {
+      for (int block_size : block_sizes) {
+        // special case: Windows/WASAPI works in blocks of 10ms regardless of
+        // the rate.
+        if (block_size == WASAPI_MS_BLOCK) {
+          block_size = target_rate / 100; // 10ms
+        }
+        cubeb_stream_params out_params = {};
+        out_params.channels = 2;
+        out_params.rate = target_rate;
+        out_params.format = CUBEB_SAMPLE_FLOAT32NE;
+
+        cubeb_resampler * resampler = cubeb_resampler_create(
+            nullptr, nullptr, &out_params, source_rate, data_cb, nullptr,
+            CUBEB_RESAMPLER_QUALITY_VOIP, CUBEB_RESAMPLER_RECLOCK_NONE);
+        ASSERT_NE(resampler, nullptr);
+
+        std::vector<float> data(block_size * out_params.channels);
+        int i = ITERATION_COUNT;
+        // For now this only tests the output side (out_... measurements).
+        //  We could expect the resampler to be symmetrical, but we could test
+        //  both sides at once.
+        // - `..._in` is the input buffer of the resampler, containing
+        // unresampled  frames
+        // - `..._out` is the output buffer, containing resampled frames.
+        monotonic_state in_in_max("in_in", source_rate, target_rate,
+                                  block_size);
+        monotonic_state in_out_max("in_out", source_rate, target_rate,
+                                   block_size);
+        monotonic_state out_in_max("out_in", source_rate, target_rate,
+                                   block_size);
+        monotonic_state out_out_max("out_out", source_rate, target_rate,
+                                    block_size);
+        while (i--) {
+          int64_t got = cubeb_resampler_fill(resampler, nullptr, nullptr,
+                                             data.data(), block_size);
+          ASSERT_EQ(got, block_size);
+          cubeb_resampler_stats stats = cubeb_resampler_stats_get(resampler);
+          in_in_max.set_new_value(stats.input_input_buffer_size);
+          in_out_max.set_new_value(stats.input_output_buffer_size);
+          out_in_max.set_new_value(stats.output_input_buffer_size);
+          out_out_max.set_new_value(stats.output_output_buffer_size);
+        }
+
+        cubeb_resampler_destroy(resampler);
+      }
+    }
+  }
+  cubeb_destroy(ctx);
 }
 
 #undef NOMINMAX
