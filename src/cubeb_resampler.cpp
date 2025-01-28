@@ -371,3 +371,11 @@ cubeb_resampler_latency(cubeb_resampler * resampler)
 {
   return resampler->latency();
 }
+
+#ifdef GTEST_ENABLED
+cubeb_resampler_stats
+cubeb_resampler_stats_get(cubeb_resampler * resampler)
+{
+  return resampler->stats();
+}
+#endif
