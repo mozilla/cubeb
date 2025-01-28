@@ -333,9 +333,9 @@ public:
   }
 
   /** Returns a pointer to the input buffer, that contains empty space for at
-   * least `frame_count` elements. This is useful so that consumer can directly
-   * write into the input buffer of the resampler. The pointer returned is
-   * adjusted so that leftover data are not overwritten.
+   * least `frame_count` elements. This is useful so that consumer can
+   * directly write into the input buffer of the resampler. The pointer
+   * returned is adjusted so that leftover data are not overwritten.
    */
   T * input_buffer(size_t frame_count)
   {
@@ -345,8 +345,8 @@ public:
     return resampling_in_buffer.data() + leftover_samples;
   }
 
-  /** This method works with `input_buffer`, and allows to inform the processor
-      how much frames have been written in the provided buffer. */
+  /** This method works with `input_buffer`, and allows to inform the
+     processor how much frames have been written in the provided buffer. */
   void written(size_t written_frames)
   {
     resampling_in_buffer.set_length(leftover_samples +
@@ -397,6 +397,7 @@ private:
             output_frame_count);
     assert(rv == RESAMPLER_ERR_SUCCESS);
   }
+
   /** The state for the speex resampler used internaly. */
   SpeexResamplerState * speex_resampler;
   /** Source rate / target rate. */
@@ -409,8 +410,8 @@ private:
   auto_array<T> resampling_out_buffer;
   /** Additional latency inserted into the pipeline for synchronisation. */
   uint32_t additional_latency;
-  /** When `input_buffer` is called, this allows tracking the number of samples
-      that were in the buffer. */
+  /** When `input_buffer` is called, this allows tracking the number of
+     samples that were in the buffer. */
   uint32_t leftover_samples;
 };
 
@@ -455,8 +456,8 @@ public:
     return delay_output_buffer.data();
   }
   /** Get a pointer to the first writable location in the input buffer>
-   * @parameter frames_needed the number of frames the user needs to write into
-   * the buffer.
+   * @parameter frames_needed the number of frames the user needs to write
+   * into the buffer.
    * @returns a pointer to a location in the input buffer where #frames_needed
    * can be writen. */
   T * input_buffer(uint32_t frames_needed)
@@ -466,8 +467,8 @@ public:
                                frames_to_samples(frames_needed));
     return delay_input_buffer.data() + leftover_samples;
   }
-  /** This method works with `input_buffer`, and allows to inform the processor
-      how much frames have been written in the provided buffer. */
+  /** This method works with `input_buffer`, and allows to inform the
+     processor how much frames have been written in the provided buffer. */
   void written(size_t frames_written)
   {
     delay_input_buffer.set_length(leftover_samples +
@@ -488,8 +489,8 @@ public:
 
     return to_pop;
   }
-  /** Returns the number of frames one needs to input into the delay line to get
-   * #frames_needed frames back.
+  /** Returns the number of frames one needs to input into the delay line to
+   * get #frames_needed frames back.
    * @parameter frames_needed the number of frames one want to write into the
    * delay_line
    * @returns the number of frames one will get. */
@@ -511,6 +512,7 @@ public:
     uint32_t to_keep = min_buffered_audio_frame(sample_rate);
     if (available > to_keep) {
       ALOGV("Dropping %u frames", available - to_keep);
+
       delay_input_buffer.pop(nullptr, frames_to_samples(available - to_keep));
     }
   }
@@ -523,8 +525,8 @@ public:
 private:
   /** The length, in frames, of this delay line */
   uint32_t length;
-  /** When `input_buffer` is called, this allows tracking the number of samples
-      that where in the buffer. */
+  /** When `input_buffer` is called, this allows tracking the number of
+     samples that where in the buffer. */
   uint32_t leftover_samples;
   /** The input buffer, where the delay is applied. */
   auto_array<T> delay_input_buffer;
@@ -554,8 +556,8 @@ cubeb_resampler_create_internal(cubeb_stream * stream,
          "need at least one valid parameter pointer.");
 
   /* All the streams we have have a sample rate that matches the target
-     sample rate, use a no-op resampler, that simply forwards the buffers to the
-     callback. */
+     sample rate, use a no-op resampler, that simply forwards the buffers to
+     the callback. */
   if (((input_params && input_params->rate == target_rate) &&
        (output_params && output_params->rate == target_rate)) ||
       (input_params && !output_params && (input_params->rate == target_rate)) ||
