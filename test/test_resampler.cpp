@@ -7,6 +7,7 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #include "cubeb/cubeb.h"
+#include "cubeb_audio_dump.h"
 #include "cubeb_log.h"
 #include "cubeb_resampler.h"
 #endif // NOMINMAX
@@ -16,6 +17,7 @@
 #include "cubeb_resampler_internal.h"
 #include "gtest/gtest.h"
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <stdio.h>
 
@@ -1165,84 +1167,187 @@ TEST(cubeb, individual_methods)
   ASSERT_EQ(frames_needed2, 0u);
 }
 
+struct sine_wave_state {
+  float phase = 0.0f;
+  float frequency;
+  int sample_rate;
+  sine_wave_state(float freq, int rate) : frequency(freq), sample_rate(rate) {}
+};
+
 long
 data_cb(cubeb_stream * stream, void * user_ptr, void const * input_buffer,
         void * output_buffer, long nframes)
 {
-  LOGV("%ld frames requested\n", nframes);
+  sine_wave_state * state = static_cast<sine_wave_state *>(user_ptr);
   float * out = static_cast<float *>(output_buffer);
-  // never drain, fill with silence
-  for (int i = 0; i < nframes * 2; i++) {
-    out[i] = 0.0;
+  float phase_increment = 2.0f * M_PI * state->frequency / state->sample_rate;
+
+  for (int i = 0; i < nframes; i++) {
+    float sample = sin(state->phase);
+    state->phase += phase_increment;
+    if (state->phase > 2.0f * M_PI) {
+      state->phase -= 2.0f * M_PI;
+    }
+    out[i] = sample * 0.8;
   }
   return nframes;
 }
 
-// This tests checks two things:
+// This implements 4.6.2 from "Standard for Digitizing Waveform Recorders"
+// (in particular Annex A), then returns the estimated amplitude, phase, and the
+// sum of squared error relative to a sine wave sampled at `sample_rate` and of
+// frequency `frequency`. This is also described in "Numerical methods for
+// engineers" chapter 19.1, and explained at
+// https://www.youtube.com/watch?v=afQszl_OwKo and videos of the same series.
+// In practice here we're sending a perfect 1khz sine wave into a good
+// resampler, and despite the resampling ratio being quite extreme sometimes,
+// we're expecting a very good fit.
+float
+fit_sine(const std::vector<float> & signal, float sample_rate, float frequency,
+         float & out_amplitude, float & out_phase)
+{
+  const size_t len = signal.size();
+  float phase_incr = 2.0 * M_PI * frequency / sample_rate;
+
+  float sum_cos = 0.0;
+  float sum_sin = 0.0;
+  for (size_t i = 0; i < len; ++i) {
+    float c = std::cos(phase_incr * static_cast<float>(i));
+    float s = std::sin(phase_incr * static_cast<float>(i));
+    sum_cos += signal[i] * c;
+    sum_sin += signal[i] * s;
+  }
+
+  float amplitude = 2.0f * std::sqrt(sum_cos * sum_cos + sum_sin * sum_sin) /
+                    static_cast<float>(len);
+  float phi = std::atan2(sum_cos, sum_sin);
+
+  out_amplitude = amplitude;
+  out_phase = phi;
+
+  // Compute sum of squared errors relative to the fitted sine wave
+  float sse = 0.0;
+  for (size_t i = 0; i < len; ++i) {
+    float fit = amplitude * std::sin(phase_incr * i + phi);
+    float diff = signal[i] - fit;
+    sse += diff * diff;
+  }
+
+  return sse;
+}
+
+// Finds the offset of the start of an input_freq sine wave sampled at
+// target_rate in data. Remove the leading silence from data.
+size_t
+find_sine_start(const std::vector<float> & data, float input_freq,
+                float target_rate)
+{
+  const size_t POINTS = 10;
+  size_t skipped = 0;
+
+  while (skipped + POINTS < data.size()) {
+    float phase = 0;
+    float phase_increment = 2.0f * M_PI * input_freq / target_rate;
+    bool fits_sine = true;
+
+    for (size_t i = 0; i < POINTS; i++) {
+      float expected = sin(phase) * 0.8;
+      float actual = data[skipped + i];
+      if (fabs(expected - actual) > 0.1) {
+        // doesn't fit a sine, skip to next start point
+        fits_sine = false;
+        break;
+      }
+      phase += phase_increment;
+      if (phase > 2.0f * M_PI) {
+        phase -= 2.0f * M_PI;
+      }
+    }
+
+    if (!fits_sine) {
+      skipped++;
+      continue;
+    }
+
+    // Found the start of the sine wave
+    size_t sine_start = skipped;
+    return sine_start;
+  }
+
+  return skipped;
+}
+
+// This class tracks the monotonicity of a certain value, and reports if it
+// increases too much monotonically.
+struct monotonic_state {
+  explicit monotonic_state(const char * what, int source_rate, int target_rate,
+                           int block_size)
+      : what(what), source_rate(source_rate), target_rate(target_rate),
+        block_size(block_size)
+  {
+  }
+  ~monotonic_state()
+  {
+    float ratio =
+        static_cast<float>(source_rate) / static_cast<float>(target_rate);
+    // Only report if there has been a meaningful increase in buffering. Do
+    // not warn if the buffering was constant and small.
+    if (monotonic && max_value && max_value != max_step) {
+      printf("%s is monotonically increasing, max: %zu, max_step: %zu, "
+             "in: %dHz, out: "
+             "%dHz, block_size: %d, ratio: %lf\n",
+             what, max_value, max_step, source_rate, target_rate, block_size,
+             ratio);
+    }
+    // Arbitrary limit: if more than this number of frames has been buffered,
+    // print a message.
+    constexpr int BUFFER_SIZE_THRESHOLD = 20;
+    if (max_value > BUFFER_SIZE_THRESHOLD) {
+      printf("%s, unexpected large max buffering value, max: %zu, max_step: "
+             "%zu, in: %dHz, out: %dHz, block_size: %d, ratio: %lf\n",
+             what, max_value, max_step, source_rate, target_rate, block_size,
+             ratio);
+    }
+  }
+  void set_new_value(size_t new_value)
+  {
+    if (new_value < value) {
+      monotonic = false;
+    } else {
+      max_step = std::max(max_step, new_value - value);
+    }
+    value = new_value;
+    max_value = std::max(value, max_value);
+  }
+  // Textual representation of this measurement
+  const char * what;
+  // Resampler parameters for this test case
+  int source_rate = 0;
+  int target_rate = 0;
+  int block_size = 0;
+  // Current buffering value
+  size_t value = 0;
+  // Max buffering value increment
+  size_t max_step = 0;
+  // Max buffering value observerd
+  size_t max_value = 0;
+  // Whether the value has only increased or not
+  bool monotonic = true;
+};
+
+// Setting this to 1 dumps a bunch of wave file to the local directory for
+// manual inspection of the resampled output
+const int DUMP_OUTPUT = 0;
+
+// This tests checks three things:
 // - Whenever resampling from a source rate to a target rate with a certain
 //  block size, the correct number of frames is provided back from the
 //  resampler, to the backend.
 // - While resampling, internal buffers are kept under control and aren't
 // growing unbounded.
+// - The output signal is a 1khz sine (as is the input)
 TEST(cubeb, resampler_typical_uses)
 {
-  // This class tracks the monotonicity of a certain value, and reports if it
-  // increases too much monotonically.
-  struct monotonic_state {
-    explicit monotonic_state(const char * what, int source_rate,
-                             int target_rate, int block_size)
-        : what(what), source_rate(source_rate), target_rate(target_rate),
-          block_size(block_size)
-    {
-    }
-    ~monotonic_state()
-    {
-      float ratio =
-          static_cast<float>(source_rate) / static_cast<float>(target_rate);
-      // Only report if there has been a meaningful increase in buffering. Do
-      // not warn if the buffering was constant and small.
-      if (monotonic && max_value && max_value != max_step) {
-        printf("%s is monotonically increasing, max: %zu, max_step: %zu, "
-               "in: %dHz, out: "
-               "%dHz, block_size: %d, ratio: %lf\n",
-               what, max_value, max_step, source_rate, target_rate, block_size,
-               ratio);
-      }
-      // Arbitrary limit: if more than this number of frames has been buffered,
-      // print a message.
-      constexpr int BUFFER_SIZE_THRESHOLD = 20;
-      if (max_value > BUFFER_SIZE_THRESHOLD) {
-        printf("%s, unexpected large max buffering value, max: %zu, max_step: "
-               "%zu, in: %dHz, out: %dHz, block_size: %d, ratio: %lf\n",
-               what, max_value, max_step, source_rate, target_rate, block_size,
-               ratio);
-      }
-    }
-    void set_new_value(size_t new_value)
-    {
-      if (new_value < value) {
-        monotonic = false;
-      } else {
-        max_step = std::max(max_step, new_value - value);
-      }
-      value = new_value;
-      max_value = std::max(value, max_value);
-    }
-    // Textual representation of this measurement
-    const char * what;
-    // Resampler parameters for this test case
-    int source_rate = 0;
-    int target_rate = 0;
-    int block_size = 0;
-    // Current buffering value
-    size_t value = 0;
-    // Max buffering value increment
-    size_t max_step = 0;
-    // Max buffering value observerd
-    size_t max_value = 0;
-    // Whether the value has only increased or not
-    bool monotonic = true;
-  };
   // Source and target sample-rates in Hz, typical values.
   const int rates[] = {16000, 32000, 44100, 48000, 96000, 192000, 384000};
   // Block size in frames, except the first element, that is in millisecond
@@ -1256,57 +1361,138 @@ TEST(cubeb, resampler_typical_uses)
   // having a test that is too long to run.
   constexpr int ITERATION_COUNT = 1000;
   cubeb * ctx;
+  const float input_freq = 1000.0f; // 1 kHz input sine wave
   common_init(&ctx, "Cubeb resampler test");
+
   // Cartesian product of all parameters
   for (int source_rate : rates) {
     for (int target_rate : rates) {
       for (int block_size : block_sizes) {
+        int effective_block_size = block_size;
         // special case: Windows/WASAPI works in blocks of 10ms regardless of
         // the rate.
-        if (block_size == WASAPI_MS_BLOCK) {
-          block_size = target_rate / 100; // 10ms
+        if (effective_block_size == WASAPI_MS_BLOCK) {
+          effective_block_size = target_rate / 100; // 10ms
         }
+        sine_wave_state state(input_freq, source_rate);
         cubeb_stream_params out_params = {};
-        out_params.channels = 2;
+        out_params.channels = 1;
         out_params.rate = target_rate;
         out_params.format = CUBEB_SAMPLE_FLOAT32NE;
 
+        cubeb_audio_dump_session_t session = nullptr;
+        cubeb_audio_dump_stream_t dump_stream = nullptr;
+        if constexpr (DUMP_OUTPUT) {
+          cubeb_audio_dump_init(&session);
+          char buf[256];
+          sprintf(buf, "test-%dHz-to-%dhz-%d-block.wav", source_rate,
+                  target_rate, effective_block_size);
+          cubeb_audio_dump_stream_init(session, &dump_stream, out_params, buf);
+          cubeb_audio_dump_start(session);
+        }
         cubeb_resampler * resampler = cubeb_resampler_create(
-            nullptr, nullptr, &out_params, source_rate, data_cb, nullptr,
-            CUBEB_RESAMPLER_QUALITY_VOIP, CUBEB_RESAMPLER_RECLOCK_NONE);
+            nullptr, nullptr, &out_params, source_rate, data_cb, &state,
+            CUBEB_RESAMPLER_QUALITY_DEFAULT, CUBEB_RESAMPLER_RECLOCK_NONE);
         ASSERT_NE(resampler, nullptr);
 
-        std::vector<float> data(block_size * out_params.channels);
+        std::vector<float> data(effective_block_size * out_params.channels);
         int i = ITERATION_COUNT;
         // For now this only tests the output side (out_... measurements).
-        //  We could expect the resampler to be symmetrical, but we could test
-        //  both sides at once.
+        //  We could expect the resampler to be symmetrical, but we could
+        //  test both sides at once.
         // - `..._in` is the input buffer of the resampler, containing
         // unresampled  frames
         // - `..._out` is the output buffer, containing resampled frames.
         monotonic_state in_in_max("in_in", source_rate, target_rate,
-                                  block_size);
+                                  effective_block_size);
         monotonic_state in_out_max("in_out", source_rate, target_rate,
-                                   block_size);
+                                   effective_block_size);
         monotonic_state out_in_max("out_in", source_rate, target_rate,
-                                   block_size);
+                                   effective_block_size);
         monotonic_state out_out_max("out_out", source_rate, target_rate,
-                                    block_size);
+                                    effective_block_size);
+
+        size_t skipped = 0;
+        std::vector<float> resampled(ITERATION_COUNT * effective_block_size *
+                                     out_params.channels);
+        size_t wr_idx = 0;
         while (i--) {
           int64_t got = cubeb_resampler_fill(resampler, nullptr, nullptr,
-                                             data.data(), block_size);
-          ASSERT_EQ(got, block_size);
+                                             data.data(), effective_block_size);
+          ASSERT_EQ(got, effective_block_size);
           cubeb_resampler_stats stats = cubeb_resampler_stats_get(resampler);
+
+          // This roughly finds the start of the sine wave and strips it from
+          // `data`. This isn't stricly necessary but helps having cleaner
+          // dumps for manual inspection in e.g. Audacity. In all our test
+          // cases the resampler latency happens to be smaller than a block.
+          float * data_start = data.data();
+          if (skipped == 0) {
+            skipped = find_sine_start(data, input_freq, target_rate);
+            data_start += skipped;
+            got -= skipped;
+          }
+          for (uint32_t j = 0; j < got; j++) {
+            resampled[wr_idx++] = data_start[j];
+          }
+          // resampled.insert(resampled.end(), data_start, data_start + got);
           in_in_max.set_new_value(stats.input_input_buffer_size);
           in_out_max.set_new_value(stats.input_output_buffer_size);
           out_in_max.set_new_value(stats.output_input_buffer_size);
           out_out_max.set_new_value(stats.output_output_buffer_size);
+
+          if (dump_stream) {
+            cubeb_audio_dump_write(dump_stream, data_start, got);
+          }
         }
 
         cubeb_resampler_destroy(resampler);
+
+        // Example of error, off by one every block or so, resulting in a
+        // silent sample. This is enough to make the majority of the test
+        // cases below fail. for (uint32_t i = 0; i < resampled.size(); i++) {
+        //   if (!(i % (effective_block_size))) {
+        //     resampled[i] = 0.0;
+        //   }
+        // }
+
+        resampled.resize(resampled.size() - skipped);
+
+        float amplitude = 0;
+        float phase = 0;
+
+        // Fit our resampled sine wave, get an MSE value
+        float sse =
+            fit_sine(resampled, target_rate, input_freq, amplitude, phase);
+        float mse = sse / resampled.size();
+
+        // Code to print JSON to plot externally
+        // printf("\t[%d,%d,%d,%lf,%lf,%lf],\n", source_rate, target_rate,
+        //                  effective_block_size, mse, amplitude, phase);
+        double resampling_ratio =
+            static_cast<double>(source_rate) / target_rate;
+        // Accept larger error for large resampling ratio, and large blocks.
+        // The reason why large blocks result in higher MSE isn't yet well
+        // understood.
+        if (resampling_ratio >= 24) {
+          ASSERT_LT(mse, 0.18);
+        } else if (block_size >= 1024 || resampling_ratio >= 8 ||
+                   resampling_ratio < 1. / 8.) {
+          ASSERT_LT(mse, 0.056);
+        } else if (resampling_ratio >= 8 || resampling_ratio < 1. / 8.) {
+          ASSERT_LT(mse, 0.004);
+        } else {
+          ASSERT_LT(mse, 0.002);
+        }
+        if constexpr (DUMP_OUTPUT) {
+          cubeb_audio_dump_stop(session);
+          cubeb_audio_dump_stream_shutdown(session, dump_stream);
+          cubeb_audio_dump_shutdown(session);
+        }
       }
     }
   }
+
   cubeb_destroy(ctx);
 }
 
