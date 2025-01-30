@@ -311,15 +311,12 @@ public:
   }
 
   /** Returns the number of frames to pass in the input of the resampler to have
-   * to at least have `output_frame_count` resampled frames. */
+   * at least `output_frame_count` resampled frames. */
   uint32_t input_needed_for_output(int32_t output_frame_count) const
   {
     assert(output_frame_count >= 0); // Check overflow
     int32_t unresampled_frames_left =
         samples_to_frames(resampling_in_buffer.length());
-    int32_t resampled_frames_left =
-        samples_to_frames(resampling_out_buffer.length());
-    output_frame_count -= resampled_frames_left;
     float input_frames_needed_frac =
         static_cast<float>(output_frame_count) * resampling_ratio;
     // speex_resample()` can be irregular in its consumption of input samples.
@@ -327,8 +324,8 @@ public:
     // regular consumption, to make the speex resampler behave more regularly,
     // and so predictably.
     auto input_frame_needed =
-        1 + static_cast<uint32_t>(ceilf(input_frames_needed_frac));
-    input_frame_needed -= unresampled_frames_left;
+        1 + static_cast<int32_t>(ceilf(input_frames_needed_frac));
+    input_frame_needed -= std::min(unresampled_frames_left, input_frame_needed);
     return input_frame_needed;
   }
 
