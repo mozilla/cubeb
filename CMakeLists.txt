@@ -348,7 +348,8 @@ if(USE_PULSE AND USE_PULSE_RUST)
     BUILD_ALWAYS ON
     BINARY_DIR "${PROJECT_SOURCE_DIR}/src/cubeb-pulse-rs"
     INSTALL_COMMAND ""
-    LOG_BUILD ON)
+    LOG_BUILD ON
+    LOG_OUTPUT_ON_FAILURE ON)
   add_dependencies(cubeb cubeb_pulse_rs)
   target_compile_definitions(cubeb PRIVATE USE_PULSE_RUST)
   target_link_libraries(cubeb PRIVATE
@@ -367,7 +368,8 @@ if(USE_AUDIOUNIT AND USE_AUDIOUNIT_RUST)
     BUILD_ALWAYS ON
     BINARY_DIR "${PROJECT_SOURCE_DIR}/src/cubeb-coreaudio-rs"
     INSTALL_COMMAND ""
-    LOG_BUILD ON)
+    LOG_BUILD ON
+    LOG_OUTPUT_ON_FAILURE ON)
   add_dependencies(cubeb cubeb_coreaudio_rs)
   target_compile_definitions(cubeb PRIVATE USE_AUDIOUNIT_RUST)
   target_link_libraries(cubeb PRIVATE
