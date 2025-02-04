@@ -1773,6 +1773,21 @@ opensl_destroy_recorder(cubeb_stream * stm)
       LOG("Failed to clear recorder buffer queue. Error code: %lu", res);
       return CUBEB_ERROR;
     }
+
+    SLAndroidSimpleBufferQueueState state;
+    while (true) {
+      SLresult res = (*stm->recorderBufferQueueItf)
+                         ->GetState(stm->recorderBufferQueueItf, &state);
+      if (res != SL_RESULT_SUCCESS) {
+        LOG("Failed to get recorder buffer queue state. Error code: %lu", res);
+        break;
+      }
+      if (state.count == 0) {
+        break;
+      }
+      usleep(10 * 1000);
+    }
+
     stm->recorderBufferQueueItf = nullptr;
     for (uint32_t i = 0; i < stm->input_array_capacity; ++i) {
       free(stm->input_buffer_array[i]);
