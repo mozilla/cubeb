@@ -1801,12 +1801,26 @@ opensl_stream_destroy(cubeb_stream * stm)
   if (stm->draining) {
     opensl_stream_stop(stm);
   }
-  // Sleep for 10ms to give active streams time to pause so that no further
-  // buffer callbacks occur.  Inspired by the same workaround (sleepBeforeClose)
-  // in liboboe.
-  usleep(10 * 1000);
 
   if (stm->playerObj) {
+    SLresult res = (*stm->bufq)->Clear(stm->bufq);
+    if (res != SL_RESULT_SUCCESS) {
+      LOG("Failed to clear buffer queue. Error code: %lu", res);
+    }
+
+    SLBufferQueueState state;
+    while (true) {
+      SLresult res = (*stm->bufq)->GetState(stm->bufq, &state);
+      if (res != SL_RESULT_SUCCESS) {
+        LOG("Failed to get buffer queue state. Error code: %lu", res);
+        break;
+      }
+      if (state.count == 0) {
+        break;
+      }
+      usleep(10 * 1000);
+    }
+
     (*stm->playerObj)->Destroy(stm->playerObj);
     stm->playerObj = nullptr;
     stm->play = nullptr;
