@@ -1337,7 +1337,7 @@ struct monotonic_state {
 
 // Setting this to 1 dumps a bunch of wave file to the local directory for
 // manual inspection of the resampled output
-const int DUMP_OUTPUT = 0;
+constexpr int DUMP_OUTPUT = 0;
 
 // This tests checks three things:
 // - Whenever resampling from a source rate to a target rate with a certain
