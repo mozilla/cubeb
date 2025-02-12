@@ -18,8 +18,10 @@
 #include "gtest/gtest.h"
 #include <algorithm>
 #include <cmath>
+#include <future>
 #include <iostream>
 #include <stdio.h>
+#include <thread>
 
 /* Windows cmath USE_MATH_DEFINE thing... */
 const float PI = 3.14159265359f;
@@ -1364,106 +1366,123 @@ TEST(cubeb, resampler_typical_uses)
   cubeb * ctx;
   const float input_freq = 1000.0f; // 1 kHz input sine wave
   common_init(&ctx, "Cubeb resampler test");
+
+  // This can potentially return zero, per the docs
+  size_t concurrency = std::max(1u, std::thread::hardware_concurrency());
+
+  printf("Running w/ %zux parallelism", concurrency);
+
+  std::vector<std::future<void>> futures;
+
   // Cartesian product of all parameters
   for (int source_rate : rates) {
     for (int target_rate : rates) {
       for (int block_size : block_sizes) {
-        // special case: Windows/WASAPI works in blocks of 10ms regardless of
-        // the rate.
-        if (block_size == WASAPI_MS_BLOCK) {
-          block_size = target_rate / 100; // 10ms
-        }
-        sine_wave_state state(input_freq, source_rate);
-        cubeb_stream_params out_params = {};
-        out_params.channels = 1;
-        out_params.rate = target_rate;
-        out_params.format = CUBEB_SAMPLE_FLOAT32NE;
-
-        cubeb_audio_dump_session_t session = nullptr;
-        cubeb_audio_dump_stream_t dump_stream = nullptr;
-        if constexpr (DUMP_OUTPUT) {
-          cubeb_audio_dump_init(&session);
-          char buf[256];
-          sprintf(buf, "test-%dHz-to-%dhz-%d-block.wav", source_rate,
-                  target_rate, block_size);
-          cubeb_audio_dump_stream_init(session, &dump_stream, out_params, buf);
-          cubeb_audio_dump_start(session);
-        }
-
-        cubeb_resampler * resampler = cubeb_resampler_create(
-            nullptr, nullptr, &out_params, source_rate, data_cb, &state,
-            CUBEB_RESAMPLER_QUALITY_DEFAULT, CUBEB_RESAMPLER_RECLOCK_NONE);
-        ASSERT_NE(resampler, nullptr);
-
-        std::vector<float> data(block_size * out_params.channels);
-        int i = ITERATION_COUNT;
-        // For now this only tests the output side (out_... measurements).
-        //  We could expect the resampler to be symmetrical, but we could test
-        //  both sides at once.
-        // - `..._in` is the input buffer of the resampler, containing
-        // unresampled  frames
-        // - `..._out` is the output buffer, containing resampled frames.
-        monotonic_state in_in_max("in_in", source_rate, target_rate,
-                                  block_size);
-        monotonic_state in_out_max("in_out", source_rate, target_rate,
-                                   block_size);
-        monotonic_state out_in_max("out_in", source_rate, target_rate,
-                                   block_size);
-        monotonic_state out_out_max("out_out", source_rate, target_rate,
-                                    block_size);
-
-        size_t skipped = 0;
-        std::vector<float> resampled;
-        resampled.reserve(1000 * block_size * 2);
-        while (i--) {
-          int64_t got = cubeb_resampler_fill(resampler, nullptr, nullptr,
-                                             data.data(), block_size);
-          ASSERT_EQ(got, block_size);
-
-          cubeb_resampler_stats stats = cubeb_resampler_stats_get(resampler);
-          // This roughly finds the start of the sine wave and strips it from
-          // `data`. This isn't stricly necessary but helps having cleaner
-          // dumps for manual inspection in e.g. Audacity. In all our test cases
-          // the resampler latency happens to be smaller than a block.
-          if (skipped == 0) {
-            skipped = find_sine_start(data, input_freq, target_rate);
+        futures.push_back(std::async(std::launch::async, [=]() {
+          // Alias inside the lambda
+          int effective_block_size = block_size;
+          // special case: Windows/WASAPI works in blocks of 10ms regardless of
+          // the rate.
+          if (effective_block_size == WASAPI_MS_BLOCK) {
+            effective_block_size = target_rate / 100; // 10ms
           }
-          resampled.insert(resampled.end(), data.begin(), data.end());
-          in_in_max.set_new_value(stats.input_input_buffer_size);
-          in_out_max.set_new_value(stats.input_output_buffer_size);
-          out_in_max.set_new_value(stats.output_input_buffer_size);
-          out_out_max.set_new_value(stats.output_output_buffer_size);
+          sine_wave_state state(input_freq, source_rate);
+          cubeb_stream_params out_params = {};
+          out_params.channels = 1;
+          out_params.rate = target_rate;
+          out_params.format = CUBEB_SAMPLE_FLOAT32NE;
 
-          if (dump_stream) {
-            cubeb_audio_dump_write(dump_stream, data.data(), got);
+          cubeb_audio_dump_session_t session = nullptr;
+          cubeb_audio_dump_stream_t dump_stream = nullptr;
+          if constexpr (DUMP_OUTPUT) {
+            cubeb_audio_dump_init(&session);
+            char buf[256];
+            sprintf(buf, "test-%dHz-to-%dhz-%d-block.wav", source_rate,
+                    target_rate, effective_block_size);
+            cubeb_audio_dump_stream_init(session, &dump_stream, out_params,
+                                         buf);
+            cubeb_audio_dump_start(session);
           }
-        }
+          cubeb_resampler * resampler = cubeb_resampler_create(
+              nullptr, nullptr, &out_params, source_rate, data_cb, &state,
+              CUBEB_RESAMPLER_QUALITY_DEFAULT, CUBEB_RESAMPLER_RECLOCK_NONE);
+          ASSERT_NE(resampler, nullptr);
 
-        float amplitude = 0;
-        float phase = 0;
-        float sse =
-            fit_sine(resampled, target_rate, input_freq, amplitude, phase);
-        float mse = sse / resampled.size();
+          std::vector<float> data(effective_block_size * out_params.channels);
+          int i = ITERATION_COUNT;
+          // For now this only tests the output side (out_... measurements).
+          //  We could expect the resampler to be symmetrical, but we could
+          //  test both sides at once.
+          // - `..._in` is the input buffer of the resampler, containing
+          // unresampled  frames
+          // - `..._out` is the output buffer, containing resampled frames.
+          monotonic_state in_in_max("in_in", source_rate, target_rate,
+                                    effective_block_size);
+          monotonic_state in_out_max("in_out", source_rate, target_rate,
+                                     effective_block_size);
+          monotonic_state out_in_max("out_in", source_rate, target_rate,
+                                     effective_block_size);
+          monotonic_state out_out_max("out_out", source_rate, target_rate,
+                                      effective_block_size);
 
-        cubeb_resampler_destroy(resampler);
-        /*
-        printf("%d -> %d [%d frames] Mean Squared Error: %lf, Sum of Squared "
-               "Error : %lf, estimated "
-               "amplitude: %lf, estimated phase: %lf\n",
-               source_rate, target_rate, block_size, mse, sse, amplitude,
-               phase);
-        */
-        // 1.5 is a good higher bound found empirically. Any mistake, e.g.
-        // discontinuity make the MSE shoot up dramatically.
-        ASSERT_LT(mse, 1.5);
-        if constexpr (DUMP_OUTPUT) {
-          cubeb_audio_dump_stop(session);
-          cubeb_audio_dump_stream_shutdown(session, dump_stream);
-          cubeb_audio_dump_shutdown(session);
-        }
+          size_t skipped = 0;
+          std::vector<float> resampled;
+          resampled.reserve(1000 * effective_block_size * 2);
+          while (i--) {
+            int64_t got = cubeb_resampler_fill(
+                resampler, nullptr, nullptr, data.data(), effective_block_size);
+            ASSERT_EQ(got, effective_block_size);
+            cubeb_resampler_stats stats = cubeb_resampler_stats_get(resampler);
+
+            // This roughly finds the start of the sine wave and strips it from
+            // `data`. This isn't stricly necessary but helps having cleaner
+            // dumps for manual inspection in e.g. Audacity. In all our test
+            // cases the resampler latency happens to be smaller than a block.
+            if (skipped == 0) {
+              skipped = find_sine_start(data, input_freq, target_rate);
+            }
+            resampled.insert(resampled.end(), data.begin(), data.end());
+            in_in_max.set_new_value(stats.input_input_buffer_size);
+            in_out_max.set_new_value(stats.input_output_buffer_size);
+            out_in_max.set_new_value(stats.output_input_buffer_size);
+            out_out_max.set_new_value(stats.output_output_buffer_size);
+
+            if (dump_stream) {
+              cubeb_audio_dump_write(dump_stream, data.data(), got);
+            }
+          }
+
+          float amplitude = 0;
+          float phase = 0;
+          float sse =
+              fit_sine(resampled, target_rate, input_freq, amplitude, phase);
+          float mse = sse / resampled.size();
+
+          cubeb_resampler_destroy(resampler);
+          /*
+          printf("%d -> %d [%d frames] Mean Squared Error: %lf, Sum of Squared "
+                 "Error : %lf, estimated "
+                 "amplitude: %lf, estimated phase: %lf\n",
+                 source_rate, target_rate, effective_block_size, mse, sse,
+          amplitude, phase);
+          */
+          // 1.5 is a good higher bound found empirically. Any mistake, e.g.
+          // discontinuity make the MSE shoot up dramatically.
+          ASSERT_LT(mse, 1.5);
+          if constexpr (DUMP_OUTPUT) {
+            cubeb_audio_dump_stop(session);
+            cubeb_audio_dump_stream_shutdown(session, dump_stream);
+            cubeb_audio_dump_shutdown(session);
+          }
+        }));
       }
     }
   }
+
+  for (auto & future : futures) {
+    future.get();
+  }
+
   cubeb_destroy(ctx);
 }
 
