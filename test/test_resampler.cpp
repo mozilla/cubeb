@@ -6,11 +6,11 @@
  */
 #ifndef NOMINMAX
 #define NOMINMAX
+#endif // NOMINMAX
 #include "cubeb/cubeb.h"
 #include "cubeb_audio_dump.h"
 #include "cubeb_log.h"
 #include "cubeb_resampler.h"
-#endif // NOMINMAX
 // #define ENABLE_NORMAL_LOG
 // #define ENABLE_VERBOSE_LOG
 #include "common.h"
