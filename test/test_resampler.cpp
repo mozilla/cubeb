@@ -1398,8 +1398,8 @@ TEST(cubeb, resampler_typical_uses)
           if constexpr (DUMP_OUTPUT) {
             cubeb_audio_dump_init(&session);
             char buf[256];
-            sprintf(buf, "test-%dHz-to-%dhz-%d-block.wav", source_rate,
-                    target_rate, effective_block_size);
+            snprintf(buf, 256, "test-%dHz-to-%dhz-%d-block.wav", source_rate,
+                     target_rate, effective_block_size);
             cubeb_audio_dump_stream_init(session, &dump_stream, out_params,
                                          buf);
             cubeb_audio_dump_start(session);
