@@ -1380,7 +1380,7 @@ TEST(cubeb, resampler_typical_uses)
   for (int source_rate : rates) {
     for (int target_rate : rates) {
       for (int block_size : block_sizes) {
-        futures.push_back(std::async(std::launch::async, [=]() {
+        auto f = std::async(std::launch::async, [=]() {
           // Alias inside the lambda
           int effective_block_size = block_size;
           // special case: Windows/WASAPI works in blocks of 10ms regardless of
@@ -1504,7 +1504,12 @@ TEST(cubeb, resampler_typical_uses)
             cubeb_audio_dump_stream_shutdown(session, dump_stream);
             cubeb_audio_dump_shutdown(session);
           }
-        }));
+        });
+        if (concurrency == 1) {
+          f.wait();
+        } else {
+          futures.push_back(std::move(f));
+        }
       }
     }
   }
