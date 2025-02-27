@@ -1427,51 +1427,47 @@ TEST(cubeb, resampler_typical_uses)
           monotonic_state out_out_max("out_out", source_rate, target_rate,
                                       effective_block_size);
 
-          size_t skipped = 0;
-          std::vector<float> resampled(ITERATION_COUNT * effective_block_size *
-                                       out_params.channels);
-          size_t wr_idx = 0;
+          std::vector<float> resampled;
+          resampled.reserve(ITERATION_COUNT * effective_block_size *
+                            out_params.channels);
           while (i--) {
             int64_t got = cubeb_resampler_fill(
                 resampler, nullptr, nullptr, data.data(), effective_block_size);
             ASSERT_EQ(got, effective_block_size);
             cubeb_resampler_stats stats = cubeb_resampler_stats_get(resampler);
 
-            // This roughly finds the start of the sine wave and strips it from
-            // `data`. This isn't stricly necessary but helps having cleaner
-            // dumps for manual inspection in e.g. Audacity. In all our test
-            // cases the resampler latency happens to be smaller than a block.
-            float * data_start = data.data();
-            if (skipped == 0) {
-              skipped = find_sine_start(data, input_freq, target_rate);
-              data_start += skipped;
-              got -= skipped;
-            }
-            for (uint32_t j = 0; j < got; j++) {
-              resampled[wr_idx++] = data_start[j];
-            }
-            // resampled.insert(resampled.end(), data_start, data_start + got);
+            resampled.insert(resampled.end(), data.begin(), data.end());
+
             in_in_max.set_new_value(stats.input_input_buffer_size);
             in_out_max.set_new_value(stats.input_output_buffer_size);
             out_in_max.set_new_value(stats.output_input_buffer_size);
             out_out_max.set_new_value(stats.output_output_buffer_size);
-
-            if (dump_stream) {
-              cubeb_audio_dump_write(dump_stream, data_start, got);
-            }
           }
 
           cubeb_resampler_destroy(resampler);
 
-          // Example of error, off by one every block or so, resulting in a
-          // silent sample. This is enough to make the majority of the test
-          // cases below fail. for (uint32_t i = 0; i < resampled.size(); i++) {
+          // Example of an error, off by one every block or so, resulting in a
+          // silent sample. This is enough to make all the tests fail.
+          //
+          // for (uint32_t i = 0; i < resampled.size(); i++) {
           //   if (!(i % (effective_block_size))) {
           //     resampled[i] = 0.0;
           //   }
           // }
 
-          resampled.resize(resampled.size() - skipped);
+          // This roughly finds the start of the sine wave and strips it from
+          // `data`. This isn't stricly necessary but helps having cleaner
+          // dumps for manual inspection in e.g. Audacity. In all our test
+          // cases the resampler latency happens to be smaller than a block.
+          size_t skipped = 0;
+          skipped = find_sine_start(resampled, input_freq, target_rate);
+
+          resampled.erase(resampled.begin(), resampled.begin() + skipped);
+
+          if (dump_stream) {
+            cubeb_audio_dump_write(dump_stream, resampled.data(),
+                                   resampled.size());
+          }
 
           float amplitude = 0;
           float phase = 0;
