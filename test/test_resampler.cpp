@@ -1170,9 +1170,9 @@ TEST(cubeb, individual_methods)
 }
 
 struct sine_wave_state {
-  float phase = 0.0f;
   float frequency;
   int sample_rate;
+  size_t count = 0;
   sine_wave_state(float freq, int rate) : frequency(freq), sample_rate(rate) {}
 };
 
@@ -1182,14 +1182,11 @@ data_cb(cubeb_stream * stream, void * user_ptr, void const * input_buffer,
 {
   sine_wave_state * state = static_cast<sine_wave_state *>(user_ptr);
   float * out = static_cast<float *>(output_buffer);
-  float phase_increment = 2.0f * M_PI * state->frequency / state->sample_rate;
+  double phase_increment = 2.0f * M_PI * state->frequency / state->sample_rate;
 
   for (int i = 0; i < nframes; i++) {
-    float sample = sin(state->phase);
-    state->phase += phase_increment;
-    if (state->phase > 2.0f * M_PI) {
-      state->phase -= 2.0f * M_PI;
-    }
+    float sample = sin(phase_increment * state->count);
+    state->count++;
     out[i] = sample * 0.8;
   }
   return nframes;
@@ -1208,30 +1205,34 @@ float
 fit_sine(const std::vector<float> & signal, float sample_rate, float frequency,
          float & out_amplitude, float & out_phase)
 {
-  const size_t len = signal.size();
-  float phase_incr = 2.0 * M_PI * frequency / sample_rate;
+  // The formulation below is exact for samples spanning an integer number of
+  // periods.
+  const size_t fit_len =
+      (signal.size() / (sample_rate / frequency)) * (sample_rate / frequency);
+  double phase_incr = 2.0 * M_PI * frequency / sample_rate;
 
-  float sum_cos = 0.0;
-  float sum_sin = 0.0;
-  for (size_t i = 0; i < len; ++i) {
-    float c = std::cos(phase_incr * static_cast<float>(i));
-    float s = std::sin(phase_incr * static_cast<float>(i));
+  double sum_cos = 0.0;
+  double sum_sin = 0.0;
+  for (size_t i = 0; i < fit_len; ++i) {
+    double c = std::cos(phase_incr * static_cast<double>(i));
+    double s = std::sin(phase_incr * static_cast<double>(i));
     sum_cos += signal[i] * c;
     sum_sin += signal[i] * s;
   }
 
-  float amplitude = 2.0f * std::sqrt(sum_cos * sum_cos + sum_sin * sum_sin) /
-                    static_cast<float>(len);
-  float phi = std::atan2(sum_cos, sum_sin);
+  double amplitude = 2.0f * std::sqrt(sum_cos * sum_cos + sum_sin * sum_sin) /
+                     static_cast<double>(fit_len);
+  double phi = std::atan2(sum_cos, sum_sin);
 
   out_amplitude = amplitude;
   out_phase = phi;
 
   // Compute sum of squared errors relative to the fitted sine wave
-  float sse = 0.0;
-  for (size_t i = 0; i < len; ++i) {
-    float fit = amplitude * std::sin(phase_incr * i + phi);
-    float diff = signal[i] - fit;
+  double sse = 0.0;
+  for (size_t i = 0; i < fit_len; ++i) {
+    // Use known amplitude here instead instead of the from the fitted function.
+    double fit = 0.8 * std::sin(phase_incr * i + phi);
+    double diff = signal[i] - fit;
     sse += diff * diff;
   }
 
@@ -1248,8 +1249,8 @@ find_sine_start(const std::vector<float> & data, float input_freq,
   size_t skipped = 0;
 
   while (skipped + POINTS < data.size()) {
-    float phase = 0;
-    float phase_increment = 2.0f * M_PI * input_freq / target_rate;
+    double phase = 0;
+    double phase_increment = 2.0f * M_PI * input_freq / target_rate;
     bool fits_sine = true;
 
     for (size_t i = 0; i < POINTS; i++) {
@@ -1476,9 +1477,9 @@ TEST(cubeb, resampler_typical_uses)
           float phase = 0;
 
           // Fit our resampled sine wave, get an MSE value
-          float sse =
+          double sse =
               fit_sine(resampled, target_rate, input_freq, amplitude, phase);
-          float mse = sse / resampled.size();
+          double mse = sse / resampled.size();
 
           // Code to print JSON to plot externally
           // printf("\t[%d,%d,%d,%lf,%lf,%lf],\n", source_rate, target_rate,
