@@ -1478,23 +1478,12 @@ TEST(cubeb, resampler_typical_uses)
           double mse = sse / resampled.size();
 
           // Code to print JSON to plot externally
-          // printf("\t[%d,%d,%d,%lf,%lf,%lf],\n", source_rate, target_rate,
-          //                  effective_block_size, mse, amplitude, phase);
-          double resampling_ratio =
-              static_cast<double>(source_rate) / target_rate;
-          // Accept larger error for large resampling ratio, and large blocks.
-          // The reason why large blocks result in higher MSE isn't yet well
-          // understood.
-          if (resampling_ratio >= 24) {
-            ASSERT_LT(mse, 0.18);
-          } else if (block_size >= 1024 || resampling_ratio >= 8 ||
-                     resampling_ratio < 1. / 8.) {
-            ASSERT_LT(mse, 0.056);
-          } else if (resampling_ratio >= 8 || resampling_ratio < 1. / 8.) {
-            ASSERT_LT(mse, 0.004);
-          } else {
-            ASSERT_LT(mse, 0.002);
-          }
+          // printf("\t[%d,%d,%d,%.10e,%lf,%lf],\n", source_rate, target_rate,
+          //        effective_block_size, mse, amplitude, phase);
+
+          // Value found after running the tests on Linux x64
+          ASSERT_LT(mse, 3.22e-07);
+
           if constexpr (DUMP_OUTPUT) {
             cubeb_audio_dump_stop(session);
             cubeb_audio_dump_stream_shutdown(session, dump_stream);
