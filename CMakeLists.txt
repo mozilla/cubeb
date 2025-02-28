@@ -42,6 +42,7 @@ else()
 endif()
 
 if(BUILD_TESTS)
+  add_definitions(-DGTEST_ENABLED=1)
   find_package(GTest QUIET)
   if(TARGET GTest::Main)
     add_library(gtest_main ALIAS GTest::Main)
@@ -51,7 +52,6 @@ if(BUILD_TESTS)
       message(FATAL_ERROR "Could not find googletest: run\n\tgit submodule update --init --recursive\nin base git checkout")
     endif()
     add_definitions(-DGTEST_HAS_TR1_TUPLE=0 -DGTEST_HAS_RTTI=0)
-    add_definitions(-DGTEST_ENABLED=1)
     set(gtest_force_shared_crt ON CACHE BOOL "")
     add_subdirectory(googletest)
   endif()
@@ -453,4 +453,3 @@ add_custom_target(clang-format-check
   | xargs -0 ${CLANG_FORMAT_BINARY} -Werror -n
   COMMENT "Check formatting with clang-format"
   VERBATIM)
-
