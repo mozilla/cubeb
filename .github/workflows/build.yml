@@ -41,6 +41,8 @@ jobs:
       run: |
         brew install switchaudio-osx
         brew install blackhole-2ch
+        sudo kill -9 `pgrep coreaudiod`
+        sleep 10
         SwitchAudioSource -s "BlackHole 2ch" -t input
         SwitchAudioSource -s "BlackHole 2ch" -t output
 
