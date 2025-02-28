@@ -1206,14 +1206,13 @@ fit_sine(const std::vector<float> & signal, float sample_rate, float frequency,
          float & out_amplitude, float & out_phase)
 {
   // The formulation below is exact for samples spanning an integer number of
-  // periods.
-  const size_t fit_len =
-      (signal.size() / (sample_rate / frequency)) * (sample_rate / frequency);
+  // periods. It can be important for `signal` to be trimmed to an integer
+  // number of periods if it doesn't contain a lot of periods.
   double phase_incr = 2.0 * M_PI * frequency / sample_rate;
 
   double sum_cos = 0.0;
   double sum_sin = 0.0;
-  for (size_t i = 0; i < fit_len; ++i) {
+  for (size_t i = 0; i < signal.size(); ++i) {
     double c = std::cos(phase_incr * static_cast<double>(i));
     double s = std::sin(phase_incr * static_cast<double>(i));
     sum_cos += signal[i] * c;
@@ -1221,7 +1220,7 @@ fit_sine(const std::vector<float> & signal, float sample_rate, float frequency,
   }
 
   double amplitude = 2.0f * std::sqrt(sum_cos * sum_cos + sum_sin * sum_sin) /
-                     static_cast<double>(fit_len);
+                     static_cast<double>(signal.size());
   double phi = std::atan2(sum_cos, sum_sin);
 
   out_amplitude = amplitude;
@@ -1229,7 +1228,7 @@ fit_sine(const std::vector<float> & signal, float sample_rate, float frequency,
 
   // Compute sum of squared errors relative to the fitted sine wave
   double sse = 0.0;
-  for (size_t i = 0; i < fit_len; ++i) {
+  for (size_t i = 0; i < signal.size(); ++i) {
     // Use known amplitude here instead instead of the from the fitted function.
     double fit = 0.8 * std::sin(phase_incr * i + phi);
     double diff = signal[i] - fit;
@@ -1456,9 +1455,7 @@ TEST(cubeb, resampler_typical_uses)
           // }
 
           // This roughly finds the start of the sine wave and strips it from
-          // `data`. This isn't stricly necessary but helps having cleaner
-          // dumps for manual inspection in e.g. Audacity. In all our test
-          // cases the resampler latency happens to be smaller than a block.
+          // `data`.
           size_t skipped = 0;
           skipped = find_sine_start(resampled, input_freq, target_rate);
 
