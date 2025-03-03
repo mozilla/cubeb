@@ -1461,7 +1461,7 @@ TEST(cubeb, resampler_typical_uses)
 
           resampled.erase(resampled.begin(), resampled.begin() + skipped);
 
-          if (dump_stream) {
+          if constexpr (DUMP_OUTPUT) {
             cubeb_audio_dump_write(dump_stream, resampled.data(),
                                    resampled.size());
           }
