@@ -42,7 +42,6 @@ else()
 endif()
 
 if(BUILD_TESTS)
-  add_definitions(-DGTEST_ENABLED=1)
   find_package(GTest QUIET)
   if(TARGET GTest::Main)
     add_library(gtest_main ALIAS GTest::Main)

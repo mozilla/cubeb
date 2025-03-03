@@ -88,7 +88,6 @@ cubeb_resampler_latency(cubeb_resampler * resampler);
  * Test-only introspection API to ensure that there is no buffering
  * buildup when resampling.
  */
-#ifdef GTEST_ENABLED
 typedef struct {
   size_t input_input_buffer_size;
   size_t input_output_buffer_size;
@@ -98,7 +97,6 @@ typedef struct {
 
 cubeb_resampler_stats
 cubeb_resampler_stats_get(cubeb_resampler * resampler);
-#endif
 
 #if defined(__cplusplus)
 }

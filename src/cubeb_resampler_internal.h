@@ -56,9 +56,7 @@ struct cubeb_resampler {
   virtual long fill(void * input_buffer, long * input_frames_count,
                     void * output_buffer, long frames_needed) = 0;
   virtual long latency() = 0;
-#ifdef GTEST_ENABLED
   virtual cubeb_resampler_stats stats() = 0;
-#endif
   virtual ~cubeb_resampler() {}
 };
 
@@ -89,7 +87,6 @@ public:
 
   virtual long latency() { return 0; }
 
-#ifdef GTEST_ENABLED
   virtual cubeb_resampler_stats stats()
   {
     cubeb_resampler_stats stats;
@@ -99,7 +96,6 @@ public:
     stats.output_output_buffer_size = 0;
     return stats;
   }
-#endif
 
   void drop_audio_if_needed()
   {
@@ -137,7 +133,6 @@ public:
   virtual long fill(void * input_buffer, long * input_frames_count,
                     void * output_buffer, long output_frames_needed);
 
-#ifdef GTEST_ENABLED
   virtual cubeb_resampler_stats stats()
   {
     cubeb_resampler_stats stats = {};
@@ -151,7 +146,6 @@ public:
     }
     return stats;
   }
-#endif
 
   virtual long latency()
   {
@@ -361,10 +355,8 @@ public:
     }
   }
 
-#ifdef GTEST_ENABLED
   size_t input_buffer_size() const { return resampling_in_buffer.length(); }
   size_t output_buffer_size() const { return resampling_out_buffer.length(); }
-#endif
 
 private:
   /** Wrapper for the speex resampling functions to have a typed
@@ -514,10 +506,8 @@ public:
     }
   }
 
-#ifdef GTEST_ENABLED
   size_t input_buffer_size() const { return delay_input_buffer.length(); }
   size_t output_buffer_size() const { return delay_output_buffer.length(); }
-#endif
 
 private:
   /** The length, in frames, of this delay line */
