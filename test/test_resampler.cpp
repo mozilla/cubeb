@@ -1404,7 +1404,7 @@ struct ThreadPool {
   }
 };
 
-void
+static void
 run_test(int source_rate, int target_rate, int block_size)
 {
   int effective_block_size = block_size;
