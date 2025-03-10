@@ -1524,10 +1524,10 @@ TEST(cubeb, resampler_typical_uses)
   common_init(&ctx, "Cubeb resampler test");
 
   size_t concurrency = std::max(1u, std::thread::hardware_concurrency());
-  ThreadPool pool(concurrency);
-  std::mutex mutex;
   std::condition_variable cv;
+  std::mutex mutex;
   size_t task_count = 0;
+  ThreadPool pool(concurrency);
 
   for (int source_rate : rates) {
     for (int target_rate : rates) {
