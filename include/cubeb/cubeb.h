@@ -414,6 +414,13 @@ typedef struct {
   size_t count;               /**< Device count in collection. */
 } cubeb_device_collection;
 
+/** Array of compiled backends returned by `cubeb_get_backend_names`. */
+typedef struct {
+  const char * const *
+      names;    /**< Array of strings representing backend names. */
+  size_t count; /**< Length of the array. */
+} cubeb_backend_names;
+
 /** User supplied data callback.
     - Calling other cubeb functions from this callback is unsafe.
     - The code in the callback should be non-blocking.
@@ -490,6 +497,12 @@ cubeb_init(cubeb ** context, char const * context_name,
     @retval Read-only string identifying current backend. */
 CUBEB_EXPORT char const *
 cubeb_get_backend_id(cubeb * context);
+
+/** Get a read-only array of strings identifying available backends.
+    These can be passed as `backend_name` parameter to `cubeb_init`.
+    @retval Struct containing the array with backend names. */
+CUBEB_EXPORT cubeb_backend_names
+cubeb_get_backend_names();
 
 /** Get the maximum possible number of channels.
     @param context A pointer to the cubeb context.
