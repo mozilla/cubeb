@@ -22,7 +22,7 @@ jobs:
       if: matrix.os == 'ubuntu-22.04'
 
     - name: Start Sound Server (Linux)
-      run: pulseaudio -D --start
+      run: pulseaudio -D --start --exit-idle-time=-1
       if: matrix.os == 'ubuntu-22.04'
 
     - name: Install virtual audio devices (Windows)
