@@ -9,7 +9,7 @@ jobs:
       BUILD_TYPE: ${{ matrix.type }}
     strategy:
       matrix:
-        os: [ubuntu-20.04, windows-2025, macos-13, macos-14]
+        os: [ubuntu-24.04, windows-2025, macos-13, macos-14]
         type: [Release, Debug]
 
     steps:
@@ -19,11 +19,11 @@ jobs:
 
     - name: Install Dependencies (Linux)
       run: sudo apt-get update && sudo apt-get install libpulse-dev pulseaudio
-      if: matrix.os == 'ubuntu-20.04'
+      if: matrix.os == 'ubuntu-24.04'
 
     - name: Start Sound Server (Linux)
       run: pulseaudio -D --start
-      if: matrix.os == 'ubuntu-20.04'
+      if: matrix.os == 'ubuntu-24.04'
 
     - name: Install virtual audio devices (Windows)
       run: git clone https://github.com/LABSN/sound-ci-helpers && powershell sound-ci-helpers/windows/setup_sound.ps1
