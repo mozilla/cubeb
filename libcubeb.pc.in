@@ -1,0 +1,12 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=${prefix}
+libdir=@CUBEB_PC_LIBDIR@
+includedir=@CUBEB_PC_INCLUDEDIR@
+
+Name: libcubeb
+Description: Cross platform audio library
+Version: @PROJECT_VERSION@
+Requires.private: @CUBEB_PC_PRIVATE_REQUIRES@
+Libs: -L${libdir} -lcubeb
+Libs.private: @CUBEB_PC_PRIVATE_LIBS@
+Cflags: -I${includedir}
