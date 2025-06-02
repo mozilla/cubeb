@@ -9,7 +9,7 @@ jobs:
       BUILD_TYPE: ${{ matrix.type }}
     strategy:
       matrix:
-        os: [ubuntu-20.04, windows-2019, macos-13, macos-14]
+        os: [ubuntu-20.04, windows-2025, macos-13, macos-14]
         type: [Release, Debug]
 
     steps:
@@ -27,14 +27,14 @@ jobs:
 
     - name: Install virtual audio devices (Windows)
       run: git clone https://github.com/LABSN/sound-ci-helpers && powershell sound-ci-helpers/windows/setup_sound.ps1
-      if: ${{ matrix.os == 'windows-2019' }}
+      if: ${{ matrix.os == 'windows-2025' }}
 
     - name: Allow microphone access to all apps (Windows)
       shell: pwsh
       run: |
         New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy\"
         New-ItemProperty -Path "HKLM:\SOFTWARE\policies\microsoft\windows\appprivacy" -Name "LetAppsAccessMicrophone" -Value "0x00000001"  -PropertyType "dword"
-      if: ${{ matrix.os == 'windows-2019' }}
+      if: ${{ matrix.os == 'windows-2025' }}
 
     - name: Install virtual audio devices (macOS)
       if: ${{ matrix.os == 'macos-13' || matrix.os == 'macos-14' }}
@@ -67,7 +67,7 @@ jobs:
     - name: Test winmm
       shell: bash
       run: (cd build && CUBEB_BACKEND=winmm ctest -V)
-      if: ${{ matrix.os == 'windows-2019' }}
+      if: ${{ matrix.os == 'windows-2025' }}
 
   build-android:
     runs-on: ubuntu-22.04
