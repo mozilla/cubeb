@@ -3528,7 +3528,7 @@ wasapi_set_input_processing_params(cubeb_stream * stream,
                                    cubeb_input_processing_params params)
 {
   LOG("Cannot set voice processing params after init. Use cubeb_stream_init.");
-  return CUBEB_ERROR;
+  return CUBEB_ERROR_NOT_SUPPORTED;
 }
 
 static int
