@@ -280,6 +280,10 @@ typedef struct {
       layout; /**< Requested channel layout. This must be consistent with the
                  provided channels. CUBEB_LAYOUT_UNDEFINED if unknown */
   cubeb_stream_prefs prefs; /**< Requested preferences. */
+  /**< Requested input processing params. Ignored for output streams. At
+     present, only supported on the WASAPI backend; others should use
+     cubeb_set_input_processing_params.  */
+  cubeb_input_processing_params input_params;
 } cubeb_stream_params;
 
 /** Audio device description */
