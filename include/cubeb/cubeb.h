@@ -29,92 +29,117 @@ extern "C" {
     to the speakers, with minimal latency and the proper sample-rate for the
     platform.
 
-    @code
-    cubeb * app_ctx;
-    cubeb_init(&app_ctx, "Example Application", NULL);
-    int rv;
-    uint32_t rate;
-    uint32_t latency_frames;
-    uint64_t ts;
+    If you receive "Could not open the stream", you likely do not have a
+    microphone. In that case, change PIPE_INPUT_TO_OUTPUT from true to false.
 
-    rv = cubeb_get_preferred_sample_rate(app_ctx, &rate);
-    if (rv != CUBEB_OK) {
-      fprintf(stderr, "Could not get preferred sample-rate");
-      return rv;
-    }
+    On Windows: "g++ example.c -lcubeb -lavrt -luuid -lksuser -lole32 -lwinmm"
+    Visual Studio will also work on Windows, just add the above libraries.
 
-    cubeb_stream_params output_params;
-    output_params.format = CUBEB_SAMPLE_FLOAT32NE;
-    output_params.rate = rate;
-    output_params.channels = 2;
-    output_params.layout = CUBEB_LAYOUT_UNDEFINED;
-    output_params.prefs = CUBEB_STREAM_PREF_NONE;
-
-    rv = cubeb_get_min_latency(app_ctx, &output_params, &latency_frames);
-    if (rv != CUBEB_OK) {
-      fprintf(stderr, "Could not get minimum latency");
-      return rv;
-    }
-
-    cubeb_stream_params input_params;
-    input_params.format = CUBEB_SAMPLE_FLOAT32NE;
-    input_params.rate = rate;
-    input_params.channels = 1;
-    input_params.layout = CUBEB_LAYOUT_UNDEFINED;
-    input_params.prefs = CUBEB_STREAM_PREF_NONE;
-
-    cubeb_stream * stm;
-    rv = cubeb_stream_init(app_ctx, &stm, "Example Stream 1",
-                           NULL, &input_params,
-                           NULL, &output_params,
-                           latency_frames,
-                           data_cb, state_cb,
-                           NULL);
-    if (rv != CUBEB_OK) {
-      fprintf(stderr, "Could not open the stream");
-      return rv;
-    }
-
-    rv = cubeb_stream_start(stm);
-    if (rv != CUBEB_OK) {
-      fprintf(stderr, "Could not start the stream");
-      return rv;
-    }
-    for (;;) {
-      cubeb_stream_get_position(stm, &ts);
-      printf("time=%llu\n", ts);
-      sleep(1);
-    }
-    rv = cubeb_stream_stop(stm);
-    if (rv != CUBEB_OK) {
-      fprintf(stderr, "Could not stop the stream");
-      return rv;
-    }
-
-    cubeb_stream_destroy(stm);
-    cubeb_destroy(app_ctx);
-    @endcode
+    On Linux: "g++ example.c -lcubeb"
 
     @code
+    #include "cubeb/cubeb.h"
+    #include "stdio.h"
+    #ifdef _WIN32
+    #define WIN32_LEAN_AND_MEAN
+    #include <Objbase.h>
+    #include <Windows.h>
+    #else
+    #include <unistd.h>
+    #endif
+    #define PIPE_INPUT_TO_OUTPUT true
+
     long data_cb(cubeb_stream * stm, void * user,
                  const void * input_buffer, void * output_buffer, long nframes)
     {
-      const float * in  = input_buffer;
-      float * out = output_buffer;
-
+      const float * in = (float *)input_buffer;
+      float * out = (float *)output_buffer;
       for (int i = 0; i < nframes; ++i) {
         for (int c = 0; c < 2; ++c) {
+    #if PIPE_INPUT_TO_OUTPUT
           out[2 * i + c] = in[i];
+    #else
+          out[2 * i + c] = (float)((i * 123) % 200) / 10000.f;
+    #endif
         }
       }
       return nframes;
     }
-    @endcode
 
-    @code
     void state_cb(cubeb_stream * stm, void * user, cubeb_state state)
     {
       printf("state=%d\n", state);
+    }
+
+
+    int main() {
+    #if _WIN32
+      CoInitializeEx(NULL, COINIT_MULTITHREADED);
+    #endif
+    cubeb * app_ctx;
+      cubeb_init(&app_ctx, "Example Application", NULL);
+      int rv;
+      uint32_t rate;
+      uint32_t latency_frames;
+      uint64_t ts;
+      rv = cubeb_get_preferred_sample_rate(app_ctx, &rate);
+      if (rv != CUBEB_OK) {
+        fprintf(stderr, "Could not get preferred sample-rate");
+        return rv;
+      }
+      cubeb_stream_params output_params;
+      output_params.format = CUBEB_SAMPLE_FLOAT32NE;
+      output_params.rate = rate;
+      output_params.channels = 2;
+      output_params.layout = CUBEB_LAYOUT_UNDEFINED;
+      output_params.prefs = CUBEB_STREAM_PREF_NONE;
+      rv = cubeb_get_min_latency(app_ctx, &output_params, &latency_frames);
+      if (rv != CUBEB_OK) {
+        fprintf(stderr, "Could not get minimum latency");
+        return rv;
+      }
+      cubeb_stream_params input_params;
+      input_params.format = CUBEB_SAMPLE_FLOAT32NE;
+      input_params.rate = rate;
+      input_params.channels = 1;
+      input_params.layout = CUBEB_LAYOUT_UNDEFINED;
+      input_params.prefs = CUBEB_STREAM_PREF_NONE;
+      cubeb_stream * stm;
+      rv = cubeb_stream_init(app_ctx, &stm, "Example Stream 1",
+    #if PIPE_INPUT_TO_OUTPUT
+                             NULL, &input_params,
+    #else
+                             NULL, NULL,
+    #endif
+                             NULL, &output_params,
+                             latency_frames,
+                             data_cb, state_cb,
+                             NULL);
+      if (rv != CUBEB_OK) {
+        fprintf(stderr, "Could not open the stream");
+        return rv;
+      }
+      rv = cubeb_stream_start(stm);
+      if (rv != CUBEB_OK) {
+        fprintf(stderr, "Could not start the stream");
+        return rv;
+      }
+      for (;;) {
+        cubeb_stream_get_position(stm, &ts);
+        printf("time=%llu\n", ts);
+    #if _WIN32
+        Sleep(1);
+    #else
+        sleep(1);
+    #endif
+      }
+      rv = cubeb_stream_stop(stm);
+      if (rv != CUBEB_OK) {
+        fprintf(stderr, "Could not stop the stream");
+        return rv;
+      }
+      cubeb_stream_destroy(stm);
+      cubeb_destroy(app_ctx);
     }
     @endcode
 */
