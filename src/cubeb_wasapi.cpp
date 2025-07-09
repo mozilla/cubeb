@@ -1259,7 +1259,6 @@ refill_callback_duplex(cubeb_stream * stm)
 
   rv = get_output_buffer(stm, output_buffer, output_frames);
   if (!rv) {
-    hr = stm->render_client->ReleaseBuffer(output_frames, 0);
     return rv;
   }
 
