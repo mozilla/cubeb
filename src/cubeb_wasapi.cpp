@@ -336,20 +336,33 @@ struct cubeb_stream {
   /* Mixer pameters. We need to convert the input stream to this
      samplerate/channel layout, as WASAPI does not resample nor upmix
      itself. */
-  cubeb_stream_params input_mix_params = {CUBEB_SAMPLE_FLOAT32NE, 0, 0,
+  cubeb_stream_params input_mix_params = {CUBEB_SAMPLE_FLOAT32NE,
+                                          0,
+                                          0,
                                           CUBEB_LAYOUT_UNDEFINED,
-                                          CUBEB_STREAM_PREF_NONE};
-  cubeb_stream_params output_mix_params = {CUBEB_SAMPLE_FLOAT32NE, 0, 0,
+                                          CUBEB_STREAM_PREF_NONE,
+                                          CUBEB_INPUT_PROCESSING_PARAM_NONE};
+  cubeb_stream_params output_mix_params = {CUBEB_SAMPLE_FLOAT32NE,
+                                           0,
+                                           0,
                                            CUBEB_LAYOUT_UNDEFINED,
-                                           CUBEB_STREAM_PREF_NONE};
+                                           CUBEB_STREAM_PREF_NONE,
+                                           CUBEB_INPUT_PROCESSING_PARAM_NONE};
   /* Stream parameters. This is what the client requested,
    * and what will be presented in the callback. */
-  cubeb_stream_params input_stream_params = {CUBEB_SAMPLE_FLOAT32NE, 0, 0,
+  cubeb_stream_params input_stream_params = {CUBEB_SAMPLE_FLOAT32NE,
+                                             0,
+                                             0,
                                              CUBEB_LAYOUT_UNDEFINED,
-                                             CUBEB_STREAM_PREF_NONE};
-  cubeb_stream_params output_stream_params = {CUBEB_SAMPLE_FLOAT32NE, 0, 0,
-                                              CUBEB_LAYOUT_UNDEFINED,
-                                              CUBEB_STREAM_PREF_NONE};
+                                             CUBEB_STREAM_PREF_NONE,
+                                             CUBEB_INPUT_PROCESSING_PARAM_NONE};
+  cubeb_stream_params output_stream_params = {
+      CUBEB_SAMPLE_FLOAT32NE,
+      0,
+      0,
+      CUBEB_LAYOUT_UNDEFINED,
+      CUBEB_STREAM_PREF_NONE,
+      CUBEB_INPUT_PROCESSING_PARAM_NONE};
   /* A MMDevice role for this stream: either communication or console here. */
   ERole role;
   /* True if this stream will transport voice-data. */
@@ -2035,7 +2048,7 @@ initialize_iaudioclient2(com_ptr<IAudioClient> & audio_client,
         "AUDCLNT_STREAMOPTIONS_RAW.");
     return CUBEB_OK;
   }
-  AudioClientProperties properties = {0};
+  AudioClientProperties properties = {};
   properties.cbSize = sizeof(AudioClientProperties);
 #ifndef __MINGW32__
   if (option == CUBEB_AUDIO_CLIENT2_RAW) {
@@ -2365,10 +2378,10 @@ setup_wasapi_stream_one_side(cubeb_stream * stm,
              (stream_params->prefs & CUBEB_STREAM_PREF_VOICE) &&
              stream_params->input_params != CUBEB_INPUT_PROCESSING_PARAM_NONE) {
     if (stream_params->input_params ==
-            CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION |
-        CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION |
-        CUBEB_INPUT_PROCESSING_PARAM_AUTOMATIC_GAIN_CONTROL |
-        CUBEB_INPUT_PROCESSING_PARAM_VOICE_ISOLATION) {
+        (CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION |
+         CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION |
+         CUBEB_INPUT_PROCESSING_PARAM_AUTOMATIC_GAIN_CONTROL |
+         CUBEB_INPUT_PROCESSING_PARAM_VOICE_ISOLATION)) {
       if (initialize_iaudioclient2(audio_client, CUBEB_AUDIO_CLIENT2_VOICE) !=
           CUBEB_OK) {
         LOG("Can't initialize an IAudioClient2, error: %lx", GetLastError());
