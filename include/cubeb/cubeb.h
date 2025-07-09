@@ -464,6 +464,8 @@ typedef void (*cubeb_device_changed_callback)(void * user_ptr);
 
 /**
  * User supplied callback called when the underlying device collection changed.
+ * This callback will be called when devices are added or removed from the
+ * system, or when the default device changes for the specified device type.
  * @param context A pointer to the cubeb context.
  * @param user_ptr The pointer passed to
  * cubeb_register_device_collection_changed. */
@@ -756,14 +758,16 @@ cubeb_device_collection_destroy(cubeb * context,
                                 cubeb_device_collection * collection);
 
 /** Registers a callback which is called when the system detects
-    a new device or a device is removed.
+    a new device or a device is removed, or when the default device
+    changes for the specified device type.
     @param context
     @param devtype device type to include. Different callbacks and user pointers
            can be registered for each devtype. The hybrid devtype
            `CUBEB_DEVICE_TYPE_INPUT | CUBEB_DEVICE_TYPE_OUTPUT` is also valid
            and will register the provided callback and user pointer in both
    sides.
-    @param callback a function called whenever the system device list changes.
+    @param callback a function called whenever the system device list changes,
+           including when default devices change.
            Passing NULL allow to unregister a function. You have to unregister
            first before you register a new callback.
     @param user_ptr pointer to user specified data which will be present in
