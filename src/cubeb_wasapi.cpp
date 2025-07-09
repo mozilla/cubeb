@@ -776,7 +776,9 @@ public:
         last_change_ms, same_device);
     if (last_change_ms > DEVICE_CHANGE_DEBOUNCE_MS || !same_device) {
       if (device_id) {
-        default_device_id.reset(_wcsdup(device_id));
+        wchar_t * new_device_id = new wchar_t[wcslen(device_id) + 1];
+        wcscpy(new_device_id, device_id);
+        default_device_id.reset(new_device_id);
       } else {
         default_device_id.reset();
       }
