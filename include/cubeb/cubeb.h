@@ -279,11 +279,10 @@ typedef struct {
   cubeb_channel_layout
       layout; /**< Requested channel layout. This must be consistent with the
                  provided channels. CUBEB_LAYOUT_UNDEFINED if unknown */
-  cubeb_stream_prefs prefs; /**< Requested preferences. */
-  /**< Requested input processing params. Ignored for output streams. At
-     present, only supported on the WASAPI backend; others should use
-     cubeb_set_input_processing_params.  */
-  cubeb_input_processing_params input_params;
+  cubeb_stream_prefs prefs;                   /**< Requested preferences. */
+  cubeb_input_processing_params input_params; /**< Requested input processing
+     params. Ignored for output streams. At present, only supported on the
+     WASAPI backend; others should use cubeb_set_input_processing_params.  */
 } cubeb_stream_params;
 
 /** Audio device description */
@@ -686,7 +685,7 @@ cubeb_stream_get_current_device(cubeb_stream * stm,
     application is accessing audio input. When all inputs are muted they can
     prove to the user that the application is not actively capturing any input.
     @param stream the stream for which to set input mute state
-    @param muted whether the input should mute or not
+    @param mute whether the input should mute or not
     @retval CUBEB_OK
     @retval CUBEB_ERROR_INVALID_PARAMETER if this stream does not have an input
             device
