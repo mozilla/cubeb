@@ -278,8 +278,8 @@ wasapi_enumerate_devices_internal(cubeb * context, cubeb_device_type type,
 static int
 wasapi_device_collection_destroy(cubeb * ctx,
                                  cubeb_device_collection * collection);
-static char const *
-wstr_to_utf8(wchar_t const * str);
+static std::unique_ptr<char const[]>
+wstr_to_utf8(LPCWSTR str);
 static std::unique_ptr<wchar_t const[]>
 utf8_to_wstr(char const * str);
 
@@ -839,16 +839,12 @@ intern_device_id(cubeb * ctx, wchar_t const * id)
 
   auto_lock lock(ctx->lock);
 
-  char const * tmp = wstr_to_utf8(id);
+  std::unique_ptr<char const[]> tmp = wstr_to_utf8(id);
   if (!tmp) {
     return nullptr;
   }
 
-  char const * interned = cubeb_strings_intern(ctx->device_ids, tmp);
-
-  free((void *)tmp);
-
-  return interned;
+  return cubeb_strings_intern(ctx->device_ids, tmp.get());
 }
 
 bool
@@ -3190,7 +3186,7 @@ wasapi_stream_set_volume(cubeb_stream * stm, float volume)
   return CUBEB_OK;
 }
 
-static char const *
+static std::unique_ptr<char const[]>
 wstr_to_utf8(LPCWSTR str)
 {
   int size = ::WideCharToMultiByte(CP_UTF8, 0, str, -1, nullptr, 0, NULL, NULL);
@@ -3198,8 +3194,8 @@ wstr_to_utf8(LPCWSTR str)
     return nullptr;
   }
 
-  char * ret = static_cast<char *>(malloc(size));
-  ::WideCharToMultiByte(CP_UTF8, 0, str, -1, ret, size, NULL, NULL);
+  std::unique_ptr<char[]> ret(new char[size]);
+  ::WideCharToMultiByte(CP_UTF8, 0, str, -1, ret.get(), size, NULL, NULL);
   return ret;
 }
 
@@ -3327,7 +3323,7 @@ wasapi_create_device(cubeb * ctx, cubeb_device_info & ret,
   prop_variant namevar;
   hr = propstore->GetValue(PKEY_Device_FriendlyName, &namevar);
   if (SUCCEEDED(hr) && namevar.vt == VT_LPWSTR) {
-    ret.friendly_name = wstr_to_utf8(namevar.pwszVal);
+    ret.friendly_name = wstr_to_utf8(namevar.pwszVal).release();
   }
   if (!ret.friendly_name) {
     // This is not fatal, but a valid string is expected in all cases.
@@ -3348,7 +3344,7 @@ wasapi_create_device(cubeb * ctx, cubeb_device_info & ret,
     prop_variant instancevar;
     hr = ps->GetValue(PKEY_Device_InstanceId, &instancevar);
     if (SUCCEEDED(hr) && instancevar.vt == VT_LPWSTR) {
-      ret.group_id = wstr_to_utf8(instancevar.pwszVal);
+      ret.group_id = wstr_to_utf8(instancevar.pwszVal).release();
     }
   }
 
