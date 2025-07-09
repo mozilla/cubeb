@@ -638,6 +638,10 @@ public:
                                                    LPCWSTR device_id)
   {
     LOG("collection: Audio device default changed, id = %S.", device_id);
+
+    /* Default device changes count as device collection changes */
+    monitor_notifications.notify(flow);
+
     return S_OK;
   }
 
