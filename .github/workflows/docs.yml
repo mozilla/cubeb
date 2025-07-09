@@ -1,0 +1,57 @@
+name: Generate and Deploy Documentation
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  docs:
+    runs-on: ubuntu-24.04
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y doxygen cmake
+
+    - name: Configure CMake
+      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+    - name: Generate Documentation
+      run: |
+        cd build
+        make doc
+
+    - name: Deploy to GitHub Pages
+      if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # Configure git
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        
+        # Create a new orphan branch for gh-pages
+        git checkout --orphan gh-pages
+        
+        # Remove all files from the current branch
+        git rm -rf .
+        
+        # Copy documentation files to root
+        cp -r build/docs/html/* .
+        
+        # Create .nojekyll file to disable Jekyll processing
+        touch .nojekyll
+        
+        # Add and commit files
+        git add .
+        git commit -m "Deploy documentation to GitHub Pages"
+        
+        # Push to gh-pages branch using authenticated URL
+        git push --force https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git gh-pages
