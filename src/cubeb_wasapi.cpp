@@ -1248,8 +1248,8 @@ refill_callback_duplex(cubeb_stream * stm)
   XASSERT(has_input(stm) && has_output(stm));
 
   if (stm->input_stream_params.prefs & CUBEB_STREAM_PREF_LOOPBACK) {
-    HRESULT rv = get_input_buffer(stm);
-    if (FAILED(rv)) {
+    rv = get_input_buffer(stm);
+    if (!rv) {
       return rv;
     }
   }
@@ -1503,8 +1503,8 @@ static unsigned int __stdcall wasapi_stream_render_loop(LPVOID stream)
       is_playing = stm->refill_callback(stm);
       break;
     case WAIT_OBJECT_0 + 3: { /* input available */
-      HRESULT rv = get_input_buffer(stm);
-      if (FAILED(rv)) {
+      bool rv = get_input_buffer(stm);
+      if (!rv) {
         is_playing = false;
         continue;
       }
