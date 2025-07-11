@@ -1517,8 +1517,11 @@ static unsigned int __stdcall wasapi_stream_render_loop(LPVOID stream)
       break;
     }
     default:
-      LOG("case %lu not handled in render loop.", waitResult);
-      XASSERT(false);
+      LOG("render_loop: waitResult=%lu (lastError=%lu) unhandled, exiting",
+          waitResult, GetLastError());
+      is_playing = false;
+      hr = E_FAIL;
+      continue;
     }
   }
 
