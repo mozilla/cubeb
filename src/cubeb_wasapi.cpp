@@ -1787,7 +1787,6 @@ wasapi_init(cubeb ** context, char const * context_name)
 }
 
 namespace {
-enum ShutdownPhase { OnStop, OnDestroy };
 
 bool
 stop_and_join_render_thread(cubeb_stream * stm)
