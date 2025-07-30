@@ -278,8 +278,8 @@ wasapi_enumerate_devices_internal(cubeb * context, cubeb_device_type type,
 static int
 wasapi_device_collection_destroy(cubeb * ctx,
                                  cubeb_device_collection * collection);
-static char const *
-wstr_to_utf8(wchar_t const * str);
+static std::unique_ptr<char const[]>
+wstr_to_utf8(LPCWSTR str);
 static std::unique_ptr<wchar_t const[]>
 utf8_to_wstr(char const * str);
 
@@ -336,20 +336,33 @@ struct cubeb_stream {
   /* Mixer pameters. We need to convert the input stream to this
      samplerate/channel layout, as WASAPI does not resample nor upmix
      itself. */
-  cubeb_stream_params input_mix_params = {CUBEB_SAMPLE_FLOAT32NE, 0, 0,
+  cubeb_stream_params input_mix_params = {CUBEB_SAMPLE_FLOAT32NE,
+                                          0,
+                                          0,
                                           CUBEB_LAYOUT_UNDEFINED,
-                                          CUBEB_STREAM_PREF_NONE};
-  cubeb_stream_params output_mix_params = {CUBEB_SAMPLE_FLOAT32NE, 0, 0,
+                                          CUBEB_STREAM_PREF_NONE,
+                                          CUBEB_INPUT_PROCESSING_PARAM_NONE};
+  cubeb_stream_params output_mix_params = {CUBEB_SAMPLE_FLOAT32NE,
+                                           0,
+                                           0,
                                            CUBEB_LAYOUT_UNDEFINED,
-                                           CUBEB_STREAM_PREF_NONE};
+                                           CUBEB_STREAM_PREF_NONE,
+                                           CUBEB_INPUT_PROCESSING_PARAM_NONE};
   /* Stream parameters. This is what the client requested,
    * and what will be presented in the callback. */
-  cubeb_stream_params input_stream_params = {CUBEB_SAMPLE_FLOAT32NE, 0, 0,
+  cubeb_stream_params input_stream_params = {CUBEB_SAMPLE_FLOAT32NE,
+                                             0,
+                                             0,
                                              CUBEB_LAYOUT_UNDEFINED,
-                                             CUBEB_STREAM_PREF_NONE};
-  cubeb_stream_params output_stream_params = {CUBEB_SAMPLE_FLOAT32NE, 0, 0,
-                                              CUBEB_LAYOUT_UNDEFINED,
-                                              CUBEB_STREAM_PREF_NONE};
+                                             CUBEB_STREAM_PREF_NONE,
+                                             CUBEB_INPUT_PROCESSING_PARAM_NONE};
+  cubeb_stream_params output_stream_params = {
+      CUBEB_SAMPLE_FLOAT32NE,
+      0,
+      0,
+      CUBEB_LAYOUT_UNDEFINED,
+      CUBEB_STREAM_PREF_NONE,
+      CUBEB_INPUT_PROCESSING_PARAM_NONE};
   /* A MMDevice role for this stream: either communication or console here. */
   ERole role;
   /* True if this stream will transport voice-data. */
@@ -763,7 +776,9 @@ public:
         last_change_ms, same_device);
     if (last_change_ms > DEVICE_CHANGE_DEBOUNCE_MS || !same_device) {
       if (device_id) {
-        default_device_id.reset(_wcsdup(device_id));
+        wchar_t * new_device_id = new wchar_t[wcslen(device_id) + 1];
+        wcscpy(new_device_id, device_id);
+        default_device_id.reset(new_device_id);
       } else {
         default_device_id.reset();
       }
@@ -839,16 +854,12 @@ intern_device_id(cubeb * ctx, wchar_t const * id)
 
   auto_lock lock(ctx->lock);
 
-  char const * tmp = wstr_to_utf8(id);
+  std::unique_ptr<char const[]> tmp = wstr_to_utf8(id);
   if (!tmp) {
     return nullptr;
   }
 
-  char const * interned = cubeb_strings_intern(ctx->device_ids, tmp);
-
-  free((void *)tmp);
-
-  return interned;
+  return cubeb_strings_intern(ctx->device_ids, tmp.get());
 }
 
 bool
@@ -1239,8 +1250,8 @@ refill_callback_duplex(cubeb_stream * stm)
   XASSERT(has_input(stm) && has_output(stm));
 
   if (stm->input_stream_params.prefs & CUBEB_STREAM_PREF_LOOPBACK) {
-    HRESULT rv = get_input_buffer(stm);
-    if (FAILED(rv)) {
+    rv = get_input_buffer(stm);
+    if (!rv) {
       return rv;
     }
   }
@@ -1250,7 +1261,6 @@ refill_callback_duplex(cubeb_stream * stm)
 
   rv = get_output_buffer(stm, output_buffer, output_frames);
   if (!rv) {
-    hr = stm->render_client->ReleaseBuffer(output_frames, 0);
     return rv;
   }
 
@@ -1494,8 +1504,8 @@ static unsigned int __stdcall wasapi_stream_render_loop(LPVOID stream)
       is_playing = stm->refill_callback(stm);
       break;
     case WAIT_OBJECT_0 + 3: { /* input available */
-      HRESULT rv = get_input_buffer(stm);
-      if (FAILED(rv)) {
+      bool rv = get_input_buffer(stm);
+      if (!rv) {
         is_playing = false;
         continue;
       }
@@ -1507,8 +1517,11 @@ static unsigned int __stdcall wasapi_stream_render_loop(LPVOID stream)
       break;
     }
     default:
-      LOG("case %lu not handled in render loop.", waitResult);
-      XASSERT(false);
+      LOG("render_loop: waitResult=%lu (lastError=%lu) unhandled, exiting",
+          waitResult, GetLastError());
+      is_playing = false;
+      hr = E_FAIL;
+      continue;
     }
   }
 
@@ -1777,7 +1790,6 @@ wasapi_init(cubeb ** context, char const * context_name)
 }
 
 namespace {
-enum ShutdownPhase { OnStop, OnDestroy };
 
 bool
 stop_and_join_render_thread(cubeb_stream * stm)
@@ -2039,7 +2051,7 @@ initialize_iaudioclient2(com_ptr<IAudioClient> & audio_client,
         "AUDCLNT_STREAMOPTIONS_RAW.");
     return CUBEB_OK;
   }
-  AudioClientProperties properties = {0};
+  AudioClientProperties properties = {};
   properties.cbSize = sizeof(AudioClientProperties);
 #ifndef __MINGW32__
   if (option == CUBEB_AUDIO_CLIENT2_RAW) {
@@ -2369,10 +2381,10 @@ setup_wasapi_stream_one_side(cubeb_stream * stm,
              (stream_params->prefs & CUBEB_STREAM_PREF_VOICE) &&
              stream_params->input_params != CUBEB_INPUT_PROCESSING_PARAM_NONE) {
     if (stream_params->input_params ==
-            CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION |
-        CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION |
-        CUBEB_INPUT_PROCESSING_PARAM_AUTOMATIC_GAIN_CONTROL |
-        CUBEB_INPUT_PROCESSING_PARAM_VOICE_ISOLATION) {
+        (CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION |
+         CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION |
+         CUBEB_INPUT_PROCESSING_PARAM_AUTOMATIC_GAIN_CONTROL |
+         CUBEB_INPUT_PROCESSING_PARAM_VOICE_ISOLATION)) {
       if (initialize_iaudioclient2(audio_client, CUBEB_AUDIO_CLIENT2_VOICE) !=
           CUBEB_OK) {
         LOG("Can't initialize an IAudioClient2, error: %lx", GetLastError());
@@ -3190,7 +3202,7 @@ wasapi_stream_set_volume(cubeb_stream * stm, float volume)
   return CUBEB_OK;
 }
 
-static char const *
+static std::unique_ptr<char const[]>
 wstr_to_utf8(LPCWSTR str)
 {
   int size = ::WideCharToMultiByte(CP_UTF8, 0, str, -1, nullptr, 0, NULL, NULL);
@@ -3198,8 +3210,8 @@ wstr_to_utf8(LPCWSTR str)
     return nullptr;
   }
 
-  char * ret = static_cast<char *>(malloc(size));
-  ::WideCharToMultiByte(CP_UTF8, 0, str, -1, ret, size, NULL, NULL);
+  std::unique_ptr<char[]> ret(new char[size]);
+  ::WideCharToMultiByte(CP_UTF8, 0, str, -1, ret.get(), size, NULL, NULL);
   return ret;
 }
 
@@ -3327,7 +3339,7 @@ wasapi_create_device(cubeb * ctx, cubeb_device_info & ret,
   prop_variant namevar;
   hr = propstore->GetValue(PKEY_Device_FriendlyName, &namevar);
   if (SUCCEEDED(hr) && namevar.vt == VT_LPWSTR) {
-    ret.friendly_name = wstr_to_utf8(namevar.pwszVal);
+    ret.friendly_name = wstr_to_utf8(namevar.pwszVal).release();
   }
   if (!ret.friendly_name) {
     // This is not fatal, but a valid string is expected in all cases.
@@ -3348,7 +3360,7 @@ wasapi_create_device(cubeb * ctx, cubeb_device_info & ret,
     prop_variant instancevar;
     hr = ps->GetValue(PKEY_Device_InstanceId, &instancevar);
     if (SUCCEEDED(hr) && instancevar.vt == VT_LPWSTR) {
-      ret.group_id = wstr_to_utf8(instancevar.pwszVal);
+      ret.group_id = wstr_to_utf8(instancevar.pwszVal).release();
     }
   }
 
