@@ -285,12 +285,6 @@ typedef struct {
      WASAPI backend; others should use cubeb_set_input_processing_params.  */
 } cubeb_stream_params;
 
-/** Audio device description */
-typedef struct {
-  char * output_name; /**< The name of the output device */
-  char * input_name;  /**< The name of the input device */
-} cubeb_device;
-
 /** Stream states signaled via state_callback. */
 typedef enum {
   CUBEB_STATE_STARTED, /**< Stream started. */
@@ -670,17 +664,6 @@ cubeb_stream_set_volume(cubeb_stream * stream, float volume);
 CUBEB_EXPORT int
 cubeb_stream_set_name(cubeb_stream * stream, char const * stream_name);
 
-/** Get the current output device for this stream.
-    @param stm the stream for which to query the current output device
-    @param device a pointer in which the current output device will be stored.
-    @retval CUBEB_OK in case of success
-    @retval CUBEB_ERROR_INVALID_PARAMETER if either stm, device or count are
-            invalid pointers
-    @retval CUBEB_ERROR_NOT_SUPPORTED */
-CUBEB_EXPORT int
-cubeb_stream_get_current_device(cubeb_stream * stm,
-                                cubeb_device ** const device);
-
 /** Set input mute state for this stream. Some platforms notify the user when an
     application is accessing audio input. When all inputs are muted they can
     prove to the user that the application is not actively capturing any input.
@@ -704,15 +687,6 @@ cubeb_stream_set_input_mute(cubeb_stream * stream, int mute);
 CUBEB_EXPORT int
 cubeb_stream_set_input_processing_params(cubeb_stream * stream,
                                          cubeb_input_processing_params params);
-
-/** Destroy a cubeb_device structure.
-    @param stream the stream passed in cubeb_stream_get_current_device
-    @param devices the devices to destroy
-    @retval CUBEB_OK in case of success
-    @retval CUBEB_ERROR_INVALID_PARAMETER if devices is an invalid pointer
-    @retval CUBEB_ERROR_NOT_SUPPORTED */
-CUBEB_EXPORT int
-cubeb_stream_device_destroy(cubeb_stream * stream, cubeb_device * devices);
 
 /** Set a callback to be notified when the output device changes.
     @param stream the stream for which to set the callback.
