@@ -1964,10 +1964,12 @@ wasapi_get_supported_input_processing_params(
   // This is not entirely accurate -- windows doesn't document precisely what
   // AudioCategory_Communications does -- but assume that we can set all or none
   // of them.
-  return CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION |
-         CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION |
-         CUBEB_INPUT_PROCESSING_PARAM_AUTOMATIC_GAIN_CONTROL |
-         CUBEB_INPUT_PROCESSING_PARAM_VOICE_ISOLATION;
+  *params = static_cast<cubeb_input_processing_params>(
+      CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION |
+      CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION |
+      CUBEB_INPUT_PROCESSING_PARAM_AUTOMATIC_GAIN_CONTROL |
+      CUBEB_INPUT_PROCESSING_PARAM_VOICE_ISOLATION);
+  return CUBEB_OK;
 }
 
 static void
