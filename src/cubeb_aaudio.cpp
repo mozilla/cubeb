@@ -444,10 +444,11 @@ update_state(cubeb_stream * stm)
     return;
   }
 
-  // If the main thread currently operates on this thread, we don't
-  // have to wait for it
+  // Requeue a state update if stream is already locked.
   unique_lock lock(stm->mutex, std::try_to_lock);
   if (!lock.owns_lock()) {
+    stm->context->state.waiting.store(true);
+    stm->context->state.cond.notify_one();
     return;
   }
 
