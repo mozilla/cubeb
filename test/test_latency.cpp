@@ -32,9 +32,10 @@ TEST(cubeb, latency)
     ASSERT_GT(preferred_rate, 0u);
   }
 
-  cubeb_stream_params params = {CUBEB_SAMPLE_FLOAT32NE, preferred_rate,
-                                max_channels, CUBEB_LAYOUT_UNDEFINED,
-                                CUBEB_STREAM_PREF_NONE};
+  cubeb_stream_params params = {
+      CUBEB_SAMPLE_FLOAT32NE, preferred_rate,
+      max_channels,           CUBEB_LAYOUT_UNDEFINED,
+      CUBEB_STREAM_PREF_NONE, CUBEB_INPUT_PROCESSING_PARAM_NONE};
   r = cubeb_get_min_latency(ctx, &params, &latency_frames);
   ASSERT_TRUE(r == CUBEB_OK || r == CUBEB_ERROR_NOT_SUPPORTED);
   if (r == CUBEB_OK) {
