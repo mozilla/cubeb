@@ -514,7 +514,7 @@ update_state(cubeb_stream * stm)
         ostate == AAUDIO_STREAM_STATE_UNKNOWN ||
         ostate == AAUDIO_STREAM_STATE_DISCONNECTED) {
       LOG("Unexpected android output stream state %s",
-          WRAP(AAudio_convertStreamStateToText)(istate));
+          WRAP(AAudio_convertStreamStateToText)(ostate));
       shutdown_with_error(stm);
       return;
     }
@@ -805,7 +805,7 @@ aaudio_get_latency(cubeb_stream * stm, aaudio_direction_t direction,
                            : signed_tstamp_ns - app_frame_hw_time;
   int64_t latency_frames = stm->sample_rate * latency_ns / NS_PER_S;
 
-  LOGV("Latency in frames (%s): %d (%dms)", is_output ? "output" : "input",
+  LOGV("Latency in frames (%s): %ld (%fms)", is_output ? "output" : "input",
        latency_frames, latency_ns / 1e6);
 
   return latency_frames;
@@ -896,7 +896,7 @@ aaudio_duplex_data_cb(AAudioStream * astream, void * user_data,
   }
 
   ALOGV("aaudio duplex data cb on stream %p: state %ld (in: %d, out: %d), "
-        "num_frames: %ld, read: %ld",
+        "num_frames: %d, read: %ld",
         (void *)stm, state, istate, ostate, num_frames, in_num_frames);
 
   compute_and_report_latency_metrics(stm);
@@ -954,7 +954,7 @@ aaudio_output_data_cb(AAudioStream * astream, void * user_data,
 
   stream_state state = stm->state.load();
   int ostate = WRAP(AAudioStream_getState)(stm->ostream);
-  ALOGV("aaudio output data cb on stream %p: state %ld (%d), num_frames: %ld",
+  ALOGV("aaudio output data cb on stream %p: state %ld (%d), num_frames: %d",
         stm, state, ostate, num_frames);
 
   // all other states may happen since the callback might be called
@@ -1006,7 +1006,7 @@ aaudio_input_data_cb(AAudioStream * astream, void * user_data,
 
   stream_state state = stm->state.load();
   int istate = WRAP(AAudioStream_getState)(stm->istream);
-  ALOGV("aaudio input data cb on stream %p: state %ld (%d), num_frames: %ld",
+  ALOGV("aaudio input data cb on stream %p: state %ld (%d), num_frames: %d",
         stm, state, istate, num_frames);
 
   // all other states may happen since the callback might be called
