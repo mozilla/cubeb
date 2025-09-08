@@ -49,6 +49,7 @@ extern "C" {
     output_params.channels = 2;
     output_params.layout = CUBEB_LAYOUT_UNDEFINED;
     output_params.prefs = CUBEB_STREAM_PREF_NONE;
+    output_params.input_params = CUBEB_INPUT_PROCESSING_PARAM_NONE;
 
     rv = cubeb_get_min_latency(app_ctx, &output_params, &latency_frames);
     if (rv != CUBEB_OK) {
@@ -62,6 +63,7 @@ extern "C" {
     input_params.channels = 1;
     input_params.layout = CUBEB_LAYOUT_UNDEFINED;
     input_params.prefs = CUBEB_STREAM_PREF_NONE;
+    input_params.input_params = CUBEB_INPUT_PROCESSING_PARAM_NONE;
 
     cubeb_stream * stm;
     rv = cubeb_stream_init(app_ctx, &stm, "Example Stream 1",

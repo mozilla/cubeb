@@ -622,11 +622,14 @@ int main(int argc, char* argv[]) {
     if (op.pm == PLAYBACK || op.pm == DUPLEX || op.pm == LATENCY_TESTING) {
       cl.output_device = cl.select_device(CUBEB_DEVICE_TYPE_OUTPUT);
       cl.output_params = {CUBEB_SAMPLE_FLOAT32NE, op.rate, DEFAULT_OUTPUT_CHANNELS,
-                          CUBEB_LAYOUT_STEREO, CUBEB_STREAM_PREF_NONE};
+                          CUBEB_LAYOUT_STEREO, CUBEB_STREAM_PREF_NONE,
+                          CUBEB_INPUT_PROCESSING_PARAM_NONE};
     }
     if (op.pm == RECORD || op.pm == DUPLEX || op.pm == LATENCY_TESTING) {
       cl.input_device = cl.select_device(CUBEB_DEVICE_TYPE_INPUT);
-      cl.input_params = {CUBEB_SAMPLE_FLOAT32NE, op.rate, DEFAULT_INPUT_CHANNELS, CUBEB_LAYOUT_UNDEFINED, CUBEB_STREAM_PREF_NONE};
+      cl.input_params = {CUBEB_SAMPLE_FLOAT32NE, op.rate, DEFAULT_INPUT_CHANNELS,
+                         CUBEB_LAYOUT_UNDEFINED, CUBEB_STREAM_PREF_NONE,
+                         CUBEB_INPUT_PROCESSING_PARAM_NONE};
     }
     if (op.pm == LATENCY_TESTING) {
       cl.set_latency_testing(true);
