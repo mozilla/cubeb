@@ -883,7 +883,7 @@ aaudio_duplex_data_cb(AAudioStream * astream, void * user_data,
   long in_num_frames =
       WRAP(AAudioStream_read)(stm->istream, stm->in_buf.data(), num_frames, 0);
   if (in_num_frames < 0) { // error
-    if (in_num_frames == AAUDIO_STREAM_STATE_DISCONNECTED) {
+    if (in_num_frames == AAUDIO_ERROR_DISCONNECTED) {
       LOG("AAudioStream_read: %s (reinitializing)",
           WRAP(AAudio_convertResultToText)(in_num_frames));
       reinitialize_stream(stm);
