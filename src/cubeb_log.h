@@ -39,9 +39,10 @@ cubeb_log_get_callback(void);
 void
 cubeb_log_internal_no_format(const char * msg);
 void
-cubeb_log_internal(const char * filename, uint32_t line, const char * fmt, ...);
+cubeb_log_internal(const char * filename, uint32_t line, const char * fmt, ...)
+    PRINTF_FORMAT(3, 4);
 void
-cubeb_async_log(const char * fmt, ...);
+cubeb_async_log(const char * fmt, ...) PRINTF_FORMAT(1, 2);
 void
 cubeb_async_log_reset_threads(void);
 
