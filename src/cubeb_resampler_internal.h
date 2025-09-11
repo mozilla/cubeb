@@ -497,7 +497,7 @@ public:
 
   void drop_audio_if_needed()
   {
-    size_t available = samples_to_frames(delay_input_buffer.length());
+    uint32_t available = samples_to_frames(delay_input_buffer.length());
     uint32_t to_keep = min_buffered_audio_frame(sample_rate);
     if (available > to_keep) {
       ALOGV("Dropping %u frames", available - to_keep);
