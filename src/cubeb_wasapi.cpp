@@ -765,7 +765,7 @@ public:
                                                    LPCWSTR device_id)
   {
     LOG("endpoint: Audio device default changed flow=%d role=%d "
-        "new_device_id=%ws.",
+        "new_device_id=%S.",
         flow, role, device_id);
 
     /* we only support a single stream type for now. */
@@ -776,7 +776,7 @@ public:
     DWORD last_change_ms = timeGetTime() - last_device_change;
     bool same_device = default_device_id && device_id &&
                        wcscmp(default_device_id.get(), device_id) == 0;
-    LOG("endpoint: Audio device default changed last_change=%u same_device=%d",
+    LOG("endpoint: Audio device default changed last_change=%lu same_device=%d",
         last_change_ms, same_device);
     if (last_change_ms > DEVICE_CHANGE_DEBOUNCE_MS || !same_device) {
       if (device_id) {
@@ -968,7 +968,7 @@ refill(cubeb_stream * stm, void * input_buffer, long input_frames_count,
       cubeb_resampler_fill(stm->resampler.get(), input_buffer,
                            &input_frames_count, dest, output_frames_needed);
   if (out_frames < 0) {
-    ALOGV("Callback refill error: %d", out_frames);
+    ALOGV("Callback refill error: %ld", out_frames);
     wasapi_state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
     return out_frames;
   }
@@ -1281,9 +1281,11 @@ refill_callback_duplex(cubeb_stream * stm)
 
   stm->total_output_frames += output_frames;
 
-  ALOGV("in: %zu, out: %zu, missing: %ld, ratio: %f", stm->total_input_frames,
-        stm->total_output_frames,
-        static_cast<long>(stm->total_output_frames) - stm->total_input_frames,
+  ALOGV("in: %llu, out: %llu, missing: %ld, ratio: %f",
+        (unsigned long long)stm->total_input_frames,
+        (unsigned long long)stm->total_output_frames,
+        static_cast<long long>(stm->total_output_frames) -
+            static_cast<long long>(stm->total_input_frames),
         static_cast<float>(stm->total_output_frames) / stm->total_input_frames);
 
   long got;
@@ -2936,7 +2938,7 @@ wasapi_stream_add_ref(cubeb_stream * stm)
 {
   XASSERT(stm);
   LONG result = InterlockedIncrement(&stm->ref_count);
-  LOGV("Stream ref count incremented = %i (%p)", result, stm);
+  LOGV("Stream ref count incremented = %ld (%p)", result, stm);
   return result;
 }
 
@@ -2946,7 +2948,7 @@ wasapi_stream_release(cubeb_stream * stm)
   XASSERT(stm);
 
   LONG result = InterlockedDecrement(&stm->ref_count);
-  LOGV("Stream ref count decremented = %i (%p)", result, stm);
+  LOGV("Stream ref count decremented = %ld (%p)", result, stm);
   if (result == 0) {
     LOG("Stream ref count hit zero, destroying (%p)", stm);
 
