@@ -330,7 +330,7 @@ bufferqueue_callback(SLBufferQueueItf caller, void * user_ptr)
     ALOGV("bufferqueue_callback: resampler fill returned %ld frames", written);
     if (written < 0 ||
         written * stm->framesize > static_cast<uint32_t>(stm->queuebuf_len)) {
-      ALOGV("bufferqueue_callback: error, shutting down", written);
+      ALOGV("bufferqueue_callback: error, shutting down");
       r = pthread_mutex_lock(&stm->mutex);
       XASSERT(r == 0);
       opensl_set_shutdown(stm, 1);
@@ -407,7 +407,7 @@ opensl_enqueue_recorder(cubeb_stream * stm, void ** last_filled_buffer)
                                stm->input_buffer_array[current_index],
                                stm->input_buffer_length);
   if (res != SL_RESULT_SUCCESS) {
-    LOG("Enqueue recorder failed. Error code: %lu", res);
+    LOG("Enqueue recorder failed. Error code: %u", res);
     return CUBEB_ERROR;
   }
   // All good, update buffer and index.
@@ -1056,7 +1056,7 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
         }
         if (res != SL_RESULT_SUCCESS) {
           LOG("Failed to create recorder, not trying other input"
-              " rate. Error code: %lu",
+              " rate. Error code: %u",
               res);
           return CUBEB_ERROR;
         }
@@ -1091,7 +1091,7 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
     if (res != SL_RESULT_SUCCESS) {
       LOG("Failed to get the android configuration interface for recorder. "
           "Error "
-          "code: %lu",
+          "code: %u",
           res);
       return CUBEB_ERROR;
     }
@@ -1109,7 +1109,7 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
 
     if (res != SL_RESULT_SUCCESS) {
       LOG("Failed to set the android configuration to VOICE for the recorder. "
-          "Error code: %lu",
+          "Error code: %u",
           res);
       return CUBEB_ERROR;
     }
@@ -1117,7 +1117,7 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
   // realize the audio recorder
   res = (*stm->recorderObj)->Realize(stm->recorderObj, SL_BOOLEAN_FALSE);
   if (res != SL_RESULT_SUCCESS) {
-    LOG("Failed to realize recorder. Error code: %lu", res);
+    LOG("Failed to realize recorder. Error code: %u", res);
     return CUBEB_ERROR;
   }
   // get the record interface
@@ -1125,14 +1125,14 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
             ->GetInterface(stm->recorderObj, stm->context->SL_IID_RECORD,
                            &stm->recorderItf);
   if (res != SL_RESULT_SUCCESS) {
-    LOG("Failed to get recorder interface. Error code: %lu", res);
+    LOG("Failed to get recorder interface. Error code: %u", res);
     return CUBEB_ERROR;
   }
 
   res = (*stm->recorderItf)
             ->RegisterCallback(stm->recorderItf, recorder_marker_callback, stm);
   if (res != SL_RESULT_SUCCESS) {
-    LOG("Failed to register recorder marker callback. Error code: %lu", res);
+    LOG("Failed to register recorder marker callback. Error code: %u", res);
     return CUBEB_ERROR;
   }
 
@@ -1142,7 +1142,7 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
             ->SetCallbackEventsMask(stm->recorderItf,
                                     (SLuint32)SL_RECORDEVENT_HEADATMARKER);
   if (res != SL_RESULT_SUCCESS) {
-    LOG("Failed to set headatmarker event mask. Error code: %lu", res);
+    LOG("Failed to set headatmarker event mask. Error code: %u", res);
     return CUBEB_ERROR;
   }
   // get the simple android buffer queue interface
@@ -1152,7 +1152,7 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
                            &stm->recorderBufferQueueItf);
   if (res != SL_RESULT_SUCCESS) {
     LOG("Failed to get recorder (android) buffer queue interface. Error code: "
-        "%lu",
+        "%u",
         res);
     return CUBEB_ERROR;
   }
@@ -1166,7 +1166,7 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
   res = (*stm->recorderBufferQueueItf)
             ->RegisterCallback(stm->recorderBufferQueueItf, rec_callback, stm);
   if (res != SL_RESULT_SUCCESS) {
-    LOG("Failed to register recorder buffer queue callback. Error code: %lu",
+    LOG("Failed to register recorder buffer queue callback. Error code: %u",
         res);
     return CUBEB_ERROR;
   }
@@ -1278,7 +1278,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params)
         }
 
         if (res != SL_RESULT_SUCCESS) {
-          LOG("Failed to create audio player. Error code: %lu", res);
+          LOG("Failed to create audio player. Error code: %u", res);
           return CUBEB_ERROR;
         }
         stm->output_configured_rate = preferred_sampling_rate;
@@ -1330,8 +1330,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params)
                              stm->context->SL_IID_ANDROIDCONFIGURATION,
                              &playerConfig);
     if (res != SL_RESULT_SUCCESS) {
-      LOG("Failed to get Android configuration interface. Error code: %lu",
-          res);
+      LOG("Failed to get Android configuration interface. Error code: %u", res);
       return CUBEB_ERROR;
     }
 
@@ -1343,7 +1342,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params)
               ->SetConfiguration(playerConfig, SL_ANDROID_KEY_STREAM_TYPE,
                                  &streamType, sizeof(streamType));
     if (res != SL_RESULT_SUCCESS) {
-      LOG("Failed to set Android configuration to %d Error code: %lu",
+      LOG("Failed to set Android configuration to %d Error code: %u",
           streamType, res);
     }
 
@@ -1357,7 +1356,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params)
               ->SetConfiguration(playerConfig, SL_ANDROID_KEY_PERFORMANCE_MODE,
                                  &performanceMode, sizeof(performanceMode));
     if (res != SL_RESULT_SUCCESS) {
-      LOG("Failed to set Android performance mode to %d Error code: %lu. This "
+      LOG("Failed to set Android performance mode to %d Error code: %u. This "
           "is not fatal.",
           performanceMode, res);
     }
@@ -1365,7 +1364,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params)
 
   res = (*stm->playerObj)->Realize(stm->playerObj, SL_BOOLEAN_FALSE);
   if (res != SL_RESULT_SUCCESS) {
-    LOG("Failed to realize player object. Error code: %lu", res);
+    LOG("Failed to realize player object. Error code: %u", res);
     return CUBEB_ERROR;
   }
 
@@ -1413,7 +1412,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params)
       (*stm->playerObj)
           ->GetInterface(stm->playerObj, stm->context->SL_IID_PLAY, &stm->play);
   if (res != SL_RESULT_SUCCESS) {
-    LOG("Failed to get play interface. Error code: %lu", res);
+    LOG("Failed to get play interface. Error code: %u", res);
     return CUBEB_ERROR;
   }
 
@@ -1421,7 +1420,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params)
             ->GetInterface(stm->playerObj, stm->context->SL_IID_BUFFERQUEUE,
                            &stm->bufq);
   if (res != SL_RESULT_SUCCESS) {
-    LOG("Failed to get bufferqueue interface. Error code: %lu", res);
+    LOG("Failed to get bufferqueue interface. Error code: %u", res);
     return CUBEB_ERROR;
   }
 
@@ -1429,13 +1428,13 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params)
             ->GetInterface(stm->playerObj, stm->context->SL_IID_VOLUME,
                            &stm->volume);
   if (res != SL_RESULT_SUCCESS) {
-    LOG("Failed to get volume interface. Error code: %lu", res);
+    LOG("Failed to get volume interface. Error code: %u", res);
     return CUBEB_ERROR;
   }
 
   res = (*stm->play)->RegisterCallback(stm->play, play_callback, stm);
   if (res != SL_RESULT_SUCCESS) {
-    LOG("Failed to register play callback. Error code: %lu", res);
+    LOG("Failed to register play callback. Error code: %u", res);
     return CUBEB_ERROR;
   }
 
@@ -1446,7 +1445,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params)
             ->SetCallbackEventsMask(stm->play,
                                     (SLuint32)SL_PLAYEVENT_HEADATMARKER);
   if (res != SL_RESULT_SUCCESS) {
-    LOG("Failed to set headatmarker event mask. Error code: %lu", res);
+    LOG("Failed to set headatmarker event mask. Error code: %u", res);
     return CUBEB_ERROR;
   }
 
@@ -1456,7 +1455,7 @@ opensl_configure_playback(cubeb_stream * stm, cubeb_stream_params * params)
   }
   res = (*stm->bufq)->RegisterCallback(stm->bufq, player_callback, stm);
   if (res != SL_RESULT_SUCCESS) {
-    LOG("Failed to register bufferqueue callback. Error code: %lu", res);
+    LOG("Failed to register bufferqueue callback. Error code: %u", res);
     return CUBEB_ERROR;
   }
 
@@ -1643,7 +1642,7 @@ opensl_start_player(cubeb_stream * stm)
   if (playerState == SL_OBJECT_STATE_REALIZED) {
     SLresult res = (*stm->play)->SetPlayState(stm->play, SL_PLAYSTATE_PLAYING);
     if (res != SL_RESULT_SUCCESS) {
-      LOG("Failed to start player. Error code: %lu", res);
+      LOG("Failed to start player. Error code: %u", res);
       return CUBEB_ERROR;
     }
   }
@@ -1661,7 +1660,7 @@ opensl_start_recorder(cubeb_stream * stm)
         (*stm->recorderItf)
             ->SetRecordState(stm->recorderItf, SL_RECORDSTATE_RECORDING);
     if (res != SL_RESULT_SUCCESS) {
-      LOG("Failed to start recorder. Error code: %lu", res);
+      LOG("Failed to start recorder. Error code: %u", res);
       return CUBEB_ERROR;
     }
   }
@@ -1707,7 +1706,7 @@ opensl_stop_player(cubeb_stream * stm)
 
   SLresult res = (*stm->play)->SetPlayState(stm->play, SL_PLAYSTATE_PAUSED);
   if (res != SL_RESULT_SUCCESS) {
-    LOG("Failed to stop player. Error code: %lu", res);
+    LOG("Failed to stop player. Error code: %u", res);
     return CUBEB_ERROR;
   }
 
@@ -1723,7 +1722,7 @@ opensl_stop_recorder(cubeb_stream * stm)
   SLresult res = (*stm->recorderItf)
                      ->SetRecordState(stm->recorderItf, SL_RECORDSTATE_PAUSED);
   if (res != SL_RESULT_SUCCESS) {
-    LOG("Failed to stop recorder. Error code: %lu", res);
+    LOG("Failed to stop recorder. Error code: %u", res);
     return CUBEB_ERROR;
   }
 
@@ -1770,7 +1769,7 @@ opensl_destroy_recorder(cubeb_stream * stm)
     SLresult res =
         (*stm->recorderBufferQueueItf)->Clear(stm->recorderBufferQueueItf);
     if (res != SL_RESULT_SUCCESS) {
-      LOG("Failed to clear recorder buffer queue. Error code: %lu", res);
+      LOG("Failed to clear recorder buffer queue. Error code: %u", res);
       return CUBEB_ERROR;
     }
     stm->recorderBufferQueueItf = nullptr;
