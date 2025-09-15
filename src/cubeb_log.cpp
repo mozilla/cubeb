@@ -207,10 +207,14 @@ cubeb_log_set(cubeb_log_level log_level, cubeb_log_callback log_callback)
   // nullptr, to prevent a TOCTOU race between checking the pointer
   if (log_callback && log_level != CUBEB_LOG_DISABLED) {
     g_cubeb_log_callback = log_callback;
-    cubeb_async_logger::get().start();
+    if (log_level == CUBEB_LOG_VERBOSE) {
+      cubeb_async_logger::get().start();
+    }
   } else if (!log_callback || CUBEB_LOG_DISABLED) {
     g_cubeb_log_callback = cubeb_noop_log_callback;
     // This returns once the thread has joined.
+    // This is safe even if CUBEB_LOG_VERBOSE was not set; the thread will
+    // simply not be joinable.
     cubeb_async_logger::get().stop();
   } else {
     assert(false && "Incorrect parameters passed to cubeb_log_set");
