@@ -3074,109 +3074,6 @@ audiounit_stream_set_volume(cubeb_stream * stm, float volume)
   return CUBEB_OK;
 }
 
-unique_ptr<char[]>
-convert_uint32_into_string(UInt32 data)
-{
-  // Simply create an empty string if no data.
-  size_t size = data == 0 ? 0 : 4;                   // 4 bytes for uint32.
-  auto str = unique_ptr<char[]>{new char[size + 1]}; // + 1 for '\0'.
-  str[size] = '\0';
-  if (size < 4) {
-    return str;
-  }
-
-  // Reverse 0xWXYZ into 0xZYXW.
-  str[0] = (char)(data >> 24);
-  str[1] = (char)(data >> 16);
-  str[2] = (char)(data >> 8);
-  str[3] = (char)(data);
-  return str;
-}
-
-int
-audiounit_get_default_device_datasource(cubeb_device_type type, UInt32 * data)
-{
-  AudioDeviceID id = audiounit_get_default_device_id(type);
-  if (id == kAudioObjectUnknown) {
-    return CUBEB_ERROR;
-  }
-
-  UInt32 size = sizeof(*data);
-  /* This fails with some USB headsets (e.g., Plantronic .Audio 628). */
-  OSStatus r = AudioObjectGetPropertyData(
-      id,
-      type == CUBEB_DEVICE_TYPE_INPUT ? &INPUT_DATA_SOURCE_PROPERTY_ADDRESS
-                                      : &OUTPUT_DATA_SOURCE_PROPERTY_ADDRESS,
-      0, NULL, &size, data);
-  if (r != noErr) {
-    *data = 0;
-  }
-
-  return CUBEB_OK;
-}
-
-int
-audiounit_get_default_device_name(cubeb_stream * stm,
-                                  cubeb_device * const device,
-                                  cubeb_device_type type)
-{
-  assert(stm);
-  assert(device);
-
-  UInt32 data;
-  int r = audiounit_get_default_device_datasource(type, &data);
-  if (r != CUBEB_OK) {
-    return r;
-  }
-  char ** name = type == CUBEB_DEVICE_TYPE_INPUT ? &device->input_name
-                                                 : &device->output_name;
-  *name = convert_uint32_into_string(data).release();
-  if (!strlen(*name)) { // empty string.
-    LOG("(%p) name of %s device is empty!", stm,
-        type == CUBEB_DEVICE_TYPE_INPUT ? "input" : "output");
-  }
-  return CUBEB_OK;
-}
-
-int
-audiounit_stream_get_current_device(cubeb_stream * stm,
-                                    cubeb_device ** const device)
-{
-#if TARGET_OS_IPHONE
-  // TODO
-  return CUBEB_ERROR_NOT_SUPPORTED;
-#else
-  *device = new cubeb_device;
-  if (!*device) {
-    return CUBEB_ERROR;
-  }
-  PodZero(*device, 1);
-
-  int r =
-      audiounit_get_default_device_name(stm, *device, CUBEB_DEVICE_TYPE_OUTPUT);
-  if (r != CUBEB_OK) {
-    return r;
-  }
-
-  r = audiounit_get_default_device_name(stm, *device, CUBEB_DEVICE_TYPE_INPUT);
-  if (r != CUBEB_OK) {
-    return r;
-  }
-
-  return CUBEB_OK;
-#endif
-}
-
-int
-audiounit_stream_device_destroy(cubeb_stream * /* stream */,
-                                cubeb_device * device)
-{
-  delete[] device->output_name;
-  delete[] device->input_name;
-  delete device;
-  return CUBEB_OK;
-}
-
 int
 audiounit_stream_register_device_changed_callback(
     cubeb_stream * stream,
@@ -3705,10 +3602,8 @@ cubeb_ops const audiounit_ops = {
     /*.stream_get_input_latency =*/NULL,
     /*.stream_set_volume =*/audiounit_stream_set_volume,
     /*.stream_set_name =*/NULL,
-    /*.stream_get_current_device =*/audiounit_stream_get_current_device,
     /*.stream_set_input_mute =*/NULL,
     /*.stream_set_input_processing_params =*/NULL,
-    /*.stream_device_destroy =*/audiounit_stream_device_destroy,
     /*.stream_register_device_changed_callback =*/
     audiounit_stream_register_device_changed_callback,
     /*.register_device_collection_changed =*/
