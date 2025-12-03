@@ -31,7 +31,7 @@ using namespace std;
 #ifdef DISABLE_LIBAAUDIO_DLOPEN
 #define WRAP(x) x
 #else
-#define WRAP(x) (*cubeb_##x)
+#define WRAP(x) AAudioLibrary::get().x
 #define LIBAAUDIO_API_VISIT(X)                                                 \
   X(AAudio_convertResultToText)                                                \
   X(AAudio_convertStreamStateToText)                                           \
@@ -69,27 +69,67 @@ using namespace std;
   X(AAudioStreamBuilder_setUsage)                                              \
   X(AAudioStreamBuilder_setFramesPerDataCallback)
 
-// not needed or added later on                      \
-  // X(AAudioStreamBuilder_setDeviceId)              \
-  // X(AAudioStreamBuilder_setSamplesPerFrame)       \
-  // X(AAudioStream_getSamplesPerFrame)              \
-  // X(AAudioStream_getDeviceId)                     \
-  // X(AAudioStream_write)                           \
-  // X(AAudioStream_getChannelCount)                 \
-  // X(AAudioStream_getFormat)                       \
-  // X(AAudioStream_getXRunCount)                    \
-  // X(AAudioStream_isMMapUsed)                      \
-  // X(AAudioStreamBuilder_setContentType)           \
-  // X(AAudioStreamBuilder_setSessionId)             \
-  // X(AAudioStream_getUsage)                        \
-  // X(AAudioStream_getContentType)                  \
-  // X(AAudioStream_getInputPreset)                  \
-  // X(AAudioStream_getSessionId)                    \
-// END: not needed or added later on
+class AAudioLibrary {
+public:
+  static AAudioLibrary & get()
+  {
+    static AAudioLibrary singleton;
+    return singleton;
+  }
 
-#define MAKE_TYPEDEF(x) static decltype(x) * cubeb_##x;
-LIBAAUDIO_API_VISIT(MAKE_TYPEDEF)
-#undef MAKE_TYPEDEF
+  bool load()
+  {
+    lock_guard lock(mutex);
+    if (state != State::Uninitialized) {
+      return state == State::Loaded;
+    }
+
+    libaaudio = dlopen("libaaudio.so", RTLD_NOW);
+    if (!libaaudio) {
+      LOG("AAudio: Failed to open libaaudio.so: %s", dlerror());
+      state = State::Failed;
+      return false;
+    }
+
+#define LOAD(x)                                                                \
+  x = reinterpret_cast<decltype(::x) *>(dlsym(libaaudio, #x));                 \
+  if (!x) {                                                                    \
+    LOG("AAudio: Failed to load symbol %s: %s", #x, dlerror());                \
+    dlclose(libaaudio);                                                        \
+    libaaudio = nullptr;                                                       \
+    state = State::Failed;                                                     \
+    return false;                                                              \
+  }
+    LIBAAUDIO_API_VISIT(LOAD)
+#undef LOAD
+
+    state = State::Loaded;
+    return true;
+  }
+
+#define DECLARE(x) decltype(::x) * x = nullptr;
+  LIBAAUDIO_API_VISIT(DECLARE)
+#undef DECLARE
+
+private:
+  enum class State { Uninitialized, Loaded, Failed };
+
+  AAudioLibrary() = default;
+
+  ~AAudioLibrary()
+  {
+    if (libaaudio) {
+      dlclose(libaaudio);
+    }
+  }
+
+  AAudioLibrary(const AAudioLibrary &) = delete;
+  AAudioLibrary & operator=(const AAudioLibrary &) = delete;
+
+  void * libaaudio = nullptr;
+  State state = State::Uninitialized;
+  mutex mutex;
+};
 #endif
 
 const uint8_t MAX_STREAMS = 16;
@@ -321,7 +361,6 @@ struct cubeb_stream {
 
 struct cubeb {
   struct cubeb_ops const * ops{};
-  void * libaaudio{};
 
   struct {
     // The state thread: it waits for state changes and stops
@@ -376,7 +415,7 @@ wait_for_state_change(AAudioStream * aaudio_stream,
   *desired_state = new_state;
 
   LOG("wait_for_state_change: current state now: %s",
-      cubeb_AAudio_convertStreamStateToText(new_state));
+      WRAP(AAudio_convertStreamStateToText)(new_state));
 
   return CUBEB_OK;
 }
@@ -718,11 +757,6 @@ aaudio_destroy(cubeb * ctx)
   if (ctx->state.notifier.joinable()) {
     ctx->state.notifier.join();
   }
-#ifndef DISABLE_LIBAAUDIO_DLOPEN
-  if (ctx->libaaudio) {
-    dlclose(ctx->libaaudio);
-  }
-#endif
   delete ctx;
 }
 
@@ -1664,8 +1698,8 @@ aaudio_stream_stop_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
                                      ? WRAP(AAudioStream_getState)(stm->ostream)
                                      : AAUDIO_STREAM_STATE_UNINITIALIZED;
   LOG("STOPPING stream %p: %d (in: %s out: %s)", (void *)stm, state,
-      cubeb_AAudio_convertStreamStateToText(istate),
-      cubeb_AAudio_convertStreamStateToText(ostate));
+      WRAP(AAudio_convertStreamStateToText)(istate),
+      WRAP(AAudio_convertStreamStateToText)(ostate));
 
   switch (state) {
   case stream_state::STOPPED:
@@ -1981,31 +2015,14 @@ const static struct cubeb_ops aaudio_ops = {
 extern "C" /*static*/ int
 aaudio_init(cubeb ** context, char const * /* context_name */)
 {
-  // load api
-  void * libaaudio = nullptr;
 #ifndef DISABLE_LIBAAUDIO_DLOPEN
-  libaaudio = dlopen("libaaudio.so", RTLD_NOW);
-  if (!libaaudio) {
+  if (!AAudioLibrary::get().load()) {
     return CUBEB_ERROR;
   }
-
-#define LOAD(x)                                                                \
-  {                                                                            \
-    cubeb_##x = (decltype(x) *)(dlsym(libaaudio, #x));                         \
-    if (!WRAP(x)) {                                                            \
-      LOG("AAudio: Failed to load %s", #x);                                    \
-      dlclose(libaaudio);                                                      \
-      return CUBEB_ERROR;                                                      \
-    }                                                                          \
-  }
-
-  LIBAAUDIO_API_VISIT(LOAD);
-#undef LOAD
 #endif
 
   cubeb * ctx = new cubeb;
   ctx->ops = &aaudio_ops;
-  ctx->libaaudio = libaaudio;
 
   ctx->state.thread = std::thread(state_thread, ctx);
 
