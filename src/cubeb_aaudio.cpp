@@ -586,9 +586,16 @@ update_state(cubeb_stream * stm)
       }
       break;
     case stream_state::STOPPING:
-      assert(!istate || istate == AAUDIO_STREAM_STATE_PAUSING ||
+      // If stream_stop happens while the stream is still starting, we may see
+      // STARTING/STARTED, ignore these and handle STATE_STOPPED once we reach
+      // PAUSED.
+      assert(!istate || istate == AAUDIO_STREAM_STATE_STARTING ||
+             istate == AAUDIO_STREAM_STATE_STARTED ||
+             istate == AAUDIO_STREAM_STATE_PAUSING ||
              istate == AAUDIO_STREAM_STATE_PAUSED);
-      assert(!ostate || ostate == AAUDIO_STREAM_STATE_PAUSING ||
+      assert(!ostate || ostate == AAUDIO_STREAM_STATE_STARTING ||
+             ostate == AAUDIO_STREAM_STATE_STARTED ||
+             ostate == AAUDIO_STREAM_STATE_PAUSING ||
              ostate == AAUDIO_STREAM_STATE_PAUSED);
       if ((!istate || istate == AAUDIO_STREAM_STATE_PAUSED) &&
           (!ostate || ostate == AAUDIO_STREAM_STATE_PAUSED)) {
