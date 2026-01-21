@@ -165,6 +165,12 @@ enum class stream_state {
   SHUTDOWN,
 };
 
+enum class slot_state {
+  FREE = 0,
+  IN_USE,
+  DESTROYING,
+};
+
 struct AAudioTimingInfo {
   // The timestamp at which the audio engine last called the calback.
   uint64_t tstamp;
@@ -322,7 +328,11 @@ struct cubeb_stream {
   cubeb * context{};
   void * user_ptr{};
 
-  std::atomic<bool> in_use{false};
+  // slot_state is only written with the stream mutex held, but stream_init
+  // reads it outside the mutex as an optimization to avoid locking every
+  // stream when searching for a free slot.
+  std::atomic<slot_state> slot_state{slot_state::FREE};
+  std::atomic<int> pending_reinit{0};
   std::atomic<bool> latency_metrics_available{false};
   std::atomic<int64_t> drain_target{-1};
   std::atomic<stream_state> state{stream_state::INIT};
@@ -372,7 +382,8 @@ struct cubeb {
     std::atomic<bool> waiting{false};
   } state;
 
-  // streams[i].in_use signals whether a stream is used
+  // streams[i].slot_state signals whether a stream slot is free, in use, or
+  // being destroyed.
   struct cubeb_stream streams[MAX_STREAMS];
 };
 
@@ -760,7 +771,7 @@ aaudio_destroy(cubeb * ctx)
 #ifndef NDEBUG
   // make sure all streams were destroyed
   for (auto & stream : ctx->streams) {
-    assert(!stream.in_use.load());
+    assert(stream.slot_state.load() == slot_state::FREE);
   }
 #endif
 
@@ -1108,8 +1119,27 @@ reinitialize_stream(cubeb_stream * stm)
   // thread.
   // In this situation, the lock is acquired for the entire duration of the
   // function, so that this reinitialization period is atomic.
+
+  // Ensure only one reinit is pending at a time.
+  int expected = 0;
+  if (!stm->pending_reinit.compare_exchange_strong(expected, 1)) {
+    LOG("reinitialize_stream: reinit already pending, skipping");
+    return;
+  }
+
   std::thread([stm] {
+    struct PendingReinitGuard {
+      cubeb_stream * stm;
+      ~PendingReinitGuard() { stm->pending_reinit.store(0); }
+    } guard{stm};
+
     lock_guard lock(stm->mutex);
+
+    if (stm->slot_state.load() != slot_state::IN_USE) {
+      LOG("reinitialize_stream: stream destroyed, cancelling");
+      return;
+    }
+
     stream_state state = stm->state.load();
     bool was_playing = state == stream_state::STARTED ||
                        state == stream_state::STARTING ||
@@ -1129,8 +1159,6 @@ reinitialize_stream(cubeb_stream * stm)
 
     aaudio_stream_destroy_locked(stm, lock);
     err = aaudio_stream_init_impl(stm, lock);
-
-    assert(stm->in_use.load());
 
     // Set the new initial position.
     stm->pos_estimate.reinit(total_frames);
@@ -1238,9 +1266,20 @@ realize_stream(AAudioStreamBuilder * sb, const cubeb_stream_params * params,
 static void
 aaudio_stream_destroy(cubeb_stream * stm)
 {
-  lock_guard lock(stm->mutex);
-  stm->in_use.store(false);
-  aaudio_stream_destroy_locked(stm, lock);
+  {
+    lock_guard lock(stm->mutex);
+    aaudio_stream_destroy_locked(stm, lock);
+    // Two-phase destroy, only mark as free once reinit threads exit.
+    stm->slot_state.store(slot_state::DESTROYING);
+  }
+
+  // Wait for reinit threads to exit.
+  while (stm->pending_reinit.load() > 0) {
+    auto dur = std::chrono::milliseconds(5);
+    std::this_thread::sleep_for(dur);
+  }
+
+  stm->slot_state.store(slot_state::FREE);
 }
 
 static void
@@ -1512,19 +1551,20 @@ aaudio_stream_init(cubeb * ctx, cubeb_stream ** stream,
   unique_lock<mutex> lock;
   for (auto & stream : ctx->streams) {
     // This check is only an optimization, we don't strictly need it
-    // since we check again after locking the mutex.
-    if (stream.in_use.load()) {
+    // since we check again after locking the mutex. It also skips
+    // DESTROYING slots, which is important to avoid racing with destroy.
+    if (stream.slot_state.load() != slot_state::FREE) {
       continue;
     }
 
     // if this fails, another thread initialized this stream
-    // between our check of in_use and this.
+    // between our check of slot_state and this.
     lock = unique_lock(stream.mutex, std::try_to_lock);
     if (!lock.owns_lock()) {
       continue;
     }
 
-    if (stream.in_use.load()) {
+    if (stream.slot_state.load() != slot_state::FREE) {
       lock = {};
       continue;
     }
@@ -1538,7 +1578,7 @@ aaudio_stream_init(cubeb * ctx, cubeb_stream ** stream,
     return CUBEB_ERROR;
   }
 
-  stm->in_use.store(true);
+  stm->slot_state.store(slot_state::IN_USE);
   stm->context = ctx;
   stm->user_ptr = user_ptr;
   stm->data_callback = data_callback;
@@ -1594,7 +1634,7 @@ aaudio_stream_start(cubeb_stream * stm)
 static int
 aaudio_stream_start_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
 {
-  assert(stm && stm->in_use.load());
+  assert(stm && stm->slot_state.load() == slot_state::IN_USE);
   stream_state state = stm->state.load();
   aaudio_stream_state_t istate = stm->istream
                                      ? WRAP(AAudioStream_getState)(stm->istream)
@@ -1728,7 +1768,7 @@ aaudio_stream_start_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
 static int
 aaudio_stream_stop(cubeb_stream * stm)
 {
-  assert(stm && stm->in_use.load());
+  assert(stm && stm->slot_state.load() == slot_state::IN_USE);
   lock_guard lock(stm->mutex);
   return aaudio_stream_stop_locked(stm, lock);
 }
@@ -1736,7 +1776,7 @@ aaudio_stream_stop(cubeb_stream * stm)
 static int
 aaudio_stream_stop_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
 {
-  assert(stm && stm->in_use.load());
+  assert(stm && stm->slot_state.load() == slot_state::IN_USE);
 
   stream_state state = stm->state.load();
   aaudio_stream_state_t istate = stm->istream
@@ -1866,7 +1906,7 @@ aaudio_stream_stop_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
 static int
 aaudio_stream_get_position(cubeb_stream * stm, uint64_t * position)
 {
-  assert(stm && stm->in_use.load());
+  assert(stm && stm->slot_state.load() == slot_state::IN_USE);
   lock_guard lock(stm->mutex);
 
   stream_state state = stm->state.load();
@@ -1971,7 +2011,7 @@ aaudio_stream_get_input_latency(cubeb_stream * stm, uint32_t * latency)
 static int
 aaudio_stream_set_volume(cubeb_stream * stm, float volume)
 {
-  assert(stm && stm->in_use.load() && stm->ostream);
+  assert(stm && stm->slot_state.load() == slot_state::IN_USE && stm->ostream);
   stm->volume.store(volume);
   return CUBEB_OK;
 }
