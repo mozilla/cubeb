@@ -326,7 +326,6 @@ struct cubeb_stream {
   std::atomic<bool> latency_metrics_available{false};
   std::atomic<int64_t> drain_target{-1};
   std::atomic<stream_state> state{stream_state::INIT};
-  std::atomic<bool> in_data_callback{false};
   triple_buffer<AAudioTimingInfo> timing_info;
 
   AAudioStream * ostream{};
@@ -375,15 +374,6 @@ struct cubeb {
 
   // streams[i].in_use signals whether a stream is used
   struct cubeb_stream streams[MAX_STREAMS];
-};
-
-struct AutoInCallback {
-  AutoInCallback(cubeb_stream * stm) : stm(stm)
-  {
-    stm->in_data_callback.store(true);
-  }
-  ~AutoInCallback() { stm->in_data_callback.store(false); }
-  cubeb_stream * stm;
 };
 
 // Returns when aaudio_stream's state is equal to desired_state.
@@ -452,7 +442,6 @@ shutdown_with_error(cubeb_stream * stm)
     }
   }
 
-  assert(!stm->in_data_callback.load());
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
   stm->state.store(stream_state::SHUTDOWN);
 }
@@ -892,7 +881,6 @@ aaudio_duplex_data_cb(AAudioStream * astream, void * user_data,
                       void * audio_data, int32_t num_frames)
 {
   cubeb_stream * stm = (cubeb_stream *)user_data;
-  AutoInCallback aic(stm);
   assert(stm->ostream == astream);
   assert(stm->istream);
   assert(num_frames >= 0);
@@ -993,7 +981,6 @@ aaudio_output_data_cb(AAudioStream * astream, void * user_data,
                       void * audio_data, int32_t num_frames)
 {
   cubeb_stream * stm = (cubeb_stream *)user_data;
-  AutoInCallback aic(stm);
   assert(stm->ostream == astream);
   assert(!stm->istream);
   assert(num_frames >= 0);
@@ -1047,7 +1034,6 @@ aaudio_input_data_cb(AAudioStream * astream, void * user_data,
                      void * audio_data, int32_t num_frames)
 {
   cubeb_stream * stm = (cubeb_stream *)user_data;
-  AutoInCallback aic(stm);
   assert(stm->istream == astream);
   assert(!stm->ostream);
   assert(num_frames >= 0);
