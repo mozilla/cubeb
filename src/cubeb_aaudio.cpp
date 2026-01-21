@@ -1870,6 +1870,7 @@ aaudio_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
 
   if (!stm->latency_metrics_available) {
     LOG("Not timing info yet (output)");
+    *latency = 0;
     return CUBEB_OK;
   }
 
@@ -1891,6 +1892,7 @@ aaudio_stream_get_input_latency(cubeb_stream * stm, uint32_t * latency)
 
   if (!stm->latency_metrics_available) {
     LOG("Not timing info yet (input)");
+    *latency = 0;
     return CUBEB_OK;
   }
 
