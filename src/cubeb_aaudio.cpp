@@ -616,16 +616,19 @@ update_state(cubeb_stream * stm)
     case stream_state::STOPPING:
       // If stream_stop happens while the stream is still starting, we may see
       // STARTING/STARTED, ignore these and handle STATE_STOPPED once we reach
-      // PAUSED.
+      // PAUSED (for output) or STOPPED (for input, which doesn't support
+      // pause).
       assert(!istate || istate == AAUDIO_STREAM_STATE_STARTING ||
              istate == AAUDIO_STREAM_STATE_STARTED ||
-             istate == AAUDIO_STREAM_STATE_PAUSING ||
-             istate == AAUDIO_STREAM_STATE_PAUSED);
+             istate == AAUDIO_STREAM_STATE_STOPPING ||
+             istate == AAUDIO_STREAM_STATE_STOPPED);
       assert(!ostate || ostate == AAUDIO_STREAM_STATE_STARTING ||
              ostate == AAUDIO_STREAM_STATE_STARTED ||
              ostate == AAUDIO_STREAM_STATE_PAUSING ||
              ostate == AAUDIO_STREAM_STATE_PAUSED);
-      if ((!istate || istate == AAUDIO_STREAM_STATE_PAUSED) &&
+      // Input streams use requestStop (goes to STOPPED), output uses
+      // requestPause (goes to PAUSED)
+      if ((!istate || istate == AAUDIO_STREAM_STATE_STOPPED) &&
           (!ostate || ostate == AAUDIO_STREAM_STATE_PAUSED)) {
         stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STOPPED);
         new_state = stream_state::STOPPED;
@@ -1730,9 +1733,11 @@ aaudio_stream_stop_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
   }
 
   if (stm->istream) {
-    res = WRAP(AAudioStream_requestPause)(stm->istream);
+    // AAudio input streams don't support pause - use stop instead.
+    // The stream will transition through STOPPING to STOPPED.
+    res = WRAP(AAudioStream_requestStop)(stm->istream);
     if (res != AAUDIO_OK) {
-      LOG("AAudioStream_requestPause (istream): %s",
+      LOG("AAudioStream_requestStop (istream): %s",
           WRAP(AAudio_convertResultToText)(res));
       stm->state.store(stream_state::ERROR);
       return CUBEB_ERROR;
