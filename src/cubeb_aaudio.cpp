@@ -410,6 +410,25 @@ wait_for_state_change(AAudioStream * aaudio_stream,
   return CUBEB_OK;
 }
 
+// Maps a transitional state to its corresponding stable state.
+// Returns AAUDIO_STREAM_STATE_UNINITIALIZED if not transitional.
+static aaudio_stream_state_t
+get_stable_state(aaudio_stream_state_t state)
+{
+  switch (state) {
+  case AAUDIO_STREAM_STATE_STARTING:
+    return AAUDIO_STREAM_STATE_STARTED;
+  case AAUDIO_STREAM_STATE_PAUSING:
+    return AAUDIO_STREAM_STATE_PAUSED;
+  case AAUDIO_STREAM_STATE_STOPPING:
+    return AAUDIO_STREAM_STATE_STOPPED;
+  case AAUDIO_STREAM_STATE_FLUSHING:
+    return AAUDIO_STREAM_STATE_FLUSHED;
+  default:
+    return AAUDIO_STREAM_STATE_UNINITIALIZED;
+  }
+}
+
 // Only allowed from state thread, while mutex on stm is locked
 static void
 shutdown_with_error(cubeb_stream * stm)
@@ -1577,9 +1596,15 @@ aaudio_stream_start_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
 {
   assert(stm && stm->in_use.load());
   stream_state state = stm->state.load();
-  int istate = stm->istream ? WRAP(AAudioStream_getState)(stm->istream) : 0;
-  int ostate = stm->ostream ? WRAP(AAudioStream_getState)(stm->ostream) : 0;
-  LOGV("STARTING stream %p: %d (%d %d)", (void *)stm, state, istate, ostate);
+  aaudio_stream_state_t istate = stm->istream
+                                     ? WRAP(AAudioStream_getState)(stm->istream)
+                                     : AAUDIO_STREAM_STATE_UNINITIALIZED;
+  aaudio_stream_state_t ostate = stm->ostream
+                                     ? WRAP(AAudioStream_getState)(stm->ostream)
+                                     : AAUDIO_STREAM_STATE_UNINITIALIZED;
+  LOG("STARTING stream %p: %d (in: %s out: %s)", (void *)stm, state,
+      WRAP(AAudio_convertStreamStateToText)(istate),
+      WRAP(AAudio_convertStreamStateToText)(ostate));
 
   switch (state) {
   case stream_state::STARTED:
@@ -1599,6 +1624,33 @@ aaudio_stream_start_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
   }
 
   aaudio_result_t res;
+
+  // Wait for stream transitions to settle before starting.
+  int64_t poll_frequency_ns = 10 * NS_PER_S / 1000;
+  if (stm->ostream) {
+    ostate = WRAP(AAudioStream_getState)(stm->ostream);
+    aaudio_stream_state_t target = get_stable_state(ostate);
+    if (target != AAUDIO_STREAM_STATE_UNINITIALIZED) {
+      int rv = wait_for_state_change(stm->ostream, &target, poll_frequency_ns);
+      if (rv != CUBEB_OK) {
+        LOG("Failure waiting for ostream to reach stable state before start");
+        stm->state.store(stream_state::ERROR);
+        return CUBEB_ERROR;
+      }
+    }
+  }
+  if (stm->istream) {
+    istate = WRAP(AAudioStream_getState)(stm->istream);
+    aaudio_stream_state_t target = get_stable_state(istate);
+    if (target != AAUDIO_STREAM_STATE_UNINITIALIZED) {
+      int rv = wait_for_state_change(stm->istream, &target, poll_frequency_ns);
+      if (rv != CUBEB_OK) {
+        LOG("Failure waiting for istream to reach stable state before start");
+        stm->state.store(stream_state::ERROR);
+        return CUBEB_ERROR;
+      }
+    }
+  }
 
   // Important to start istream before ostream.
   // As soon as we start ostream, the callbacks might be triggered an we
@@ -1715,6 +1767,27 @@ aaudio_stream_stop_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
   }
 
   aaudio_result_t res;
+
+  // Wait for stream transitions to settle before stopping.
+  int64_t poll_frequency_ns = 10 * NS_PER_S / 1000; // 10ms
+  if (stm->ostream && ostate == AAUDIO_STREAM_STATE_STARTING) {
+    aaudio_stream_state_t target = AAUDIO_STREAM_STATE_STARTED;
+    int rv = wait_for_state_change(stm->ostream, &target, poll_frequency_ns);
+    if (rv != CUBEB_OK) {
+      LOG("Failure waiting for ostream to finish starting before stop");
+      stm->state.store(stream_state::ERROR);
+      return CUBEB_ERROR;
+    }
+  }
+  if (stm->istream && istate == AAUDIO_STREAM_STATE_STARTING) {
+    aaudio_stream_state_t target = AAUDIO_STREAM_STATE_STARTED;
+    int rv = wait_for_state_change(stm->istream, &target, poll_frequency_ns);
+    if (rv != CUBEB_OK) {
+      LOG("Failure waiting for istream to finish starting before stop");
+      stm->state.store(stream_state::ERROR);
+      return CUBEB_ERROR;
+    }
+  }
 
   // No callbacks are triggered anymore when requestPause returns.
   // That is important as we otherwise might read from a closed istream
