@@ -37,7 +37,7 @@ jobs:
       if: ${{ matrix.os == 'windows-2025' }}
 
     - name: Install virtual audio devices (macOS)
-      if: ${{ matrix.os == 'macos-13' || matrix.os == 'macos-14' }}
+      if: ${{ matrix.os == 'macos-15' || matrix.os == 'macos-15-intel' }}
       run: |
         brew install switchaudio-osx
         brew install blackhole-2ch
@@ -45,12 +45,6 @@ jobs:
         sleep 10
         SwitchAudioSource -s "BlackHole 2ch" -t input
         SwitchAudioSource -s "BlackHole 2ch" -t output
-
-    - name: Allow microphone access to all apps (macOS)
-      if: ${{ matrix.os == 'macos-13' || matrix.os == 'macos-14' }}
-      env:
-        tcc_extra_columns: ${{ matrix.os == 'macos-14' && ',NULL,NULL,''UNUSED'',1687786159' || '' }}
-      run: sqlite3 $HOME/Library/Application\ Support/com.apple.TCC/TCC.db "INSERT OR IGNORE INTO access VALUES ('kTCCServiceMicrophone','/usr/local/opt/runner/provisioner/provisioner',1,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,1687786159${{ env.tcc_extra_columns }});"
 
     - name: Configure CMake
       shell: bash
