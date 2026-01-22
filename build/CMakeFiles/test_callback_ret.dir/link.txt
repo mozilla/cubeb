@@ -1,0 +1,1 @@
+/usr/bin/c++  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/test_callback_ret.dir/link.d CMakeFiles/test_callback_ret.dir/test/test_callback_ret.cpp.o -o test_callback_ret  libcubeb.a lib/libgtest_main.a lib/libgtest.a
