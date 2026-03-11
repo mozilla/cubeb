@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <atomic>
 #include <audioclient.h>
+#include <audiopolicy.h>
 #include <avrt.h>
 #include <cmath>
 #include <devicetopology.h>
@@ -317,6 +318,7 @@ struct cubeb {
 };
 
 class wasapi_endpoint_notification_client;
+class wasapi_session_notification_client;
 
 /* We have three possible callbacks we can use with a stream:
  * - input only
@@ -415,6 +417,10 @@ struct cubeb_stream {
      audio device changes and route the audio to the new default audio output
      device */
   com_ptr<wasapi_endpoint_notification_client> notification_client;
+  /* Session notification client, to be notified when the audio session is
+     disconnected (e.g. when an audio device is removed from the system). */
+  com_ptr<IAudioSessionControl> session_control;
+  com_ptr<wasapi_session_notification_client> session_notification_client;
   /* Main andle to the WASAPI capture stream. */
   com_ptr<IAudioClient> input_client;
   /* Interface to use the event driven capture interface */
@@ -832,6 +838,89 @@ private:
   ERole role;
   std::unique_ptr<const wchar_t[]> default_device_id;
   DWORD last_device_change;
+};
+
+class wasapi_session_notification_client : public IAudioSessionEvents {
+public:
+  ULONG STDMETHODCALLTYPE AddRef() { return InterlockedIncrement(&ref_count); }
+
+  ULONG STDMETHODCALLTYPE Release()
+  {
+    ULONG ulRef = InterlockedDecrement(&ref_count);
+    if (0 == ulRef) {
+      delete this;
+    }
+    return ulRef;
+  }
+
+  HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, VOID ** ppvInterface)
+  {
+    if (__uuidof(IUnknown) == riid) {
+      AddRef();
+      *ppvInterface = (IUnknown *)this;
+    } else if (__uuidof(IAudioSessionEvents) == riid) {
+      AddRef();
+      *ppvInterface = (IAudioSessionEvents *)this;
+    } else {
+      *ppvInterface = NULL;
+      return E_NOINTERFACE;
+    }
+    return S_OK;
+  }
+
+  wasapi_session_notification_client(HANDLE event)
+      : ref_count(1), reconfigure_event(event)
+  {
+  }
+
+  virtual ~wasapi_session_notification_client() {}
+
+  HRESULT STDMETHODCALLTYPE
+  OnSessionDisconnected(AudioSessionDisconnectReason reason)
+  {
+    LOG("session: Audio session disconnected, reason: %d", reason);
+    BOOL ok = SetEvent(reconfigure_event);
+    if (!ok) {
+      LOG("session: SetEvent on reconfigure_event failed: %lx", GetLastError());
+    }
+    return S_OK;
+  }
+
+  HRESULT STDMETHODCALLTYPE OnDisplayNameChanged(LPCWSTR value,
+                                                 LPCGUID event_context)
+  {
+    return S_OK;
+  }
+  HRESULT STDMETHODCALLTYPE OnIconPathChanged(LPCWSTR value,
+                                              LPCGUID event_context)
+  {
+    return S_OK;
+  }
+  HRESULT STDMETHODCALLTYPE OnSimpleVolumeChanged(float volume, BOOL mute,
+                                                  LPCGUID event_context)
+  {
+    return S_OK;
+  }
+  HRESULT STDMETHODCALLTYPE OnChannelVolumeChanged(DWORD channel_count,
+                                                   float volumes[],
+                                                   DWORD changed_channel,
+                                                   LPCGUID event_context)
+  {
+    return S_OK;
+  }
+  HRESULT STDMETHODCALLTYPE OnGroupingParamChanged(LPCGUID grouping_param,
+                                                   LPCGUID event_context)
+  {
+    return S_OK;
+  }
+  HRESULT STDMETHODCALLTYPE OnStateChanged(AudioSessionState state)
+  {
+    return S_OK;
+  }
+
+private:
+  LONG ref_count;
+  HANDLE reconfigure_event;
 };
 
 namespace {
@@ -2643,6 +2732,22 @@ setup_wasapi_stream(cubeb_stream * stm)
       return CUBEB_ERROR;
     }
 
+    hr = stm->output_client->GetService(__uuidof(IAudioSessionControl),
+                                        stm->session_control.receive_vpp());
+    if (SUCCEEDED(hr)) {
+      stm->session_notification_client.reset(
+          new wasapi_session_notification_client(stm->reconfigure_event));
+      hr = stm->session_control->RegisterAudioSessionNotification(
+          stm->session_notification_client.get());
+      if (FAILED(hr)) {
+        LOG("Could not register session notification client: %lx", hr);
+        stm->session_notification_client = nullptr;
+        stm->session_control = nullptr;
+      }
+    } else {
+      LOG("Could not get the IAudioSessionControl: %lx", hr);
+    }
+
 #ifdef CUBEB_WASAPI_USE_IAUDIOSTREAMVOLUME
     /* Restore the stream volume over a device change. */
     if (stream_set_volume(stm, stm->volume) != CUBEB_OK) {
@@ -2905,6 +3010,13 @@ close_wasapi_stream(cubeb_stream * stm)
   XASSERT(stm);
 
   stm->stream_reset_lock.assert_current_thread_owns();
+
+  if (stm->session_control && stm->session_notification_client) {
+    stm->session_control->UnregisterAudioSessionNotification(
+        stm->session_notification_client.get());
+    stm->session_notification_client = nullptr;
+    stm->session_control = nullptr;
+  }
 
 #ifdef CUBEB_WASAPI_USE_IAUDIOSTREAMVOLUME
   stm->audio_stream_volume = nullptr;
