@@ -1549,13 +1549,12 @@ static unsigned int __stdcall wasapi_stream_render_loop(LPVOID stream)
       XASSERT(stm->output_client || stm->input_client);
       LOG("Reconfiguring the stream");
       /* Close the stream */
-      bool was_running = false;
       if (stm->output_client) {
-        was_running = stm->output_client->Stop() == S_OK;
+        stm->output_client->Stop();
         LOG("Output stopped.");
       }
       if (stm->input_client) {
-        was_running = stm->input_client->Stop() == S_OK;
+        stm->input_client->Stop();
         LOG("Input stopped.");
       }
       close_wasapi_stream(stm);
@@ -1573,7 +1572,7 @@ static unsigned int __stdcall wasapi_stream_render_loop(LPVOID stream)
       }
       LOG("Stream setup successfuly.");
       XASSERT(stm->output_client || stm->input_client);
-      if (was_running && stm->output_client) {
+      if (stm->output_client) {
         hr = stm->output_client->Start();
         if (FAILED(hr)) {
           LOG("Error starting output after reconfigure, error: %lx", hr);
@@ -1582,7 +1581,7 @@ static unsigned int __stdcall wasapi_stream_render_loop(LPVOID stream)
         }
         LOG("Output started after reconfigure.");
       }
-      if (was_running && stm->input_client) {
+      if (stm->input_client) {
         hr = stm->input_client->Start();
         if (FAILED(hr)) {
           LOG("Error starting input after reconfiguring, error: %lx", hr);
