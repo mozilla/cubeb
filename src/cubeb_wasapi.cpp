@@ -105,8 +105,6 @@ namespace {
 
 const int64_t LATENCY_NOT_AVAILABLE_YET = -1;
 
-const DWORD DEVICE_CHANGE_DEBOUNCE_MS = 250;
-
 struct com_heap_ptr_deleter {
   void operator()(void * ptr) const noexcept { CoTaskMemFree(ptr); }
 };
@@ -754,8 +752,7 @@ public:
   }
 
   wasapi_endpoint_notification_client(HANDLE event, ERole role)
-      : ref_count(1), reconfigure_event(event), role(role),
-        last_device_change(timeGetTime())
+      : ref_count(1), reconfigure_event(event), role(role)
   {
   }
 
@@ -773,25 +770,11 @@ public:
       return S_OK;
     }
 
-    DWORD last_change_ms = timeGetTime() - last_device_change;
-    bool same_device = default_device_id && device_id &&
-                       wcscmp(default_device_id.get(), device_id) == 0;
-    LOG("endpoint: Audio device default changed last_change=%lu same_device=%d",
-        last_change_ms, same_device);
-    if (last_change_ms > DEVICE_CHANGE_DEBOUNCE_MS || !same_device) {
-      if (device_id) {
-        wchar_t * new_device_id = new wchar_t[wcslen(device_id) + 1];
-        wcscpy(new_device_id, device_id);
-        default_device_id.reset(new_device_id);
-      } else {
-        default_device_id.reset();
-      }
-      BOOL ok = SetEvent(reconfigure_event);
-      LOG("endpoint: Audio device default changed: trigger reconfig");
-      if (!ok) {
-        LOG("endpoint: SetEvent on reconfigure_event failed: %lx",
-            GetLastError());
-      }
+    BOOL ok = SetEvent(reconfigure_event);
+    LOG("endpoint: Audio device default changed: trigger reconfig");
+    if (!ok) {
+      LOG("endpoint: SetEvent on reconfigure_event failed: %lx",
+          GetLastError());
     }
 
     return S_OK;
@@ -830,8 +813,6 @@ private:
   LONG ref_count;
   HANDLE reconfigure_event;
   ERole role;
-  std::unique_ptr<const wchar_t[]> default_device_id;
-  DWORD last_device_change;
 };
 
 namespace {
