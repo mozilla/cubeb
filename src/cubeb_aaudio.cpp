@@ -444,32 +444,39 @@ get_stable_state(aaudio_stream_state_t state)
 static void
 shutdown_with_error(cubeb_stream * stm)
 {
+  aaudio_stream_state_t istate = AAUDIO_STREAM_STATE_UNINITIALIZED;
+  aaudio_stream_state_t ostate = AAUDIO_STREAM_STATE_UNINITIALIZED;
   if (stm->istream) {
-    WRAP(AAudioStream_requestStop)(stm->istream);
+    wait_for_state_change(stm->istream, &istate, 0);
   }
   if (stm->ostream) {
+    wait_for_state_change(stm->ostream, &ostate, 0);
+  }
+
+  if (istate && istate != AAUDIO_STREAM_STATE_STOPPING &&
+      istate != AAUDIO_STREAM_STATE_STOPPED) {
+    WRAP(AAudioStream_requestStop)(stm->istream);
+  }
+  if (ostate && ostate != AAUDIO_STREAM_STATE_STOPPING &&
+      ostate != AAUDIO_STREAM_STATE_STOPPED &&
+      ostate != AAUDIO_STREAM_STATE_PAUSING &&
+      ostate != AAUDIO_STREAM_STATE_PAUSED) {
     WRAP(AAudioStream_requestStop)(stm->ostream);
   }
 
-  int64_t poll_frequency_ns = NS_PER_S * stm->out_frame_size / stm->sample_rate;
-  int rv;
-  if (stm->istream) {
-    aaudio_stream_state_t state = AAUDIO_STREAM_STATE_STOPPED;
-    rv = wait_for_state_change(stm->istream, &state, poll_frequency_ns);
-    if (rv != CUBEB_OK) {
-      LOG("Failure when waiting for stream change on the input side when "
-          "shutting down in error");
-      // Not much we can do, carry on
-    }
-  }
-  if (stm->ostream) {
-    aaudio_stream_state_t state = AAUDIO_STREAM_STATE_STOPPED;
-    rv = wait_for_state_change(stm->ostream, &state, poll_frequency_ns);
-    if (rv != CUBEB_OK) {
-      LOG("Failure when waiting for stream change on the output side when "
-          "shutting down in error");
-      // Not much we can do, carry on
-    }
+  // Wait for both streams to reach a terminal state before firing the
+  // error callback.
+  bool istream_done = !istate || istate == AAUDIO_STREAM_STATE_STOPPED ||
+                      istate == AAUDIO_STREAM_STATE_DISCONNECTED;
+  bool ostream_done = !ostate || ostate == AAUDIO_STREAM_STATE_STOPPED ||
+                      ostate == AAUDIO_STREAM_STATE_PAUSED ||
+                      ostate == AAUDIO_STREAM_STATE_DISCONNECTED;
+
+  if (!istream_done || !ostream_done) {
+    LOG("shutdown_with_error: waiting for streams to stop (in: %s, out: %s)",
+        WRAP(AAudio_convertStreamStateToText)(istate),
+        WRAP(AAudio_convertStreamStateToText)(ostate));
+    return;
   }
 
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
@@ -485,6 +492,7 @@ waiting_state(stream_state state)
   case stream_state::DRAINING:
   case stream_state::STARTING:
   case stream_state::STOPPING:
+  case stream_state::ERROR:
     return true;
   default:
     return false;
