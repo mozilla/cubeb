@@ -78,7 +78,7 @@ struct cubeb_stream {
   uint32_t framesize;
   /* Total number of played frames.
    * Synchronized by stream::mutex lock. */
-  long written;
+  int64_t written;
   /* Flag indicating draining. Synchronized
    * by stream::mutex lock. */
   int draining;
@@ -1856,12 +1856,12 @@ opensl_stream_get_position(cubeb_stream * stm, uint64_t * position)
   uint64_t samplerate = stm->user_output_rate;
   uint32_t output_latency = stm->output_latency_ms;
 
-  XASSERT(stm->written >= 0);
   XASSERT(stm->user_output_rate > 0);
   XASSERT(stm->output_configured_rate > 0);
   pthread_mutex_lock(&stm->mutex);
-  int64_t maximum_position = stm->written * (int64_t)stm->user_output_rate /
-                             stm->output_configured_rate;
+  XASSERT(stm->written >= 0);
+  int64_t maximum_position =
+      stm->written * stm->user_output_rate / stm->output_configured_rate;
   pthread_mutex_unlock(&stm->mutex);
   XASSERT(maximum_position >= 0);
 
