@@ -1,0 +1,1 @@
+/usr/bin/c++  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/cubeb-test.dir/link.d "CMakeFiles/cubeb-test.dir/tools/cubeb-test.cpp.o" -o cubeb-test  libcubeb.a
