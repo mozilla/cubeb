@@ -124,11 +124,6 @@ cbjack_deinterleave_playback_refill_float(cubeb_stream * stream,
                                           float ** bufs_in, float ** bufs_out,
                                           jack_nframes_t nframes);
 static int
-cbjack_stream_device_destroy(cubeb_stream * stream, cubeb_device * device);
-static int
-cbjack_stream_get_current_device(cubeb_stream * stm,
-                                 cubeb_device ** const device);
-static int
 cbjack_enumerate_devices(cubeb * context, cubeb_device_type type,
                          cubeb_device_collection * collection);
 static int
@@ -173,10 +168,8 @@ static struct cubeb_ops const cbjack_ops = {
     .stream_get_input_latency = NULL,
     .stream_set_volume = cbjack_stream_set_volume,
     .stream_set_name = NULL,
-    .stream_get_current_device = cbjack_stream_get_current_device,
     .stream_set_input_mute = NULL,
     .stream_set_input_processing_params = NULL,
-    .stream_device_destroy = cbjack_stream_device_destroy,
     .stream_register_device_changed_callback = NULL,
     .register_device_collection_changed = NULL};
 
@@ -1070,43 +1063,6 @@ static int
 cbjack_stream_set_volume(cubeb_stream * stm, float volume)
 {
   stm->volume = volume;
-  return CUBEB_OK;
-}
-
-static int
-cbjack_stream_get_current_device(cubeb_stream * stm,
-                                 cubeb_device ** const device)
-{
-  *device = (cubeb_device *)calloc(1, sizeof(cubeb_device));
-  if (*device == NULL)
-    return CUBEB_ERROR;
-
-  const char * j_in = JACK_DEFAULT_IN;
-  const char * j_out = JACK_DEFAULT_OUT;
-  const char * empty = "";
-
-  if (stm->devs == DUPLEX) {
-    (*device)->input_name = strdup(j_in);
-    (*device)->output_name = strdup(j_out);
-  } else if (stm->devs == IN_ONLY) {
-    (*device)->input_name = strdup(j_in);
-    (*device)->output_name = strdup(empty);
-  } else if (stm->devs == OUT_ONLY) {
-    (*device)->input_name = strdup(empty);
-    (*device)->output_name = strdup(j_out);
-  }
-
-  return CUBEB_OK;
-}
-
-static int
-cbjack_stream_device_destroy(cubeb_stream * /*stream*/, cubeb_device * device)
-{
-  if (device->input_name)
-    free(device->input_name);
-  if (device->output_name)
-    free(device->output_name);
-  free(device);
   return CUBEB_OK;
 }
 
