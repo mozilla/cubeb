@@ -558,21 +558,6 @@ cubeb_stream_set_name(cubeb_stream * stream, char const * stream_name)
 }
 
 int
-cubeb_stream_get_current_device(cubeb_stream * stream,
-                                cubeb_device ** const device)
-{
-  if (!stream || !device) {
-    return CUBEB_ERROR_INVALID_PARAMETER;
-  }
-
-  if (!stream->context->ops->stream_get_current_device) {
-    return CUBEB_ERROR_NOT_SUPPORTED;
-  }
-
-  return stream->context->ops->stream_get_current_device(stream, device);
-}
-
-int
 cubeb_stream_set_input_mute(cubeb_stream * stream, int mute)
 {
   if (!stream) {
@@ -600,20 +585,6 @@ cubeb_stream_set_input_processing_params(cubeb_stream * stream,
 
   return stream->context->ops->stream_set_input_processing_params(stream,
                                                                   params);
-}
-
-int
-cubeb_stream_device_destroy(cubeb_stream * stream, cubeb_device * device)
-{
-  if (!stream || !device) {
-    return CUBEB_ERROR_INVALID_PARAMETER;
-  }
-
-  if (!stream->context->ops->stream_device_destroy) {
-    return CUBEB_ERROR_NOT_SUPPORTED;
-  }
-
-  return stream->context->ops->stream_device_destroy(stream, device);
 }
 
 int
