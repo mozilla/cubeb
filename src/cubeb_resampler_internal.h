@@ -213,11 +213,15 @@ public:
     T output_buffer[LATENCY_SAMPLES] = {};
     const uint32_t latency_frames =
         LATENCY_SAMPLES / std::max<uint32_t>(channels, 1);
-    uint32_t input_frame_count = std::min(input_latency, latency_frames);
-    uint32_t output_frame_count = latency_frames;
-    assert(output_frame_count * channels <= LATENCY_SAMPLES);
-    speex_resample(input_buffer, &input_frame_count, output_buffer,
-                   &output_frame_count);
+    assert(latency_frames * channels <= LATENCY_SAMPLES);
+    uint32_t remaining = input_latency;
+    while (remaining > 0) {
+      uint32_t input_frame_count = std::min(remaining, latency_frames);
+      uint32_t output_frame_count = latency_frames;
+      speex_resample(input_buffer, &input_frame_count, output_buffer,
+                     &output_frame_count);
+      remaining -= input_frame_count;
+    }
   }
 
   /** Destructor, deallocate the resampler */
