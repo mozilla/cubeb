@@ -1268,26 +1268,19 @@ struct monotonic_state {
   }
   ~monotonic_state()
   {
-    float ratio =
-        static_cast<float>(source_rate) / static_cast<float>(target_rate);
-    // Only report if there has been a meaningful increase in buffering. Do
+    // Only flag if there has been a meaningful increase in buffering. Do
     // not warn if the buffering was constant and small.
     if (monotonic && max_value && max_value != max_step) {
-      printf("%s is monotonically increasing, max: %zu, max_step: %zu, "
-             "in: %dHz, out: "
-             "%dHz, block_size: %d, ratio: %lf\n",
-             what, max_value, max_step, source_rate, target_rate, block_size,
-             ratio);
+      ADD_FAILURE() << what
+                    << " is monotonically increasing, max: " << max_value
+                    << ", max_step: " << max_step << ", in: " << source_rate
+                    << "Hz, out: " << target_rate
+                    << "Hz, block_size: " << block_size;
     }
-    // Arbitrary limit: if more than this number of frames has been buffered,
-    // print a message.
-    constexpr int BUFFER_SIZE_THRESHOLD = 20;
-    if (max_value > BUFFER_SIZE_THRESHOLD) {
-      printf("%s, unexpected large max buffering value, max: %zu, max_step: "
-             "%zu, in: %dHz, out: %dHz, block_size: %d, ratio: %lf\n",
-             what, max_value, max_step, source_rate, target_rate, block_size,
-             ratio);
-    }
+    constexpr size_t BUFFER_SIZE_THRESHOLD = 20;
+    EXPECT_LE(max_value, BUFFER_SIZE_THRESHOLD)
+        << what << ", in: " << source_rate << "Hz, out: " << target_rate
+        << "Hz, block_size: " << block_size << ", max_step: " << max_step;
   }
   void set_new_value(size_t new_value)
   {
