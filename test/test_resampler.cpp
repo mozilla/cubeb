@@ -1111,6 +1111,42 @@ TEST(cubeb, individual_methods)
   ASSERT_EQ(frames_needed, 0u);
 }
 
+TEST(cubeb, input_needed_for_output_sufficiency)
+{
+  // For various rate pairs, verify that feeding exactly
+  // input_needed_for_output(N) frames always produces at least N output frames.
+  const uint32_t test_rates[] = {8000, 16000, 32000, 44100, 48000, 96000};
+  const uint32_t test_blocks[] = {128, 256, 512, 1024};
+  const int iterations = 200;
+
+  for (uint32_t source_rate : test_rates) {
+    for (uint32_t target_rate : test_rates) {
+      if (source_rate == target_rate) {
+        continue;
+      }
+      for (uint32_t block_size : test_blocks) {
+        cubeb_resampler_speex_one_way<float> resampler(
+            1, source_rate, target_rate,
+            to_speex_quality(CUBEB_RESAMPLER_QUALITY_DEFAULT));
+
+        std::vector<float> input_buf(block_size * 16);
+        std::vector<float> output_buf(block_size);
+
+        for (int i = 0; i < iterations; i++) {
+          uint32_t needed = resampler.input_needed_for_output(block_size);
+          ASSERT_LE(needed, input_buf.size());
+          resampler.input(input_buf.data(), needed);
+          size_t got = resampler.output(output_buf.data(), block_size);
+          ASSERT_EQ(got, block_size)
+              << "source=" << source_rate << " target=" << target_rate
+              << " block=" << block_size << " iter=" << i
+              << " needed=" << needed;
+        }
+      }
+    }
+  }
+}
+
 struct sine_wave_state {
   float frequency;
   int sample_rate;
