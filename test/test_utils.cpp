@@ -68,3 +68,44 @@ TEST(cubeb, auto_array)
   ASSERT_EQ(array.length(), 15u);
   ASSERT_EQ(array.capacity(), 20u);
 }
+
+TEST(cubeb, auto_array_reserve_no_realloc)
+{
+  auto_array<float> array(128);
+  float * ptr = array.data();
+
+  // reserve at or below current capacity must not reallocate
+  for (size_t i = 0; i <= 128; i++) {
+    ASSERT_TRUE(array.reserve(i));
+    ASSERT_EQ(array.data(), ptr);
+    ASSERT_EQ(array.capacity(), 128u);
+  }
+
+  // push within capacity must not reallocate
+  float buf[64] = {};
+  array.push(buf, 64);
+  ASSERT_EQ(array.data(), ptr);
+
+  // reserve still within capacity after push
+  array.reserve(100);
+  ASSERT_EQ(array.data(), ptr);
+  ASSERT_EQ(array.capacity(), 128u);
+}
+
+TEST(cubeb, auto_array_growth_amortized)
+{
+  auto_array<float> array;
+  float val = 0.0f;
+
+  array.push(&val, 1);
+  size_t cap_after_first = array.capacity();
+  ASSERT_GE(cap_after_first, 1u);
+
+  // Force growth: push more than current capacity
+  float buf[128] = {};
+  size_t old_cap = array.capacity();
+  array.push(buf, old_cap + 1);
+
+  // Capacity should have at least doubled
+  ASSERT_GE(array.capacity(), old_cap * 2);
+}
