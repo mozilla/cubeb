@@ -365,27 +365,25 @@ private:
   void speex_resample(float * input_buffer, uint32_t * input_frame_count,
                       float * output_buffer, uint32_t * output_frame_count)
   {
-#ifndef NDEBUG
-    int rv;
-    rv =
-#endif
-        speex_resampler_process_interleaved_float(
-            speex_resampler, input_buffer, input_frame_count, output_buffer,
-            output_frame_count);
+    int rv = speex_resampler_process_interleaved_float(
+        speex_resampler, input_buffer, input_frame_count, output_buffer,
+        output_frame_count);
     assert(rv == RESAMPLER_ERR_SUCCESS);
+    if (rv != RESAMPLER_ERR_SUCCESS) {
+      ALOG("speex_resampler_process_interleaved_float error: %d", rv);
+    }
   }
 
   void speex_resample(short * input_buffer, uint32_t * input_frame_count,
                       short * output_buffer, uint32_t * output_frame_count)
   {
-#ifndef NDEBUG
-    int rv;
-    rv =
-#endif
-        speex_resampler_process_interleaved_int(
-            speex_resampler, input_buffer, input_frame_count, output_buffer,
-            output_frame_count);
+    int rv = speex_resampler_process_interleaved_int(
+        speex_resampler, input_buffer, input_frame_count, output_buffer,
+        output_frame_count);
     assert(rv == RESAMPLER_ERR_SUCCESS);
+    if (rv != RESAMPLER_ERR_SUCCESS) {
+      ALOG("speex_resampler_process_interleaved_int error: %d", rv);
+    }
   }
 
   /** The state for the speex resampler used internaly. */
