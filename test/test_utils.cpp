@@ -19,7 +19,7 @@ TEST(cubeb, auto_array)
 
   array.push(a, 10);
 
-  ASSERT_TRUE(!array.reserve(9));
+  ASSERT_TRUE(array.reserve(9));
 
   for (uint32_t i = 0; i < 10; i++) {
     ASSERT_EQ(array.data()[i], i);
