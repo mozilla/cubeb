@@ -438,18 +438,12 @@ cubeb_resampler_create_internal(cubeb_stream * stream,
     output_resampler.reset(new cubeb_resampler_speex_one_way<T>(
         output_params->channels, target_rate, output_params->rate,
         to_speex_quality(quality)));
-    if (!output_resampler) {
-      return NULL;
-    }
   }
 
   if (input_params && (input_params->rate != target_rate)) {
     input_resampler.reset(new cubeb_resampler_speex_one_way<T>(
         input_params->channels, input_params->rate, target_rate,
         to_speex_quality(quality)));
-    if (!input_resampler) {
-      return NULL;
-    }
   }
 
   auto direction = (input_params && output_params)
