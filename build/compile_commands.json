@@ -1,0 +1,188 @@
+[
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/cc -DEXPORT=\"\" -DFLOATING_POINT -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -DOUTSIDE_SPEEX -DRANDOM_PREFIX=speex   -Wall -Wextra -Wno-unused-parameter -O3 -DNDEBUG -std=gnu99 -fPIC -fvisibility=hidden -o CMakeFiles/speex.dir/subprojects/speex/resample.c.o -c /home/runner/work/cubeb/cubeb/subprojects/speex/resample.c",
+  "file": "/home/runner/work/cubeb/cubeb/subprojects/speex/resample.c",
+  "output": "CMakeFiles/speex.dir/subprojects/speex/resample.c.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/cc -DEXPORT=\"\" -DFLOATING_POINT -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -DOUTSIDE_SPEEX -DRANDOM_PREFIX=speex -I/home/runner/work/cubeb/cubeb/include -I/home/runner/work/cubeb/cubeb/build/exports -I/home/runner/work/cubeb/cubeb/subprojects  -Wall -Wextra -Wno-unused-parameter -O3 -DNDEBUG -std=gnu99 -fvisibility=hidden -o CMakeFiles/cubeb.dir/src/cubeb.c.o -c /home/runner/work/cubeb/cubeb/src/cubeb.c",
+  "file": "/home/runner/work/cubeb/cubeb/src/cubeb.c",
+  "output": "CMakeFiles/cubeb.dir/src/cubeb.c.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/c++ -DEXPORT=\"\" -DFLOATING_POINT -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -DOUTSIDE_SPEEX -DRANDOM_PREFIX=speex -I/home/runner/work/cubeb/cubeb/include -I/home/runner/work/cubeb/cubeb/build/exports -I/home/runner/work/cubeb/cubeb/subprojects  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -std=gnu++17 -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/cubeb.dir/src/cubeb_audio_dump.cpp.o -c /home/runner/work/cubeb/cubeb/src/cubeb_audio_dump.cpp",
+  "file": "/home/runner/work/cubeb/cubeb/src/cubeb_audio_dump.cpp",
+  "output": "CMakeFiles/cubeb.dir/src/cubeb_audio_dump.cpp.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/c++ -DEXPORT=\"\" -DFLOATING_POINT -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -DOUTSIDE_SPEEX -DRANDOM_PREFIX=speex -I/home/runner/work/cubeb/cubeb/include -I/home/runner/work/cubeb/cubeb/build/exports -I/home/runner/work/cubeb/cubeb/subprojects  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -std=gnu++17 -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/cubeb.dir/src/cubeb_mixer.cpp.o -c /home/runner/work/cubeb/cubeb/src/cubeb_mixer.cpp",
+  "file": "/home/runner/work/cubeb/cubeb/src/cubeb_mixer.cpp",
+  "output": "CMakeFiles/cubeb.dir/src/cubeb_mixer.cpp.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/c++ -DEXPORT=\"\" -DFLOATING_POINT -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -DOUTSIDE_SPEEX -DRANDOM_PREFIX=speex -I/home/runner/work/cubeb/cubeb/include -I/home/runner/work/cubeb/cubeb/build/exports -I/home/runner/work/cubeb/cubeb/subprojects  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -std=gnu++17 -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/cubeb.dir/src/cubeb_resampler.cpp.o -c /home/runner/work/cubeb/cubeb/src/cubeb_resampler.cpp",
+  "file": "/home/runner/work/cubeb/cubeb/src/cubeb_resampler.cpp",
+  "output": "CMakeFiles/cubeb.dir/src/cubeb_resampler.cpp.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/c++ -DEXPORT=\"\" -DFLOATING_POINT -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -DOUTSIDE_SPEEX -DRANDOM_PREFIX=speex -I/home/runner/work/cubeb/cubeb/include -I/home/runner/work/cubeb/cubeb/build/exports -I/home/runner/work/cubeb/cubeb/subprojects  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -std=gnu++17 -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/cubeb.dir/src/cubeb_log.cpp.o -c /home/runner/work/cubeb/cubeb/src/cubeb_log.cpp",
+  "file": "/home/runner/work/cubeb/cubeb/src/cubeb_log.cpp",
+  "output": "CMakeFiles/cubeb.dir/src/cubeb_log.cpp.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/cc -DEXPORT=\"\" -DFLOATING_POINT -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -DOUTSIDE_SPEEX -DRANDOM_PREFIX=speex -I/home/runner/work/cubeb/cubeb/include -I/home/runner/work/cubeb/cubeb/build/exports -I/home/runner/work/cubeb/cubeb/subprojects  -Wall -Wextra -Wno-unused-parameter -O3 -DNDEBUG -std=gnu99 -fvisibility=hidden -o CMakeFiles/cubeb.dir/src/cubeb_strings.c.o -c /home/runner/work/cubeb/cubeb/src/cubeb_strings.c",
+  "file": "/home/runner/work/cubeb/cubeb/src/cubeb_strings.c",
+  "output": "CMakeFiles/cubeb.dir/src/cubeb_strings.c.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/c++ -DEXPORT=\"\" -DFLOATING_POINT -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -DOUTSIDE_SPEEX -DRANDOM_PREFIX=speex -I/home/runner/work/cubeb/cubeb/include -I/home/runner/work/cubeb/cubeb/build/exports -I/home/runner/work/cubeb/cubeb/subprojects  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -std=gnu++17 -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/cubeb.dir/src/cubeb_utils.cpp.o -c /home/runner/work/cubeb/cubeb/src/cubeb_utils.cpp",
+  "file": "/home/runner/work/cubeb/cubeb/src/cubeb_utils.cpp",
+  "output": "CMakeFiles/cubeb.dir/src/cubeb_utils.cpp.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/c++ -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -I/home/runner/work/cubeb/cubeb/src -I/home/runner/work/cubeb/cubeb/include -I/home/runner/work/cubeb/cubeb/build/exports -isystem /home/runner/work/cubeb/cubeb/googletest/googletest/include -isystem /home/runner/work/cubeb/cubeb/googletest/googletest  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -std=gnu++17 -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/test_sanity.dir/test/test_sanity.cpp.o -c /home/runner/work/cubeb/cubeb/test/test_sanity.cpp",
+  "file": "/home/runner/work/cubeb/cubeb/test/test_sanity.cpp",
+  "output": "CMakeFiles/test_sanity.dir/test/test_sanity.cpp.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/c++ -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -I/home/runner/work/cubeb/cubeb/src -I/home/runner/work/cubeb/cubeb/include -I/home/runner/work/cubeb/cubeb/build/exports -isystem /home/runner/work/cubeb/cubeb/googletest/googletest/include -isystem /home/runner/work/cubeb/cubeb/googletest/googletest  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -std=gnu++17 -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/test_tone.dir/test/test_tone.cpp.o -c /home/runner/work/cubeb/cubeb/test/test_tone.cpp",
+  "file": "/home/runner/work/cubeb/cubeb/test/test_tone.cpp",
+  "output": "CMakeFiles/test_tone.dir/test/test_tone.cpp.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/c++ -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -I/home/runner/work/cubeb/cubeb/src -I/home/runner/work/cubeb/cubeb/include -I/home/runner/work/cubeb/cubeb/build/exports -isystem /home/runner/work/cubeb/cubeb/googletest/googletest/include -isystem /home/runner/work/cubeb/cubeb/googletest/googletest  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -std=gnu++17 -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/test_audio.dir/test/test_audio.cpp.o -c /home/runner/work/cubeb/cubeb/test/test_audio.cpp",
+  "file": "/home/runner/work/cubeb/cubeb/test/test_audio.cpp",
+  "output": "CMakeFiles/test_audio.dir/test/test_audio.cpp.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/c++ -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -I/home/runner/work/cubeb/cubeb/src -I/home/runner/work/cubeb/cubeb/include -I/home/runner/work/cubeb/cubeb/build/exports -isystem /home/runner/work/cubeb/cubeb/googletest/googletest/include -isystem /home/runner/work/cubeb/cubeb/googletest/googletest  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -std=gnu++17 -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/test_record.dir/test/test_record.cpp.o -c /home/runner/work/cubeb/cubeb/test/test_record.cpp",
+  "file": "/home/runner/work/cubeb/cubeb/test/test_record.cpp",
+  "output": "CMakeFiles/test_record.dir/test/test_record.cpp.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/c++ -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -I/home/runner/work/cubeb/cubeb/src -I/home/runner/work/cubeb/cubeb/include -I/home/runner/work/cubeb/cubeb/build/exports -isystem /home/runner/work/cubeb/cubeb/googletest/googletest/include -isystem /home/runner/work/cubeb/cubeb/googletest/googletest  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -std=gnu++17 -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/test_devices.dir/test/test_devices.cpp.o -c /home/runner/work/cubeb/cubeb/test/test_devices.cpp",
+  "file": "/home/runner/work/cubeb/cubeb/test/test_devices.cpp",
+  "output": "CMakeFiles/test_devices.dir/test/test_devices.cpp.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/c++ -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -I/home/runner/work/cubeb/cubeb/src -I/home/runner/work/cubeb/cubeb/include -I/home/runner/work/cubeb/cubeb/build/exports -isystem /home/runner/work/cubeb/cubeb/googletest/googletest/include -isystem /home/runner/work/cubeb/cubeb/googletest/googletest  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -std=gnu++17 -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/test_callback_ret.dir/test/test_callback_ret.cpp.o -c /home/runner/work/cubeb/cubeb/test/test_callback_ret.cpp",
+  "file": "/home/runner/work/cubeb/cubeb/test/test_callback_ret.cpp",
+  "output": "CMakeFiles/test_callback_ret.dir/test/test_callback_ret.cpp.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/c++ -DEXPORT=\"\" -DFLOATING_POINT -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -DOUTSIDE_SPEEX -DRANDOM_PREFIX=speex -I/home/runner/work/cubeb/cubeb/src -I/home/runner/work/cubeb/cubeb/include -I/home/runner/work/cubeb/cubeb/build/exports -I/home/runner/work/cubeb/cubeb/subprojects -isystem /home/runner/work/cubeb/cubeb/googletest/googletest/include -isystem /home/runner/work/cubeb/cubeb/googletest/googletest  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -std=gnu++17 -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/test_resampler.dir/test/test_resampler.cpp.o -c /home/runner/work/cubeb/cubeb/test/test_resampler.cpp",
+  "file": "/home/runner/work/cubeb/cubeb/test/test_resampler.cpp",
+  "output": "CMakeFiles/test_resampler.dir/test/test_resampler.cpp.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/c++ -DEXPORT=\"\" -DFLOATING_POINT -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -DOUTSIDE_SPEEX -DRANDOM_PREFIX=speex -I/home/runner/work/cubeb/cubeb/src -I/home/runner/work/cubeb/cubeb/include -I/home/runner/work/cubeb/cubeb/build/exports -I/home/runner/work/cubeb/cubeb/subprojects -isystem /home/runner/work/cubeb/cubeb/googletest/googletest/include -isystem /home/runner/work/cubeb/cubeb/googletest/googletest  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -std=gnu++17 -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/test_resampler.dir/src/cubeb_resampler.cpp.o -c /home/runner/work/cubeb/cubeb/src/cubeb_resampler.cpp",
+  "file": "/home/runner/work/cubeb/cubeb/src/cubeb_resampler.cpp",
+  "output": "CMakeFiles/test_resampler.dir/src/cubeb_resampler.cpp.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/c++ -DEXPORT=\"\" -DFLOATING_POINT -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -DOUTSIDE_SPEEX -DRANDOM_PREFIX=speex -I/home/runner/work/cubeb/cubeb/src -I/home/runner/work/cubeb/cubeb/include -I/home/runner/work/cubeb/cubeb/build/exports -I/home/runner/work/cubeb/cubeb/subprojects -isystem /home/runner/work/cubeb/cubeb/googletest/googletest/include -isystem /home/runner/work/cubeb/cubeb/googletest/googletest  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -std=gnu++17 -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/test_resampler.dir/src/cubeb_log.cpp.o -c /home/runner/work/cubeb/cubeb/src/cubeb_log.cpp",
+  "file": "/home/runner/work/cubeb/cubeb/src/cubeb_log.cpp",
+  "output": "CMakeFiles/test_resampler.dir/src/cubeb_log.cpp.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/c++ -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -I/home/runner/work/cubeb/cubeb/src -I/home/runner/work/cubeb/cubeb/include -I/home/runner/work/cubeb/cubeb/build/exports -isystem /home/runner/work/cubeb/cubeb/googletest/googletest/include -isystem /home/runner/work/cubeb/cubeb/googletest/googletest  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -std=gnu++17 -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/test_duplex.dir/test/test_duplex.cpp.o -c /home/runner/work/cubeb/cubeb/test/test_duplex.cpp",
+  "file": "/home/runner/work/cubeb/cubeb/test/test_duplex.cpp",
+  "output": "CMakeFiles/test_duplex.dir/test/test_duplex.cpp.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/c++ -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -I/home/runner/work/cubeb/cubeb/src -I/home/runner/work/cubeb/cubeb/include -I/home/runner/work/cubeb/cubeb/build/exports -isystem /home/runner/work/cubeb/cubeb/googletest/googletest/include -isystem /home/runner/work/cubeb/cubeb/googletest/googletest  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -std=gnu++17 -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/test_logging.dir/test/test_logging.cpp.o -c /home/runner/work/cubeb/cubeb/test/test_logging.cpp",
+  "file": "/home/runner/work/cubeb/cubeb/test/test_logging.cpp",
+  "output": "CMakeFiles/test_logging.dir/test/test_logging.cpp.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/c++ -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -I/home/runner/work/cubeb/cubeb/src -I/home/runner/work/cubeb/cubeb/include -I/home/runner/work/cubeb/cubeb/build/exports -isystem /home/runner/work/cubeb/cubeb/googletest/googletest/include -isystem /home/runner/work/cubeb/cubeb/googletest/googletest  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -std=gnu++17 -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/test_triple_buffer.dir/test/test_triple_buffer.cpp.o -c /home/runner/work/cubeb/cubeb/test/test_triple_buffer.cpp",
+  "file": "/home/runner/work/cubeb/cubeb/test/test_triple_buffer.cpp",
+  "output": "CMakeFiles/test_triple_buffer.dir/test/test_triple_buffer.cpp.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/c++ -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -I/home/runner/work/cubeb/cubeb/src -I/home/runner/work/cubeb/cubeb/include -I/home/runner/work/cubeb/cubeb/build/exports -isystem /home/runner/work/cubeb/cubeb/googletest/googletest/include -isystem /home/runner/work/cubeb/cubeb/googletest/googletest  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -std=gnu++17 -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/test_audio_dump.dir/test/test_audio_dump.cpp.o -c /home/runner/work/cubeb/cubeb/test/test_audio_dump.cpp",
+  "file": "/home/runner/work/cubeb/cubeb/test/test_audio_dump.cpp",
+  "output": "CMakeFiles/test_audio_dump.dir/test/test_audio_dump.cpp.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/c++ -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -I/home/runner/work/cubeb/cubeb/src -I/home/runner/work/cubeb/cubeb/include -I/home/runner/work/cubeb/cubeb/build/exports -isystem /home/runner/work/cubeb/cubeb/googletest/googletest/include -isystem /home/runner/work/cubeb/cubeb/googletest/googletest  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -std=gnu++17 -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/test_latency.dir/test/test_latency.cpp.o -c /home/runner/work/cubeb/cubeb/test/test_latency.cpp",
+  "file": "/home/runner/work/cubeb/cubeb/test/test_latency.cpp",
+  "output": "CMakeFiles/test_latency.dir/test/test_latency.cpp.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/c++ -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -I/home/runner/work/cubeb/cubeb/src -I/home/runner/work/cubeb/cubeb/include -I/home/runner/work/cubeb/cubeb/build/exports -isystem /home/runner/work/cubeb/cubeb/googletest/googletest/include -isystem /home/runner/work/cubeb/cubeb/googletest/googletest  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -std=gnu++17 -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/test_ring_array.dir/test/test_ring_array.cpp.o -c /home/runner/work/cubeb/cubeb/test/test_ring_array.cpp",
+  "file": "/home/runner/work/cubeb/cubeb/test/test_ring_array.cpp",
+  "output": "CMakeFiles/test_ring_array.dir/test/test_ring_array.cpp.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/c++ -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -I/home/runner/work/cubeb/cubeb/src -I/home/runner/work/cubeb/cubeb/include -I/home/runner/work/cubeb/cubeb/build/exports -isystem /home/runner/work/cubeb/cubeb/googletest/googletest/include -isystem /home/runner/work/cubeb/cubeb/googletest/googletest  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -std=gnu++17 -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/test_utils.dir/test/test_utils.cpp.o -c /home/runner/work/cubeb/cubeb/test/test_utils.cpp",
+  "file": "/home/runner/work/cubeb/cubeb/test/test_utils.cpp",
+  "output": "CMakeFiles/test_utils.dir/test/test_utils.cpp.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/c++ -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -I/home/runner/work/cubeb/cubeb/src -I/home/runner/work/cubeb/cubeb/include -I/home/runner/work/cubeb/cubeb/build/exports -isystem /home/runner/work/cubeb/cubeb/googletest/googletest/include -isystem /home/runner/work/cubeb/cubeb/googletest/googletest  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -std=gnu++17 -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/test_ring_buffer.dir/test/test_ring_buffer.cpp.o -c /home/runner/work/cubeb/cubeb/test/test_ring_buffer.cpp",
+  "file": "/home/runner/work/cubeb/cubeb/test/test_ring_buffer.cpp",
+  "output": "CMakeFiles/test_ring_buffer.dir/test/test_ring_buffer.cpp.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/c++ -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -I/home/runner/work/cubeb/cubeb/src -I/home/runner/work/cubeb/cubeb/include -I/home/runner/work/cubeb/cubeb/build/exports -isystem /home/runner/work/cubeb/cubeb/googletest/googletest/include -isystem /home/runner/work/cubeb/cubeb/googletest/googletest  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -std=gnu++17 -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/test_device_changed_callback.dir/test/test_device_changed_callback.cpp.o -c /home/runner/work/cubeb/cubeb/test/test_device_changed_callback.cpp",
+  "file": "/home/runner/work/cubeb/cubeb/test/test_device_changed_callback.cpp",
+  "output": "CMakeFiles/test_device_changed_callback.dir/test/test_device_changed_callback.cpp.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build",
+  "command": "/usr/bin/c++ -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -I/home/runner/work/cubeb/cubeb/src -I/home/runner/work/cubeb/cubeb/include -I/home/runner/work/cubeb/cubeb/build/exports  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -std=gnu++17 -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/cubeb-test.dir/tools/cubeb-test.cpp.o -c /home/runner/work/cubeb/cubeb/tools/cubeb-test.cpp",
+  "file": "/home/runner/work/cubeb/cubeb/tools/cubeb-test.cpp",
+  "output": "CMakeFiles/cubeb-test.dir/tools/cubeb-test.cpp.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build/googletest/googlemock",
+  "command": "/usr/bin/c++ -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -I/home/runner/work/cubeb/cubeb/googletest/googlemock/include -I/home/runner/work/cubeb/cubeb/googletest/googlemock -isystem /home/runner/work/cubeb/cubeb/googletest/googletest/include -isystem /home/runner/work/cubeb/cubeb/googletest/googletest -O3 -DNDEBUG -std=c++17 -Wall -Wshadow -Wundef -Wno-error=dangling-else -DGTEST_HAS_PTHREAD=1 -fexceptions -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -o CMakeFiles/gmock.dir/src/gmock-all.cc.o -c /home/runner/work/cubeb/cubeb/googletest/googlemock/src/gmock-all.cc",
+  "file": "/home/runner/work/cubeb/cubeb/googletest/googlemock/src/gmock-all.cc",
+  "output": "googletest/googlemock/CMakeFiles/gmock.dir/src/gmock-all.cc.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build/googletest/googlemock",
+  "command": "/usr/bin/c++ -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -isystem /home/runner/work/cubeb/cubeb/googletest/googlemock/include -isystem /home/runner/work/cubeb/cubeb/googletest/googlemock -isystem /home/runner/work/cubeb/cubeb/googletest/googletest/include -isystem /home/runner/work/cubeb/cubeb/googletest/googletest -O3 -DNDEBUG -std=c++17 -Wall -Wshadow -Wundef -Wno-error=dangling-else -DGTEST_HAS_PTHREAD=1 -fexceptions -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -o CMakeFiles/gmock_main.dir/src/gmock_main.cc.o -c /home/runner/work/cubeb/cubeb/googletest/googlemock/src/gmock_main.cc",
+  "file": "/home/runner/work/cubeb/cubeb/googletest/googlemock/src/gmock_main.cc",
+  "output": "googletest/googlemock/CMakeFiles/gmock_main.dir/src/gmock_main.cc.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build/googletest/googletest",
+  "command": "/usr/bin/c++ -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -I/home/runner/work/cubeb/cubeb/googletest/googletest/include -I/home/runner/work/cubeb/cubeb/googletest/googletest -O3 -DNDEBUG -std=c++17 -Wall -Wshadow -Wundef -Wno-error=dangling-else -DGTEST_HAS_PTHREAD=1 -fexceptions -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -o CMakeFiles/gtest.dir/src/gtest-all.cc.o -c /home/runner/work/cubeb/cubeb/googletest/googletest/src/gtest-all.cc",
+  "file": "/home/runner/work/cubeb/cubeb/googletest/googletest/src/gtest-all.cc",
+  "output": "googletest/googletest/CMakeFiles/gtest.dir/src/gtest-all.cc.o"
+},
+{
+  "directory": "/home/runner/work/cubeb/cubeb/build/googletest/googletest",
+  "command": "/usr/bin/c++ -DGTEST_HAS_RTTI=0 -DGTEST_HAS_TR1_TUPLE=0 -isystem /home/runner/work/cubeb/cubeb/googletest/googletest/include -isystem /home/runner/work/cubeb/cubeb/googletest/googletest -O3 -DNDEBUG -std=c++17 -Wall -Wshadow -Wundef -Wno-error=dangling-else -DGTEST_HAS_PTHREAD=1 -fexceptions -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -o CMakeFiles/gtest_main.dir/src/gtest_main.cc.o -c /home/runner/work/cubeb/cubeb/googletest/googletest/src/gtest_main.cc",
+  "file": "/home/runner/work/cubeb/cubeb/googletest/googletest/src/gtest_main.cc",
+  "output": "googletest/googletest/CMakeFiles/gtest_main.dir/src/gtest_main.cc.o"
+}
+]
