@@ -8,10 +8,15 @@
 #if !defined(CUBEB_UTILS)
 #define CUBEB_UTILS
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
 #include "cubeb/cubeb.h"
 
 #ifdef __cplusplus
 
+#include <algorithm>
 #include <assert.h>
 #include <mutex>
 #include <stdint.h>
@@ -124,6 +129,11 @@ public:
 
   ~auto_array() { delete[] data_; }
 
+  auto_array(const auto_array &) = delete;
+  auto_array & operator=(const auto_array &) = delete;
+  auto_array(auto_array &&) = delete;
+  auto_array & operator=(auto_array &&) = delete;
+
   /** Get a constant pointer to the underlying data. */
   T * data() const { return data_; }
 
@@ -150,16 +160,16 @@ public:
   /** Keeps the storage, but removes all the elements from the array. */
   void clear() { length_ = 0; }
 
-  /** Change the storage of this auto array, copying the elements to the new
-   * storage.
+  /** Ensure the storage can hold at least `new_capacity` elements, reallocating
+   * if needed. Never shrinks.
    * @returns true in case of success
    * @returns false if the new capacity is not big enough to accomodate for the
    *                elements in the array.
    */
   bool reserve(size_t new_capacity)
   {
-    if (new_capacity < length_) {
-      return false;
+    if (new_capacity <= capacity_) {
+      return true;
     }
     T * new_data = new T[new_capacity];
     if (data_ && length_) {
@@ -180,7 +190,7 @@ public:
   void push(const T * elements, size_t length)
   {
     if (length_ + length > capacity_) {
-      reserve(length_ + length);
+      reserve(std::max(length_ + length, capacity_ * 2));
     }
     if (data_) {
       PodCopy(data_ + length_, elements, length);
@@ -195,7 +205,7 @@ public:
   void push_silence(size_t length)
   {
     if (length_ + length > capacity_) {
-      reserve(length + length_);
+      reserve(std::max(length_ + length, capacity_ * 2));
     }
     if (data_) {
       PodZero(data_ + length_, length);
@@ -210,7 +220,7 @@ public:
   void push_front_silence(size_t length)
   {
     if (length_ + length > capacity_) {
-      reserve(length + length_);
+      reserve(std::max(length_ + length, capacity_ * 2));
     }
     if (data_) {
       PodMove(data_ + length, data_, length_);
