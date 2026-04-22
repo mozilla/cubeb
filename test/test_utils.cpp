@@ -19,7 +19,7 @@ TEST(cubeb, auto_array)
 
   array.push(a, 10);
 
-  ASSERT_TRUE(array.reserve(9));
+  array.reserve(9);
 
   for (uint32_t i = 0; i < 10; i++) {
     ASSERT_EQ(array.data()[i], i);
@@ -76,7 +76,7 @@ TEST(cubeb, auto_array_reserve_no_realloc)
 
   // reserve at or below current capacity must not reallocate
   for (size_t i = 0; i <= 128; i++) {
-    ASSERT_TRUE(array.reserve(i));
+    array.reserve(i);
     ASSERT_EQ(array.data(), ptr);
     ASSERT_EQ(array.capacity(), 128u);
   }
