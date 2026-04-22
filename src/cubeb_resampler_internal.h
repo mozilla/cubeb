@@ -58,6 +58,8 @@ struct cubeb_resampler {
   virtual long fill(void * input_buffer, long * input_frames_count,
                     void * output_buffer, long frames_needed) = 0;
   virtual long latency() = 0;
+  virtual long input_latency() { return 0; }
+  virtual long input_needed_for_output(long output_frames) { return output_frames; }
   virtual cubeb_resampler_stats stats() = 0;
   virtual ~cubeb_resampler() {}
 };
@@ -88,6 +90,17 @@ public:
                     void * output_buffer, long output_frames);
 
   virtual long latency() { return 0; }
+
+  virtual long input_latency() { return 0; }
+
+  virtual long input_needed_for_output(long output_frames)
+  {
+    if (channels == 0) {
+      return 0;
+    }
+    long queued = static_cast<long>(samples_to_frames(internal_input_buffer.length()));
+    return std::max(0L, output_frames - queued);
+  }
 
   virtual cubeb_resampler_stats stats()
   {
@@ -128,7 +141,8 @@ public:
   cubeb_resampler_speex(InputProcessing * input_processor,
                         OutputProcessing * output_processor, cubeb_stream * s,
                         cubeb_data_callback cb, void * ptr,
-                        cubeb_resampler_direction direction);
+                        cubeb_resampler_direction direction,
+                        uint32_t input_channels, uint32_t target_rate);
 
   virtual ~cubeb_resampler_speex();
 
@@ -141,6 +155,8 @@ public:
     if (input_processor) {
       stats.input_input_buffer_size = input_processor->input_buffer_size();
       stats.input_output_buffer_size = input_processor->output_buffer_size();
+    } else {
+      stats.input_input_buffer_size = input_queue.length();
     }
     if (output_processor) {
       stats.output_input_buffer_size = output_processor->input_buffer_size();
@@ -149,17 +165,35 @@ public:
     return stats;
   }
 
-  long input_latency() const
-  {
-    return input_processor ? input_processor->latency() : 0;
-  }
-
   long output_latency() const
   {
     return output_processor ? output_processor->latency() : 0;
   }
 
   virtual long latency() { return output_latency(); }
+
+  virtual long input_latency()
+  {
+    return input_processor ? static_cast<long>(input_processor->latency()) : 0;
+  }
+
+  virtual long input_needed_for_output(long output_frames)
+  {
+    long target_frames =
+        output_processor
+            ? static_cast<long>(output_processor->input_needed_for_output(
+                  static_cast<int32_t>(output_frames)))
+            : output_frames;
+    if (input_processor) {
+      return static_cast<long>(input_processor->input_needed_for_output(
+          static_cast<int32_t>(target_frames)));
+    }
+    if (input_channels == 0) {
+      return 0;
+    }
+    long queued = static_cast<long>(input_queue.length() / input_channels);
+    return std::max(0L, target_frames - queued);
+  }
 
 private:
   typedef long (cubeb_resampler_speex::*processing_callback)(
@@ -180,6 +214,11 @@ private:
   const cubeb_data_callback data_callback;
   void * const user_ptr;
   bool draining = false;
+  /* Buffers excess input when input_rate == target_rate but output needs
+   * resampling, so callers always see all provided frames as consumed. */
+  auto_array<T> input_queue;
+  const uint32_t input_channels;
+  const uint32_t target_rate;
 };
 
 /** Handles one way of a (possibly) duplex resampler, working on interleaved
@@ -292,7 +331,9 @@ public:
     /* This shifts back any unresampled samples to the beginning of the input
        buffer. */
     resampling_in_buffer.pop(nullptr, frames_to_samples(in_len));
-    *input_frames_used = in_len;
+    if (input_frames_used) {
+      *input_frames_used = in_len;
+    }
 
     return resampling_out_buffer.data();
   }
@@ -449,27 +490,29 @@ cubeb_resampler_create_internal(cubeb_stream * stream,
                        : (input_params ? cubeb_resampler_direction::INPUT
                                        : cubeb_resampler_direction::OUTPUT);
 
+  uint32_t in_channels = input_params ? input_params->channels : 0;
+
   if (input_resampler && output_resampler) {
     LOG("Resampling input (%d) and output (%d) to target rate of %dHz",
         input_params->rate, output_params->rate, target_rate);
     return new cubeb_resampler_speex<T, cubeb_resampler_speex_one_way<T>,
                                      cubeb_resampler_speex_one_way<T>>(
         input_resampler.release(), output_resampler.release(), stream, callback,
-        user_ptr, cubeb_resampler_direction::DUPLEX);
+        user_ptr, direction, in_channels, target_rate);
   } else if (input_resampler) {
     LOG("Resampling input (%d) to target rate of %dHz", input_params->rate,
         target_rate);
     return new cubeb_resampler_speex<T, cubeb_resampler_speex_one_way<T>,
                                      cubeb_resampler_speex_one_way<T>>(
         input_resampler.release(), nullptr, stream, callback, user_ptr,
-        direction);
+        direction, in_channels, target_rate);
   } else {
     LOG("Resampling output (%dHz) to target rate of %dHz", output_params->rate,
         target_rate);
     return new cubeb_resampler_speex<T, cubeb_resampler_speex_one_way<T>,
                                      cubeb_resampler_speex_one_way<T>>(
         nullptr, output_resampler.release(), stream, callback, user_ptr,
-        direction);
+        direction, in_channels, target_rate);
   }
 }
 
