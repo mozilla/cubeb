@@ -57,8 +57,9 @@ cubeb_resampler_create(cubeb_stream * stream,
  * happen if necessary.
  * @param resampler A cubeb_resampler instance.
  * @param input_buffer A buffer of input samples
- * @param input_frame_count The size of the buffer. Returns the number of frames
- * consumed.
+ * @param input_frame_count The size of the buffer. On return, set to the number
+ * of frames consumed, which is always equal to the value on entry: the
+ * resampler accepts all provided input frames, buffering any excess internally.
  * @param output_buffer The buffer to be filled.
  * @param output_frames_needed Number of frames that should be produced.
  * @retval Number of frames that are actually produced.
@@ -77,12 +78,32 @@ void
 cubeb_resampler_destroy(cubeb_resampler * resampler);
 
 /**
- * Returns the latency, in frames, of the resampler.
+ * Returns the output-side latency, in frames, of the resampler.
  * @param resampler A cubeb resampler instance.
- * @retval The latency, in frames, induced by the resampler.
+ * @retval The latency, in output-rate frames, induced by the resampler.
  */
 long
 cubeb_resampler_latency(cubeb_resampler * resampler);
+
+/**
+ * Returns the input-side latency, in target-rate frames, of the resampler.
+ * @param resampler A cubeb resampler instance.
+ * @retval The latency, in target-rate frames, induced by the input resampler.
+ */
+long
+cubeb_resampler_input_latency(cubeb_resampler * resampler);
+
+/**
+ * Returns the number of input frames needed to produce `output_frames` output
+ * frames. This value changes as the resampler consumes internal buffered data.
+ * Call immediately before cubeb_resampler_fill to get the current requirement.
+ * @param resampler A cubeb_resampler instance.
+ * @param output_frames The desired number of output frames.
+ * @retval The number of input frames to provide.
+ */
+long
+cubeb_resampler_input_needed_for_output(cubeb_resampler * resampler,
+                                        long output_frames);
 
 /**
  * Test-only introspection API to ensure that there is no buffering
