@@ -162,14 +162,11 @@ public:
 
   /** Ensure the storage can hold at least `new_capacity` elements, reallocating
    * if needed. Never shrinks.
-   * @returns true in case of success
-   * @returns false if the new capacity is not big enough to accomodate for the
-   *                elements in the array.
    */
-  bool reserve(size_t new_capacity)
+  void reserve(size_t new_capacity)
   {
     if (new_capacity <= capacity_) {
-      return true;
+      return;
     }
     T * new_data = new T[new_capacity];
     if (data_ && length_) {
@@ -178,8 +175,6 @@ public:
     capacity_ = new_capacity;
     delete[] data_;
     data_ = new_data;
-
-    return true;
   }
 
   /** Append `length` elements to the end of the array, resizing the array if
@@ -279,7 +274,7 @@ struct auto_array_wrapper {
   virtual void * data() = 0;
   virtual void * end() = 0;
   virtual void clear() = 0;
-  virtual bool reserve(size_t capacity) = 0;
+  virtual void reserve(size_t capacity) = 0;
   virtual void set_length(size_t length) = 0;
   virtual ~auto_array_wrapper() {}
 };
@@ -307,7 +302,7 @@ struct auto_array_wrapper_impl : public auto_array_wrapper {
 
   void clear() override { ar.clear(); }
 
-  bool reserve(size_t capacity) override { return ar.reserve(capacity); }
+  void reserve(size_t capacity) override { ar.reserve(capacity); }
 
   void set_length(size_t length) override { ar.set_length(length); }
 
