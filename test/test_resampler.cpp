@@ -1094,6 +1094,98 @@ TEST(cubeb, passthrough_resampler_fill_input_left)
   ASSERT_EQ(input_frame_count, output_frame_count - 8);
 }
 
+struct input_queue_state {
+  long frames_provided = 0;
+  long frames_seen = 0;
+};
+
+static long
+input_queue_cb(cubeb_stream *, void * ptr, const void * in, void * out, long n)
+{
+  if (in) {
+    static_cast<input_queue_state *>(ptr)->frames_seen += n;
+  }
+  memset(out, 0, n * sizeof(float));
+  return n;
+}
+
+static long
+input_error_cb(cubeb_stream *, void *, const void * in, void * out, long n)
+{
+  EXPECT_NE(in, nullptr);
+  EXPECT_EQ(out, nullptr);
+  EXPECT_GT(n, 0);
+  return CUBEB_ERROR;
+}
+
+TEST(cubeb, resampler_input_error)
+{
+  cubeb_stream_params in_p;
+  in_p.format = CUBEB_SAMPLE_FLOAT32NE;
+  in_p.channels = 1;
+  in_p.rate = 48000;
+  in_p.prefs = CUBEB_STREAM_PREF_NONE;
+
+  cubeb_resampler * r = cubeb_resampler_create(
+      nullptr, &in_p, nullptr, 44100, input_error_cb, nullptr,
+      CUBEB_RESAMPLER_QUALITY_VOIP, CUBEB_RESAMPLER_RECLOCK_NONE);
+  ASSERT_NE(r, nullptr);
+
+  std::vector<float> in_buf(480);
+  long in_count = in_buf.size();
+  long got = cubeb_resampler_fill(r, in_buf.data(), &in_count, nullptr, 0);
+  EXPECT_EQ(got, CUBEB_ERROR);
+  EXPECT_EQ(in_count, (long)in_buf.size());
+
+  cubeb_resampler_destroy(r);
+}
+
+TEST(cubeb, resampler_speex_input_queue)
+{
+  // input_rate == target_rate != output_rate: exercises fill_internal_duplex
+  // with input_processor == nullptr, which uses input_queue for buffering.
+  cubeb_stream_params in_p, out_p;
+  in_p.format = out_p.format = CUBEB_SAMPLE_FLOAT32NE;
+  in_p.channels = out_p.channels = 1;
+  in_p.rate = 44100;
+  out_p.rate = 48000;
+  in_p.prefs = out_p.prefs = CUBEB_STREAM_PREF_NONE;
+
+  input_queue_state state;
+  cubeb_resampler * r = cubeb_resampler_create(
+      nullptr, &in_p, &out_p, 44100, input_queue_cb, &state,
+      CUBEB_RESAMPLER_QUALITY_VOIP, CUBEB_RESAMPLER_RECLOCK_NONE);
+  ASSERT_NE(r, nullptr);
+
+  const long out_chunk = 480;
+  std::vector<float> in_buf(1024);
+  std::vector<float> out_buf(out_chunk);
+
+  for (int i = 0; i < 500; i++) {
+    long frames_to_provide =
+        cubeb_resampler_input_needed_for_output(r, out_chunk);
+    ASSERT_GE(frames_to_provide, 0);
+    if ((long)in_buf.size() < frames_to_provide) {
+      in_buf.resize(frames_to_provide);
+    }
+    state.frames_provided += frames_to_provide;
+    long in_count = frames_to_provide;
+    long got = cubeb_resampler_fill(r, in_buf.data(), &in_count, out_buf.data(),
+                                    out_chunk);
+    ASSERT_EQ(got, out_chunk);
+    ASSERT_EQ(in_count, frames_to_provide);
+
+    cubeb_resampler_stats stats = cubeb_resampler_stats_get(r);
+    EXPECT_LE(stats.input_input_buffer_size, 20u);
+  }
+
+  EXPECT_LE(state.frames_seen, state.frames_provided);
+  EXPECT_GE(state.frames_seen,
+            state.frames_provided - (long)min_buffered_audio_frame(in_p.rate));
+
+  cubeb_resampler_destroy(r);
+}
+
 TEST(cubeb, individual_methods)
 {
   const uint32_t channels = 2;
