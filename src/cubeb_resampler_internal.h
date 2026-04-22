@@ -351,6 +351,9 @@ public:
   uint32_t input_needed_for_output(int32_t output_frame_count) const
   {
     assert(output_frame_count >= 0); // Check overflow
+    if (output_frame_count == 0) {
+      return 0;
+    }
     int32_t unresampled_frames_left =
         samples_to_frames(resampling_in_buffer.length());
     float input_frames_needed_frac =
