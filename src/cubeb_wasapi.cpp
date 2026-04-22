@@ -1241,9 +1241,8 @@ get_input_buffer(cubeb_stream * stm)
       stm->linear_input_buffer->push_silence(input_stream_samples);
     } else {
       if (stm->input_mixer) {
-        bool ok = stm->linear_input_buffer->reserve(
-            stm->linear_input_buffer->length() + input_stream_samples);
-        XASSERT(ok);
+        stm->linear_input_buffer->reserve(stm->linear_input_buffer->length() +
+                                          input_stream_samples);
         size_t input_packet_size =
             frames * stm->input_mix_params.channels *
             cubeb_sample_size(stm->input_mix_params.format);
@@ -1491,7 +1490,8 @@ refill_callback_output(cubeb_stream * stm)
 void
 wasapi_stream_destroy(cubeb_stream * stm);
 
-static unsigned int __stdcall wasapi_stream_render_loop(LPVOID stream)
+static unsigned int __stdcall
+wasapi_stream_render_loop(LPVOID stream)
 {
   AutoRegisterThread raii("cubeb rendering thread");
   cubeb_stream * stm = static_cast<cubeb_stream *>(stream);
