@@ -328,15 +328,13 @@ test_resampler_duplex(uint32_t input_channels, uint32_t output_channels,
       data_cb_resampler, (void *)&state, CUBEB_RESAMPLER_QUALITY_VOIP,
       CUBEB_RESAMPLER_RECLOCK_NONE);
 
-  long latency = cubeb_resampler_latency(resampler);
+  long out_latency = cubeb_resampler_latency(resampler);
+  long in_latency = cubeb_resampler_input_latency(resampler);
 
   const uint32_t duration_s = 2;
   int32_t duration_frames = duration_s * target_rate;
-  uint32_t input_array_frame_count =
-      ceil(chunk_duration * input_rate / 1000) +
-      ceilf(static_cast<float>(input_rate) / target_rate) * 2;
   uint32_t output_array_frame_count = chunk_duration * output_rate / 1000;
-  auto_array<float> input_buffer(input_channels * input_array_frame_count);
+  auto_array<float> input_buffer;
   auto_array<float> output_buffer(output_channels * output_array_frame_count);
   auto_array<float> expected_resampled_input(input_channels * duration_frames);
   auto_array<float> expected_resampled_output(output_channels * output_rate *
@@ -348,31 +346,29 @@ test_resampler_duplex(uint32_t input_channels, uint32_t output_channels,
   expected_resampled_output.push_silence(output_channels * output_rate *
                                          duration_s);
 
-  /* expected output is a 440Hz sine wave at 16kHz */
-  fill_with_sine(expected_resampled_input.data() + latency, target_rate,
-                 input_channels, duration_frames - latency, 0);
-  /* expected output is a 440Hz sine wave at 32kHz */
-  fill_with_sine(expected_resampled_output.data() + latency, output_rate,
-                 output_channels, output_rate * duration_s - latency, 0);
+  fill_with_sine(expected_resampled_input.data() + in_latency * input_channels,
+                 target_rate, input_channels, duration_frames - in_latency, 0);
+  fill_with_sine(
+      expected_resampled_output.data() + out_latency * output_channels,
+      output_rate, output_channels, output_rate * duration_s - out_latency, 0);
 
   while (state.output_phase_index != state.max_output_phase_index) {
-    uint32_t leftover_samples = input_buffer.length() * input_channels;
-    input_buffer.reserve(input_array_frame_count);
-    state.input_phase_index = fill_with_sine(
-        input_buffer.data() + leftover_samples, input_rate, input_channels,
-        input_array_frame_count - leftover_samples, state.input_phase_index);
-    long input_consumed = input_array_frame_count;
-    input_buffer.set_length(input_array_frame_count);
+    long frames_to_provide = cubeb_resampler_input_needed_for_output(
+        resampler, output_array_frame_count);
+    assert(frames_to_provide >= 0);
+
+    input_buffer.reserve(input_channels * (uint32_t)frames_to_provide);
+    state.input_phase_index =
+        fill_with_sine(input_buffer.data(), input_rate, input_channels,
+                       (uint32_t)frames_to_provide, state.input_phase_index);
+    long input_consumed = frames_to_provide;
+    input_buffer.set_length(input_channels * (uint32_t)frames_to_provide);
 
     got = cubeb_resampler_fill(resampler, input_buffer.data(), &input_consumed,
                                output_buffer.data(), output_array_frame_count);
+    ASSERT_EQ(input_consumed, frames_to_provide);
 
-    /* handle leftover input */
-    if (input_array_frame_count != static_cast<uint32_t>(input_consumed)) {
-      input_buffer.pop(nullptr, input_consumed * input_channels);
-    } else {
-      input_buffer.clear();
-    }
+    input_buffer.clear();
 
     state.output.push(output_buffer.data(), got * state.output_channels);
   }
@@ -384,13 +380,12 @@ test_resampler_duplex(uint32_t input_channels, uint32_t output_channels,
   dump("input.raw", state.input.data(), state.input.length());
   dump("output.raw", state.output.data(), state.output.length());
 
-  // This is disabled because the latency estimation in the resampler code is
-  // slightly off so we can generate expected vectors.
-  // See https://github.com/kinetiknz/cubeb/issues/93
-  // ASSERT_TRUE(array_fuzzy_equal(state.input, expected_resampled_input,
-  // epsilon<T>(input_rate/target_rate)));
-  // ASSERT_TRUE(array_fuzzy_equal(state.output, expected_resampled_output,
-  // epsilon<T>(output_rate/target_rate)));
+  ASSERT_TRUE(array_fuzzy_equal(state.input, expected_resampled_input,
+                               epsilon<T>(static_cast<float>(input_rate) /
+                                          target_rate)));
+  ASSERT_TRUE(array_fuzzy_equal(state.output, expected_resampled_output,
+                               epsilon<T>(static_cast<float>(output_rate) /
+                                          target_rate)));
 
   cubeb_resampler_destroy(resampler);
 }
@@ -421,7 +416,7 @@ TEST(cubeb, resampler_one_way)
   }
 }
 
-TEST(cubeb, DISABLED_resampler_duplex)
+TEST(cubeb, resampler_duplex)
 {
   for (uint32_t input_channels = 1; input_channels <= max_channels;
        input_channels++) {
@@ -767,8 +762,8 @@ TEST(cubeb, resampler_passthrough_duplex_callback_reordering)
 
   output_seq_idx += BUF_BASE_SIZE;
 
-  // prebuffer_frames will hold the frames used by the resampler.
-  ASSERT_EQ(prebuffer_frames, BUF_BASE_SIZE);
+  // prebuffer_frames holds all provided frames, even if some are in the internal buffer.
+  ASSERT_EQ(prebuffer_frames, BUF_BASE_SIZE * 2);
   ASSERT_EQ(got, BUF_BASE_SIZE);
 
   for (uint32_t i = 0; i < 300; i++) {
@@ -868,8 +863,8 @@ TEST(cubeb, resampler_drift_drop_data)
 
     output_seq_idx += BUF_BASE_SIZE;
 
-    // prebuffer_frames will hold the frames used by the resampler.
-    ASSERT_EQ(prebuffer_frames, BUF_BASE_SIZE);
+    // prebuffer_frames holds all provided frames, even if some are in the internal buffer.
+    ASSERT_EQ(prebuffer_frames, BUF_BASE_SIZE * PREBUFFER_FACTOR);
     ASSERT_EQ(got, BUF_BASE_SIZE);
 
     for (uint32_t i = 0; i < 300; i++) {
@@ -1072,8 +1067,9 @@ TEST(cubeb, passthrough_resampler_fill_input_left)
   long got =
       resampler.fill(input, &input_frame_count, output, output_frame_count);
   ASSERT_EQ(got, output_frame_count);
-  // Input frames used must be equal to output frames.
-  ASSERT_EQ(input_frame_count, output_frame_count);
+  // All provided input frames are reported as consumed.
+  ASSERT_EQ(input_frame_count, 48);
+  ASSERT_EQ(resampler.input_needed_for_output(output_frame_count), 16);
 
   // 2st iteration, use the extra input from previous iteration,
   // 16 frames are remaining in the input buffer.
@@ -1083,6 +1079,7 @@ TEST(cubeb, passthrough_resampler_fill_input_left)
   ASSERT_EQ(got, output_frame_count);
   // Input frames used must be equal to output frames.
   ASSERT_EQ(input_frame_count, output_frame_count);
+  ASSERT_EQ(resampler.input_needed_for_output(output_frame_count), 16);
 
   // 3rd iteration, use the extra input from previous iteration.
   // 16 frames are remaining in the input buffer.
@@ -1090,8 +1087,73 @@ TEST(cubeb, passthrough_resampler_fill_input_left)
   iteration = 3;
   got = resampler.fill(input, &input_frame_count, output, output_frame_count);
   ASSERT_EQ(got, output_frame_count);
-  // Input frames used are less than the output frames due to glitch.
-  ASSERT_EQ(input_frame_count, output_frame_count - 8);
+  // All provided input frames are reported as consumed (silence pads the rest).
+  ASSERT_EQ(input_frame_count, 8);
+  ASSERT_EQ(resampler.input_needed_for_output(output_frame_count), 24);
+}
+
+struct input_queue_state {
+  long frames_provided = 0;
+  long frames_seen = 0;
+};
+
+static long
+input_queue_cb(cubeb_stream *, void * ptr, const void * in, void * out,
+               long n)
+{
+  if (in) {
+    static_cast<input_queue_state *>(ptr)->frames_seen += n;
+  }
+  memset(out, 0, n * sizeof(float));
+  return n;
+}
+
+TEST(cubeb, resampler_speex_input_queue)
+{
+  // input_rate == target_rate != output_rate: exercises fill_internal_duplex
+  // with input_processor == nullptr, which uses input_queue for buffering.
+  cubeb_stream_params in_p, out_p;
+  in_p.format = out_p.format = CUBEB_SAMPLE_FLOAT32NE;
+  in_p.channels = out_p.channels = 1;
+  in_p.rate = 44100;
+  out_p.rate = 48000;
+  in_p.prefs = out_p.prefs = CUBEB_STREAM_PREF_NONE;
+
+  input_queue_state state;
+  cubeb_resampler * r =
+      cubeb_resampler_create(nullptr, &in_p, &out_p, 44100, input_queue_cb,
+                             &state, CUBEB_RESAMPLER_QUALITY_VOIP,
+                             CUBEB_RESAMPLER_RECLOCK_NONE);
+  ASSERT_NE(r, nullptr);
+
+  const long out_chunk = 480;
+  std::vector<float> in_buf(1024);
+  std::vector<float> out_buf(out_chunk);
+
+  for (int i = 0; i < 500; i++) {
+    long frames_to_provide =
+        cubeb_resampler_input_needed_for_output(r, out_chunk);
+    ASSERT_GE(frames_to_provide, 0);
+    if ((long)in_buf.size() < frames_to_provide) {
+      in_buf.resize(frames_to_provide);
+    }
+    state.frames_provided += frames_to_provide;
+    long in_count = frames_to_provide;
+    long got =
+        cubeb_resampler_fill(r, in_buf.data(), &in_count, out_buf.data(), out_chunk);
+    ASSERT_EQ(got, out_chunk);
+    ASSERT_EQ(in_count, frames_to_provide);
+
+    cubeb_resampler_stats stats = cubeb_resampler_stats_get(r);
+    EXPECT_LE(stats.input_input_buffer_size, 20u);
+  }
+
+  EXPECT_LE(state.frames_seen, state.frames_provided);
+  EXPECT_GE(state.frames_seen,
+            state.frames_provided -
+                (long)min_buffered_audio_frame(in_p.rate));
+
+  cubeb_resampler_destroy(r);
 }
 
 TEST(cubeb, individual_methods)
@@ -1102,6 +1164,8 @@ TEST(cubeb, individual_methods)
 
   cubeb_resampler_speex_one_way<float> one_way(
       channels, sample_rate, sample_rate, CUBEB_RESAMPLER_QUALITY_DEFAULT);
+  ASSERT_EQ(one_way.input_needed_for_output(0), 0u);
+
   float buffer[channels * frames] = {0.0};
   // Add all frames in the resampler's internal buffer.
   one_way.input(buffer, frames);
@@ -1320,6 +1384,15 @@ const int rates[] = {16000, 32000, 44100, 48000, 96000, 192000, 384000};
 // IAudioClient2. 96, 192 are not uncommon on some Android devices.
 constexpr int WASAPI_MS_BLOCK = 10;
 const int block_sizes[] = {WASAPI_MS_BLOCK, 96, 128, 192, 256, 512, 1024, 2048};
+#ifdef THOROUGH_TESTING
+const int input_duplex_rates[] = {16000, 32000, 44100, 48000,
+                                  96000, 192000, 384000};
+const int input_duplex_block_sizes[] = {WASAPI_MS_BLOCK, 96,  128, 192,
+                                        256,             512, 1024, 2048};
+#else
+const int input_duplex_rates[] = {16000, 44100, 48000, 96000, 384000};
+const int input_duplex_block_sizes[] = {WASAPI_MS_BLOCK, 96, 128, 192, 512};
+#endif
 // Enough iterations to catch rounding/drift issues, but not too many to avoid
 // having a test that is too long to run.
 constexpr int ITERATION_COUNT = 1000;
@@ -1482,6 +1555,133 @@ run_test(int source_rate, int target_rate, int block_size)
   }
 }
 
+static long
+data_cb_ignore_input(cubeb_stream *, void * user_ptr, const void *,
+                     void * output_buffer, long nframes)
+{
+  if (!output_buffer) {
+    return nframes;
+  }
+  sine_wave_state * state = static_cast<sine_wave_state *>(user_ptr);
+  float * out = static_cast<float *>(output_buffer);
+  double phase_increment = 2.0 * M_PI * state->frequency / state->sample_rate;
+  for (int i = 0; i < nframes; i++) {
+    out[i] = static_cast<float>(sin(phase_increment * state->count) * 0.8);
+    state->count++;
+  }
+  return nframes;
+}
+
+static void
+run_test_duplex(int input_rate, int output_rate, int target_rate, int block_size)
+{
+  int effective_block_size = block_size;
+  if (effective_block_size == WASAPI_MS_BLOCK) {
+    effective_block_size = target_rate / 100;
+  }
+
+  sine_wave_state state(input_freq, target_rate);
+
+  cubeb_stream_params in_params = {};
+  in_params.channels = 1;
+  in_params.rate = input_rate;
+  in_params.format = CUBEB_SAMPLE_FLOAT32NE;
+
+  cubeb_stream_params out_params = {};
+  out_params.channels = 1;
+  out_params.rate = output_rate;
+  out_params.format = CUBEB_SAMPLE_FLOAT32NE;
+
+  cubeb_resampler * resampler =
+      cubeb_resampler_create(nullptr, &in_params, &out_params, target_rate,
+                             data_cb_ignore_input, &state,
+                             CUBEB_RESAMPLER_QUALITY_DEFAULT,
+                             CUBEB_RESAMPLER_RECLOCK_NONE);
+  ASSERT_NE(resampler, nullptr);
+
+  std::vector<float> in_data;
+  std::vector<float> out_data(effective_block_size);
+
+  monotonic_state in_in_max("in_in", input_rate, target_rate,
+                            effective_block_size);
+  monotonic_state in_out_max("in_out", input_rate, target_rate,
+                             effective_block_size);
+  monotonic_state out_in_max("out_in", output_rate, target_rate,
+                             effective_block_size);
+  monotonic_state out_out_max("out_out", output_rate, target_rate,
+                              effective_block_size);
+
+  for (int i = 0; i < ITERATION_COUNT; i++) {
+    long frames_needed =
+        cubeb_resampler_input_needed_for_output(resampler, effective_block_size);
+    ASSERT_GE(frames_needed, 0);
+    if ((long)in_data.size() < frames_needed) {
+      in_data.resize(frames_needed);
+    }
+    long in_count = frames_needed;
+    long got = cubeb_resampler_fill(resampler, in_data.data(), &in_count,
+                                    out_data.data(), effective_block_size);
+    ASSERT_EQ(got, effective_block_size);
+    ASSERT_EQ(in_count, frames_needed);
+
+    cubeb_resampler_stats stats = cubeb_resampler_stats_get(resampler);
+    in_in_max.set_new_value(stats.input_input_buffer_size);
+    in_out_max.set_new_value(stats.input_output_buffer_size);
+    out_in_max.set_new_value(stats.output_input_buffer_size);
+    out_out_max.set_new_value(stats.output_output_buffer_size);
+  }
+
+  cubeb_resampler_destroy(resampler);
+}
+
+static long
+data_cb_input_only(cubeb_stream *, void *, const void *, void *, long n)
+{
+  return n;
+}
+
+static void
+run_test_input(int input_rate, int target_rate, int block_size)
+{
+  int effective_block_size = block_size;
+  if (effective_block_size == WASAPI_MS_BLOCK) {
+    effective_block_size = input_rate / 100;
+  }
+
+  cubeb_stream_params in_params = {};
+  in_params.channels = 1;
+  in_params.rate = input_rate;
+  in_params.format = CUBEB_SAMPLE_FLOAT32NE;
+
+  cubeb_resampler * resampler =
+      cubeb_resampler_create(nullptr, &in_params, nullptr, target_rate,
+                             data_cb_input_only, nullptr,
+                             CUBEB_RESAMPLER_QUALITY_DEFAULT,
+                             CUBEB_RESAMPLER_RECLOCK_NONE);
+  ASSERT_NE(resampler, nullptr);
+
+  std::vector<float> in_data(effective_block_size);
+
+  monotonic_state in_in_max("in_in", input_rate, target_rate,
+                            effective_block_size);
+  monotonic_state in_out_max("in_out", input_rate, target_rate,
+                             effective_block_size);
+
+  for (int i = 0; i < ITERATION_COUNT; i++) {
+    long in_count = effective_block_size;
+    long got =
+        cubeb_resampler_fill(resampler, in_data.data(), &in_count, nullptr, 0);
+    ASSERT_GT(got, 0);
+    ASSERT_EQ(in_count, effective_block_size);
+
+    cubeb_resampler_stats stats = cubeb_resampler_stats_get(resampler);
+    in_in_max.set_new_value(stats.input_input_buffer_size);
+    in_out_max.set_new_value(stats.input_output_buffer_size);
+  }
+
+  cubeb_resampler_destroy(resampler);
+}
+
 // This tests checks three things:
 // - Whenever resampling from a source rate to a target rate with a certain
 //  block size, the correct number of frames is provided back from the
@@ -1498,23 +1698,61 @@ TEST(cubeb, resampler_typical_uses)
   std::condition_variable cv;
   std::mutex mutex;
   size_t task_count = 0;
+  size_t completed_task_count = 0;
+  const size_t total_task_count =
+      array_size(rates) * array_size(rates) * array_size(block_sizes) +
+      array_size(input_duplex_rates) * array_size(input_duplex_rates) *
+          array_size(input_duplex_block_sizes) +
+      array_size(input_duplex_rates) * array_size(input_duplex_rates) *
+          array_size(input_duplex_rates) * array_size(input_duplex_block_sizes);
   ThreadPool pool(concurrency);
+
+  auto enqueue_test = [&](std::function<void()> task) {
+    {
+      std::unique_lock<std::mutex> lock(mutex);
+      ++task_count;
+    }
+    pool.enqueue([&, task] {
+      task();
+      {
+        std::unique_lock<std::mutex> lock(mutex);
+        ++completed_task_count;
+        --task_count;
+        fprintf(stderr, "resampler_typical_uses: %zu/%zu\n",
+                completed_task_count, total_task_count);
+      }
+      cv.notify_one();
+    });
+  };
 
   for (int source_rate : rates) {
     for (int target_rate : rates) {
       for (int block_size : block_sizes) {
-        {
-          std::unique_lock<std::mutex> lock(mutex);
-          ++task_count;
-        }
-        pool.enqueue([&, source_rate, target_rate, block_size] {
+        enqueue_test([&, source_rate, target_rate, block_size] {
           run_test(source_rate, target_rate, block_size);
-          {
-            std::unique_lock<std::mutex> lock(mutex);
-            --task_count;
-          }
-          cv.notify_one();
         });
+      }
+    }
+  }
+
+  for (int source_rate : input_duplex_rates) {
+    for (int target_rate : input_duplex_rates) {
+      for (int block_size : input_duplex_block_sizes) {
+        enqueue_test([&, source_rate, target_rate, block_size] {
+          run_test_input(source_rate, target_rate, block_size);
+        });
+      }
+    }
+  }
+
+  for (int source_rate : input_duplex_rates) {
+    for (int target_rate : input_duplex_rates) {
+      for (int output_rate : input_duplex_rates) {
+        for (int block_size : input_duplex_block_sizes) {
+          enqueue_test([&, source_rate, target_rate, output_rate, block_size] {
+            run_test_duplex(source_rate, output_rate, target_rate, block_size);
+          });
+        }
       }
     }
   }
