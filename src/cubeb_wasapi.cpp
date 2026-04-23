@@ -3111,27 +3111,16 @@ stream_start_one_side(cubeb_stream * stm, StreamDirection dir)
   HRESULT hr =
       dir == OUTPUT ? stm->output_client->Start() : stm->input_client->Start();
   if (hr == AUDCLNT_E_DEVICE_INVALIDATED) {
-    LOG("audioclient invalidated for %s device, reconfiguring",
+    // The render thread runs for the entire stream lifetime and may be
+    // dereferencing stm->{output,render,input,capture}_client in its refill
+    // path without holding stream_reset_lock.  Recovering inline here would
+    // null those pointers while the render thread is using them, causing
+    // crashes in get_output_buffer et al.  Defer the reconfigure to the
+    // render thread's own reconfigure path, which is self-synchronising.
+    LOG("audioclient invalidated for %s device on start, triggering async "
+        "reconfigure",
         dir == OUTPUT ? "output" : "input");
-
-    BOOL ok = ResetEvent(stm->reconfigure_event);
-    if (!ok) {
-      LOG("resetting reconfig event failed for %s stream: %lx",
-          dir == OUTPUT ? "output" : "input", GetLastError());
-    }
-
-    close_wasapi_stream(stm);
-    int r = setup_wasapi_stream(stm);
-    if (r != CUBEB_OK) {
-      LOG("reconfigure failed");
-      return r;
-    }
-
-    HRESULT hr2 = dir == OUTPUT ? stm->output_client->Start()
-                                : stm->input_client->Start();
-    if (FAILED(hr2)) {
-      LOG("could not start the %s stream after reconfig: %lx",
-          dir == OUTPUT ? "output" : "input", hr);
+    if (!trigger_async_reconfigure(stm)) {
       return CUBEB_ERROR;
     }
   } else if (FAILED(hr)) {
