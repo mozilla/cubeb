@@ -14,6 +14,7 @@ option(BUNDLE_SPEEX "Bundle the speex library" OFF)
 option(LAZY_LOAD_LIBS "Lazily load shared libraries" ON)
 option(USE_SANITIZERS "Use sanitizers" ON)
 option(USE_STATIC_MSVC_RUNTIME "Use /MT instead of /MD in MSVC" OFF)
+option(NO_PRIVATE_APIS_IN_COREAUDIO, "Do not include features that rely on private APIs in the coreaudio rust backend" OFF)
 if(USE_STATIC_MSVC_RUNTIME)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
@@ -73,7 +74,14 @@ if (BUILD_RUST_LIBS)
   endif()
   if(EXISTS "${PROJECT_SOURCE_DIR}/src/cubeb-coreaudio-rs")
     set(USE_AUDIOUNIT_RUST 1)
+    if(NO_PRIVATE_APIS_IN_COREAUDIO)
+      set(DISABLE_PRIVATE_APIS_IN_COREAUDIO 1)
+    endif()
   endif()
+endif()
+
+if(NO_PRIVATE_APIS_IN_COREAUDIO AND NOT DISABLE_PRIVATE_APIS_IN_COREAUDIO)
+  message(WARNING "NO_PRIVATE_APIS_IN_COREAUDIO is not applicable for this configuration.")
 endif()
 
 # On OS/2, visibility attribute is not supported.
@@ -385,13 +393,16 @@ if(USE_PULSE AND USE_PULSE_RUST)
 endif()
 
 if(USE_AUDIOUNIT AND USE_AUDIOUNIT_RUST)
+  if(DISABLE_PRIVATE_APIS_IN_COREAUDIO)
+    set(FEATURE_NO_PRIVATE_APIS_TOGGLE "--features=no-private-apis")
+  endif()
   include(ExternalProject)
   set_directory_properties(PROPERTIES EP_PREFIX ${CMAKE_BINARY_DIR}/rust)
   ExternalProject_Add(
     cubeb_coreaudio_rs
     DOWNLOAD_COMMAND ""
     CONFIGURE_COMMAND ""
-    BUILD_COMMAND cargo build --features=gecko-in-tree "$<IF:$<CONFIG:Release,RelWithDebInfo,MinSizeRel>,--release,>"
+    BUILD_COMMAND cargo build --features=gecko-in-tree "$<IF:$<CONFIG:Release,RelWithDebInfo,MinSizeRel>,--release,>" "${FEATURE_NO_PRIVATE_APIS_TOGGLE}"
     BUILD_ALWAYS ON
     BINARY_DIR "${PROJECT_SOURCE_DIR}/src/cubeb-coreaudio-rs"
     INSTALL_COMMAND ""
