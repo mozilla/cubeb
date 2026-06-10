@@ -1169,6 +1169,40 @@ TEST(cubeb, individual_methods)
   ASSERT_EQ(frames_needed2, 0u);
 }
 
+TEST(cubeb, delay_line_output_underrun)
+{
+  const uint32_t channels = 2;
+  const uint32_t sample_rate = 48000;
+  const uint32_t latency_frames = 40;
+
+  delay_line<float> dl(latency_frames, channels, sample_rate);
+
+  const uint32_t pushed_frames = 4;
+  float in[pushed_frames * channels];
+  for (uint32_t i = 0; i < pushed_frames * channels; i++) {
+    in[i] = static_cast<float>(i + 1);
+  }
+  dl.input(in, pushed_frames);
+
+  const uint32_t frames_needed = 482;
+  size_t input_frames_used = 0;
+  float * out = dl.output(frames_needed, &input_frames_used);
+
+  ASSERT_NE(out, nullptr);
+  ASSERT_EQ(input_frames_used, latency_frames + pushed_frames);
+
+  for (uint32_t i = 0; i < latency_frames * channels; i++) {
+    ASSERT_EQ(out[i], 0.0f);
+  }
+  for (uint32_t i = 0; i < pushed_frames * channels; i++) {
+    ASSERT_EQ(out[latency_frames * channels + i], in[i]);
+  }
+  for (uint32_t i = (latency_frames + pushed_frames) * channels;
+       i < frames_needed * channels; i++) {
+    ASSERT_EQ(out[i], 0.0f);
+  }
+}
+
 struct sine_wave_state {
   float frequency;
   int sample_rate;

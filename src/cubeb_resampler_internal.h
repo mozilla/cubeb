@@ -432,15 +432,24 @@ public:
    * hold onto the pointer. */
   T * output(uint32_t frames_needed, size_t * input_frames_used)
   {
-    if (delay_output_buffer.capacity() < frames_to_samples(frames_needed)) {
-      delay_output_buffer.reserve(frames_to_samples(frames_needed));
+    size_t samples_needed = frames_to_samples(frames_needed);
+    if (delay_output_buffer.capacity() < samples_needed) {
+      delay_output_buffer.reserve(samples_needed);
     }
 
     delay_output_buffer.clear();
-    delay_output_buffer.push(delay_input_buffer.data(),
-                             frames_to_samples(frames_needed));
-    delay_input_buffer.pop(nullptr, frames_to_samples(frames_needed));
-    *input_frames_used = frames_needed;
+
+    // Copy only what is buffered and zero-pad the rest, in case fewer frames
+    // are available than requested.
+    size_t samples_available =
+        std::min(samples_needed, delay_input_buffer.length());
+
+    delay_output_buffer.push(delay_input_buffer.data(), samples_available);
+    if (samples_available < samples_needed) {
+      delay_output_buffer.push_silence(samples_needed - samples_available);
+    }
+    delay_input_buffer.pop(nullptr, samples_available);
+    *input_frames_used = samples_to_frames(samples_available);
 
     return delay_output_buffer.data();
   }
