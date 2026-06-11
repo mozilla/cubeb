@@ -591,7 +591,7 @@ struct cubeb_mixer {
   // Return false if any of the input or ouput layout were invalid.
   bool valid() const { return _context._valid; }
 
-  virtual ~cubeb_mixer(){};
+  virtual ~cubeb_mixer() = default;
 
   MixerContext _context;
 };
