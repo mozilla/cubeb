@@ -1490,8 +1490,7 @@ refill_callback_output(cubeb_stream * stm)
 void
 wasapi_stream_destroy(cubeb_stream * stm);
 
-static unsigned int __stdcall
-wasapi_stream_render_loop(LPVOID stream)
+static unsigned int __stdcall wasapi_stream_render_loop(LPVOID stream)
 {
   AutoRegisterThread raii("cubeb rendering thread");
   cubeb_stream * stm = static_cast<cubeb_stream *>(stream);

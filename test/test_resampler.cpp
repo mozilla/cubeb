@@ -380,12 +380,12 @@ test_resampler_duplex(uint32_t input_channels, uint32_t output_channels,
   dump("input.raw", state.input.data(), state.input.length());
   dump("output.raw", state.output.data(), state.output.length());
 
-  ASSERT_TRUE(array_fuzzy_equal(state.input, expected_resampled_input,
-                               epsilon<T>(static_cast<float>(input_rate) /
-                                          target_rate)));
-  ASSERT_TRUE(array_fuzzy_equal(state.output, expected_resampled_output,
-                               epsilon<T>(static_cast<float>(output_rate) /
-                                          target_rate)));
+  ASSERT_TRUE(array_fuzzy_equal(
+      state.input, expected_resampled_input,
+      epsilon<T>(static_cast<float>(input_rate) / target_rate)));
+  ASSERT_TRUE(array_fuzzy_equal(
+      state.output, expected_resampled_output,
+      epsilon<T>(static_cast<float>(output_rate) / target_rate)));
 
   cubeb_resampler_destroy(resampler);
 }
@@ -762,7 +762,8 @@ TEST(cubeb, resampler_passthrough_duplex_callback_reordering)
 
   output_seq_idx += BUF_BASE_SIZE;
 
-  // prebuffer_frames holds all provided frames, even if some are in the internal buffer.
+  // prebuffer_frames holds all provided frames, even if some are in the
+  // internal buffer.
   ASSERT_EQ(prebuffer_frames, BUF_BASE_SIZE * 2);
   ASSERT_EQ(got, BUF_BASE_SIZE);
 
@@ -863,7 +864,8 @@ TEST(cubeb, resampler_drift_drop_data)
 
     output_seq_idx += BUF_BASE_SIZE;
 
-    // prebuffer_frames holds all provided frames, even if some are in the internal buffer.
+    // prebuffer_frames holds all provided frames, even if some are in the
+    // internal buffer.
     ASSERT_EQ(prebuffer_frames, BUF_BASE_SIZE * PREBUFFER_FACTOR);
     ASSERT_EQ(got, BUF_BASE_SIZE);
 
@@ -1098,8 +1100,7 @@ struct input_queue_state {
 };
 
 static long
-input_queue_cb(cubeb_stream *, void * ptr, const void * in, void * out,
-               long n)
+input_queue_cb(cubeb_stream *, void * ptr, const void * in, void * out, long n)
 {
   if (in) {
     static_cast<input_queue_state *>(ptr)->frames_seen += n;
@@ -1120,10 +1121,9 @@ TEST(cubeb, resampler_speex_input_queue)
   in_p.prefs = out_p.prefs = CUBEB_STREAM_PREF_NONE;
 
   input_queue_state state;
-  cubeb_resampler * r =
-      cubeb_resampler_create(nullptr, &in_p, &out_p, 44100, input_queue_cb,
-                             &state, CUBEB_RESAMPLER_QUALITY_VOIP,
-                             CUBEB_RESAMPLER_RECLOCK_NONE);
+  cubeb_resampler * r = cubeb_resampler_create(
+      nullptr, &in_p, &out_p, 44100, input_queue_cb, &state,
+      CUBEB_RESAMPLER_QUALITY_VOIP, CUBEB_RESAMPLER_RECLOCK_NONE);
   ASSERT_NE(r, nullptr);
 
   const long out_chunk = 480;
@@ -1139,8 +1139,8 @@ TEST(cubeb, resampler_speex_input_queue)
     }
     state.frames_provided += frames_to_provide;
     long in_count = frames_to_provide;
-    long got =
-        cubeb_resampler_fill(r, in_buf.data(), &in_count, out_buf.data(), out_chunk);
+    long got = cubeb_resampler_fill(r, in_buf.data(), &in_count, out_buf.data(),
+                                    out_chunk);
     ASSERT_EQ(got, out_chunk);
     ASSERT_EQ(in_count, frames_to_provide);
 
@@ -1150,8 +1150,7 @@ TEST(cubeb, resampler_speex_input_queue)
 
   EXPECT_LE(state.frames_seen, state.frames_provided);
   EXPECT_GE(state.frames_seen,
-            state.frames_provided -
-                (long)min_buffered_audio_frame(in_p.rate));
+            state.frames_provided - (long)min_buffered_audio_frame(in_p.rate));
 
   cubeb_resampler_destroy(r);
 }
@@ -1416,10 +1415,10 @@ const int rates[] = {16000, 32000, 44100, 48000, 96000, 192000, 384000};
 constexpr int WASAPI_MS_BLOCK = 10;
 const int block_sizes[] = {WASAPI_MS_BLOCK, 96, 128, 192, 256, 512, 1024, 2048};
 #ifdef THOROUGH_TESTING
-const int input_duplex_rates[] = {16000, 32000, 44100, 48000,
+const int input_duplex_rates[] = {16000, 32000,  44100, 48000,
                                   96000, 192000, 384000};
-const int input_duplex_block_sizes[] = {WASAPI_MS_BLOCK, 96,  128, 192,
-                                        256,             512, 1024, 2048};
+const int input_duplex_block_sizes[] = {
+    WASAPI_MS_BLOCK, 96, 128, 192, 256, 512, 1024, 2048};
 #else
 const int input_duplex_rates[] = {16000, 44100, 48000, 96000, 384000};
 const int input_duplex_block_sizes[] = {WASAPI_MS_BLOCK, 96, 128, 192, 512};
@@ -1604,7 +1603,8 @@ data_cb_ignore_input(cubeb_stream *, void * user_ptr, const void *,
 }
 
 static void
-run_test_duplex(int input_rate, int output_rate, int target_rate, int block_size)
+run_test_duplex(int input_rate, int output_rate, int target_rate,
+                int block_size)
 {
   int effective_block_size = block_size;
   if (effective_block_size == WASAPI_MS_BLOCK) {
@@ -1623,11 +1623,9 @@ run_test_duplex(int input_rate, int output_rate, int target_rate, int block_size
   out_params.rate = output_rate;
   out_params.format = CUBEB_SAMPLE_FLOAT32NE;
 
-  cubeb_resampler * resampler =
-      cubeb_resampler_create(nullptr, &in_params, &out_params, target_rate,
-                             data_cb_ignore_input, &state,
-                             CUBEB_RESAMPLER_QUALITY_DEFAULT,
-                             CUBEB_RESAMPLER_RECLOCK_NONE);
+  cubeb_resampler * resampler = cubeb_resampler_create(
+      nullptr, &in_params, &out_params, target_rate, data_cb_ignore_input,
+      &state, CUBEB_RESAMPLER_QUALITY_DEFAULT, CUBEB_RESAMPLER_RECLOCK_NONE);
   ASSERT_NE(resampler, nullptr);
 
   std::vector<float> in_data;
@@ -1643,8 +1641,8 @@ run_test_duplex(int input_rate, int output_rate, int target_rate, int block_size
                               effective_block_size);
 
   for (int i = 0; i < ITERATION_COUNT; i++) {
-    long frames_needed =
-        cubeb_resampler_input_needed_for_output(resampler, effective_block_size);
+    long frames_needed = cubeb_resampler_input_needed_for_output(
+        resampler, effective_block_size);
     ASSERT_GE(frames_needed, 0);
     if ((long)in_data.size() < frames_needed) {
       in_data.resize(frames_needed);
@@ -1684,11 +1682,9 @@ run_test_input(int input_rate, int target_rate, int block_size)
   in_params.rate = input_rate;
   in_params.format = CUBEB_SAMPLE_FLOAT32NE;
 
-  cubeb_resampler * resampler =
-      cubeb_resampler_create(nullptr, &in_params, nullptr, target_rate,
-                             data_cb_input_only, nullptr,
-                             CUBEB_RESAMPLER_QUALITY_DEFAULT,
-                             CUBEB_RESAMPLER_RECLOCK_NONE);
+  cubeb_resampler * resampler = cubeb_resampler_create(
+      nullptr, &in_params, nullptr, target_rate, data_cb_input_only, nullptr,
+      CUBEB_RESAMPLER_QUALITY_DEFAULT, CUBEB_RESAMPLER_RECLOCK_NONE);
   ASSERT_NE(resampler, nullptr);
 
   std::vector<float> in_data(effective_block_size);

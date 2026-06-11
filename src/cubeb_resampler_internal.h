@@ -59,7 +59,10 @@ struct cubeb_resampler {
                     void * output_buffer, long frames_needed) = 0;
   virtual long latency() = 0;
   virtual long input_latency() { return 0; }
-  virtual long input_needed_for_output(long output_frames) { return output_frames; }
+  virtual long input_needed_for_output(long output_frames)
+  {
+    return output_frames;
+  }
   virtual cubeb_resampler_stats stats() = 0;
   virtual ~cubeb_resampler() {}
 };
@@ -98,7 +101,8 @@ public:
     if (channels == 0) {
       return 0;
     }
-    long queued = static_cast<long>(samples_to_frames(internal_input_buffer.length()));
+    long queued =
+        static_cast<long>(samples_to_frames(internal_input_buffer.length()));
     return std::max(0L, output_frames - queued);
   }
 
