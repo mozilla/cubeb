@@ -103,11 +103,11 @@ jobs:
         submodules: true
 
     - name: Install Dependencies (Linux)
-      run: sudo apt-get update && sudo apt-get install clang-format-15
+      run: sudo apt-get update && sudo apt-get install clang-format-18
 
     - name: Configure CMake
       shell: bash
-      run: cmake -S . -B build -DCLANG_FORMAT_BINARY=clang-format-15
+      run: cmake -S . -B build -DCLANG_FORMAT_BINARY=clang-format-18
 
     - name: Check format
       shell: bash
