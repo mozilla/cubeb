@@ -31,6 +31,8 @@ struct user_state_callback_ret {
   std::atomic<int> cb_count{0};
   std::atomic<int> expected_cb_count{0};
   std::atomic<int> error_state{0};
+  std::atomic<int> stopped_state{0};
+  std::atomic<int> drained_state{0};
 };
 
 // Data callback that always returns 0
@@ -134,9 +136,11 @@ state_cb_ret(cubeb_stream * stream, void * user, cubeb_state state)
     break;
   case CUBEB_STATE_STOPPED:
     fprintf(stderr, "stream stopped\n");
+    u->stopped_state.fetch_add(1);
     break;
   case CUBEB_STATE_DRAINED:
     fprintf(stderr, "stream drained\n");
+    u->drained_state.fetch_add(1);
     break;
   case CUBEB_STATE_ERROR:
     fprintf(stderr, "stream error\n");
@@ -145,6 +149,46 @@ state_cb_ret(cubeb_stream * stream, void * user, cubeb_state state)
   default:
     fprintf(stderr, "unknown stream state %d\n", state);
   }
+}
+
+enum expected_terminal_state {
+  NO_TERMINAL_STATE,
+  DRAINED_STATE,
+  SHORT_INPUT_CALLBACK
+};
+
+expected_terminal_state
+expected_terminal_state_for_callback(test_direction direction,
+                                     cubeb_data_callback data_cb)
+{
+  if (data_cb == data_cb_ret_zero || data_cb == data_cb_ret_nframes_minus_one) {
+    return direction == INPUT_ONLY ? SHORT_INPUT_CALLBACK : DRAINED_STATE;
+  }
+  return NO_TERMINAL_STATE;
+}
+
+bool
+wait_for_drained_state(user_state_callback_ret & user_state)
+{
+  for (int i = 0; i < 40; i++) {
+    if (user_state.drained_state > 0) {
+      return true;
+    }
+    delay(50);
+  }
+  return false;
+}
+
+bool
+wait_for_callback(user_state_callback_ret & user_state)
+{
+  for (int i = 0; i < 40; i++) {
+    if (user_state.cb_count > 0) {
+      return true;
+    }
+    delay(50);
+  }
+  return false;
 }
 
 void
@@ -158,6 +202,10 @@ run_test_callback(test_direction direction, cubeb_data_callback data_cb,
   int r;
   user_state_callback_ret user_state;
   uint32_t latency_frames = 0;
+  expected_terminal_state expected_state =
+      expected_terminal_state_for_callback(direction, data_cb);
+  int stopped_before_stop = 0;
+  int drained_before_stop = 0;
 
   r = common_init(&ctx, "Cubeb callback return value example");
   ASSERT_EQ(r, CUBEB_OK) << "Error initializing cubeb library";
@@ -211,7 +259,15 @@ run_test_callback(test_direction direction, cubeb_data_callback data_cb,
       cleanup_stream_at_exit(stream, cubeb_stream_destroy);
 
   cubeb_stream_start(stream);
-  delay(100);
+  if (expected_state == NO_TERMINAL_STATE) {
+    delay(100);
+  } else if (expected_state == SHORT_INPUT_CALLBACK) {
+    wait_for_callback(user_state);
+  } else {
+    wait_for_drained_state(user_state);
+  }
+  stopped_before_stop = user_state.stopped_state;
+  drained_before_stop = user_state.drained_state;
   cubeb_stream_stop(stream);
 
   ASSERT_EQ(user_state.expected_cb_count, user_state.cb_count)
@@ -219,6 +275,13 @@ run_test_callback(test_direction direction, cubeb_data_callback data_cb,
   // TODO: On some test configurations, the data_callback is never called.
   if (data_cb == data_cb_ret_error && user_state.cb_count != 0) {
     ASSERT_EQ(user_state.error_state, 1) << "Callback expected error state";
+  }
+  if (expected_state == DRAINED_STATE && user_state.cb_count != 0) {
+    ASSERT_EQ(drained_before_stop, 1)
+        << "Output-capable short callback must drain for " << test_desc << "!";
+    ASSERT_EQ(stopped_before_stop, 0)
+        << "Output-capable short callback must not stop for " << test_desc
+        << "!";
   }
 }
 

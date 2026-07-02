@@ -318,8 +318,18 @@ alsa_set_stream_state(cubeb_stream * stm, enum stream_state state)
   poll_wake(ctx);
 }
 
+static void
+alsa_set_draining(cubeb_stream * stm)
+{
+  alsa_set_stream_state(stm, DRAINING);
+  if (stm->stream_type == SND_PCM_STREAM_PLAYBACK && stm->other_stream &&
+      stm->other_stream->state == RUNNING) {
+    alsa_set_stream_state(stm->other_stream, DRAINING);
+  }
+}
+
 static enum stream_state
-alsa_process_stream(cubeb_stream * stm)
+alsa_process_stream(cubeb_stream * stm, int other_stream_running)
 {
   unsigned short revents;
   snd_pcm_sframes_t avail;
@@ -376,6 +386,7 @@ alsa_process_stream(cubeb_stream * stm)
       (!stm->other_stream ||
        stm->other_stream->bufframes < stm->other_stream->buffer_size)) {
     snd_pcm_sframes_t wrote = stm->bufframes;
+    snd_pcm_sframes_t requested;
     struct cubeb_stream * mainstm = stm->other_stream ? stm->other_stream : stm;
     void * other_buffer = stm->other_stream ? stm->other_stream->buffer +
                                                   stm->other_stream->bufframes
@@ -388,6 +399,7 @@ alsa_process_stream(cubeb_stream * stm)
       wrote = stm->other_stream->buffer_size - stm->other_stream->bufframes;
     }
 
+    requested = wrote;
     pthread_mutex_unlock(&stm->mutex);
     wrote = stm->data_callback(mainstm, stm->user_ptr, stm->buffer,
                                other_buffer, wrote);
@@ -401,17 +413,27 @@ alsa_process_stream(cubeb_stream * stm)
       if (stm->other_stream) {
         stm->other_stream->bufframes += wrote;
       }
+      if (wrote < requested) {
+        if (!stm->other_stream) {
+          pthread_mutex_unlock(&stm->mutex);
+          return INACTIVE;
+        }
+        draining = 1;
+        set_timeout(&stm->drain_timeout, 0);
+      }
     }
   }
 
   /* Playback: Don't have enough data? Let's ask for more. */
   if (stm->stream_type == SND_PCM_STREAM_PLAYBACK &&
       avail > (snd_pcm_sframes_t)stm->bufframes &&
-      (!stm->other_stream || stm->other_stream->bufframes > 0)) {
+      (!stm->other_stream ||
+       (other_stream_running && stm->other_stream->bufframes > 0))) {
     long got = avail - stm->bufframes;
     void * other_buffer = stm->other_stream ? stm->other_stream->buffer : NULL;
     char * buftail =
         stm->buffer + WRAP(snd_pcm_frames_to_bytes)(stm->pcm, stm->bufframes);
+    long requested;
 
     /* Correct read size to the other stream available frames */
     if (stm->other_stream &&
@@ -419,6 +441,7 @@ alsa_process_stream(cubeb_stream * stm)
       got = stm->other_stream->bufframes;
     }
 
+    requested = got;
     pthread_mutex_unlock(&stm->mutex);
     got = stm->data_callback(stm, stm->user_ptr, other_buffer, buftail, got);
     pthread_mutex_lock(&stm->mutex);
@@ -430,6 +453,9 @@ alsa_process_stream(cubeb_stream * stm)
 
       if (stm->other_stream) {
         stream_buffer_decrement(stm->other_stream, got);
+      }
+      if (got < requested) {
+        draining = 1;
       }
     }
   }
@@ -446,7 +472,7 @@ alsa_process_stream(cubeb_stream * stm)
     stm->bufframes = avail;
 
     /* Mark as draining, unless we're waiting for capture */
-    if (!stm->other_stream || stm->other_stream->bufframes > 0) {
+    if (!stm->other_stream || draining || stm->other_stream->bufframes > 0) {
       set_timeout(&stm->drain_timeout, drain_time * 1000);
 
       draining = 1;
@@ -524,7 +550,10 @@ alsa_run(cubeb * ctx)
     stm = ctx->streams[i];
     if (stm && stm->state == DRAINING) {
       r = ms_until(&stm->drain_timeout);
-      if (r >= 0 && timeout > r) {
+      if (r < 0) {
+        r = 0;
+      }
+      if (timeout > r) {
         timeout = r;
       }
     }
@@ -552,11 +581,20 @@ alsa_run(cubeb * ctx)
          https://github.com/kinetiknz/cubeb/issues/135. */
       if (stm && stm->state == RUNNING && stm->fds &&
           any_revents(stm->fds, stm->nfds)) {
+        int other_stream_running =
+            !stm->other_stream || stm->other_stream->state == RUNNING;
         alsa_set_stream_state(stm, PROCESSING);
         pthread_mutex_unlock(&ctx->mutex);
-        state = alsa_process_stream(stm);
+        state = alsa_process_stream(stm, other_stream_running);
         pthread_mutex_lock(&ctx->mutex);
-        alsa_set_stream_state(stm, state);
+        if (state == DRAINING) {
+          alsa_set_draining(stm);
+        } else if (state == INACTIVE) {
+          alsa_set_stream_state(stm, state);
+          stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STOPPED);
+        } else {
+          alsa_set_stream_state(stm, state);
+        }
       }
     }
   } else if (r == 0) {
@@ -565,7 +603,10 @@ alsa_run(cubeb * ctx)
       if (stm) {
         if (stm->state == DRAINING && ms_since(&stm->drain_timeout) >= 0) {
           alsa_set_stream_state(stm, INACTIVE);
-          stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
+          if (!stm->other_stream ||
+              stm->stream_type == SND_PCM_STREAM_PLAYBACK) {
+            stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
+          }
         } else if (stm->state == RUNNING &&
                    ms_since(&stm->last_activity) > CUBEB_WATCHDOG_MS) {
           alsa_set_stream_state(stm, ERROR);
