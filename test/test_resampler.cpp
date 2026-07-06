@@ -1109,6 +1109,38 @@ input_queue_cb(cubeb_stream *, void * ptr, const void * in, void * out, long n)
   return n;
 }
 
+struct duplex_underrun_state {
+  long expected_callback_frames = 0;
+  long real_input_frames = 0;
+  long callback_count = 0;
+  long last_callback_frames = 0;
+};
+
+static long
+backend_duplex_underrun_cb(cubeb_stream *, void * ptr, const void * in,
+                           void * out, long n)
+{
+  duplex_underrun_state * state = static_cast<duplex_underrun_state *>(ptr);
+  state->callback_count++;
+  state->last_callback_frames = n;
+
+  EXPECT_NE(in, nullptr);
+  EXPECT_NE(out, nullptr);
+  EXPECT_EQ(n, state->expected_callback_frames);
+
+  const float * input = static_cast<const float *>(in);
+  for (long i = 0; i < std::min(n, state->real_input_frames); i++) {
+    EXPECT_EQ(input[i], 1.0f);
+  }
+  for (long i = state->real_input_frames; i < n; i++) {
+    EXPECT_EQ(input[i], 0.0f);
+  }
+
+  float * output = static_cast<float *>(out);
+  std::fill(output, output + n, 0.0f);
+  return n;
+}
+
 TEST(cubeb, resampler_speex_input_queue)
 {
   // input_rate == target_rate != output_rate: exercises fill_internal_duplex
@@ -1151,6 +1183,86 @@ TEST(cubeb, resampler_speex_input_queue)
   EXPECT_LE(state.frames_seen, state.frames_provided);
   EXPECT_GE(state.frames_seen,
             state.frames_provided - (long)min_buffered_audio_frame(in_p.rate));
+
+  cubeb_resampler_destroy(r);
+}
+
+TEST(cubeb, resampler_passthrough_duplex_capture_underrun_pads_input)
+{
+  // Same backend-style short capture block as the Speex input-queue test, but
+  // with input/output/target rates matching so cubeb_resampler_create uses the
+  // passthrough resampler. Duplex backends treat a short output fill as drain,
+  // so capture underruns must not make fill return fewer than requested.
+  cubeb_stream_params in_p, out_p;
+  in_p.format = out_p.format = CUBEB_SAMPLE_FLOAT32NE;
+  in_p.channels = out_p.channels = 1;
+  in_p.rate = out_p.rate = 48000;
+  in_p.prefs = out_p.prefs = CUBEB_STREAM_PREF_NONE;
+
+  duplex_underrun_state state;
+  cubeb_resampler * r = cubeb_resampler_create(
+      nullptr, &in_p, &out_p, 48000, backend_duplex_underrun_cb, &state,
+      CUBEB_RESAMPLER_QUALITY_VOIP, CUBEB_RESAMPLER_RECLOCK_NONE);
+  ASSERT_NE(r, nullptr);
+
+  const long out_chunk = 480;
+  const long short_input = out_chunk - 60;
+  state.expected_callback_frames =
+      cubeb_resampler_input_needed_for_output(r, out_chunk);
+  state.real_input_frames = short_input;
+  ASSERT_EQ(state.expected_callback_frames, out_chunk);
+
+  std::vector<float> in_buf(short_input, 1.0f);
+  std::vector<float> out_buf(out_chunk);
+  long in_count = short_input;
+  long got = cubeb_resampler_fill(r, in_buf.data(), &in_count, out_buf.data(),
+                                  out_chunk);
+
+  EXPECT_EQ(in_count, short_input);
+  EXPECT_EQ(state.callback_count, 1);
+  EXPECT_EQ(state.last_callback_frames, state.expected_callback_frames);
+  EXPECT_EQ(got, out_chunk);
+
+  cubeb_resampler_destroy(r);
+}
+
+TEST(cubeb, resampler_duplex_capture_underrun_pads_input_queue)
+{
+  // Backend-style duplex call: the input side provides the frames it captured,
+  // which can be less than the output resampler needs for the requested output.
+  // Duplex backends treat a short output fill as drain, so capture underruns
+  // must not make fill return fewer than requested.
+  cubeb_stream_params in_p, out_p;
+  in_p.format = out_p.format = CUBEB_SAMPLE_FLOAT32NE;
+  in_p.channels = out_p.channels = 1;
+  in_p.rate = 48000;
+  out_p.rate = 44100;
+  in_p.prefs = out_p.prefs = CUBEB_STREAM_PREF_NONE;
+
+  duplex_underrun_state state;
+  cubeb_resampler * r = cubeb_resampler_create(
+      nullptr, &in_p, &out_p, 48000, backend_duplex_underrun_cb, &state,
+      CUBEB_RESAMPLER_QUALITY_VOIP, CUBEB_RESAMPLER_RECLOCK_NONE);
+  ASSERT_NE(r, nullptr);
+
+  const long out_chunk = 441;
+  const long duration_matched_input = 480;
+  const long short_input = duration_matched_input - 60;
+  state.expected_callback_frames =
+      cubeb_resampler_input_needed_for_output(r, out_chunk);
+  state.real_input_frames = short_input;
+  ASSERT_GT(state.expected_callback_frames, short_input);
+
+  std::vector<float> in_buf(short_input, 1.0f);
+  std::vector<float> out_buf(out_chunk);
+  long in_count = short_input;
+  long got = cubeb_resampler_fill(r, in_buf.data(), &in_count, out_buf.data(),
+                                  out_chunk);
+
+  EXPECT_EQ(in_count, short_input);
+  EXPECT_EQ(state.callback_count, 1);
+  EXPECT_EQ(state.last_callback_frames, state.expected_callback_frames);
+  EXPECT_EQ(got, out_chunk);
 
   cubeb_resampler_destroy(r);
 }
