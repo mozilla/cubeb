@@ -28,6 +28,12 @@ const uint32_t TONE_FREQUENCY = 440;
 const double OUTPUT_AMPLITUDE = 0.25;
 const int32_t NUM_FRAMES_TO_OUTPUT =
     SAMPLE_FREQUENCY / 20; /* play ~50ms of samples */
+/* data_cb_playback() loops the tone long enough for delayed loopback capture,
+ * then goes silent before render stop. The tests keep capturing after render
+ * stop to consume queued virtual-device data. */
+const int32_t CONTINUOUS_TONE_FRAMES = SAMPLE_FREQUENCY / 2; /* ~500ms */
+const unsigned int LOOPBACK_PLAY_MS = 600;
+const unsigned int LOOPBACK_DRAIN_MS = 600;
 
 template <typename T>
 T
@@ -266,11 +272,11 @@ data_cb_playback(cubeb_stream * stream, void * user, const void * inputbuffer,
   }
 
   std::lock_guard<std::mutex> lock(u->user_state_mutex);
-  /* generate our test tone on the fly */
+  /* Generate the tone long enough for loopback capture streams whose first
+   * buffer can arrive late; find_phase() searches wherever it lands. */
   for (int i = 0; i < nframes; i++) {
     double tone = 0.0;
-    if (u->position + i < NUM_FRAMES_TO_OUTPUT) {
-      /* generate sine wave */
+    if (u->position + i < CONTINUOUS_TONE_FRAMES) {
       tone =
           sin(2 * M_PI * (i + u->position) * TONE_FREQUENCY / SAMPLE_FREQUENCY);
       tone *= OUTPUT_AMPLITUDE;
@@ -452,11 +458,26 @@ run_loopback_separate_streams_test(bool is_float)
   std::unique_ptr<cubeb_stream, decltype(&cubeb_stream_destroy)>
       cleanup_output_stream_at_exit(output_stream, cubeb_stream_destroy);
 
-  cubeb_stream_start(input_stream);
+  // Start the render stream before the loopback capture stream, matching
+  // the order cubeb_wasapi.cpp uses internally for a single duplex stream.
+  // Some virtual audio drivers (e.g. VB-CABLE) only start relaying audio to
+  // their loopback/capture side once a render client is active, and never
+  // catch up if the capture side starts first.
   cubeb_stream_start(output_stream);
-  delay(300);
+  cubeb_stream_start(input_stream);
+  // Give the capture side extra margin to receive its first buffer under
+  // slow/instrumented builds (e.g. ASAN), on top of the continuous tone above.
+  delay(LOOPBACK_PLAY_MS);
   cubeb_stream_stop(output_stream);
+  // Keep capturing after render stops, so a virtual loopback device can
+  // deliver any queued render data to this test instead of the next one.
+  delay(LOOPBACK_DRAIN_MS);
   cubeb_stream_stop(input_stream);
+  // Destroy the streams (and the context) right away instead of waiting
+  // for the RAII cleanups below to do it when this function returns.
+  cleanup_output_stream_at_exit.reset();
+  cleanup_input_stream_at_exit.reset();
+  cleanup_cubeb_at_exit.reset();
 
   /* access after stop should not happen, but lock just in case and to appease
    * sanitization tools */
@@ -641,11 +662,26 @@ run_loopback_device_selection_test(bool is_float)
   std::unique_ptr<cubeb_stream, decltype(&cubeb_stream_destroy)>
       cleanup_output_stream_at_exit(output_stream, cubeb_stream_destroy);
 
-  cubeb_stream_start(input_stream);
+  // Start the render stream before the loopback capture stream, matching
+  // the order cubeb_wasapi.cpp uses internally for a single duplex stream.
+  // Some virtual audio drivers (e.g. VB-CABLE) only start relaying audio to
+  // their loopback/capture side once a render client is active, and never
+  // catch up if the capture side starts first.
   cubeb_stream_start(output_stream);
-  delay(300);
+  cubeb_stream_start(input_stream);
+  // Give the capture side extra margin to receive its first buffer under
+  // slow/instrumented builds (e.g. ASAN), on top of the continuous tone above.
+  delay(LOOPBACK_PLAY_MS);
   cubeb_stream_stop(output_stream);
+  // Keep capturing after render stops, so a virtual loopback device can
+  // deliver any queued render data to this test instead of the next one.
+  delay(LOOPBACK_DRAIN_MS);
   cubeb_stream_stop(input_stream);
+  // Destroy the streams (and the context) right away instead of waiting
+  // for the RAII cleanups below to do it when this function returns.
+  cleanup_output_stream_at_exit.reset();
+  cleanup_input_stream_at_exit.reset();
+  cleanup_cubeb_at_exit.reset();
 
   /* access after stop should not happen, but lock just in case and to appease
    * sanitization tools */
