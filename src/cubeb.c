@@ -740,6 +740,10 @@ cubeb_enumerate_devices(cubeb * context, cubeb_device_type devtype,
     return CUBEB_ERROR_NOT_SUPPORTED;
 
   rv = context->ops->enumerate_devices(context, devtype, collection);
+  if (rv != CUBEB_OK) {
+    collection->device = NULL;
+    collection->count = 0;
+  }
 
   if (cubeb_log_get_callback()) {
     for (size_t i = 0; i < collection->count; i++) {
