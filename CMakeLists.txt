@@ -442,6 +442,7 @@ if(BUILD_TESTS)
   cubeb_add_test(record)
   cubeb_add_test(devices)
   cubeb_add_test(callback_ret)
+  cubeb_add_test(contract)
 
   add_executable(test_resampler test/test_resampler.cpp src/cubeb_resampler.cpp src/cubeb_log.cpp)
   target_include_directories(test_resampler PRIVATE ${gtest_SOURCE_DIR}/include src)
