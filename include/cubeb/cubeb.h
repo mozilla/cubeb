@@ -276,8 +276,8 @@ typedef enum {
 typedef struct {
   cubeb_sample_format format; /**< Requested sample format.  One of
                                    #cubeb_sample_format. */
-  uint32_t rate; /**< Requested sample rate.  Valid range is [1000, 384000]. */
-  uint32_t channels; /**< Requested channel count.  Valid range is [1, 8]. */
+  uint32_t rate; /**< Requested sample rate.  Valid range is [1000, 768000]. */
+  uint32_t channels; /**< Requested channel count.  Valid range is [1, 255]. */
   cubeb_channel_layout
       layout; /**< Requested channel layout. This must be consistent with the
                  provided channels. CUBEB_LAYOUT_UNDEFINED if unknown */
@@ -442,10 +442,14 @@ typedef struct {
     @param nframes The number of frames of the two buffer.
     @retval If the stream has output, this is the number of frames written to
             the output buffer. In this case, if this number is less than
-            nframes then the stream will start to drain. If the stream is
-            input only, then returning nframes indicates data has been read.
-            In this case, a value less than nframes will result in the stream
-            being stopped.
+            nframes then the stream will start to drain: the data callback
+            will not be called again, and the state callback will be called
+            with CUBEB_STATE_DRAINED once the frames provided so far have
+            been played out. If the stream is input only, then returning
+            nframes indicates data has been read. In this case, a value less
+            than nframes puts the stream in drain mode: the data callback
+            will not be called again, and the state callback will be called
+            with CUBEB_STATE_DRAINED once capture has stopped.
     @retval CUBEB_ERROR on error, in which case the data callback will stop
             and the stream will enter a shutdown state. */
 typedef long (*cubeb_data_callback)(cubeb_stream * stream, void * user_ptr,
@@ -588,8 +592,11 @@ cubeb_destroy(cubeb * context);
     @param latency_frames Requested stream latency in frames. Valid range is
                           [1, 96000]. The actual latency may differ depending
                           on the backend, platform, and hardware.
-    @param data_callback Will be called to preroll data before playback is
-                         started by cubeb_stream_start.
+    @param data_callback Callback invoked repeatedly to provide (and/or
+                         consume) audio data while the stream is running.
+                         It may be invoked as soon as the stream has been
+                         started, and possibly before cubeb_stream_start
+                         returns.
     @param state_callback A pointer to a state callback.
     @param user_ptr A pointer that will be passed to the callbacks. This pointer
                     must outlive the life time of the stream.
