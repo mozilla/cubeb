@@ -6,6 +6,7 @@
  */
 
 /* cubeb_logging test  */
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #if !defined(_XOPEN_SOURCE)
 #define _XOPEN_SOURCE 600
@@ -22,6 +23,9 @@
 #include "common.h"
 
 #define PRINT_LOGS_TO_STDERR 0
+
+using ::testing::HasSubstr;
+using ::testing::Not;
 
 std::atomic<uint32_t> log_statements_received = {0};
 std::atomic<uint32_t> data_callback_call_count = {0};
@@ -193,4 +197,10 @@ TEST(cubeb, logging_stress)
   t.join();
 
   ASSERT_TRUE(true);
+}
+
+TEST(cubeb, filename_macro)
+{
+  EXPECT_THAT(__FILENAME__, Not(HasSubstr("/")));
+  EXPECT_THAT(__FILENAME__, Not(HasSubstr("\\")));
 }
