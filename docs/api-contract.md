@@ -231,7 +231,11 @@ Conceptual caller-visible state machine:
   Gecko does. The STOPPED state callback itself is exempt from this
   quiescence bound: it MAY be delivered synchronously before stop returns
   or asynchronously after (STATE-3). `cubeb_stream_destroy` additionally
-  guarantees full, permanent quiescence (LIFE-9).
+  guarantees full, permanent quiescence (LIFE-9). Note this guarantee has
+  two separately testable halves: no data callback may BEGIN after stop
+  returns, and no data callback may still be EXECUTING when stop returns
+  (in flight across the return); test_contract detects both, the latter
+  via boundary-crossing checks at callback exit.
 - **LIFE-7** Callers MUST tolerate duplicate `CUBEB_STATE_STOPPED`
   deliveries for one logical stop (audioipc layering produces an extra
   STOPPED; Gecko bug 1801190 encodes this in MockCubeb). Backends SHOULD
@@ -722,8 +726,8 @@ Planned tests (clause coverage):
 | state_transition_order_basic | LIFE-1, LIFE-5, STATE-1..3 (start..stop; log shows STARTED before STOPPED, no ERROR/DRAINED) |
 | stop_idempotent_and_dup_stopped | LIFE-4, LIFE-7 |
 | double_start_no_crash | LIFE-3 |
-| stop_then_callback_quiescence | LIFE-6 (no data cb after stop returns; known-fail on wasapi/aaudio until fixed) |
-| destroy_quiescence | LIFE-9, LIFE-10 (destroy from second thread during heavy callbacks; poisoned user_ptr canary after destroy) |
+| stop_then_callback_quiescence | LIFE-6 (no data cb begins after stop returns AND none in flight across the return; gated on wasapi/aaudio until fixed) |
+| destroy_quiescence | LIFE-9, LIFE-10 (destroy from second thread during heavy callbacks; no callback begins after nor is in flight across destroy's return) |
 | data_cb_buffer_contract | DATA-1, DATA-2 (nframes>=1, null-ness per direction, duplex silence fill) |
 | drain_on_short_return | DATA-4, DRAIN-1..3, STATE-4 (exactly one DRAINED, after last data cb, position==written within tolerance, then frozen) |
 | drain_immediate_after_start | STATE-4, DRAIN-5 (first callback returns 0) |

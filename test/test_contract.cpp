@@ -83,6 +83,9 @@ struct StreamHarness {
   std::atomic<int> nested_state_cb{0};
 
   std::atomic<bool> destroyed{false};
+  std::atomic<bool> stop_returned{false};
+  std::atomic<int> in_flight_at_stop{0};
+  std::atomic<int> in_flight_at_destroy{0};
   std::atomic<bool> terminal_return_seen{false};
   std::atomic<int> data_cb_depth{0};
   std::atomic<size_t> data_cb_tid{0};
@@ -114,8 +117,10 @@ contract_data_cb(cubeb_stream * stm, void * user_ptr, void const * input,
 {
   StreamHarness * h = static_cast<StreamHarness *>(user_ptr);
   long index = static_cast<long>(h->data_cbs.fetch_add(1));
+  bool entered_before_stop = !h->stop_returned.load();
+  bool entered_before_destroy = !h->destroyed.load();
 
-  if (h->destroyed.load()) {
+  if (!entered_before_destroy) {
     h->cb_after_destroy++; // LIFE-9
   }
   if (h->terminal_return_seen.load()) {
@@ -155,6 +160,15 @@ contract_data_cb(cubeb_stream * stm, void * user_ptr, void const * input,
   }
 
   h->data_cb_depth--;
+  // A callback that began before stop/destroy returned but is still
+  // executing afterwards violates the in-flight half of the quiescence
+  // guarantees (LIFE-6 / LIFE-9).
+  if (entered_before_stop && h->stop_returned.load()) {
+    h->in_flight_at_stop++;
+  }
+  if (entered_before_destroy && h->destroyed.load()) {
+    h->in_flight_at_destroy++;
+  }
   h->record(
       {EvKind::Data, CUBEB_STATE_ERROR /* unused */, nframes, ret, tid_hash()});
   return ret;
@@ -164,7 +178,8 @@ static void
 contract_state_cb(cubeb_stream * /*stm*/, void * user_ptr, cubeb_state state)
 {
   StreamHarness * h = static_cast<StreamHarness *>(user_ptr);
-  if (h->destroyed.load()) {
+  bool entered_before_destroy = !h->destroyed.load();
+  if (!entered_before_destroy) {
     h->cb_after_destroy++; // LIFE-9
   }
   // THR-6: a state callback must not be nested inside this stream's data
@@ -185,6 +200,9 @@ contract_state_cb(cubeb_stream * /*stm*/, void * user_ptr, cubeb_state state)
   case CUBEB_STATE_ERROR:
     h->errored++;
     break;
+  }
+  if (entered_before_destroy && h->destroyed.load()) {
+    h->in_flight_at_destroy++; // LIFE-9
   }
   h->record({EvKind::State, state, 0, 0, tid_hash()});
 }
@@ -363,6 +381,9 @@ expect_no_violations(StreamHarness const & h)
       << "DATA-4/5/6: data callback fired after a terminal return";
   EXPECT_EQ(h.cb_after_destroy.load(), 0)
       << "LIFE-9: callback fired after cubeb_stream_destroy returned";
+  EXPECT_EQ(h.in_flight_at_destroy.load(), 0)
+      << "LIFE-9: callback still executing when cubeb_stream_destroy "
+         "returned";
   EXPECT_EQ(h.bad_callback_args.load(), 0)
       << "DATA-1: bad nframes/buffer arguments in data callback";
   EXPECT_EQ(h.nested_state_cb.load(), 0)
@@ -597,11 +618,15 @@ TEST(cubeb, contract_stop_quiescence)
   ASSERT_EQ(cubeb_stream_start(stm), CUBEB_OK);
   EXPECT_TRUE(wait_for([&] { return h.data_cbs.load() >= 5; }));
   ASSERT_EQ(cubeb_stream_stop(stm), CUBEB_OK);
+  h.stop_returned.store(true);
   uint64_t at_stop = h.data_cbs.load();
   delay(500);
   CONTRACT_EXPECT(ctx, "LIFE-6", h.data_cbs.load() == at_stop,
                   "LIFE-6: data callback fired after cubeb_stream_stop "
                   "returned");
+  CONTRACT_EXPECT(ctx, "LIFE-6", h.in_flight_at_stop.load() == 0,
+                  "LIFE-6: data callback still executing when "
+                  "cubeb_stream_stop returned");
   cubeb_stream_destroy(stm);
   h.destroyed.store(true);
 
