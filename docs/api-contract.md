@@ -622,7 +622,12 @@ Empirical results from `test_contract` (2026-07-24):
   restart-after-drain accepted but never resumes. LIFE-6 did not
   reproduce under Wine; needs real Windows.
 - wasapi (real Windows, GitHub CI with VB-CABLE, Debug and Release
-  configs): full suite green with the tracked deviations gated.
+  configs): full suite green with the tracked deviations gated. The
+  LIFE-6 deviation is empirically confirmed there in its in-flight form:
+  no new data callback begins after stop returns, but a callback can
+  still be executing when it returns (caught by the boundary-crossing
+  check; Wine and the aaudio emulator never reproduced this). STATE-4
+  (DRAINED during destroy) and DATA-5 also confirmed on real Windows.
 - winmm (legacy, GitHub CI second pass): fatal assert in
   `cubeb_winmm.c:395` (`!InterlockedPopEntrySList(ctx->work)`) tearing
   down after a data-callback error return; test_contract now skips winmm
