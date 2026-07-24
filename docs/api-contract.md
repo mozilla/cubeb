@@ -635,10 +635,10 @@ Empirical results from `test_contract` (2026-07-24):
 - aaudio (API 34 arm64 emulator via the mozbuild AVD): 17 pass, 3
   correct skips (no enumeration); deviations logged: LIFE-4 (stop on an
   errored stream returns ERROR), POS-4 after drain (silence tail counted
-  by getFramesRead), DRAIN-3, LAT-1 (zero reported latency). LIFE-6 did
-  not reproduce on the emulator (stop quiesced in practice); the entry
-  stays, based on the code reading (stop merely requests). Supports
-  restart-after-drain.
+  by getFramesRead), DRAIN-3, LAT-1 (zero reported latency), and LIFE-6 in its in-flight
+  form (a data callback still executing when stop returned, caught by
+  the boundary-crossing check; the entry-counter check alone never
+  reproduced it). Supports restart-after-drain.
 
 Priority improvement list (from the full evaluations):
 
