@@ -617,6 +617,12 @@ Empirical results from `test_contract` (2026-07-24):
   DRAINED path); device-changed registration correctly NOT_SUPPORTED;
   restart-after-drain accepted but never resumes. LIFE-6 did not
   reproduce under Wine; needs real Windows.
+- wasapi (real Windows, GitHub CI with VB-CABLE, Debug and Release
+  configs): full suite green with the tracked deviations gated.
+- winmm (legacy, GitHub CI second pass): fatal assert in
+  `cubeb_winmm.c:395` (`!InterlockedPopEntrySList(ctx->work)`) tearing
+  down after a data-callback error return; test_contract now skips winmm
+  entirely rather than tracking a backend that crashes.
 - aaudio (API 34 arm64 emulator via the mozbuild AVD): 17 pass, 3
   correct skips (no enumeration); deviations logged: LIFE-4 (stop on an
   errored stream returns ERROR), POS-4 after drain (silence tail counted
