@@ -86,6 +86,7 @@ struct cubeb {
   HANDLE thread;
   int shutdown;
   PSLIST_HEADER work;
+  LONG pending_callbacks;
   CRITICAL_SECTION lock;
   unsigned int active_streams;
   unsigned int minimum_latency_ms;
@@ -106,6 +107,7 @@ struct cubeb_stream {
   int shutdown;
   int draining;
   int error;
+  LONG pending_work_items;
   HANDLE event;
   HWAVEOUT waveout;
   CRITICAL_SECTION lock;
@@ -172,12 +174,13 @@ winmm_refill_stream(cubeb_stream * stm)
   ALOG("winmm_refill_stream");
 
   EnterCriticalSection(&stm->lock);
+  stm->free_buffers += 1;
+  XASSERT(stm->free_buffers > 0 && stm->free_buffers <= NBUFS);
+
   if (stm->error) {
     LeaveCriticalSection(&stm->lock);
     return;
   }
-  stm->free_buffers += 1;
-  XASSERT(stm->free_buffers > 0 && stm->free_buffers <= NBUFS);
 
   if (stm->draining) {
     LeaveCriticalSection(&stm->lock);
@@ -185,13 +188,11 @@ winmm_refill_stream(cubeb_stream * stm)
       ALOG("winmm_refill_stream draining");
       stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
     }
-    SetEvent(stm->event);
     return;
   }
 
   if (stm->shutdown) {
     LeaveCriticalSection(&stm->lock);
-    SetEvent(stm->event);
     return;
   }
 
@@ -204,10 +205,18 @@ winmm_refill_stream(cubeb_stream * stm)
   LeaveCriticalSection(&stm->lock);
   got = stm->data_callback(stm, stm->user_ptr, NULL, hdr->lpData, wanted);
   EnterCriticalSection(&stm->lock);
+  if (stm->shutdown) {
+    stm->free_buffers += 1;
+    XASSERT(stm->free_buffers > 0 && stm->free_buffers <= NBUFS);
+    LeaveCriticalSection(&stm->lock);
+    return;
+  }
+
   if (got < 0) {
+    stm->free_buffers += 1;
+    XASSERT(stm->free_buffers > 0 && stm->free_buffers <= NBUFS);
     stm->error = 1;
     LeaveCriticalSection(&stm->lock);
-    SetEvent(stm->event);
     stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
     return;
   } else if (got < wanted) {
@@ -238,6 +247,9 @@ winmm_refill_stream(cubeb_stream * stm)
 
   r = waveOutWrite(stm->waveout, hdr, sizeof(*hdr));
   if (r != MMSYSERR_NOERROR) {
+    stm->free_buffers += 1;
+    XASSERT(stm->free_buffers > 0 && stm->free_buffers <= NBUFS);
+    stm->error = 1;
     LeaveCriticalSection(&stm->lock);
     stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
     return;
@@ -266,9 +278,22 @@ static unsigned __stdcall winmm_buffer_thread(void * user_ptr)
     item = InterlockedFlushSList(ctx->work);
     while (item != NULL) {
       PSLIST_ENTRY tmp = item;
-      winmm_refill_stream(((struct cubeb_stream_item *)tmp)->stream);
+      cubeb_stream * stm = ((struct cubeb_stream_item *)tmp)->stream;
       item = item->Next;
+
+      winmm_refill_stream(stm);
       _aligned_free(tmp);
+
+      /* Release the work item and wake winmm_stream_destroy. Destroy sets
+         stm->shutdown under this lock before waiting, so the gated wake
+         cannot be lost nor the event closed mid-SetEvent. */
+      EnterCriticalSection(&stm->lock);
+      LONG pending = InterlockedDecrement(&stm->pending_work_items);
+      XASSERT(pending >= 0);
+      if (stm->shutdown) {
+        SetEvent(stm->event);
+      }
+      LeaveCriticalSection(&stm->lock);
     }
 
     if (ctx->shutdown) {
@@ -285,18 +310,27 @@ winmm_buffer_callback(HWAVEOUT waveout, UINT msg, DWORD_PTR user_ptr,
 {
   cubeb_stream * stm = (cubeb_stream *)user_ptr;
   struct cubeb_stream_item * item;
+  cubeb * ctx;
 
   if (msg != WOM_DONE) {
     return;
   }
 
+  /* The stream may be freed as soon as the published work item is consumed,
+     so stm must not be touched after the push. pending_callbacks keeps the
+     context alive through the final SetEvent; winmm_destroy drains it. */
+  ctx = stm->context;
+  InterlockedIncrement(&ctx->pending_callbacks);
+  InterlockedIncrement(&stm->pending_work_items);
+
   item = _aligned_malloc(sizeof(struct cubeb_stream_item),
                          MEMORY_ALLOCATION_ALIGNMENT);
   XASSERT(item);
   item->stream = stm;
-  InterlockedPushEntrySList(stm->context->work, &item->head);
+  InterlockedPushEntrySList(ctx->work, &item->head);
 
-  SetEvent(stm->context->event);
+  SetEvent(ctx->event);
+  InterlockedDecrement(&ctx->pending_callbacks);
 }
 
 static unsigned int
@@ -405,6 +439,11 @@ winmm_destroy(cubeb * ctx)
   }
 
   if (ctx->event) {
+    /* Wait out any driver callback still between publishing a work item and
+       its final SetEvent before closing the event. */
+    while (InterlockedCompareExchange(&ctx->pending_callbacks, 0, 0) != 0) {
+      Sleep(1);
+    }
     CloseHandle(ctx->event);
   }
 
@@ -602,7 +641,6 @@ winmm_stream_destroy(cubeb_stream * stm)
     MMTIME time;
     MMRESULT r;
     int device_valid;
-    int enqueued;
 
     EnterCriticalSection(&stm->lock);
     stm->shutdown = 1;
@@ -614,18 +652,26 @@ winmm_stream_destroy(cubeb_stream * stm)
     time.wType = TIME_SAMPLES;
     r = waveOutGetPosition(stm->waveout, &time, sizeof(time));
     device_valid = !(r == MMSYSERR_INVALHANDLE || r == MMSYSERR_NODRIVER);
-
-    enqueued = NBUFS - stm->free_buffers;
     LeaveCriticalSection(&stm->lock);
 
-    /* Wait for all blocks to complete. */
-    while (device_valid && enqueued > 0 && !stm->error) {
-      DWORD rv = WaitForSingleObject(stm->event, INFINITE);
-      XASSERT(rv == WAIT_OBJECT_0);
+    /* Wait for the device to return all buffers and for queued or in-flight
+       buffer thread work to finish with the stream. */
+    for (;;) {
+      int enqueued;
+      LONG pending_work_items;
 
       EnterCriticalSection(&stm->lock);
       enqueued = NBUFS - stm->free_buffers;
+      pending_work_items =
+          InterlockedCompareExchange(&stm->pending_work_items, 0, 0);
       LeaveCriticalSection(&stm->lock);
+
+      if ((!device_valid || enqueued == 0) && pending_work_items == 0) {
+        break;
+      }
+
+      DWORD rv = WaitForSingleObject(stm->event, INFINITE);
+      XASSERT(rv == WAIT_OBJECT_0);
     }
 
     EnterCriticalSection(&stm->lock);
