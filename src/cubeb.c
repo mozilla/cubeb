@@ -7,6 +7,7 @@
 #undef NDEBUG
 #include "cubeb/cubeb.h"
 #include "cubeb-internal.h"
+#include "cubeb_mixer.h"
 #include <assert.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -97,7 +98,10 @@ validate_stream_params(cubeb_stream_params * input_stream_params,
     if (output_stream_params->rate < 1000 ||
         output_stream_params->rate > 768000 ||
         output_stream_params->channels < 1 ||
-        output_stream_params->channels > UINT8_MAX) {
+        output_stream_params->channels > UINT8_MAX ||
+        (output_stream_params->layout != CUBEB_LAYOUT_UNDEFINED &&
+         cubeb_channel_layout_nb_channels(output_stream_params->layout) !=
+             output_stream_params->channels)) {
       return CUBEB_ERROR_INVALID_FORMAT;
     }
   }
@@ -105,7 +109,10 @@ validate_stream_params(cubeb_stream_params * input_stream_params,
     if (input_stream_params->rate < 1000 ||
         input_stream_params->rate > 768000 ||
         input_stream_params->channels < 1 ||
-        input_stream_params->channels > UINT8_MAX) {
+        input_stream_params->channels > UINT8_MAX ||
+        (input_stream_params->layout != CUBEB_LAYOUT_UNDEFINED &&
+         cubeb_channel_layout_nb_channels(input_stream_params->layout) !=
+             input_stream_params->channels)) {
       return CUBEB_ERROR_INVALID_FORMAT;
     }
   }
