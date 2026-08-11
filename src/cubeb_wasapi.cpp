@@ -2838,7 +2838,8 @@ setup_wasapi_stream(cubeb_stream * stm)
 
   // Create output mixer.
   if (has_output(stm) &&
-      stm->output_mix_params.layout != stm->output_stream_params.layout) {
+      (stm->output_mix_params.layout != stm->output_stream_params.layout ||
+       stm->output_mix_params.channels != stm->output_stream_params.channels)) {
     if (stm->output_mix_params.layout == CUBEB_LAYOUT_UNDEFINED) {
       LOG("Output stream using undefined layout! Any mixing may be "
           "unpredictable!\n");
