@@ -279,6 +279,29 @@ TEST(cubeb, configure_stream_undefined_layout)
   cubeb_destroy(ctx);
 }
 
+TEST(cubeb, reject_inconsistent_channel_layout)
+{
+  cubeb * ctx;
+  cubeb_stream * stream;
+  cubeb_stream_params params = {};
+
+  int r = common_init(&ctx, "test_sanity");
+  ASSERT_EQ(r, CUBEB_OK);
+  ASSERT_NE(ctx, nullptr);
+
+  params.format = CUBEB_SAMPLE_FLOAT32NE;
+  params.rate = STREAM_RATE;
+  params.channels = UINT8_MAX;
+  params.layout = CUBEB_LAYOUT_STEREO;
+
+  r = cubeb_stream_init(ctx, &stream, "test", NULL, NULL, NULL, &params,
+                        STREAM_LATENCY, test_data_callback, test_state_callback,
+                        &dummy);
+  EXPECT_EQ(r, CUBEB_ERROR_INVALID_FORMAT);
+
+  cubeb_destroy(ctx);
+}
+
 static void
 test_init_start_stop_destroy_multiple_streams(int early, int delay_ms)
 {
