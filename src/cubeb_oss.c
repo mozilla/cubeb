@@ -620,9 +620,11 @@ static int
 oss_copy_params(int fd, cubeb_stream * stream, cubeb_stream_params * params,
                 struct stream_info * sinfo)
 {
+  int requested_channels;
   unsigned long long chnorder;
 
   sinfo->channels = params->channels;
+  requested_channels = sinfo->channels;
   sinfo->sample_rate = params->rate;
   switch (params->format) {
   case CUBEB_SAMPLE_S16LE:
@@ -643,6 +645,11 @@ oss_copy_params(int fd, cubeb_stream * stream, cubeb_stream_params * params,
   }
   if (ioctl(fd, SNDCTL_DSP_CHANNELS, &sinfo->channels) == -1) {
     return CUBEB_ERROR;
+  }
+  if (sinfo->channels != requested_channels) {
+    LOG("Requested %d channels, but the device selected %d", requested_channels,
+        sinfo->channels);
+    return CUBEB_ERROR_INVALID_FORMAT;
   }
   if (ioctl(fd, SNDCTL_DSP_SETFMT, &sinfo->fmt) == -1) {
     return CUBEB_ERROR;
@@ -682,14 +689,19 @@ oss_stream_stop(cubeb_stream * s)
 static void
 oss_stream_destroy(cubeb_stream * s)
 {
+  bool thread_created;
+
   pthread_mutex_lock(&s->mtx);
-  if (s->thread_created) {
+  thread_created = s->thread_created;
+  if (thread_created) {
     s->destroying = true;
     s->doorbell = true;
     pthread_cond_signal(&s->doorbell_cv);
   }
   pthread_mutex_unlock(&s->mtx);
-  pthread_join(s->thread, NULL);
+  if (thread_created) {
+    pthread_join(s->thread, NULL);
+  }
 
   pthread_cond_destroy(&s->doorbell_cv);
   pthread_cond_destroy(&s->stopped_cv);
@@ -1044,6 +1056,15 @@ oss_stream_init(cubeb * context, cubeb_stream ** stream,
   cubeb_stream * s = NULL;
   const char * defdsp;
 
+  if ((output_stream_params &&
+       (output_stream_params->channels < 1 ||
+        output_stream_params->channels > OSS_MAX_CHANNELS)) ||
+      (input_stream_params &&
+       (input_stream_params->channels < 1 ||
+        input_stream_params->channels > OSS_MAX_CHANNELS))) {
+    return CUBEB_ERROR_INVALID_FORMAT;
+  }
+
   if (!(defdsp = getenv(ENV_AUDIO_DEVICE)) || *defdsp == '\0')
     defdsp = OSS_DEFAULT_DEVICE;
 
@@ -1054,6 +1075,24 @@ oss_stream_init(cubeb * context, cubeb_stream ** stream,
   }
   s->state = CUBEB_STATE_STOPPED;
   s->record.fd = s->play.fd = -1;
+  if (pthread_mutex_init(&s->mtx, NULL) != 0) {
+    LOG("Failed to create mutex");
+    free(s);
+    return CUBEB_ERROR;
+  }
+  if (pthread_cond_init(&s->doorbell_cv, NULL) != 0) {
+    LOG("Failed to create cv");
+    pthread_mutex_destroy(&s->mtx);
+    free(s);
+    return CUBEB_ERROR;
+  }
+  if (pthread_cond_init(&s->stopped_cv, NULL) != 0) {
+    LOG("Failed to create cv");
+    pthread_cond_destroy(&s->doorbell_cv);
+    pthread_mutex_destroy(&s->mtx);
+    free(s);
+    return CUBEB_ERROR;
+  }
   if (input_device != NULL) {
     strlcpy(s->record.name, input_device, sizeof(s->record.name));
   } else {
@@ -1196,18 +1235,6 @@ oss_stream_init(cubeb * context, cubeb_stream ** stream,
   s->data_cb = data_callback;
   s->user_ptr = user_ptr;
 
-  if (pthread_mutex_init(&s->mtx, NULL) != 0) {
-    LOG("Failed to create mutex");
-    goto error;
-  }
-  if (pthread_cond_init(&s->doorbell_cv, NULL) != 0) {
-    LOG("Failed to create cv");
-    goto error;
-  }
-  if (pthread_cond_init(&s->stopped_cv, NULL) != 0) {
-    LOG("Failed to create cv");
-    goto error;
-  }
   s->doorbell = false;
 
   if (s->play.fd != -1) {
