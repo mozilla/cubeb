@@ -2001,10 +2001,21 @@ aaudio_stream_get_position(cubeb_stream * stm, uint64_t * position)
     break;
   }
 
-  // No callback yet, the stream hasn't really started.
-  if (stm->previous_clock == 0 && !stm->timing_info.updated()) {
-    LOG("Not timing info yet");
-    *position = init_position;
+  // Nothing published into timing_info yet: either no callback has run, or
+  // every callback so far failed to get a timestamp out of AAudio, which
+  // happens around stream start.  Reading it anyway would hand out whatever
+  // the buffer was initialized with.  Fall back to the number of frames
+  // aaudio has consumed, as in the stopped case above.
+  //
+  // Note that previous_clock is not a usable proxy for this: stopping a
+  // stream and asking for its position latches a non-zero previous_clock
+  // from AAudioStream_getFramesRead() without anything having been
+  // published, and AudioTrack::stop() catches framesRead up to framesWritten
+  // even if the hardware never presented a frame.
+  if (!stm->latency_metrics_available) {
+    LOG("No timing info yet");
+    *position = init_position + WRAP(AAudioStream_getFramesRead)(stream);
+    clamp_monotonic_position(stm, position);
     return CUBEB_OK;
   }
 
