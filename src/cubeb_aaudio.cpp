@@ -1365,6 +1365,7 @@ aaudio_stream_destroy_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
   }
 
   stm->timing_info.invalidate();
+  stm->latency_metrics_available = false;
   stm->previous_clock = 0;
   stm->pos_estimate = {};
 
