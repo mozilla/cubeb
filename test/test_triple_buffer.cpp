@@ -15,8 +15,10 @@
 #include <atomic>
 #include <math.h>
 #include <memory>
+#include <new>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <thread>
 
 #include "common.h"
@@ -67,4 +69,34 @@ TEST(cubeb, triple_buffer)
 
   buffer.invalidate();
   ASSERT_FALSE(buffer.updated());
+}
+
+// cubeb_aaudio allocates its context, and the streams embedded in it, with a
+// default-initializing `new cubeb;`, so a triple_buffer can be read before the
+// producer has published anything. Check that this yields zeroes rather than
+// whatever previously occupied that memory.
+TEST(cubeb, triple_buffer_read_before_write)
+{
+  struct AB {
+    uint64_t a;
+    uint64_t b;
+  };
+
+  alignas(triple_buffer<AB>) uint8_t mem[sizeof(triple_buffer<AB>)];
+  memset(mem, 0xab, sizeof(mem));
+  // Default-initialization, as in cubeb_aaudio: value-initialization here
+  // would zero the whole object and defeat the point of the test.
+  auto * buffer = new (mem) triple_buffer<AB>;
+
+  AB ab = buffer->read();
+  ASSERT_EQ(ab.a, 0u);
+  ASSERT_EQ(ab.b, 0u);
+
+  // Same after invalidate(), which rotates the indices without publishing.
+  buffer->invalidate();
+  ab = buffer->read();
+  ASSERT_EQ(ab.a, 0u);
+  ASSERT_EQ(ab.b, 0u);
+
+  buffer->~triple_buffer();
 }
