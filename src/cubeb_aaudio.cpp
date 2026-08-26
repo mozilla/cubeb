@@ -1959,6 +1959,19 @@ aaudio_stream_stop_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
   return ret;
 }
 
+// cubeb_stream_get_position must never go backwards.  Clamp to the highest
+// position reported so far, and remember it.  Called with the stream mutex
+// held.
+static void
+clamp_monotonic_position(cubeb_stream * stm, uint64_t * position)
+{
+  if (*position < stm->previous_clock) {
+    *position = stm->previous_clock;
+  } else {
+    stm->previous_clock = *position;
+  }
+}
+
 static int
 aaudio_stream_get_position(cubeb_stream * stm, uint64_t * position)
 {
@@ -1978,11 +1991,7 @@ aaudio_stream_get_position(cubeb_stream * stm, uint64_t * position)
     // getTimestamp is only valid when the stream is playing.
     // Simply return the number of frames passed to aaudio
     *position = init_position + WRAP(AAudioStream_getFramesRead)(stream);
-    if (*position < stm->previous_clock) {
-      *position = stm->previous_clock;
-    } else {
-      stm->previous_clock = *position;
-    }
+    clamp_monotonic_position(stm, position);
     return CUBEB_OK;
   case stream_state::INIT:
     assert(false && "Invalid stream");
@@ -2009,11 +2018,7 @@ aaudio_stream_get_position(cubeb_stream * stm, uint64_t * position)
        NS_PER_S);
   *position = init_position + info.output_frame_index + interpolation -
               info.output_latency;
-  if (*position < stm->previous_clock) {
-    *position = stm->previous_clock;
-  } else {
-    stm->previous_clock = *position;
-  }
+  clamp_monotonic_position(stm, position);
 
   LOG("aaudio_stream_get_position: %" PRIu64 " frames", *position);
 
