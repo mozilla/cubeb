@@ -387,21 +387,53 @@ struct cubeb {
   struct cubeb_stream streams[MAX_STREAMS];
 };
 
-// Returns when aaudio_stream's state is equal to desired_state.
+static aaudio_stream_state_t
+get_stable_state(aaudio_stream_state_t state);
+
+// Whether the stream is on its way to some stable state.
+static bool
+is_transitional_state(aaudio_stream_state_t state)
+{
+  return get_stable_state(state) != AAUDIO_STREAM_STATE_UNINITIALIZED;
+}
+
+// Reports the stream's current state. AAudioStream_waitForStateChange with a
+// zero timeout is used rather than AAudioStream_getState because only the
+// former updates the state internally.
+static int
+refresh_state(AAudioStream * aaudio_stream, aaudio_stream_state_t * state)
+{
+  // See the docs of aaudio getState/waitForStateChange for details,
+  // why we are passing STATE_UNKNOWN.
+  aaudio_result_t res = WRAP(AAudioStream_waitForStateChange)(
+      aaudio_stream, AAUDIO_STREAM_STATE_UNKNOWN, state, 0);
+  if (res != AAUDIO_OK) {
+    LOG("AAudioStream_waitForStateChange: %s",
+        WRAP(AAudio_convertResultToText)(res));
+    return CUBEB_ERROR;
+  }
+
+  LOG("refresh_state: current state now: %s",
+      WRAP(AAudio_convertStreamStateToText)(*state));
+
+  return CUBEB_OK;
+}
+
+// Returns once aaudio_stream is no longer transitional, reporting the stable
+// state it settled in. Callers must not assume which one that is: AAudio takes
+// a stream from STARTING to STOPPING/STOPPED when the data callback stops it or
+// the device errors out, and to DISCONNECTED when the device goes away.
 // poll_frequency_ns is the duration that is slept in between asking for
 // state updates and getting the new state.
 // When waiting for a stream to stop, it is best to pick a value similar
 // to the callback time because STOPPED will happen after
 // draining.
 static int
-wait_for_state_change(AAudioStream * aaudio_stream,
-                      aaudio_stream_state_t * desired_state,
-                      int64_t poll_frequency_ns)
+wait_for_stable_state(AAudioStream * aaudio_stream,
+                      aaudio_stream_state_t * state, int64_t poll_frequency_ns)
 {
   aaudio_stream_state_t new_state;
   do {
-    // See the docs of aaudio getState/waitForStateChange for details,
-    // why we are passing STATE_UNKNOWN.
     aaudio_result_t res = WRAP(AAudioStream_waitForStateChange)(
         aaudio_stream, AAUDIO_STREAM_STATE_UNKNOWN, &new_state,
         poll_frequency_ns);
@@ -410,12 +442,11 @@ wait_for_state_change(AAudioStream * aaudio_stream,
           WRAP(AAudio_convertResultToText)(res));
       return CUBEB_ERROR;
     }
-  } while (*desired_state != AAUDIO_STREAM_STATE_UNINITIALIZED &&
-           new_state != *desired_state);
+  } while (is_transitional_state(new_state));
 
-  *desired_state = new_state;
+  *state = new_state;
 
-  LOG("wait_for_state_change: current state now: %s",
+  LOG("wait_for_stable_state: settled in %s",
       WRAP(AAudio_convertStreamStateToText)(new_state));
 
   return CUBEB_OK;
@@ -447,10 +478,10 @@ shutdown_with_error(cubeb_stream * stm)
   aaudio_stream_state_t istate = AAUDIO_STREAM_STATE_UNINITIALIZED;
   aaudio_stream_state_t ostate = AAUDIO_STREAM_STATE_UNINITIALIZED;
   if (stm->istream) {
-    wait_for_state_change(stm->istream, &istate, 0);
+    refresh_state(stm->istream, &istate);
   }
   if (stm->ostream) {
-    wait_for_state_change(stm->ostream, &ostate, 0);
+    refresh_state(stm->ostream, &ostate);
   }
 
   if (istate && istate != AAUDIO_STREAM_STATE_STOPPING &&
@@ -547,10 +578,8 @@ update_state(cubeb_stream * stm)
     aaudio_stream_state_t istate = AAUDIO_STREAM_STATE_UNINITIALIZED;
     aaudio_stream_state_t ostate = AAUDIO_STREAM_STATE_UNINITIALIZED;
 
-    // We use waitForStateChange (with zero timeout) instead of just
-    // getState since only the former internally updates the state.
     if (stm->istream) {
-      int res = wait_for_state_change(stm->istream, &istate, 0);
+      int res = refresh_state(stm->istream, &istate);
       if (res != CUBEB_OK) {
         return;
       }
@@ -558,7 +587,7 @@ update_state(cubeb_stream * stm)
     }
 
     if (stm->ostream) {
-      int res = wait_for_state_change(stm->ostream, &ostate, 0);
+      int res = refresh_state(stm->ostream, &ostate);
       if (res != CUBEB_OK) {
         return;
       }
@@ -1699,9 +1728,8 @@ aaudio_stream_start_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
   int64_t poll_frequency_ns = 10 * NS_PER_S / 1000;
   if (stm->ostream) {
     ostate = WRAP(AAudioStream_getState)(stm->ostream);
-    aaudio_stream_state_t target = get_stable_state(ostate);
-    if (target != AAUDIO_STREAM_STATE_UNINITIALIZED) {
-      int rv = wait_for_state_change(stm->ostream, &target, poll_frequency_ns);
+    if (is_transitional_state(ostate)) {
+      int rv = wait_for_stable_state(stm->ostream, &ostate, poll_frequency_ns);
       if (rv != CUBEB_OK) {
         LOG("Failure waiting for ostream to reach stable state before start");
         stm->state.store(stream_state::ERROR);
@@ -1711,9 +1739,8 @@ aaudio_stream_start_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
   }
   if (stm->istream) {
     istate = WRAP(AAudioStream_getState)(stm->istream);
-    aaudio_stream_state_t target = get_stable_state(istate);
-    if (target != AAUDIO_STREAM_STATE_UNINITIALIZED) {
-      int rv = wait_for_state_change(stm->istream, &target, poll_frequency_ns);
+    if (is_transitional_state(istate)) {
+      int rv = wait_for_stable_state(stm->istream, &istate, poll_frequency_ns);
       if (rv != CUBEB_OK) {
         LOG("Failure waiting for istream to reach stable state before start");
         stm->state.store(stream_state::ERROR);
@@ -1841,19 +1868,17 @@ aaudio_stream_stop_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
   // Wait for stream transitions to settle before stopping.
   int64_t poll_frequency_ns = 10 * NS_PER_S / 1000; // 10ms
   if (stm->ostream && ostate == AAUDIO_STREAM_STATE_STARTING) {
-    aaudio_stream_state_t target = AAUDIO_STREAM_STATE_STARTED;
-    int rv = wait_for_state_change(stm->ostream, &target, poll_frequency_ns);
+    int rv = wait_for_stable_state(stm->ostream, &ostate, poll_frequency_ns);
     if (rv != CUBEB_OK) {
-      LOG("Failure waiting for ostream to finish starting before stop");
+      LOG("Failure waiting for ostream to reach stable state before stop");
       stm->state.store(stream_state::ERROR);
       return CUBEB_ERROR;
     }
   }
   if (stm->istream && istate == AAUDIO_STREAM_STATE_STARTING) {
-    aaudio_stream_state_t target = AAUDIO_STREAM_STATE_STARTED;
-    int rv = wait_for_state_change(stm->istream, &target, poll_frequency_ns);
+    int rv = wait_for_stable_state(stm->istream, &istate, poll_frequency_ns);
     if (rv != CUBEB_OK) {
-      LOG("Failure waiting for istream to finish starting before stop");
+      LOG("Failure waiting for istream to reach stable state before stop");
       stm->state.store(stream_state::ERROR);
       return CUBEB_ERROR;
     }
