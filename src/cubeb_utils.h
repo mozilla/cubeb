@@ -58,7 +58,7 @@ PodZero(T * destination, size_t count)
   memset(destination, 0, count * sizeof(T));
 }
 
-namespace {
+namespace detail {
 template <typename T, typename Trait>
 void
 Copy(T * destination, const T * source, size_t count, Trait)
@@ -74,7 +74,7 @@ Copy(T * destination, const T * source, size_t count, std::true_type)
 {
   PodCopy(destination, source, count);
 }
-} // namespace
+} // namespace detail
 
 /**
  * This allows copying a number of elements from a `source` pointer to a
@@ -86,10 +86,10 @@ void
 Copy(T * destination, const T * source, size_t count)
 {
   assert(destination && source);
-  Copy(destination, source, count, typename std::is_trivial<T>::type());
+  detail::Copy(destination, source, count, typename std::is_trivial<T>::type());
 }
 
-namespace {
+namespace detail {
 template <typename T, typename Trait>
 void
 ConstructDefault(T * destination, size_t count, Trait)
@@ -105,7 +105,7 @@ ConstructDefault(T * destination, size_t count, std::true_type)
 {
   PodZero(destination, count);
 }
-} // namespace
+} // namespace detail
 
 /**
  * This allows zeroing (using memset) or default-constructing a number of
@@ -116,7 +116,8 @@ void
 ConstructDefault(T * destination, size_t count)
 {
   assert(destination);
-  ConstructDefault(destination, count, typename std::is_arithmetic<T>::type());
+  detail::ConstructDefault(destination, count,
+                           typename std::is_arithmetic<T>::type());
 }
 
 template <typename T> class auto_array {
