@@ -1365,6 +1365,7 @@ aaudio_stream_destroy_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
   }
 
   stm->timing_info.invalidate();
+  stm->latency_metrics_available = false;
   stm->previous_clock = 0;
   stm->pos_estimate = {};
 
@@ -1958,6 +1959,19 @@ aaudio_stream_stop_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
   return ret;
 }
 
+// cubeb_stream_get_position must never go backwards.  Clamp to the highest
+// position reported so far, and remember it.  Called with the stream mutex
+// held.
+static void
+clamp_monotonic_position(cubeb_stream * stm, uint64_t * position)
+{
+  if (*position < stm->previous_clock) {
+    *position = stm->previous_clock;
+  } else {
+    stm->previous_clock = *position;
+  }
+}
+
 static int
 aaudio_stream_get_position(cubeb_stream * stm, uint64_t * position)
 {
@@ -1977,11 +1991,7 @@ aaudio_stream_get_position(cubeb_stream * stm, uint64_t * position)
     // getTimestamp is only valid when the stream is playing.
     // Simply return the number of frames passed to aaudio
     *position = init_position + WRAP(AAudioStream_getFramesRead)(stream);
-    if (*position < stm->previous_clock) {
-      *position = stm->previous_clock;
-    } else {
-      stm->previous_clock = *position;
-    }
+    clamp_monotonic_position(stm, position);
     return CUBEB_OK;
   case stream_state::INIT:
     assert(false && "Invalid stream");
@@ -1991,10 +2001,21 @@ aaudio_stream_get_position(cubeb_stream * stm, uint64_t * position)
     break;
   }
 
-  // No callback yet, the stream hasn't really started.
-  if (stm->previous_clock == 0 && !stm->timing_info.updated()) {
-    LOG("Not timing info yet");
-    *position = init_position;
+  // Nothing published into timing_info yet: either no callback has run, or
+  // every callback so far failed to get a timestamp out of AAudio, which
+  // happens around stream start.  Reading it anyway would hand out whatever
+  // the buffer was initialized with.  Fall back to the number of frames
+  // aaudio has consumed, as in the stopped case above.
+  //
+  // Note that previous_clock is not a usable proxy for this: stopping a
+  // stream and asking for its position latches a non-zero previous_clock
+  // from AAudioStream_getFramesRead() without anything having been
+  // published, and AudioTrack::stop() catches framesRead up to framesWritten
+  // even if the hardware never presented a frame.
+  if (!stm->latency_metrics_available) {
+    LOG("No timing info yet");
+    *position = init_position + WRAP(AAudioStream_getFramesRead)(stream);
+    clamp_monotonic_position(stm, position);
     return CUBEB_OK;
   }
 
@@ -2008,11 +2029,7 @@ aaudio_stream_get_position(cubeb_stream * stm, uint64_t * position)
        NS_PER_S);
   *position = init_position + info.output_frame_index + interpolation -
               info.output_latency;
-  if (*position < stm->previous_clock) {
-    *position = stm->previous_clock;
-  } else {
-    stm->previous_clock = *position;
-  }
+  clamp_monotonic_position(stm, position);
 
   LOG("aaudio_stream_get_position: %" PRIu64 " frames", *position);
 

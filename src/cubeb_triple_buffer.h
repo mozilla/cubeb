@@ -71,7 +71,9 @@ private:
     }
     return was_updated;
   }
-  T storage[3];
+  // Value-initialized: read() is reachable before the producer has
+  // published anything, and must not hand out indeterminate values.
+  T storage[3] = {};
   // Mask used to extract back-buffer index
   const uint8_t BACK_INDEX_MASK = 0b11;
   // Bit set by producer to signal updates
