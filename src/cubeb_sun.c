@@ -689,30 +689,6 @@ sun_stream_set_volume(cubeb_stream * stream, float volume)
   return CUBEB_OK;
 }
 
-static int
-sun_get_current_device(cubeb_stream * stream, cubeb_device ** const device)
-{
-  *device = calloc(1, sizeof(cubeb_device));
-  if (*device == NULL) {
-    return CUBEB_ERROR;
-  }
-  (*device)->input_name =
-      stream->record.fd != -1 ? strdup(stream->record.name) : NULL;
-  (*device)->output_name =
-      stream->play.fd != -1 ? strdup(stream->play.name) : NULL;
-  return CUBEB_OK;
-}
-
-static int
-sun_stream_device_destroy(cubeb_stream * stream, cubeb_device * device)
-{
-  (void)stream;
-  free(device->input_name);
-  free(device->output_name);
-  free(device);
-  return CUBEB_OK;
-}
-
 static struct cubeb_ops const sun_ops = {
     .init = sun_init,
     .get_backend_id = sun_get_backend_id,
@@ -732,9 +708,7 @@ static struct cubeb_ops const sun_ops = {
     .stream_get_input_latency = NULL,
     .stream_set_volume = sun_stream_set_volume,
     .stream_set_name = NULL,
-    .stream_get_current_device = sun_get_current_device,
     .stream_set_input_mute = NULL,
     .stream_set_input_processing_params = NULL,
-    .stream_device_destroy = sun_stream_device_destroy,
     .stream_register_device_changed_callback = NULL,
     .register_device_collection_changed = NULL};
