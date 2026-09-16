@@ -1,0 +1,1 @@
+/usr/bin/c++  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/test_audio_dump.dir/link.d CMakeFiles/test_audio_dump.dir/test/test_audio_dump.cpp.o -o test_audio_dump  libcubeb.a lib/libgtest_main.a lib/libgtest.a
