@@ -792,8 +792,8 @@ TEST(cubeb, stop_stream_with_erroring_callback)
     {
       std::lock_guard<std::mutex> lock(state->mutex);
       state->done = true;
+      state->cond.notify_one();
     }
-    state->cond.notify_one();
   }).detach();
 
   bool done;
