@@ -852,6 +852,47 @@ opensl_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
   return CUBEB_OK;
 }
 
+static int
+opensl_get_min_latency(cubeb * ctx, cubeb_stream_params params,
+                       uint32_t * latency_frames)
+{
+  XASSERT(ctx && latency_frames);
+  output_latency_function * ol = ctx->p_output_latency_function;
+  if (!ol || !ol->from_jni) {
+    return CUBEB_ERROR_NOT_SUPPORTED;
+  }
+
+  uint32_t frames = 0;
+  int r = cubeb_get_output_frames_per_buffer_from_jni(ol->from_jni, &frames);
+  if (r != CUBEB_OK) {
+    return r;
+  }
+
+  *latency_frames = frames;
+  LOG("opensl_get_min_latency: %u frames", *latency_frames);
+  return CUBEB_OK;
+}
+
+static int
+opensl_get_preferred_sample_rate(cubeb * ctx, uint32_t * rate)
+{
+  XASSERT(ctx && rate);
+  output_latency_function * ol = ctx->p_output_latency_function;
+  if (!ol || !ol->from_jni) {
+    return CUBEB_ERROR_NOT_SUPPORTED;
+  }
+
+  uint32_t sample_rate = 0;
+  int r = cubeb_get_output_sample_rate_from_jni(ol->from_jni, &sample_rate);
+  if (r != CUBEB_OK) {
+    return r;
+  }
+
+  *rate = sample_rate;
+  LOG("opensl_get_preferred_sample_rate: %uHz", *rate);
+  return CUBEB_OK;
+}
+
 static void
 opensl_destroy(cubeb * ctx)
 {
@@ -1934,8 +1975,8 @@ struct cubeb_ops const opensl_ops = {
     .init = opensl_init,
     .get_backend_id = opensl_get_backend_id,
     .get_max_channel_count = opensl_get_max_channel_count,
-    .get_min_latency = nullptr,
-    .get_preferred_sample_rate = nullptr,
+    .get_min_latency = opensl_get_min_latency,
+    .get_preferred_sample_rate = opensl_get_preferred_sample_rate,
     .get_supported_input_processing_params = nullptr,
     .enumerate_devices = nullptr,
     .device_collection_destroy = nullptr,
