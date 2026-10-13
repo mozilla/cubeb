@@ -9,6 +9,45 @@
 #include "cubeb-jni-instances.h"
 /* clang-format on */
 
+#include "cubeb_android_communication.h"
+
+static cubeb_android_communication communication_mode;
+
+static bool
+clear_pending_exception(JNIEnv * jni_env);
+
+extern "C" int
+cubeb_jni_acquire_communication_mode()
+{
+  JNIEnv * env = cubeb_get_jni_env_for_thread();
+  if (!env) {
+    return CUBEB_ERROR_NOT_SUPPORTED;
+  }
+  jobject context = cubeb_jni_get_context_instance();
+  if (clear_pending_exception(env)) {
+    env->DeleteLocalRef(context);
+    return CUBEB_ERROR;
+  }
+  bool acquired = communication_mode.acquire(env, context);
+  env->DeleteLocalRef(context);
+  return acquired ? CUBEB_OK : CUBEB_ERROR;
+}
+
+extern "C" void
+cubeb_jni_release_communication_mode()
+{
+  communication_mode.release(cubeb_get_jni_env_for_thread());
+}
+
+extern "C" void
+cubeb_jni_refresh_communication_device()
+{
+  JNIEnv * env = cubeb_get_jni_env_for_thread();
+  if (env) {
+    communication_mode.refresh(env);
+  }
+}
+
 #define AUDIO_STREAM_TYPE_MUSIC 3
 
 struct cubeb_jni {

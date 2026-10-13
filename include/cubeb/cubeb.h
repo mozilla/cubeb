@@ -247,7 +247,9 @@ typedef enum {
                  change the audio input or output devices
                  selected, as well as the quality of the stream,
                  for example to accomodate bluetooth SCO modes on
-                 bluetooth devices. */
+                 bluetooth devices. On Android, voice input streams
+                 request communication mode when an application
+                 context is supplied through the JNI integration. */
   CUBEB_STREAM_PREF_RAW =
       0x08, /**< Windows only. Bypass all signal processing
                  except for always on APO, driver and hardware. */
