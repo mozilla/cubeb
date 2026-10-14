@@ -5,6 +5,7 @@
  * accompanying file LICENSE for details.
  */
 #include "cubeb-internal.h"
+#include "cubeb-jni.h"
 #include "cubeb/cubeb.h"
 #include "cubeb_android.h"
 #include "cubeb_log.h"
@@ -364,6 +365,7 @@ struct cubeb_stream {
   unsigned out_frame_size{};
   bool voice_input{};
   bool voice_output{};
+  bool communication_mode_acquired{};
   uint64_t previous_clock{};
   position_estimate pos_estimate;
 };
@@ -1316,6 +1318,10 @@ aaudio_stream_destroy(cubeb_stream * stm)
     std::this_thread::sleep_for(dur);
   }
 
+  if (stm->communication_mode_acquired) {
+    cubeb_jni_release_communication_mode();
+    stm->communication_mode_acquired = false;
+  }
   stm->slot_state.store(slot_state::FREE);
 }
 
@@ -1386,6 +1392,9 @@ aaudio_stream_destroy_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
 static int
 aaudio_stream_init_impl(cubeb_stream * stm, lock_guard<mutex> & lock)
 {
+  if (stm->communication_mode_acquired) {
+    cubeb_jni_refresh_communication_device();
+  }
   assert(stm->state.load() == stream_state::INIT);
 
   cubeb_async_log_reset_threads();
@@ -1647,6 +1656,8 @@ aaudio_stream_init(cubeb * ctx, cubeb_stream ** stream,
                      !!(input_stream_params->prefs & CUBEB_STREAM_PREF_VOICE);
   stm->voice_output = output_stream_params &&
                       !!(output_stream_params->prefs & CUBEB_STREAM_PREF_VOICE);
+  stm->communication_mode_acquired =
+      stm->voice_input && cubeb_jni_acquire_communication_mode() == CUBEB_OK;
   stm->previous_clock = 0;
   stm->latency_frames = latency_frames;
   if (output_stream_params) {

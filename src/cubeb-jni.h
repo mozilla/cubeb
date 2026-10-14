@@ -21,6 +21,12 @@ cubeb_get_output_sample_rate_from_jni(cubeb_jni * cubeb_jni_ptr,
                                       uint32_t * rate);
 void
 cubeb_jni_destroy(cubeb_jni * cubeb_jni_ptr);
+int
+cubeb_jni_acquire_communication_mode();
+void
+cubeb_jni_release_communication_mode();
+void
+cubeb_jni_refresh_communication_device();
 
 #ifdef __cplusplus
 };

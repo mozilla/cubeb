@@ -137,6 +137,7 @@ struct cubeb_stream {
   int64_t lastCompensativePosition;
   int voice_input;
   int voice_output;
+  bool communication_mode_acquired;
   std::unique_ptr<cubeb_stream_params> input_params;
   std::unique_ptr<cubeb_stream_params> output_params;
   // A non-empty buffer means that f32 -> int16 conversion need to happen
@@ -1610,6 +1611,9 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream,
 #endif
   XASSERT(r == 0);
 
+  stm->communication_mode_acquired =
+      stm->voice_input && cubeb_jni_acquire_communication_mode() == CUBEB_OK;
+
   if (output_stream_params) {
     LOG("Playback params: Rate %d, channels %d, format %d, latency in frames "
         "%d.",
@@ -1866,6 +1870,10 @@ opensl_stream_destroy(cubeb_stream * stm)
   }
 
   pthread_mutex_destroy(&stm->mutex);
+
+  if (stm->communication_mode_acquired) {
+    cubeb_jni_release_communication_mode();
+  }
 
   LOG("Cubeb stream (%p) destroyed", stm);
   free(stm);
