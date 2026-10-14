@@ -7,7 +7,7 @@
 #include "cubeb_wasapi_device_switching.h"
 #include "gtest/gtest.h"
 
-TEST(cubeb, device_switching_directions_and_roles)
+TEST(cubeb, wasapi_device_switching_directions_and_roles)
 {
   cubeb_stream_params input = {};
   cubeb_stream_params output = {};
@@ -20,7 +20,7 @@ TEST(cubeb, device_switching_directions_and_roles)
   EXPECT_FALSE(policy.should_switch(CUBEB_DEVICE_TYPE_OUTPUT, true));
 }
 
-TEST(cubeb, device_switching_pinned_sides)
+TEST(cubeb, wasapi_device_switching_pinned_sides)
 {
   cubeb_stream_params input = {};
   cubeb_stream_params output = {};
@@ -50,7 +50,7 @@ TEST(cubeb, device_switching_pinned_sides)
   }
 }
 
-TEST(cubeb, device_switching_single_direction_and_loopback)
+TEST(cubeb, wasapi_device_switching_single_direction_and_loopback)
 {
   cubeb_stream_params params = {};
   wasapi_device_switching_policy input(nullptr, &params, nullptr, nullptr);
