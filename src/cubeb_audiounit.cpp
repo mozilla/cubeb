@@ -26,6 +26,7 @@
 #if !TARGET_OS_IPHONE
 #include "cubeb_osx_run_loop.h"
 #endif
+#include "cubeb_callback.h"
 #include "cubeb_resampler.h"
 #include "cubeb_ring_array.h"
 #include <algorithm>
@@ -254,6 +255,7 @@ struct cubeb_stream {
   atomic<int64_t> frames_written{0};
   atomic<bool> shutdown{true};
   atomic<bool> draining{false};
+  cubeb_callback_state callback_state;
   atomic<bool> reinit_pending{false};
   atomic<bool> destroy_pending{false};
   /* Latency requested by the user. */
@@ -510,6 +512,14 @@ audiounit_render_input(cubeb_stream * stm, AudioUnitRenderActionFlags * flags,
         stm->input_linear_buffer->length() / stm->input_desc.mChannelsPerFrame);
 
   return noErr;
+}
+
+static long
+audiounit_data_callback(cubeb_stream * stm, void * user_ptr, void const * input,
+                        void * output, long frames)
+{
+  return stm->callback_state.call(stm->data_callback, stm, user_ptr, input,
+                                  output, frames);
 }
 
 static OSStatus
@@ -2590,6 +2600,48 @@ audiounit_configure_output(cubeb_stream * stm)
 }
 
 static int
+audiounit_create_resampler(cubeb_stream * stm)
+{
+  /* We use a resampler because input AudioUnit operates
+   * reliable only in the capture device sample rate.
+   * Resampler will convert it to the user sample rate
+   * and deliver it to the callback. */
+  uint32_t target_sample_rate;
+  if (has_input(stm)) {
+    target_sample_rate = stm->input_stream_params.rate;
+  } else {
+    assert(has_output(stm));
+    target_sample_rate = stm->output_stream_params.rate;
+  }
+
+  cubeb_stream_params input_unconverted_params;
+  if (has_input(stm)) {
+    input_unconverted_params = stm->input_stream_params;
+    /* Use the rate of the input device. */
+    input_unconverted_params.rate = stm->input_hw_rate;
+  }
+
+  cubeb_stream_params output_unconverted_params;
+  if (has_output(stm)) {
+    output_unconverted_params = stm->output_stream_params;
+    output_unconverted_params.rate = stm->output_desc.mSampleRate;
+  }
+
+  /* Create resampler. */
+  stm->resampler.reset(cubeb_resampler_create(
+      stm, has_input(stm) ? &input_unconverted_params : NULL,
+      has_output(stm) ? &output_unconverted_params : NULL, target_sample_rate,
+      audiounit_data_callback, stm->user_ptr, CUBEB_RESAMPLER_QUALITY_DESKTOP,
+      CUBEB_RESAMPLER_RECLOCK_NONE));
+  if (!stm->resampler) {
+    LOG("(%p) Could not create resampler.", stm);
+    return CUBEB_ERROR;
+  }
+
+  return CUBEB_OK;
+}
+
+static int
 audiounit_setup_stream(cubeb_stream * stm)
 {
   stm->mutex.assert_current_thread_owns();
@@ -2712,39 +2764,7 @@ audiounit_setup_stream(cubeb_stream * stm)
 #endif
 #endif
 
-  /* We use a resampler because input AudioUnit operates
-   * reliable only in the capture device sample rate.
-   * Resampler will convert it to the user sample rate
-   * and deliver it to the callback. */
-  uint32_t target_sample_rate;
-  if (has_input(stm)) {
-    target_sample_rate = stm->input_stream_params.rate;
-  } else {
-    assert(has_output(stm));
-    target_sample_rate = stm->output_stream_params.rate;
-  }
-
-  cubeb_stream_params input_unconverted_params;
-  if (has_input(stm)) {
-    input_unconverted_params = stm->input_stream_params;
-    /* Use the rate of the input device. */
-    input_unconverted_params.rate = stm->input_hw_rate;
-  }
-
-  cubeb_stream_params output_unconverted_params;
-  if (has_output(stm)) {
-    output_unconverted_params = stm->output_stream_params;
-    output_unconverted_params.rate = stm->output_desc.mSampleRate;
-  }
-
-  /* Create resampler. */
-  stm->resampler.reset(cubeb_resampler_create(
-      stm, has_input(stm) ? &input_unconverted_params : NULL,
-      has_output(stm) ? &output_unconverted_params : NULL, target_sample_rate,
-      stm->data_callback, stm->user_ptr, CUBEB_RESAMPLER_QUALITY_DESKTOP,
-      CUBEB_RESAMPLER_RECLOCK_NONE));
-  if (!stm->resampler) {
-    LOG("(%p) Could not create resampler.", stm);
+  if (audiounit_create_resampler(stm) != CUBEB_OK) {
     return CUBEB_ERROR;
   }
 
@@ -2980,6 +3000,14 @@ static int
 audiounit_stream_start(cubeb_stream * stm)
 {
   auto_lock context_lock(stm->context->mutex);
+  if (stm->callback_state.draining() || stm->callback_state.failed()) {
+    audiounit_stream_stop_internal(stm);
+    auto_lock lock(stm->mutex);
+    if (audiounit_create_resampler(stm) != CUBEB_OK) {
+      return CUBEB_ERROR;
+    }
+    stm->callback_state.reset();
+  }
   stm->shutdown = false;
   stm->draining = false;
 
