@@ -2105,7 +2105,8 @@ initialize_iaudioclient2(com_ptr<IAudioClient> & audio_client,
   }
   AudioClientProperties properties = {};
   properties.cbSize = sizeof(AudioClientProperties);
-#ifndef __MINGW32__
+#if !defined(__MINGW32__) ||                                                   \
+    (defined(__MINGW64_VERSION_MAJOR) && __MINGW64_VERSION_MAJOR >= 8)
   if (option == CUBEB_AUDIO_CLIENT2_RAW) {
     properties.Options |= AUDCLNT_STREAMOPTIONS_RAW;
   } else if (option == CUBEB_AUDIO_CLIENT2_VOICE) {
