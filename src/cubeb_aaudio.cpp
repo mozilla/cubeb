@@ -7,6 +7,7 @@
 #include "cubeb-internal.h"
 #include "cubeb/cubeb.h"
 #include "cubeb_android.h"
+#include "cubeb_callback.h"
 #include "cubeb_log.h"
 #include "cubeb_resampler.h"
 #include "cubeb_triple_buffer.h"
@@ -154,6 +155,9 @@ aaudio_stream_start_locked(cubeb_stream * stm, lock_guard<mutex> & lock);
 static void
 reinitialize_stream(cubeb_stream * stm);
 
+uint64_t
+now_ns();
+
 enum class stream_state {
   INIT = 0,
   STOPPED,
@@ -216,6 +220,9 @@ public:
   // Called with the current time when stopping the stream.
   void stop(uint64_t timestamp)
   {
+    if (in_state<None>() || in_state<Pause>()) {
+      return;
+    }
     assert(in_state<Play>() || in_state<Resume>());
     // Change to Pause and save the current time in it. Timestamp offset by the
     // elapsed time in previous Pause if stream stops again before any callback
@@ -342,6 +349,11 @@ struct cubeb_stream {
   AAudioStream * istream{};
   cubeb_data_callback data_callback{};
   cubeb_state_callback state_callback{};
+  // Draining must work across stream reinitialization, even if the resampler
+  // still has enough buffered output to return a full buffer after a short
+  // application callback return. Only an explicit stream start may enable
+  // application callbacks again.
+  cubeb_callback_state callback_state;
   cubeb_resampler * resampler{};
 
   // mutex synchronizes access to the stream from the state thread
@@ -648,7 +660,8 @@ update_state(cubeb_stream * stm)
       // for a duplex stream.
       // Therefor it is important to close ostream first.
       if (ostate && ostate != AAUDIO_STREAM_STATE_STOPPING &&
-          ostate != AAUDIO_STREAM_STATE_STOPPED) {
+          ostate != AAUDIO_STREAM_STATE_STOPPED &&
+          ostate != AAUDIO_STREAM_STATE_OPEN) {
         LOGV("Output stream DRAINING. Stopping.");
         aaudio_result_t res = WRAP(AAudioStream_requestStop)(stm->ostream);
         if (res != AAUDIO_OK) {
@@ -658,7 +671,8 @@ update_state(cubeb_stream * stm)
         }
       }
       if (istate && istate != AAUDIO_STREAM_STATE_STOPPING &&
-          istate != AAUDIO_STREAM_STATE_STOPPED) {
+          istate != AAUDIO_STREAM_STATE_STOPPED &&
+          istate != AAUDIO_STREAM_STATE_OPEN) {
         LOGV("Input stream DRAINING. Stopping");
         aaudio_result_t res = WRAP(AAudioStream_requestStop)(stm->istream);
         if (res != AAUDIO_OK) {
@@ -673,9 +687,13 @@ update_state(cubeb_stream * stm)
       // our logical state to STOPPED, not triggering
       // an additional CUBEB_STATE_STOPPED callback (which might
       // be unexpected for the user).
-      if ((!ostate || ostate == AAUDIO_STREAM_STATE_STOPPED) &&
-          (!istate || istate == AAUDIO_STREAM_STATE_STOPPED)) {
+      // A replacement device that was never started has nothing to drain.
+      if ((!ostate || ostate == AAUDIO_STREAM_STATE_STOPPED ||
+           ostate == AAUDIO_STREAM_STATE_OPEN) &&
+          (!istate || istate == AAUDIO_STREAM_STATE_STOPPED ||
+           istate == AAUDIO_STREAM_STATE_OPEN)) {
         new_state = stream_state::STOPPED;
+        stm->pos_estimate.stop(now_ns());
         stm->drain_target.store(-1);
         stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
       }
@@ -942,6 +960,14 @@ compute_and_report_latency_metrics(cubeb_stream * stm)
   }
 }
 
+static long
+aaudio_data_cb(cubeb_stream * stm, void * user_ptr, void const * input_buffer,
+               void * output_buffer, long nframes)
+{
+  return stm->callback_state.call(stm->data_callback, stm, user_ptr,
+                                  input_buffer, output_buffer, nframes);
+}
+
 // Returning AAUDIO_CALLBACK_RESULT_STOP seems to put the stream in
 // an invalid state. Seems like an AAudio bug/bad documentation.
 // We therefore only return it on error.
@@ -1178,11 +1204,21 @@ reinitialize_stream(cubeb_stream * stm)
     }
 
     stream_state state = stm->state.load();
+    if (state == stream_state::ERROR || state == stream_state::SHUTDOWN) {
+      return;
+    }
     bool was_playing = state == stream_state::STARTED ||
                        state == stream_state::STARTING ||
                        state == stream_state::DRAINING;
     int err = aaudio_stream_stop_locked(stm, lock);
-    // Error ignored.
+    // Stopping a disconnected device may fail, which recovery can ignore.
+    // A callback error must survive replacement of the device and resampler.
+    if (stm->callback_state.failed()) {
+      stm->state.store(stream_state::ERROR);
+      stm->context->state.waiting.store(true);
+      stm->context->state.cond.notify_one();
+      return;
+    }
 
     // Get total number of written frames before destroying the stream.
     uint64_t total_frames = stm->pos_estimate.initial_position();
@@ -1211,8 +1247,18 @@ reinitialize_stream(cubeb_stream * stm)
     }
 
     if (was_playing) {
-      err = aaudio_stream_start_locked(stm, lock);
+      // requestStart may run a callback immediately. Clear the old target
+      // before starting so that we don't overwrite a new drain request.
       stm->drain_target.store(-1);
+      if (stm->callback_state.draining()) {
+        // Buffered audio on the old device was lost. Finish the pending drain
+        // without restarting playback or emitting another STARTED callback.
+        stm->state.store(stream_state::DRAINING);
+        stm->context->state.waiting.store(true);
+        stm->context->state.cond.notify_one();
+        return;
+      }
+      err = aaudio_stream_start_locked(stm, lock);
       if (err != CUBEB_OK) {
         aaudio_stream_destroy_locked(stm, lock);
         LOG("aaudio_stream_start error while reiniting: %s",
@@ -1383,6 +1429,31 @@ aaudio_stream_destroy_locked(cubeb_stream * stm, lock_guard<mutex> & lock)
   stm->state.store(stream_state::INIT);
 }
 
+// Called with callbacks stopped, both at initialization and explicit restart.
+static int
+aaudio_reset_resampler(cubeb_stream * stm)
+{
+  cubeb_stream_params in_params{};
+  cubeb_stream_params out_params{};
+  if (stm->istream) {
+    in_params = *stm->input_stream_params;
+    in_params.rate = WRAP(AAudioStream_getSampleRate)(stm->istream);
+  }
+  if (stm->ostream) {
+    out_params = *stm->output_stream_params;
+    out_params.rate = WRAP(AAudioStream_getSampleRate)(stm->ostream);
+  }
+  if (stm->resampler) {
+    cubeb_resampler_destroy(stm->resampler);
+  }
+  stm->resampler = cubeb_resampler_create(
+      stm, stm->input_stream_params ? &in_params : nullptr,
+      stm->output_stream_params ? &out_params : nullptr, stm->sample_rate,
+      aaudio_data_cb, stm->user_ptr, CUBEB_RESAMPLER_QUALITY_DEFAULT,
+      CUBEB_RESAMPLER_RECLOCK_NONE);
+  return stm->resampler ? CUBEB_OK : CUBEB_ERROR;
+}
+
 static int
 aaudio_stream_init_impl(cubeb_stream * stm, lock_guard<mutex> & lock)
 {
@@ -1444,7 +1515,6 @@ aaudio_stream_init_impl(cubeb_stream * stm, lock_guard<mutex> & lock)
 
   // initialize streams
   // output
-  cubeb_stream_params out_params;
   if (stm->output_stream_params) {
     int output_preset = stm->voice_output ? AAUDIO_USAGE_VOICE_COMMUNICATION
                                           : AAUDIO_USAGE_MEDIA;
@@ -1497,8 +1567,6 @@ aaudio_stream_init_impl(cubeb_stream * stm, lock_guard<mutex> & lock)
     LOG("AAudio output stream sample-rate: %d", rate);
 
     stm->sample_rate = stm->output_stream_params->rate;
-    out_params = *stm->output_stream_params;
-    out_params.rate = rate;
 
     stm->out_channels = stm->output_stream_params->channels;
     stm->out_format = stm->output_stream_params->format;
@@ -1507,7 +1575,6 @@ aaudio_stream_init_impl(cubeb_stream * stm, lock_guard<mutex> & lock)
   }
 
   // input
-  cubeb_stream_params in_params;
   if (stm->input_stream_params) {
     // Match what the OpenSL backend does for now, we could use UNPROCESSED and
     // VOICE_COMMUNICATION here, but we'd need to make it clear that
@@ -1568,19 +1635,10 @@ aaudio_stream_init_impl(cubeb_stream * stm, lock_guard<mutex> & lock)
            stm->sample_rate == stm->input_stream_params->rate);
 
     stm->sample_rate = stm->input_stream_params->rate;
-    in_params = *stm->input_stream_params;
-    in_params.rate = rate;
     stm->in_frame_size = frame_size;
   }
 
-  // initialize resampler
-  stm->resampler = cubeb_resampler_create(
-      stm, stm->input_stream_params ? &in_params : nullptr,
-      stm->output_stream_params ? &out_params : nullptr, stm->sample_rate,
-      stm->data_callback, stm->user_ptr, CUBEB_RESAMPLER_QUALITY_DEFAULT,
-      CUBEB_RESAMPLER_RECLOCK_NONE);
-
-  if (!stm->resampler) {
+  if (aaudio_reset_resampler(stm) != CUBEB_OK) {
     LOG("Failed to create resampler");
     return CUBEB_ERROR;
   }
@@ -1643,6 +1701,7 @@ aaudio_stream_init(cubeb * ctx, cubeb_stream ** stream,
   stm->user_ptr = user_ptr;
   stm->data_callback = data_callback;
   stm->state_callback = state_callback;
+  stm->callback_state.reset();
   stm->voice_input = input_stream_params &&
                      !!(input_stream_params->prefs & CUBEB_STREAM_PREF_VOICE);
   stm->voice_output = output_stream_params &&
@@ -1688,6 +1747,44 @@ static int
 aaudio_stream_start(cubeb_stream * stm)
 {
   lock_guard lock(stm->mutex);
+  stream_state state = stm->state.load();
+  if ((state == stream_state::STOPPED || state == stream_state::STOPPING ||
+       state == stream_state::DRAINING) &&
+      stm->callback_state.draining()) {
+    // Draining callbacks can still be running. Quiesce them before replacing
+    // the resampler, which retains its own drain state and buffered samples.
+    for (AAudioStream * stream : {stm->ostream, stm->istream}) {
+      if (!stream) {
+        continue;
+      }
+      aaudio_stream_state_t device_state;
+      int rv =
+          wait_for_stable_state(stream, &device_state, 10 * NS_PER_S / 1000);
+      if (rv == CUBEB_OK && device_state == AAUDIO_STREAM_STATE_STARTED) {
+        rv = WRAP(AAudioStream_requestStop)(stream);
+        if (rv == AAUDIO_OK) {
+          rv = wait_for_stable_state(stream, &device_state,
+                                     10 * NS_PER_S / 1000);
+        }
+      }
+      if (rv != CUBEB_OK) {
+        stm->state.store(stream_state::ERROR);
+        stm->context->state.waiting.store(true);
+        stm->context->state.cond.notify_one();
+        return CUBEB_ERROR;
+      }
+    }
+    if (aaudio_reset_resampler(stm) != CUBEB_OK) {
+      stm->state.store(stream_state::ERROR);
+      stm->context->state.waiting.store(true);
+      stm->context->state.cond.notify_one();
+      return CUBEB_ERROR;
+    }
+    stm->pos_estimate.stop(now_ns());
+    stm->drain_target.store(-1);
+    stm->state.store(stream_state::STOPPED);
+    stm->callback_state.reset();
+  }
   return aaudio_stream_start_locked(stm, lock);
 }
 

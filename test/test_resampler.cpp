@@ -9,6 +9,7 @@
 #endif // NOMINMAX
 #include "cubeb/cubeb.h"
 #include "cubeb_audio_dump.h"
+#include "cubeb_callback.h"
 #include "cubeb_log.h"
 #include "cubeb_resampler.h"
 // #define ENABLE_NORMAL_LOG
@@ -1902,3 +1903,113 @@ TEST(cubeb, resampler_typical_uses)
 }
 #undef NOMINMAX
 #undef DUMP_ARRAYS
+
+// Exercise the stream-owned callback state with real resamplers. Device
+// recovery replaces the resampler, but must retain the application's drain.
+struct drain_callback_context {
+  cubeb_callback_state state;
+  int callbacks = 0;
+  bool short_return = false;
+  bool zero_return = false;
+  bool error = false;
+
+  static long data(cubeb_stream *, void * user, void const *, void * output,
+                   long frames)
+  {
+    auto & self = *static_cast<drain_callback_context *>(user);
+    ++self.callbacks;
+    if (self.error) {
+      return CUBEB_ERROR;
+    }
+    if (output) {
+      std::fill_n(static_cast<float *>(output), frames, 0.0f);
+    }
+    return self.short_return ? (self.zero_return ? 0 : frames - 1) : frames;
+  }
+
+  static long callback(cubeb_stream * stream, void * user, void const * input,
+                       void * output, long frames)
+  {
+    auto & self = *static_cast<drain_callback_context *>(user);
+    return self.state.call(data, stream, user, input, output, frames);
+  }
+};
+
+TEST(cubeb, callback_drain_survives_resampler_replacement)
+{
+  for (uint32_t rate : {48000, 44100}) {
+    for (int direction = 0; direction < 3; ++direction) {
+      for (bool zero : {false, true}) {
+        SCOPED_TRACE(rate);
+        SCOPED_TRACE(direction);
+        SCOPED_TRACE(zero);
+        drain_callback_context context;
+        context.zero_return = zero;
+        cubeb_stream_params params{};
+        params.format = CUBEB_SAMPLE_FLOAT32NE;
+        params.channels = 1;
+        params.layout = CUBEB_LAYOUT_MONO;
+        params.rate = rate;
+        bool input = direction != 0;
+        bool output = direction != 1;
+        auto create = [&] {
+          return std::unique_ptr<cubeb_resampler,
+                                 decltype(&cubeb_resampler_destroy)>(
+              cubeb_resampler_create(nullptr, input ? &params : nullptr,
+                                     output ? &params : nullptr, 48000,
+                                     drain_callback_context::callback, &context,
+                                     CUBEB_RESAMPLER_QUALITY_DEFAULT,
+                                     CUBEB_RESAMPLER_RECLOCK_NONE),
+              cubeb_resampler_destroy);
+        };
+        float in[128] = {};
+        float out[128] = {};
+        auto resampler = create();
+        ASSERT_NE(resampler.get(), nullptr);
+        auto fill = [&] {
+          long frames = 128;
+          return cubeb_resampler_fill(resampler.get(), input ? in : nullptr,
+                                      input ? &frames : nullptr,
+                                      output ? out : nullptr, output ? 128 : 0);
+        };
+        EXPECT_EQ(fill(), 128);
+        context.short_return = true;
+        long written = fill();
+        ASSERT_EQ(context.callbacks, 2);
+        EXPECT_TRUE(context.state.draining());
+        if (output && rate == 44100 && !zero) {
+          // A backend looking only at this result misses the short return.
+          EXPECT_EQ(written, 128);
+        }
+        resampler = create();
+        ASSERT_NE(resampler.get(), nullptr);
+        for (int i = 0; i < 4; ++i) {
+          EXPECT_EQ(fill(), 0);
+        }
+        EXPECT_EQ(context.callbacks, 2);
+        // An explicit restart resets both pieces of drain state.
+        context.short_return = false;
+        context.state.reset();
+        resampler = create();
+        ASSERT_NE(resampler.get(), nullptr);
+        EXPECT_EQ(fill(), 128);
+        EXPECT_EQ(context.callbacks, 3);
+      }
+    }
+  }
+}
+
+TEST(cubeb, callback_error_is_not_a_drain)
+{
+  drain_callback_context context;
+  context.error = true;
+  EXPECT_EQ(context.state.call(drain_callback_context::data, nullptr, &context,
+                               nullptr, nullptr, 128),
+            CUBEB_ERROR);
+  EXPECT_FALSE(context.state.draining());
+  EXPECT_TRUE(context.state.failed());
+  EXPECT_EQ(context.state.call(drain_callback_context::data, nullptr, &context,
+                               nullptr, nullptr, 128),
+            CUBEB_ERROR);
+  EXPECT_EQ(context.callbacks, 1);
+}
