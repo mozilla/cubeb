@@ -315,11 +315,14 @@ endif()
 check_include_files(SLES/OpenSLES.h USE_OPENSL)
 if(USE_OPENSL)
   target_sources(cubeb PRIVATE
-    src/cubeb_opensl.cpp
-    src/cubeb-jni.cpp)
+    src/cubeb_opensl.cpp)
   target_compile_definitions(cubeb PRIVATE USE_OPENSL)
   target_link_libraries(cubeb PRIVATE OpenSLES)
   list(APPEND private_libs OpenSLES)
+endif()
+
+if(USE_OPENSL OR USE_AAUDIO)
+  target_sources(cubeb PRIVATE src/cubeb-jni.cpp)
 endif()
 
 check_include_files(sys/soundcard.h HAVE_SYS_SOUNDCARD_H)
@@ -466,6 +469,10 @@ if(BUILD_TESTS)
   cubeb_add_test(utils)
   cubeb_add_test(ring_buffer)
   cubeb_add_test(device_changed_callback)
+
+  if(USE_OPENSL OR USE_AAUDIO)
+    cubeb_add_test(android_communication)
+  endif()
 endif()
 
 if(BUILD_TOOLS)
