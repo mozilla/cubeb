@@ -62,12 +62,9 @@ struct cubeb_ops {
   int (*stream_get_input_latency)(cubeb_stream * stream, uint32_t * latency);
   int (*stream_set_volume)(cubeb_stream * stream, float volumes);
   int (*stream_set_name)(cubeb_stream * stream, char const * stream_name);
-  int (*stream_get_current_device)(cubeb_stream * stream,
-                                   cubeb_device ** const device);
   int (*stream_set_input_mute)(cubeb_stream * stream, int mute);
   int (*stream_set_input_processing_params)(
       cubeb_stream * stream, cubeb_input_processing_params params);
-  int (*stream_device_destroy)(cubeb_stream * stream, cubeb_device * device);
   int (*stream_register_device_changed_callback)(
       cubeb_stream * stream,
       cubeb_device_changed_callback device_changed_callback);
