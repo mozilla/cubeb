@@ -2057,11 +2057,16 @@ handle_channel_layout(cubeb_stream * stm, EDataFlow direction,
    * later. */
   WAVEFORMATEXTENSIBLE hw_mix_format = *format_pcm;
 
-  /* Get the channel mask by the channel layout.
-     If the layout is not supported, we will get a closest settings below. */
-  format_pcm->dwChannelMask = stream_params->layout;
-  mix_format->nChannels = stream_params->channels;
-  waveformatex_update_derived_properties(mix_format.get());
+  /* For capture, ask for the stream's channel layout. If the layout is not
+     supported, we will get a closest settings below. For render, keep the
+     engine's own channel layout: the output mixer maps the stream layout onto
+     it, which avoids depending on how an audio enhancement (APO) handles a
+     layout it did not expose. */
+  if (direction == eCapture) {
+    format_pcm->dwChannelMask = stream_params->layout;
+    mix_format->nChannels = stream_params->channels;
+    waveformatex_update_derived_properties(mix_format.get());
+  }
 
   /* Check if wasapi will accept our channel layout request. */
   WAVEFORMATEX * tmp = nullptr;
