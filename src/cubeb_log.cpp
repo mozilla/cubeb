@@ -173,7 +173,7 @@ cubeb_log_internal(char const * file, uint32_t line, char const * fmt, ...)
 void
 cubeb_log_internal_no_format(const char * msg)
 {
-  g_cubeb_log_callback.load()(msg);
+  g_cubeb_log_callback.load()("%s", msg);
 }
 
 void
