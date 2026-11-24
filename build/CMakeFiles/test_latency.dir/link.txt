@@ -1,0 +1,1 @@
+/usr/bin/c++  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/test_latency.dir/link.d CMakeFiles/test_latency.dir/test/test_latency.cpp.o -o test_latency  libcubeb.a lib/libgtest_main.a lib/libgtest.a

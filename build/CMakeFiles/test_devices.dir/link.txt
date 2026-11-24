@@ -1,0 +1,1 @@
+/usr/bin/c++  -Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/test_devices.dir/link.d CMakeFiles/test_devices.dir/test/test_devices.cpp.o -o test_devices  libcubeb.a lib/libgtest_main.a lib/libgtest.a
