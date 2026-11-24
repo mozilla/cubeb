@@ -24,6 +24,6 @@ caller behavior, platform, backend, and practical impact.
 
 ## Testing
 
-Run `.oss-scanner/test.sh` in the Linux image to test without audio hardware.
-The suite uses Rust PulseAudio and runs the stream device-change registration
-test with the C PulseAudio backend, as in the standard Linux CI build.
+Run `.oss-scanner/test.sh` in the Linux image to test Rust PulseAudio without
+audio hardware. The suite skips the stream device-change callback registration
+test because Rust PulseAudio leaves that operation unimplemented.
