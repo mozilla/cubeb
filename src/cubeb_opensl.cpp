@@ -24,6 +24,7 @@
 #endif
 #include "android/cubeb-output-latency.h"
 #include "cubeb-internal.h"
+#include "cubeb-jni.h"
 #include "cubeb/cubeb.h"
 #include "cubeb_android.h"
 #include "cubeb_array_queue.h"
@@ -1099,7 +1100,9 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
           LOG("Failed to create recorder, not trying other input"
               " rate. Error code: %u",
               res);
-          return CUBEB_ERROR;
+          return res == SL_RESULT_PERMISSION_DENIED
+                     ? CUBEB_ERROR_PERMISSION_DENIED
+                     : CUBEB_ERROR;
         }
         // It's always possible to use int16 regardless of the Android version.
         // However if compiling for older Android version, it's possible to
@@ -1159,7 +1162,8 @@ opensl_configure_capture(cubeb_stream * stm, cubeb_stream_params * params)
   res = (*stm->recorderObj)->Realize(stm->recorderObj, SL_BOOLEAN_FALSE);
   if (res != SL_RESULT_SUCCESS) {
     LOG("Failed to realize recorder. Error code: %u", res);
-    return CUBEB_ERROR;
+    return res == SL_RESULT_PERMISSION_DENIED ? CUBEB_ERROR_PERMISSION_DENIED
+                                              : CUBEB_ERROR;
   }
   // get the record interface
   res = (*stm->recorderObj)
@@ -1569,6 +1573,12 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream,
     LOG("Input stream params not valid");
     return r;
   }
+
+#if defined(__ANDROID__)
+  if (input_stream_params && cubeb_jni_record_audio_permission_denied()) {
+    return CUBEB_ERROR_PERMISSION_DENIED;
+  }
+#endif
 
   stm = reinterpret_cast<cubeb_stream *>(calloc(1, sizeof(*stm)));
   XASSERT(stm);
