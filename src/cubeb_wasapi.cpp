@@ -41,6 +41,7 @@
 #include "cubeb_strings.h"
 #include "cubeb_tracing.h"
 #include "cubeb_utils.h"
+#include "cubeb_wasapi_device_switching.h"
 
 // Windows 10 exposes the IAudioClient3 interface to create low-latency streams.
 // Copy the interface definition from audioclient.h here to make the code
@@ -363,8 +364,6 @@ struct cubeb_stream {
       CUBEB_LAYOUT_UNDEFINED,
       CUBEB_STREAM_PREF_NONE,
       CUBEB_INPUT_PROCESSING_PARAM_NONE};
-  /* A MMDevice role for this stream: either communication or console here. */
-  ERole role;
   /* True if this stream will transport voice-data. */
   bool voice;
   /* True if the input device of this stream is using bluetooth handsfree. */
@@ -757,8 +756,9 @@ public:
     return S_OK;
   }
 
-  wasapi_endpoint_notification_client(HANDLE event, ERole role)
-      : ref_count(1), reconfigure_event(event), role(role)
+  wasapi_endpoint_notification_client(
+      HANDLE event, wasapi_device_switching_policy const & policy)
+      : ref_count(1), reconfigure_event(event), policy(policy)
   {
   }
 
@@ -771,8 +771,11 @@ public:
         "new_device_id=%S.",
         flow, role, device_id);
 
-    /* we only support a single stream type for now. */
-    if (flow != eRender || role != this->role) {
+    if ((role != eConsole && role != eCommunications) ||
+        (flow != eRender && flow != eCapture) ||
+        !policy.should_switch(flow == eRender ? CUBEB_DEVICE_TYPE_OUTPUT
+                                              : CUBEB_DEVICE_TYPE_INPUT,
+                              role == eCommunications)) {
       return S_OK;
     }
 
@@ -818,7 +821,7 @@ private:
   /* refcount for this instance, necessary to implement MSCOM semantics. */
   LONG ref_count;
   HANDLE reconfigure_event;
-  ERole role;
+  wasapi_device_switching_policy policy;
 };
 
 class wasapi_session_notification_client : public IAudioSessionEvents {
@@ -1641,7 +1644,13 @@ register_notification_client(cubeb_stream * stm)
   XASSERT(stm->device_enumerator && !stm->notification_client);
 
   stm->notification_client.reset(new wasapi_endpoint_notification_client(
-      stm->reconfigure_event, stm->role));
+      stm->reconfigure_event,
+      wasapi_device_switching_policy(
+          stm->input_device_id.get(),
+          has_input(stm) ? &stm->input_stream_params : nullptr,
+          stm->output_device_id.get(),
+          has_output(stm) && !stm->has_dummy_output ? &stm->output_stream_params
+                                                    : nullptr)));
 
   HRESULT hr = stm->device_enumerator->RegisterEndpointNotificationCallback(
       stm->notification_client.get());
@@ -2815,7 +2824,6 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
   stm->data_callback = data_callback;
   stm->state_callback = state_callback;
   stm->user_ptr = user_ptr;
-  stm->role = eConsole;
   stm->input_bluetooth_handsfree = false;
 
   HRESULT hr =
@@ -2910,14 +2918,35 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
     return rv;
   }
 
+  auto pin_device = [](cubeb_stream_params const * params,
+                       com_ptr<IMMDevice> const & device,
+                       std::unique_ptr<const wchar_t[]> & id) {
+    if (!params || id ||
+        !(params->prefs & CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING)) {
+      return CUBEB_OK;
+    }
+    wchar_t * tmp = nullptr;
+    HRESULT hr = device->GetId(&tmp);
+    com_heap_ptr<wchar_t> device_id(tmp);
+    if (FAILED(hr)) {
+      return CUBEB_ERROR;
+    }
+    id = copy_wide_string(device_id.get());
+    return id ? CUBEB_OK : CUBEB_ERROR;
+  };
+  if (pin_device(input_stream_params, stm->input_device,
+                 stm->input_device_id) != CUBEB_OK ||
+      pin_device(output_stream_params, stm->output_device,
+                 stm->output_device_id) != CUBEB_OK) {
+    LOG("Failed to pin default device with switching disabled.");
+    return CUBEB_ERROR;
+  }
+
   // Follow the system default devices when not specifying devices explicitly
   // and CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING is not set.
-  if ((!input_device && input_stream_params &&
-       !(input_stream_params->prefs &
-         CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING)) ||
-      (!output_device && output_stream_params &&
-       !(output_stream_params->prefs &
-         CUBEB_STREAM_PREF_DISABLE_DEVICE_SWITCHING))) {
+  if (wasapi_device_switching_policy(input_device, input_stream_params,
+                                     output_device, output_stream_params)
+          .follows_any_default()) {
     LOG("Follow the system default input or/and output devices");
     HRESULT hr = register_notification_client(stm);
     if (FAILED(hr)) {
