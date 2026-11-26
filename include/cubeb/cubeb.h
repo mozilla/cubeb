@@ -247,7 +247,19 @@ typedef enum {
                  change the audio input or output devices
                  selected, as well as the quality of the stream,
                  for example to accomodate bluetooth SCO modes on
-                 bluetooth devices. */
+                 bluetooth devices.
+                 On Android, when an application context is
+                 supplied through the JNI integration, a voice
+                 input stream selects a communication device
+                 (wired/USB headset, then BLE headset, then
+                 Bluetooth SCO headset) for as long as at least
+                 one such stream exists. This is device-wide, not
+                 limited to the stream: it sets the route of every
+                 application's communication audio, and when a
+                 Bluetooth SCO headset is selected, other
+                 applications' media playing on that headset also
+                 moves from A2DP to the SCO link. The audio mode
+                 is not changed. */
   CUBEB_STREAM_PREF_RAW =
       0x08, /**< Windows only. Bypass all signal processing
                  except for always on APO, driver and hardware. */
