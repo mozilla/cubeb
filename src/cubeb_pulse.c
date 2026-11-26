@@ -1525,41 +1525,6 @@ pulse_device_collection_destroy(cubeb * ctx,
   return CUBEB_OK;
 }
 
-static int
-pulse_stream_get_current_device(cubeb_stream * stm,
-                                cubeb_device ** const device)
-{
-#if PA_CHECK_VERSION(0, 9, 8)
-  *device = calloc(1, sizeof(cubeb_device));
-  if (*device == NULL)
-    return CUBEB_ERROR;
-
-  if (stm->input_stream) {
-    const char * name = WRAP(pa_stream_get_device_name)(stm->input_stream);
-    (*device)->input_name = (name == NULL) ? NULL : strdup(name);
-  }
-
-  if (stm->output_stream) {
-    const char * name = WRAP(pa_stream_get_device_name)(stm->output_stream);
-    (*device)->output_name = (name == NULL) ? NULL : strdup(name);
-  }
-
-  return CUBEB_OK;
-#else
-  return CUBEB_ERROR_NOT_SUPPORTED;
-#endif
-}
-
-static int
-pulse_stream_device_destroy(cubeb_stream * stream, cubeb_device * device)
-{
-  (void)stream;
-  free(device->input_name);
-  free(device->output_name);
-  free(device);
-  return CUBEB_OK;
-}
-
 static void
 pulse_subscribe_callback(pa_context * ctx, pa_subscription_event_type_t t,
                          uint32_t index, void * userdata)
@@ -1703,10 +1668,8 @@ static struct cubeb_ops const pulse_ops = {
     .stream_get_input_latency = NULL,
     .stream_set_volume = pulse_stream_set_volume,
     .stream_set_name = pulse_stream_set_name,
-    .stream_get_current_device = pulse_stream_get_current_device,
     .stream_set_input_mute = NULL,
     .stream_set_input_processing_params = NULL,
-    .stream_device_destroy = pulse_stream_device_destroy,
     .stream_register_device_changed_callback = NULL,
     .register_device_collection_changed =
         pulse_register_device_collection_changed};
