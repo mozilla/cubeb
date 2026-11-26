@@ -444,6 +444,10 @@ if(BUILD_TESTS)
   cubeb_add_test(devices)
   cubeb_add_test(callback_ret)
 
+  if(USE_AAUDIO)
+    cubeb_add_test(aaudio)
+  endif()
+
   add_executable(test_resampler test/test_resampler.cpp src/cubeb_resampler.cpp src/cubeb_log.cpp)
   target_include_directories(test_resampler PRIVATE ${gtest_SOURCE_DIR}/include src)
   target_link_libraries(test_resampler PRIVATE cubeb gtest_main speex)

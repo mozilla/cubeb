@@ -36,6 +36,7 @@
 
 #include "cubeb-internal.h"
 #include "cubeb/cubeb.h"
+#include "cubeb_callback.h"
 #include "cubeb_mixer.h"
 #include "cubeb_resampler.h"
 #include "cubeb_strings.h"
@@ -468,6 +469,7 @@ struct cubeb_stream {
   float volume = 1.0;
   /* True if the stream is draining. */
   bool draining = false;
+  cubeb_callback_state callback_state;
   /* This needs an active audio input stream to be known, and is updated in the
    * first audio input callback. */
   std::atomic<int64_t> input_latency_hns{LATENCY_NOT_AVAILABLE_YET};
@@ -911,8 +913,8 @@ wasapi_data_callback(cubeb_stream * stm, void * user_ptr,
                      void const * input_buffer, void * output_buffer,
                      long nframes)
 {
-  return stm->data_callback(stm, user_ptr, input_buffer, output_buffer,
-                            nframes);
+  return stm->callback_state.call(stm->data_callback, stm, user_ptr,
+                                  input_buffer, output_buffer, nframes);
 }
 
 void
