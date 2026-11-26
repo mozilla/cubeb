@@ -381,6 +381,7 @@ if(USE_PULSE AND USE_PULSE_RUST)
     CONFIGURE_COMMAND ""
     BUILD_COMMAND cargo build --features=gecko-in-tree "$<IF:$<CONFIG:Release,RelWithDebInfo,MinSizeRel>,--release,>"
     BUILD_ALWAYS ON
+    BUILD_BYPRODUCTS "${PROJECT_SOURCE_DIR}/src/cubeb-pulse-rs/target/$<IF:$<CONFIG:Debug>,debug,release>/libcubeb_pulse.a"
     BINARY_DIR "${PROJECT_SOURCE_DIR}/src/cubeb-pulse-rs"
     INSTALL_COMMAND ""
     LOG_BUILD ON
@@ -404,6 +405,7 @@ if(USE_AUDIOUNIT AND USE_AUDIOUNIT_RUST)
     CONFIGURE_COMMAND ""
     BUILD_COMMAND cargo build --features=gecko-in-tree "$<IF:$<CONFIG:Release,RelWithDebInfo,MinSizeRel>,--release,>" "${FEATURE_NO_PRIVATE_APIS_TOGGLE}"
     BUILD_ALWAYS ON
+    BUILD_BYPRODUCTS "${PROJECT_SOURCE_DIR}/src/cubeb-coreaudio-rs/target/$<IF:$<CONFIG:Debug>,debug,release>/libcubeb_coreaudio.a"
     BINARY_DIR "${PROJECT_SOURCE_DIR}/src/cubeb-coreaudio-rs"
     INSTALL_COMMAND ""
     LOG_BUILD ON
