@@ -2030,12 +2030,32 @@ waveformatex_update_derived_properties(WAVEFORMATEX * format)
   }
 }
 
+#define DIRECTION_NAME (direction == eCapture ? "capture" : "render")
+
+static void
+log_wave_format(cubeb_stream * stm, EDataFlow direction, char const * what,
+                WAVEFORMATEX const * fmt)
+{
+  DWORD mask = 0;
+  bool is_float = fmt->wFormatTag == WAVE_FORMAT_IEEE_FLOAT;
+  if (fmt->wFormatTag == WAVE_FORMAT_EXTENSIBLE) {
+    WAVEFORMATEXTENSIBLE const * ext =
+        reinterpret_cast<WAVEFORMATEXTENSIBLE const *>(fmt);
+    mask = ext->dwChannelMask;
+    is_float = ext->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
+  }
+  LOG("(%p) %s %s: tag=0x%x c=%u mask=0x%lx r=%lu %s%u", stm, DIRECTION_NAME,
+      what, fmt->wFormatTag, fmt->nChannels, mask, fmt->nSamplesPerSec,
+      is_float ? "f" : "s", fmt->wBitsPerSample);
+}
+
 /* Based on the mix format and the stream format, try to find a way to play
    what the user requested. */
 static void
 handle_channel_layout(cubeb_stream * stm, EDataFlow direction,
                       com_heap_ptr<WAVEFORMATEX> & mix_format,
-                      const cubeb_stream_params * stream_params)
+                      const cubeb_stream_params * stream_params,
+                      bool request_stream_layout)
 {
   com_ptr<IAudioClient> & audio_client =
       (direction == eRender) ? stm->output_client : stm->input_client;
@@ -2047,6 +2067,8 @@ handle_channel_layout(cubeb_stream * stm, EDataFlow direction,
      [1]:
      http://msdn.microsoft.com/en-us/library/windows/desktop/dd370811%28v=vs.85%29.aspx*/
   if (mix_format->wFormatTag != WAVE_FORMAT_EXTENSIBLE) {
+    LOG("(%p) %s IsFormatSupported skipped: mix format not extensible", stm,
+        DIRECTION_NAME);
     return;
   }
 
@@ -2057,11 +2079,19 @@ handle_channel_layout(cubeb_stream * stm, EDataFlow direction,
    * later. */
   WAVEFORMATEXTENSIBLE hw_mix_format = *format_pcm;
 
-  /* Get the channel mask by the channel layout.
-     If the layout is not supported, we will get a closest settings below. */
-  format_pcm->dwChannelMask = stream_params->layout;
-  mix_format->nChannels = stream_params->channels;
-  waveformatex_update_derived_properties(mix_format.get());
+  /* Ask for the stream's channel layout if requested. If the layout is not
+     supported, we will get a closest settings below. Otherwise, keep the
+     engine's own channel layout: the output mixer maps the stream layout onto
+     it, which avoids depending on how an audio enhancement (APO) handles a
+     layout it did not expose. */
+  if (request_stream_layout) {
+    format_pcm->dwChannelMask = stream_params->layout;
+    mix_format->nChannels = stream_params->channels;
+    waveformatex_update_derived_properties(mix_format.get());
+  }
+
+  log_wave_format(stm, direction, "IsFormatSupported candidate",
+                  mix_format.get());
 
   /* Check if wasapi will accept our channel layout request. */
   WAVEFORMATEX * tmp = nullptr;
@@ -2072,7 +2102,8 @@ handle_channel_layout(cubeb_stream * stm, EDataFlow direction,
     /* Channel layout not supported, but WASAPI gives us a suggestion. Use it,
        and handle the eventual upmix/downmix ourselves. Ignore the subformat of
        the suggestion, since it seems to always be IEEE_FLOAT. */
-    LOG("Using WASAPI suggested format: channels: %d", closest->nChannels);
+    log_wave_format(stm, direction, "IsFormatSupported suggested",
+                    closest.get());
     XASSERT(closest->wFormatTag == WAVE_FORMAT_EXTENSIBLE);
     WAVEFORMATEXTENSIBLE * closest_pcm =
         reinterpret_cast<WAVEFORMATEXTENSIBLE *>(closest.get());
@@ -2083,12 +2114,16 @@ handle_channel_layout(cubeb_stream * stm, EDataFlow direction,
     /* Not supported, no suggestion. This should not happen, but it does in the
        field with some sound cards. We restore the mix format, and let the rest
        of the code figure out the right conversion path. */
+    LOG("(%p) %s IsFormatSupported: unsupported, no suggestion, restoring "
+        "mix format",
+        stm, DIRECTION_NAME);
     XASSERT(mix_format->wFormatTag == WAVE_FORMAT_EXTENSIBLE);
     *reinterpret_cast<WAVEFORMATEXTENSIBLE *>(mix_format.get()) = hw_mix_format;
   } else if (hr == S_OK) {
-    LOG("Requested format accepted by WASAPI.");
+    LOG("(%p) %s IsFormatSupported: candidate accepted", stm, DIRECTION_NAME);
   } else {
-    LOG("IsFormatSupported unhandled error: %lx", hr);
+    LOG("(%p) %s IsFormatSupported unhandled error: %lx", stm, DIRECTION_NAME,
+        hr);
   }
 }
 
@@ -2234,8 +2269,6 @@ initialize_iaudioclient3(com_ptr<IAudioClient> & audio_client,
 }
 #endif
 
-#define DIRECTION_NAME (direction == eCapture ? "capture" : "render")
-
 template <typename T>
 int
 setup_wasapi_stream_one_side(cubeb_stream * stm,
@@ -2335,6 +2368,15 @@ setup_wasapi_stream_one_side(cubeb_stream * stm,
   }
   com_heap_ptr<WAVEFORMATEX> mix_format(tmp);
 
+  /* Capture always asks for the stream's layout. Render keeps the engine's
+     layout unless CUBEB_STREAM_PREF_NEGOTIATE_LAYOUT is set. */
+  bool request_stream_layout =
+      direction == eCapture ||
+      (stream_params->prefs & CUBEB_STREAM_PREF_NEGOTIATE_LAYOUT);
+  LOG("(%p) %s layout policy: %s", stm, DIRECTION_NAME,
+      request_stream_layout ? "stream" : "engine");
+  log_wave_format(stm, direction, "GetMixFormat", mix_format.get());
+
   mix_format->wBitsPerSample = stm->bytes_per_sample * 8;
   if (mix_format->wFormatTag == WAVE_FORMAT_PCM ||
       mix_format->wFormatTag == WAVE_FORMAT_IEEE_FLOAT) {
@@ -2364,7 +2406,11 @@ setup_wasapi_stream_one_side(cubeb_stream * stm,
    * use the default setting retrieved from the stream format of the audio
    * engine's internal processing by GetMixFormat. */
   if (mix_format->nChannels > 2) {
-    handle_channel_layout(stm, direction, mix_format, stream_params);
+    handle_channel_layout(stm, direction, mix_format, stream_params,
+                          request_stream_layout);
+  } else {
+    LOG("(%p) %s IsFormatSupported skipped: %u channels", stm, DIRECTION_NAME,
+        mix_format->nChannels);
   }
 
   mix_params->format = stream_params->format;
@@ -2372,10 +2418,11 @@ setup_wasapi_stream_one_side(cubeb_stream * stm,
   mix_params->channels = mix_format->nChannels;
   mix_params->layout = mask_to_channel_layout(mix_format.get());
 
-  LOG("Setup requested=[f=%d r=%u c=%u l=%u] mix=[f=%d r=%u c=%u l=%u]",
-      stream_params->format, stream_params->rate, stream_params->channels,
-      stream_params->layout, mix_params->format, mix_params->rate,
-      mix_params->channels, mix_params->layout);
+  LOG("(%p) %s Setup requested=[f=%d r=%u c=%u l=0x%x] "
+      "mix=[f=%d r=%u c=%u l=0x%x]",
+      stm, DIRECTION_NAME, stream_params->format, stream_params->rate,
+      stream_params->channels, stream_params->layout, mix_params->format,
+      mix_params->rate, mix_params->channels, mix_params->layout);
 
   DWORD flags = 0;
 
@@ -2455,13 +2502,15 @@ setup_wasapi_stream_one_side(cubeb_stream * stm,
     LOG("Initialized with IAudioClient3");
   } else {
 #endif
+  log_wave_format(stm, direction, "Initialize", mix_format.get());
   hr = audio_client->Initialize(AUDCLNT_SHAREMODE_SHARED, flags, latency_hns, 0,
                                 mix_format.get(), NULL);
 #if 0
   }
 #endif
   if (FAILED(hr)) {
-    LOG("Unable to initialize audio client for %s: %lx.", DIRECTION_NAME, hr);
+    LOG("(%p) Unable to initialize audio client for %s: %lx.", stm,
+        DIRECTION_NAME, hr);
     return CUBEB_ERROR;
   }
 
@@ -2771,9 +2820,14 @@ setup_wasapi_stream(cubeb_stream * stm)
         stm->output_stream_params.layout, stm->output_mix_params.channels,
         stm->output_mix_params.layout));
     assert(stm->output_mixer);
+    LOG("(%p) Output mixer enabled: c=%u l=0x%x -> c=%u l=0x%x", stm,
+        stm->output_stream_params.channels, stm->output_stream_params.layout,
+        stm->output_mix_params.channels, stm->output_mix_params.layout);
     // Input is up/down mixed when depacketized in get_input_buffer.
     stm->mix_buffer.resize(
         frames_to_bytes_before_mix(stm, stm->output_buffer_frame_count));
+  } else if (has_output(stm)) {
+    LOG("(%p) Output mixer not needed", stm);
   }
 
   return CUBEB_OK;
