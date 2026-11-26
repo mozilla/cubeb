@@ -1121,9 +1121,11 @@ oss_stream_init(cubeb * context, cubeb_stream ** stream,
       goto error;
     }
     if ((s->record.fd = open(s->record.name, O_RDONLY)) == -1) {
+      ret = (errno == EACCES || errno == EPERM)
+                ? CUBEB_ERROR_PERMISSION_DENIED
+                : CUBEB_ERROR_DEVICE_UNAVAILABLE;
       LOG("Audio device \"%s\" could not be opened as read-only",
           s->record.name);
-      ret = CUBEB_ERROR_DEVICE_UNAVAILABLE;
       goto error;
     }
     if ((ret = oss_copy_params(s->record.fd, s, input_stream_params,
