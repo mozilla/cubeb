@@ -17,6 +17,7 @@
 #include <alsa/asoundlib.h>
 #include <assert.h>
 #include <dlfcn.h>
+#include <errno.h>
 #include <limits.h>
 #include <poll.h>
 #include <pthread.h>
@@ -1096,6 +1097,10 @@ alsa_stream_init_single(cubeb * ctx, cubeb_stream ** stream,
                            ctx->local_config);
   if (r < 0) {
     alsa_stream_destroy(stm);
+    if (stream_type == SND_PCM_STREAM_CAPTURE &&
+        (r == -EACCES || r == -EPERM)) {
+      return CUBEB_ERROR_PERMISSION_DENIED;
+    }
     return CUBEB_ERROR;
   }
 

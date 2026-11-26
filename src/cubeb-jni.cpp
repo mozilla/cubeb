@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include "cubeb-jni-instances.h"
 /* clang-format on */
 
@@ -84,6 +85,42 @@ clear_pending_exception(JNIEnv * jni_env)
   }
   jni_env->ExceptionClear();
   return true;
+}
+
+extern "C" bool
+cubeb_jni_record_audio_permission_denied()
+{
+  JNIEnv * env = cubeb_get_jni_env_for_thread();
+  if (!env) {
+    return false;
+  }
+  if (env->PushLocalFrame(3) != JNI_OK) {
+    clear_pending_exception(env);
+    return false;
+  }
+
+  // A missing context or a failed JNI call leaves the decision to the backend.
+  jobject context = cubeb_jni_get_context_instance();
+  jclass context_class = context ? env->GetObjectClass(context) : nullptr;
+  jmethodID check_permission =
+      context_class ? env->GetMethodID(context_class, "checkPermission",
+                                       "(Ljava/lang/String;II)I")
+                    : nullptr;
+  jstring permission =
+      check_permission ? env->NewStringUTF("android.permission.RECORD_AUDIO")
+                       : nullptr;
+  bool denied = false;
+  if (permission) {
+    constexpr jint permission_denied = -1; // PackageManager.PERMISSION_DENIED
+    // Check this process even if the thread is responding to a Binder call.
+    denied =
+        env->CallIntMethod(context, check_permission, permission,
+                           static_cast<jint>(getpid()),
+                           static_cast<jint>(getuid())) == permission_denied;
+  }
+  bool failed = clear_pending_exception(env);
+  env->PopLocalFrame(nullptr);
+  return !failed && denied;
 }
 
 static int

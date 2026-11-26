@@ -7,6 +7,7 @@
 #include "cubeb-internal.h"
 #include "cubeb/cubeb.h"
 #include "cubeb_tracing.h"
+#include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <pthread.h>
@@ -552,8 +553,10 @@ sun_stream_init(cubeb * context, cubeb_stream ** stream,
     }
     if (s->record.fd == -1) {
       if ((s->record.fd = open(s->record.name, O_RDONLY)) == -1) {
+        ret = (errno == EACCES || errno == EPERM)
+                  ? CUBEB_ERROR_PERMISSION_DENIED
+                  : CUBEB_ERROR_DEVICE_UNAVAILABLE;
         LOG("Audio device could not be opened as read-only");
-        ret = CUBEB_ERROR_DEVICE_UNAVAILABLE;
         goto error;
       }
     }

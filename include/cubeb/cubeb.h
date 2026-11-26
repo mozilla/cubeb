@@ -311,7 +311,9 @@ enum {
   CUBEB_ERROR_NOT_SUPPORTED =
       -4, /**< Optional function not implemented in current backend. */
   CUBEB_ERROR_DEVICE_UNAVAILABLE =
-      -5 /**< Device specified by #cubeb_devid not available. */
+      -5, /**< Device specified by #cubeb_devid not available. */
+  CUBEB_ERROR_PERMISSION_DENIED =
+      -6 /**< Permission to capture audio was denied. */
 };
 
 /**
@@ -596,7 +598,10 @@ cubeb_destroy(cubeb * context);
     @retval CUBEB_OK
     @retval CUBEB_ERROR
     @retval CUBEB_ERROR_INVALID_FORMAT
-    @retval CUBEB_ERROR_DEVICE_UNAVAILABLE */
+    @retval CUBEB_ERROR_DEVICE_UNAVAILABLE
+    @retval CUBEB_ERROR_PERMISSION_DENIED if the backend detects that
+            permission to capture audio was denied for an input-only or
+            duplex stream */
 CUBEB_EXPORT int
 cubeb_stream_init(cubeb * context, cubeb_stream ** stream,
                   char const * stream_name, cubeb_devid input_device,

@@ -314,12 +314,14 @@ endif()
 
 check_include_files(SLES/OpenSLES.h USE_OPENSL)
 if(USE_OPENSL)
-  target_sources(cubeb PRIVATE
-    src/cubeb_opensl.cpp
-    src/cubeb-jni.cpp)
+  target_sources(cubeb PRIVATE src/cubeb_opensl.cpp)
   target_compile_definitions(cubeb PRIVATE USE_OPENSL)
   target_link_libraries(cubeb PRIVATE OpenSLES)
   list(APPEND private_libs OpenSLES)
+endif()
+
+if(USE_AAUDIO OR USE_OPENSL)
+  target_sources(cubeb PRIVATE src/cubeb-jni.cpp)
 endif()
 
 check_include_files(sys/soundcard.h HAVE_SYS_SOUNDCARD_H)
