@@ -1,6 +1,7 @@
 #ifndef _CUBEB_JNI_H_
 #define _CUBEB_JNI_H_
 
+#include <stdbool.h>
 #include <stdint.h>
 
 typedef struct cubeb_jni cubeb_jni;
@@ -11,6 +12,8 @@ extern "C" {
 
 cubeb_jni *
 cubeb_jni_init();
+bool
+cubeb_jni_record_audio_permission_denied();
 int
 cubeb_get_output_latency_from_jni(cubeb_jni * cubeb_jni_ptr);
 int

@@ -5,6 +5,7 @@
  * accompanying file LICENSE for details.
  */
 #include "cubeb-internal.h"
+#include "cubeb-jni.h"
 #include "cubeb/cubeb.h"
 #include "cubeb_android.h"
 #include "cubeb_log.h"
@@ -1288,9 +1289,6 @@ realize_stream(AAudioStreamBuilder * sb, const cubeb_stream_params * params,
         params->rate);
   }
 
-  // When the app has no permission to record audio
-  // (android.permission.RECORD_AUDIO) but requested and input stream, this will
-  // return INVALID_ARGUMENT.
   if (res != AAUDIO_OK) {
     LOG("AAudioStreamBuilder_openStream: %s",
         WRAP(AAudio_convertResultToText)(res));
@@ -1605,6 +1603,13 @@ aaudio_stream_init(cubeb * ctx, cubeb_stream ** stream,
 {
   assert(!input_device);
   assert(!output_device);
+
+  if (input_stream_params &&
+      !(input_stream_params->prefs & CUBEB_STREAM_PREF_LOOPBACK) &&
+      cubeb_jni_record_audio_permission_denied()) {
+    *stream = nullptr;
+    return CUBEB_ERROR_PERMISSION_DENIED;
+  }
 
   // atomically find a free stream.
   cubeb_stream * stm = nullptr;
