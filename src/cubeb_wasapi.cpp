@@ -2462,6 +2462,9 @@ setup_wasapi_stream_one_side(cubeb_stream * stm,
 #endif
   if (FAILED(hr)) {
     LOG("Unable to initialize audio client for %s: %lx.", DIRECTION_NAME, hr);
+    if (direction == eCapture && !is_loopback && hr == E_ACCESSDENIED) {
+      return CUBEB_ERROR_PERMISSION_DENIED;
+    }
     return CUBEB_ERROR;
   }
 
